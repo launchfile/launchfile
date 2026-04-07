@@ -16,39 +16,35 @@ env:
 health: /healthz
 ```
 
+## What's in this repo
+
+| Directory | Description |
+|-----------|-------------|
+| [`spec/`](spec/) | The Launchfile specification, design docs, and JSON Schema |
+| [`sdk/`](sdk/) | TypeScript reference implementation (parser, validator, serializer) |
+| [`providers/`](providers/) | Reference provider implementations (macOS dev, more to come) |
+| [`catalog/`](catalog/) | Community-maintained Launchfiles for popular open-source apps |
+| [`brand/`](brand/) | Logos, colors, and design assets |
+| [`www-dev/`](www-dev/) | [launchfile.dev](https://launchfile.dev) — Developer docs |
+| [`www-org/`](www-org/) | [launchfile.org](https://launchfile.org) — The specification |
+
+You can also browse and launch Launchfiles at [launchfile.io](https://launchfile.io).
+
 ## Why Launchfile?
 
-|                          | Dockerfile    | docker-compose.yml    | Procfile   | Launchfile                    |
-|--------------------------|---------------|-----------------------|------------|-------------------------------|
-| Declares services needed | No            | Yes (you define them) | No         | Yes (you declare them)        |
-| Platform-agnostic        | No (Docker)   | No (Docker)           | Heroku-ish | Yes                           |
-| Multi-component          | No            | Yes                   | Flat       | Yes                           |
-| Environment wiring       | No            | Manual                | No         | Automatic (`$` expressions)   |
-| Human-writable           | Medium        | Verbose               | Simple     | Simple                        |
+| | Dockerfile | docker-compose.yml | Procfile | Launchfile |
+|---|---|---|---|---|
+| Declares services needed | No | Yes (you define them) | No | Yes (you declare them) |
+| Platform-agnostic | No (Docker only) | No (Docker only) | Heroku-ish | Yes |
+| Multi-component | No | Yes | Flat | Yes |
+| Environment wiring | No | Manual | No | Automatic (`$` expressions) |
+| Human-writable | Medium | Verbose | Simple | Simple |
 
 Existing tools describe **how** to build infrastructure. A Launchfile describes **what** an app needs — and lets the platform figure out the how.
 
-## What's in this repo
-
-| Directory    | Description                                                    |
-|--------------|----------------------------------------------------------------|
-| [`spec/`]     | The Launchfile specification, design docs, and JSON Schema     |
-| [`catalog/`]  | Launchfiles for popular open-source apps                       |
-| [`sdk/`]      | TypeScript reference implementation (parser, validator, serializer) |
-| [`providers/`] | Platform providers that turn Launchfiles into running apps         |
-| [`brand/`]     | Logos, colors, and design assets                                  |
-| [`www-org/`]   | [launchfile.org](https://launchfile.org) — The specification      |
-
-[`spec/`]: spec/
-[`catalog/`]: catalog/
-[`sdk/`]: sdk/
-[`providers/`]: providers/
-[`brand/`]: brand/
-[`www-org/`]: www-org/
-
 ## Repository Structure
 
-This is a monorepo containing the specification, reference SDK, and catalog. Components will be split into separate repositories as they develop independent contributor bases or release cadences.
+This is a monorepo containing the specification, reference SDK, catalog, and websites. Components will be split into separate repositories as they develop independent contributor bases or release cadences. The `launchfile/launchfile` repo will remain the canonical home of the specification itself.
 
 ## License
 

@@ -1,0 +1,90 @@
+---
+import DocsLayout from "@/layouts/DocsLayout.astro";
+import { Code } from "astro:components";
+---
+
+<DocsLayout title="Quick Start — Launchfile" description="Write your first Launchfile in two minutes." currentPath="/quick-start/">
+  <h1>Quick Start</h1>
+
+  <p>A Launchfile describes what your application needs to run. Create a file called <code>Launchfile</code> (no extension) in your project root:</p>
+
+  <h2 id="minimal">Minimal example</h2>
+
+  <p>Three fields and a start command — the simplest possible Launchfile:</p>
+
+  <Code lang="yaml" theme="github-dark" code={`name: my-app
+runtime: node
+commands:
+  start: "node server.js"`} />
+
+  <h2 id="with-database">Adding a database</h2>
+
+  <p>Declare what your app needs. The platform figures out how to provide it:</p>
+
+  <Code lang="yaml" theme="github-dark" code={`name: my-app
+runtime: node
+requires:
+  - type: postgres
+    set_env:
+      DATABASE_URL: $url
+commands:
+  start: "node server.js"
+health: /health`} />
+
+  <p>The <code>$url</code> expression is resolved at deploy time — the platform provisions Postgres and injects the connection URL into your environment.</p>
+
+  <h2 id="validate">Validate with the SDK</h2>
+
+  <p>Use the TypeScript SDK to parse and validate your Launchfile:</p>
+
+  <Code lang="typescript" theme="github-dark" code={`import { readLaunch, validateLaunch } from "launchfile";
+
+const app = readLaunch(\`
+  name: my-app
+  runtime: node
+  requires: [postgres]
+  commands:
+    start: "node server.js"
+\`);
+
+const result = validateLaunch(app);
+if (!result.success) {
+  console.error(result.error.issues);
+}`} />
+
+  <h2 id="run-it">Run it</h2>
+
+  <p>Launchfile has two modes: <strong>Docker</strong> for quick, self-contained runs, and <strong>native macOS</strong> for local development.</p>
+
+  <h3 id="docker">Docker (default)</h3>
+
+  <p>Run any catalog app with one command — no source code needed:</p>
+
+  <Code lang="bash" theme="github-dark" code={`npx launchfile up ghost
+# Pulls Ghost + MySQL, wires everything, starts at http://localhost:2368`} />
+
+  <p>Ghost starts with MySQL, health checks, and persistent storage — all from pre-built images. When you're done:</p>
+
+  <Code lang="bash" theme="github-dark" code={`npx launchfile down --destroy
+# Removes all containers and volumes — 100% clean`} />
+
+  <h3 id="native-macos">Native macOS (for development)</h3>
+
+  <p>For local development, clone a repo and run natively — databases via Homebrew, runtimes via version managers, no containers:</p>
+
+  <Code lang="bash" theme="github-dark" code={`git clone https://github.com/TryGhost/Ghost
+cd Ghost
+npx launchfile up --native
+# Installs Node via fnm, MySQL via Homebrew, runs Ghost from source`} />
+
+  <p>Now try it with your own app — create a <code>Launchfile</code> in your project root, then run <code>npx launchfile up</code>.</p>
+
+  <h2 id="next-steps">Next steps</h2>
+
+  <ul>
+    <li>Browse the <a href="https://launchfile.io/apps/">app catalog</a> for {'>'}50 ready-to-launch apps</li>
+    <li>Browse <a href="/examples/">real-world examples</a> from minimal to multi-component</li>
+    <li>Read the <a href="https://launchfile.org/spec/">full specification</a> for every field and expression</li>
+    <li>Explore the <a href="/sdk/">SDK reference</a> for parsing, validation, and serialization</li>
+  </ul>
+</DocsLayout>
