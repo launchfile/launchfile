@@ -1,0 +1,5 @@
+version: launch/v1
+# Missing required "name" field
+runtime: 12345
+commands:
+  start: 123
