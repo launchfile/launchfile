@@ -1,0 +1,36 @@
+name: Spec Proposal
+description: Propose a new field or behavioral change to the Launchfile specification
+labels: ["spec-proposal"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Proposals are evaluated against the [13 design principles](https://github.com/launchfile/launchfile/blob/main/spec/DESIGN.md) by an AI Steward. See [GOVERNANCE.md](https://github.com/launchfile/launchfile/blob/main/spec/GOVERNANCE.md) for how decisions are made.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can't you express with the current spec?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed Solution
+      description: What field or behavior would you add? Include a YAML snippet.
+    validations:
+      required: true
+  - type: textarea
+    id: apps
+    attributes:
+      label: Real-World Motivation
+      description: Which apps need this? Link to catalog entries or repos.
+      placeholder: "e.g. Home Assistant needs device passthrough, Ollama needs GPU declaration, ..."
+    validations:
+      required: true
+  - type: textarea
+    id: principles
+    attributes:
+      label: Principle Check (optional)
+      description: Does this align with the design principles? Note any tensions.
+      placeholder: "e.g. Aligns with P-2 (incrementally adoptable) — new optional field. Tension with P-1 if this is too infra-specific."
