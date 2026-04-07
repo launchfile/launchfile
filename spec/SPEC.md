@@ -83,7 +83,7 @@ The `depends_on` field ensures `frontend` waits for `backend` to become healthy 
 
 - Read the [Top-Level Fields](#top-level-fields) reference for all available fields
 - Browse [real-world examples](https://launchfile.dev/examples/) with annotated breakdowns
-- Explore the [app catalog](https://launchfile.io/apps/) — 50+ community Launchfiles for popular apps
+- Explore the [app catalog](https://launchfile.io/apps/) — community Launchfiles for popular apps
 - Install the SDK: `npm install launchfile` — [setup guide](https://launchfile.dev/installation/)
 
 ## Top-Level Fields
@@ -746,6 +746,26 @@ Any YAML 1.2 parser accepts JSON. If you prefer braces and quotes:
 ```
 
 This parses identically to the YAML equivalent. You can also mix styles — JSON inline for short values, YAML block for complex structures.
+
+## Security Considerations
+
+Launchfile is a trust boundary — like a Dockerfile or Makefile, it declares what should run. Providers that execute Launchfiles should be aware of these security properties:
+
+### Config values are untrusted input
+
+The `config` field in `requires`/`supports` entries accepts arbitrary key-value pairs (`Record<string, unknown>`). Providers **MUST** validate and sanitize config values before using them in shell commands, SQL queries, API calls, or any other injectable context. For example, a postgres provider should validate that extension names match `^[a-zA-Z_][a-zA-Z0-9_]*$` before passing them to `CREATE EXTENSION`.
+
+### Commands and health checks are executable
+
+`commands.start`, `commands.build`, `commands.release`, and `health.command` contain shell commands that the provider executes. This is by design — the user chose to run this Launchfile. Providers that fetch Launchfiles from remote sources (catalogs, URLs) should display what will be executed and prompt for confirmation before running.
+
+### Host capabilities require user consent
+
+`host.privileged`, `host.docker`, and `host.filesystem` declare elevated capabilities. Providers should either refuse or require explicit user confirmation before granting these.
+
+### Secrets and state
+
+Generated secrets (from `generator: secret|uuid`) and connection credentials should be stored with restrictive file permissions (e.g., 0600) and excluded from version control.
 
 ## Extensibility
 
