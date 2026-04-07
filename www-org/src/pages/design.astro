@@ -1,0 +1,12 @@
+---
+import DocsLayout from "@/layouts/DocsLayout.astro";
+import { getEntry, render } from "astro:content";
+
+const entry = await getEntry("spec", "design");
+if (!entry) throw new Error("DESIGN.md not found in spec collection");
+const { Content } = await render(entry);
+---
+
+<DocsLayout title="Design Principles — Launchfile" description="The 13 design principles and key decisions behind the Launchfile specification." currentPath="/design/">
+  <Content />
+</DocsLayout>

@@ -1,0 +1,30 @@
+---
+import DocsLayout from "@/layouts/DocsLayout.astro";
+import { getSpecSections, type SpecSection } from "@/lib/spec-sections";
+
+export async function getStaticPaths() {
+  const sections = await getSpecSections();
+  // Exclude "overview" — it has its own index page
+  return sections
+    .filter((s) => s.slug !== "overview")
+    .map((s) => ({
+      params: { slug: s.slug },
+      props: { section: s },
+    }));
+}
+
+interface Props {
+  section: SpecSection;
+}
+
+const { section } = Astro.props;
+---
+
+<DocsLayout
+  title={`${section.title} — Launchfile Specification`}
+  description={`Launchfile specification: ${section.title}`}
+  currentPath={`/spec/${section.slug}/`}
+>
+  <h1>{section.title}</h1>
+  <Fragment set:html={section.html} />
+</DocsLayout>
