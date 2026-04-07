@@ -1,0 +1,88 @@
+---
+import Base from "@shared/layouts/Base.astro";
+import DocsHeader from "@shared/components/DocsHeader.astro";
+import Sidebar from "@shared/components/Sidebar.astro";
+import SidebarNav from "@shared/components/SidebarNav.astro";
+import PageFooter from "@shared/components/PageFooter.astro";
+import SearchDialog from "@shared/components/SearchDialog.astro";
+import "@/styles/global.css";
+
+interface Props {
+  title: string;
+  description?: string;
+  currentPath: string;
+}
+
+const { title, description, currentPath } = Astro.props;
+---
+
+<Base title={title} description={description} site="dev">
+  <DocsHeader slot="nav">
+    <SidebarNav slot="drawer-nav" currentPath={currentPath} />
+  </DocsHeader>
+  <div class="docs-layout">
+    <Sidebar currentPath={currentPath} />
+    <div class="docs-content">
+      <main>
+        <article class="prose prose-lg max-w-none prose-headings:text-ink prose-headings:scroll-mt-20 prose-p:text-charcoal prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-code:text-primary-dark prose-code:bg-primary-bg prose-code:rounded prose-code:px-1.5 prose-code:py-0.5 prose-code:text-sm prose-code:before:content-none prose-code:after:content-none prose-pre:bg-[var(--lf-ink)] prose-pre:text-[var(--lf-paper)] prose-th:text-ink prose-td:text-charcoal prose-strong:text-ink">
+          <slot />
+        </article>
+      </main>
+      <PageFooter currentPath={currentPath} />
+      <footer class="docs-small-print">
+        <p>&copy; {new Date().getFullYear()} Launchfile. MIT License.</p>
+        <div class="docs-small-print-links">
+          <a href="https://github.com/launchfile/launchfile">GitHub</a>
+          <a href="https://launchfile.org">Spec</a>
+          <a href="https://launchfile.io">Catalog</a>
+        </div>
+      </footer>
+    </div>
+  </div>
+  <SearchDialog />
+
+  <!-- Anchor icon SVG template -->
+  <template id="anchor-icon-template">
+  <a class="heading-anchor" aria-label="Link to section">
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+      <path d="m6.5 11.5-.964-.964a3.535 3.535 0 1 1 5-5l.964.964m2 2 .964.964a3.536 3.536 0 0 1-5 5L8.5 13.5m0-5 3 3" />
+    </svg>
+  </a>
+</template>
+
+<script>
+  document.addEventListener('astro:page-load', () => {
+    // --- Code copy buttons ---
+    document.querySelectorAll("article pre").forEach((pre) => {
+      const wrapper = document.createElement("div");
+      wrapper.className = "code-block-wrapper";
+      pre.parentNode?.insertBefore(wrapper, pre);
+      wrapper.appendChild(pre);
+
+      const btn = document.createElement("button");
+      btn.className = "copy-button";
+      btn.textContent = "Copy";
+      btn.setAttribute("aria-label", "Copy code");
+      btn.addEventListener("click", async () => {
+        const code = pre.querySelector("code")?.textContent ?? pre.textContent ?? "";
+        await navigator.clipboard.writeText(code);
+        btn.textContent = "Copied!";
+        btn.classList.add("copied");
+        setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("copied"); }, 2000);
+      });
+      wrapper.appendChild(btn);
+    });
+
+    // --- Heading anchor links ---
+    const anchorTemplate = document.getElementById("anchor-icon-template") as HTMLTemplateElement;
+    document.querySelectorAll("article h2[id], article h3[id]").forEach((heading) => {
+      const id = heading.getAttribute("id");
+      if (!id || !anchorTemplate) return;
+      const anchor = anchorTemplate.content.firstElementChild!.cloneNode(true) as HTMLAnchorElement;
+      anchor.href = `#${id}`;
+      anchor.setAttribute("aria-label", `Link to ${heading.textContent}`);
+      heading.appendChild(anchor);
+    });
+  });
+</script>
+</Base>

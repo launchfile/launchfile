@@ -1,0 +1,50 @@
+---
+import DocsLayout from "@/layouts/DocsLayout.astro";
+
+const examples = [
+  { slug: "minimal", title: "Minimal", description: "Three fields plus a start command — the simplest possible Launchfile.", icon: "file" },
+  { slug: "minimal-with-db", title: "Minimal with Database", description: "Single component with Postgres and a health check.", icon: "database" },
+  { slug: "single-component", title: "Single Component", description: "Full-featured with services, env vars, and lifecycle commands.", icon: "box" },
+  { slug: "multi-component", title: "Multi-Component", description: "HedgeDoc with backend/frontend and inter-component wiring.", icon: "layers" },
+  { slug: "prebuilt-image", title: "Prebuilt Image", description: "Deploy from an existing OCI/Docker image.", icon: "package" },
+  { slug: "cron-job", title: "Cron Job", description: "Scheduled task on a cron schedule, no persistent process.", icon: "clock" },
+  { slug: "host-orchestrator", title: "Host Orchestrator", description: "Docker daemon access and host networking.", icon: "server" },
+];
+---
+
+<DocsLayout title="Examples — Launchfile" description="Example Launchfiles demonstrating common patterns." currentPath="/examples/">
+  <h1>Examples</h1>
+  <p>Common patterns for Launchfiles — from minimal to multi-component. Each example is a complete, valid Launchfile you can use as a starting point.</p>
+
+  <div class="dev-quicklinks" style="margin-top: 2rem;">
+    {examples.map((example) => (
+      <a href={`/examples/${example.slug}/`} class="dev-quicklink">
+        <div class="dev-quicklink-icon">
+          {example.icon === "file" && (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          )}
+          {example.icon === "database" && (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+          )}
+          {example.icon === "box" && (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          )}
+          {example.icon === "layers" && (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+          )}
+          {example.icon === "package" && (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          )}
+          {example.icon === "clock" && (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          )}
+          {example.icon === "server" && (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+          )}
+        </div>
+        <h3 class="dev-quicklink-title">{example.title}</h3>
+        <p class="dev-quicklink-desc">{example.description}</p>
+      </a>
+    ))}
+  </div>
+</DocsLayout>
