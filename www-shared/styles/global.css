@@ -1,0 +1,17 @@
+/**
+ * Shared Launchfile brand tokens.
+ * Import AFTER `@import "tailwindcss"` in each site's own CSS.
+ */
+@import "../../brand/colors/palette.css";
+
+@theme {
+  --color-primary: var(--lf-primary);
+  --color-primary-dark: var(--lf-primary-dark);
+  --color-primary-light: var(--lf-primary-light);
+  --color-primary-glow: var(--lf-primary-glow);
+  --color-primary-bg: var(--lf-primary-bg);
+  --color-ink: var(--lf-ink);
+  --color-charcoal: var(--lf-charcoal);
+  --color-slate: var(--lf-slate);
+  --color-paper: var(--lf-paper);
+}
