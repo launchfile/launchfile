@@ -47,6 +47,7 @@ async function main(): Promise<void> {
 			await dockerUp(source, {
 				detach: hasFlag("detach"),
 				dryRun: hasFlag("dry-run"),
+				yes: hasFlag("yes") || hasFlag("y"),
 			});
 			break;
 		}
