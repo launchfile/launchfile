@@ -11,6 +11,9 @@ import type { ProvisionOpts, ResourceProperties, ResourceProvisioner } from "./t
 const DEFAULT_PORT = 3306;
 const DEFAULT_HOST = "localhost";
 
+// Security: validate identifiers before interpolating into shell/SQL commands
+const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
 export class MysqlProvisioner implements ResourceProvisioner {
 	readonly type = "mysql";
 
@@ -78,13 +81,14 @@ export class MysqlProvisioner implements ResourceProvisioner {
 	}
 
 	async destroy(state: ResourceState): Promise<void> {
-		if (state.dbName) {
+		// Security: state values come from disk (state.json) — validate before SQL interpolation
+		if (state.dbName && SAFE_IDENTIFIER.test(state.dbName)) {
 			await shell(
 				`mysql -h ${DEFAULT_HOST} -u root -e "DROP DATABASE IF EXISTS \\\`${state.dbName}\\\`;"`,
 				{ allowFailure: true },
 			);
 		}
-		if (state.user) {
+		if (state.user && SAFE_IDENTIFIER.test(state.user)) {
 			await shell(
 				`mysql -h ${DEFAULT_HOST} -u root -e "DROP USER IF EXISTS '${state.user}'@'${DEFAULT_HOST}';"`,
 				{ allowFailure: true },

@@ -73,14 +73,20 @@ export function initState(appName: string, launchfileContent: string): LaunchSta
 /** Save state to disk */
 export async function saveState(projectDir: string, state: LaunchState): Promise<void> {
 	state.updatedAt = new Date().toISOString();
-	await mkdir(stateDir(projectDir), { recursive: true });
-	await writeFile(statePath(projectDir), JSON.stringify(state, null, 2) + "\n");
+	// Security: restrict directory/file permissions — state.json contains
+	// database passwords and generated secrets in plaintext.
+	await mkdir(stateDir(projectDir), { recursive: true, mode: 0o700 });
+	await writeFile(statePath(projectDir), JSON.stringify(state, null, 2) + "\n", { mode: 0o600 });
 }
 
 /** Ensure .launchfile directories exist */
 export async function ensureDirs(projectDir: string): Promise<void> {
 	const dirs = ["storage", "tmp", "logs", "data", "env"];
+	// Security: restrict permissions — these dirs contain secrets, logs, env files
 	await Promise.all(
-		dirs.map((d) => mkdir(join(projectDir, STATE_DIR, d), { recursive: true })),
+		dirs.map((d) => mkdir(join(projectDir, STATE_DIR, d), { recursive: true, mode: 0o700 })),
 	);
+	// Safety net: write a .gitignore inside .launchfile/ so secrets aren't
+	// accidentally committed even if the project's .gitignore doesn't exclude it.
+	await writeFile(join(projectDir, STATE_DIR, ".gitignore"), "*\n", { mode: 0o644 });
 }
