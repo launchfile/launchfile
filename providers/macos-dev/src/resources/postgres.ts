@@ -17,6 +17,10 @@ import type { ProvisionOpts, ResourceProperties, ResourceProvisioner } from "./t
 const DEFAULT_PORT = 5432;
 const DEFAULT_HOST = "localhost";
 
+// Security: validate identifiers before interpolating into shell/SQL commands.
+// Only alphanumeric + underscore — safe for SQL identifiers and shell args.
+const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
 export class PostgresProvisioner implements ResourceProvisioner {
 	readonly type = "postgres";
 
@@ -70,15 +74,20 @@ export class PostgresProvisioner implements ResourceProvisioner {
 		}
 
 		// Handle extensions from config
+		// Security: extension names come from Launchfile config (untrusted input).
+		// Validate each against SAFE_IDENTIFIER before interpolating into SQL.
 		const extensions = req.config?.extensions;
 		if (Array.isArray(extensions)) {
 			for (const ext of extensions) {
-				if (typeof ext === "string") {
-					await shell(
-						`psql -h ${DEFAULT_HOST} -p ${port} ${dbName} -c "CREATE EXTENSION IF NOT EXISTS \\"${ext}\\";"`,
-						{ allowFailure: true },
-					);
+				if (typeof ext !== "string") continue;
+				if (!SAFE_IDENTIFIER.test(ext)) {
+					console.warn(`  Skipping invalid extension name: ${ext}`);
+					continue;
 				}
+				await shell(
+					`psql -h ${DEFAULT_HOST} -p ${port} ${dbName} -c "CREATE EXTENSION IF NOT EXISTS \\"${ext}\\";"`,
+					{ allowFailure: true },
+				);
 			}
 		}
 
@@ -107,12 +116,13 @@ export class PostgresProvisioner implements ResourceProvisioner {
 	}
 
 	async destroy(state: ResourceState): Promise<void> {
-		if (state.dbName) {
+		// Security: state values come from disk (state.json) — validate before SQL interpolation
+		if (state.dbName && SAFE_IDENTIFIER.test(state.dbName)) {
 			await shell(`dropdb -h ${DEFAULT_HOST} --if-exists ${state.dbName}`, {
 				allowFailure: true,
 			});
 		}
-		if (state.user) {
+		if (state.user && SAFE_IDENTIFIER.test(state.user)) {
 			await shell(
 				`psql -h ${DEFAULT_HOST} postgres -c "DROP ROLE IF EXISTS ${state.user};"`,
 				{ allowFailure: true },
