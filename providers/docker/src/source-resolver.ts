@@ -17,6 +17,10 @@ export interface ResolvedSource {
 	source: "local" | "catalog" | "url";
 }
 
+// Security: cap remote Launchfile size to prevent memory exhaustion.
+// No legitimate Launchfile should approach this limit.
+const MAX_REMOTE_SIZE = 256 * 1024; // 256 KB
+
 const CATALOG_RAW_BASE =
 	"https://raw.githubusercontent.com/launchfile/launchfile/main/catalog";
 
@@ -58,6 +62,9 @@ async function fetchFromCatalog(slug: string): Promise<ResolvedSource> {
 		const response = await fetch(url);
 		if (response.ok) {
 			const yaml = await response.text();
+			if (yaml.length > MAX_REMOTE_SIZE) {
+				throw new Error(`Catalog Launchfile "${slug}" exceeds maximum size (${MAX_REMOTE_SIZE} bytes)`);
+			}
 			return { yaml, slug, source: "catalog" };
 		}
 	}
@@ -74,6 +81,9 @@ async function fetchFromUrl(url: string): Promise<ResolvedSource> {
 	}
 
 	const yaml = await response.text();
+	if (yaml.length > MAX_REMOTE_SIZE) {
+		throw new Error(`Remote Launchfile exceeds maximum size (${MAX_REMOTE_SIZE} bytes)`);
+	}
 	const slug = inferSlugFromUrl(url, yaml);
 	return { yaml, slug, source: "url" };
 }
