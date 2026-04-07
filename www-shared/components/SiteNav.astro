@@ -1,0 +1,50 @@
+---
+interface Props {
+  current?: "dev" | "org" | "io";
+  badge?: string;
+}
+
+const { current = "dev", badge } = Astro.props;
+
+const sites = [
+  { key: "dev" as const, label: "Docs", href: "https://launchfile.dev" },
+  { key: "org" as const, label: "Spec", href: "https://launchfile.org" },
+  { key: "io" as const, label: "Catalog", href: "https://launchfile.io" },
+];
+---
+
+<nav class="border-b border-[var(--lf-purple-100)] bg-[var(--lf-white)]">
+  <div class="flex items-center justify-between px-6 py-3">
+    <a href="/" class="flex items-center gap-2 no-underline">
+      <img src="/favicon.svg" alt="" width="22" height="22" />
+      <span class="text-[15px] font-semibold text-ink">Launchfile</span>
+      {badge && (
+        <>
+          <span class="h-4 w-px bg-[var(--lf-purple-200)]"></span>
+          <span class="text-[13px] font-semibold text-primary">{badge}</span>
+        </>
+      )}
+    </a>
+    <div class="flex items-center gap-1 text-sm">
+      {sites.map((site) => (
+        <a
+          href={site.key === current ? "/" : site.href}
+          class:list={[
+            "rounded-md px-3 py-1.5 no-underline transition-colors",
+            site.key === current
+              ? "bg-primary-bg font-medium text-primary"
+              : "text-slate hover:text-ink hover:bg-[var(--lf-paper)]",
+          ]}
+        >
+          {site.label}
+        </a>
+      ))}
+      <a
+        href="https://github.com/launchfile/launchfile"
+        class="ml-2 rounded-md px-3 py-1.5 text-slate no-underline transition-colors hover:text-ink hover:bg-[var(--lf-paper)]"
+      >
+        GitHub
+      </a>
+    </div>
+  </div>
+</nav>
