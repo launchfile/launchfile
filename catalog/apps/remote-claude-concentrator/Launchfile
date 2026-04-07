@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: concentrator
+description: "Remote Claude session concentrator and dashboard"
+repository: https://github.com/claudification/remote-claude
+
+build:
+  dockerfile: ./Dockerfile
+
+provides:
+  - protocol: http
+    port: 9999
+    exposed: true
+
+env:
+  RCLAUDE_SECRET:
+    sensitive: true
+    description: "Shared secret for WebSocket auth between rclaude wrappers and concentrator (32-byte hex)"
+  RP_ID:
+    description: "WebAuthn relying party ID — bare domain, no protocol (e.g. concentrator.cogzero.com)"
+  ORIGIN:
+    description: "WebAuthn origin — full URL with protocol (e.g. https://concentrator.cogzero.com)"
+  VAPID_PUBLIC_KEY:
+    sensitive: true
+    description: "Web Push VAPID public key (generate with: bunx web-push generate-vapid-keys)"
+  VAPID_PRIVATE_KEY:
+    sensitive: true
+    description: "Web Push VAPID private key"
+  DEEPGRAM_API_KEY:
+    sensitive: true
+    description: "Deepgram API key for voice-to-text streaming (optional)"
+  OPENROUTER_API_KEY:
+    sensitive: true
+    description: "OpenRouter API key for voice transcript refinement (optional)"
+
+storage:
+  cache:
+    path: /data/cache
+    persistent: true
+    description: "Session cache, auth state (auth.json, auth.secret), invite codes"
+  transcripts:
+    path: /data/transcripts
+    persistent: true
+    description: "Session transcript history"
+
+health: /health
+restart: always

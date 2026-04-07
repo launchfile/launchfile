@@ -1,0 +1,19 @@
+category: CMS
+tagline: "Popular open-source content management system"
+homepage: https://wordpress.org
+test_results:
+  last_tested: 2026-04-06
+  pull_time_seconds: 3
+  startup_time_seconds: 11
+  total_disk_mb: 1481
+  health_check_passed: true
+  notes: ""
+images:
+  - name: wordpress:latest
+    size_mb: 725
+    platform:
+      - linux/arm64
+  - name: mysql:8
+    size_mb: 756
+    platform:
+      - linux/arm64

@@ -1,0 +1,15 @@
+category: AI/ML
+tagline: "Open-source AI tools platform"
+homepage: https://github.com/openclaw/openclaw
+test_results:
+  last_tested: 2026-04-06
+  pull_time_seconds: 2
+  startup_time_seconds: 51
+  total_disk_mb: 2239
+  health_check_passed: false
+  notes: "Gateway binds to localhost only (::1) — unreachable via Docker port mapping. Needs reverse proxy sidecar. Also has volume ownership issue (G-19) when running as non-root node user."
+images:
+  - name: ghcr.io/openclaw/openclaw:latest
+    size_mb: 2239
+    platform:
+      - linux/arm64

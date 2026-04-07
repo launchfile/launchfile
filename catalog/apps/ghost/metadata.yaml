@@ -1,0 +1,19 @@
+category: CMS
+tagline: "Professional publishing platform"
+homepage: https://ghost.org
+test_results:
+  last_tested: 2026-04-06
+  pull_time_seconds: 3
+  startup_time_seconds: 22
+  total_disk_mb: 1403
+  health_check_passed: true
+  notes: ""
+images:
+  - name: ghost:5-alpine
+    size_mb: 647
+    platform:
+      - linux/arm64
+  - name: mysql:8
+    size_mb: 756
+    platform:
+      - linux/arm64

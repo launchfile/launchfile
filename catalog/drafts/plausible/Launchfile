@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: plausible
+description: "Privacy-friendly web analytics"
+
+image: ghcr.io/plausible/community-edition:v2.1.4
+provides:
+  - protocol: http
+    port: 8000
+    exposed: true
+requires:
+  - type: postgres
+    version: ">=14"
+    set_env:
+      DATABASE_URL: $url
+  - type: clickhouse
+    set_env:
+      CLICKHOUSE_DATABASE_URL: $url
+env:
+  BASE_URL:
+    required: true
+    description: "Public-facing URL of the Plausible instance"
+  SECRET_KEY_BASE:
+    generator: secret
+    sensitive: true
+    description: "Secret key for session encryption"
+  TOTP_VAULT_KEY:
+    generator: secret
+    sensitive: true
+    description: "Encryption key for TOTP secrets"
+  MAILER_EMAIL:
+    default: "hello@plausible.local"
+    description: "From address for outbound emails"
+  DISABLE_REGISTRATION:
+    default: "invite_only"
+    description: "Registration mode: true, false, or invite_only"
+health:
+  path: /api/health
+  start_period: 30s
+restart: always

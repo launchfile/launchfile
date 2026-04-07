@@ -1,0 +1,19 @@
+category: Projects
+tagline: Flexible project management web application
+homepage: https://www.redmine.org
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 28
+  startup_time_seconds: 7
+  total_disk_mb: 873
+  health_check_passed: true
+  notes: ""
+images:
+  - name: redmine:latest
+    size_mb: 614
+    platform:
+      - linux/arm64
+  - name: postgres:16-alpine
+    size_mb: 259
+    platform:
+      - linux/arm64

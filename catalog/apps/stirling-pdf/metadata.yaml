@@ -1,0 +1,15 @@
+category: Documents
+tagline: "Web-based PDF manipulation tool"
+homepage: https://stirlingpdf.io
+test_results:
+  last_tested: 2026-04-06
+  pull_time_seconds: 3
+  startup_time_seconds: 21
+  total_disk_mb: 2095
+  health_check_passed: true
+  notes: ""
+images:
+  - name: frooodle/s-pdf:latest
+    size_mb: 2095
+    platform:
+      - linux/arm64

@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: privatebin
+description: "Minimalist, open-source online pastebin with zero knowledge"
+repository: https://github.com/PrivateBin/PrivateBin
+logo: https://raw.githubusercontent.com/PrivateBin/PrivateBin/master/img/icon.svg
+
+image: privatebin/nginx-fpm-alpine:latest
+provides:
+  - protocol: http
+    port: 8080
+    exposed: true
+storage:
+  data:
+    path: /srv/data
+    persistent: true
+restart: always

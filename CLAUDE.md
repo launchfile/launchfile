@@ -7,6 +7,7 @@ An open specification for describing application deployment requirements.
 This repo contains independently-splittable packages:
 
 - `spec/` — The specification document, JSON Schema, design docs, examples
+- `catalog/` — Community Launchfiles for popular open-source apps
 
 Each directory has its own `CLAUDE.md` with directory-specific context (where applicable).
 

@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: changedetection
+description: "Web page change detection and monitoring"
+
+components:
+  app:
+    image: ghcr.io/dgtlmoon/changedetection.io:latest
+    provides:
+      - protocol: http
+        port: 5000
+        exposed: true
+    env:
+      PLAYWRIGHT_DRIVER_URL:
+        default: $components.browser.url
+        description: "Playwright browser URL for JS rendering"
+      BASE_URL:
+        default: "http://localhost:5000"
+        description: "Public base URL"
+    storage:
+      datastore:
+        path: /datastore
+        persistent: true
+    depends_on:
+      - browser
+    health: /
+    restart: always
+
+  browser:
+    image: browserless/chrome:latest
+    provides:
+      - protocol: http
+        port: 3000
+    env:
+      SCREEN_WIDTH:
+        default: "1920"
+      SCREEN_HEIGHT:
+        default: "1080"
+      SCREEN_DEPTH:
+        default: "16"
+      MAX_CONCURRENT_SESSIONS:
+        default: "10"
+        description: "Maximum concurrent browser sessions"
+    restart: always

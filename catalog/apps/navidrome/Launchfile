@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: navidrome
+description: "Modern music server and streamer compatible with Subsonic/Airsonic"
+repository: https://github.com/navidrome/navidrome
+logo: https://raw.githubusercontent.com/navidrome/navidrome/master/resources/logo-192x192.png
+
+image: deluan/navidrome:latest
+provides:
+  - protocol: http
+    port: 4533
+    exposed: true
+env:
+  ND_SCANSCHEDULE:
+    default: "1h"
+    description: "How often to scan music library for changes"
+  ND_LOGLEVEL:
+    default: "info"
+    description: "Log level (error, warn, info, debug, trace)"
+storage:
+  data:
+    path: /data
+    persistent: true
+  music:
+    path: /music
+    persistent: true
+health: /ping
+restart: always

@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: wordpress
+description: "Popular open-source content management system"
+repository: https://github.com/WordPress/WordPress
+logo: https://raw.githubusercontent.com/WordPress/WordPress/master/wp-admin/images/wordpress-logo.svg
+
+image: wordpress:latest
+provides:
+  - protocol: http
+    port: 80
+    exposed: true
+requires:
+  - type: mysql
+    set_env:
+      WORDPRESS_DB_HOST: $host
+      WORDPRESS_DB_USER: $user
+      WORDPRESS_DB_PASSWORD: $password
+      WORDPRESS_DB_NAME: $name
+storage:
+  html:
+    path: /var/www/html
+    persistent: true
+restart: always

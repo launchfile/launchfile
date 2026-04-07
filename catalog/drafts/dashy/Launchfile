@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: dashy
+description: "Self-hosted personal dashboard"
+
+image: lissy93/dashy:latest
+provides:
+  - protocol: http
+    port: 8080
+    exposed: true
+health: /
+restart: always

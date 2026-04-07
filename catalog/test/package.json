@@ -1,0 +1,19 @@
+{
+  "name": "@launchfile/catalog-test",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test-app": "bun run src/test-app.ts",
+    "test-all": "bun run src/test-all.ts"
+  },
+  "dependencies": {
+    "playwright": "^1.59.1",
+    "yaml": "^2.8.3",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.11",
+    "typescript": "^5.9.3"
+  }
+}

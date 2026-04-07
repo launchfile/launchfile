@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: stirling-pdf
+description: "Locally hosted web-based PDF manipulation tool"
+repository: https://github.com/Stirling-Tools/Stirling-PDF
+logo: https://raw.githubusercontent.com/Stirling-Tools/Stirling-PDF/main/docs/stirling.svg
+
+image: frooodle/s-pdf:latest
+provides:
+  - protocol: http
+    port: 8080
+    exposed: true
+restart: always

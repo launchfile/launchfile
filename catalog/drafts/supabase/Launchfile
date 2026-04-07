@@ -1,0 +1,115 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: supabase
+description: "Open-source Firebase alternative (backend-as-a-service)"
+
+# GAP: Real Supabase has 8+ tightly coupled services. This is simplified.
+# Missing: storage-api, imgproxy, edge-functions, analytics, vector, logflare.
+# Also, supabase bundles its own Postgres with extensions (pgvector, etc.)
+# which cannot be expressed via the standard requires: postgres model.
+
+components:
+  postgres:
+    image: supabase/postgres:latest
+    provides:
+      - protocol: tcp
+        port: 5432
+    env:
+      POSTGRES_PASSWORD:
+        generator: secret
+        sensitive: true
+    storage:
+      data:
+        path: /var/lib/postgresql/data
+        persistent: true
+    health:
+      command: "pg_isready -U postgres"
+    restart: always
+
+  auth:
+    image: supabase/gotrue:latest
+    provides:
+      - protocol: http
+        port: 9999
+    env:
+      GOTRUE_DB_DATABASE_URL:
+        required: true
+        description: "Postgres connection string"
+      GOTRUE_JWT_SECRET:
+        generator: secret
+        sensitive: true
+      GOTRUE_SITE_URL:
+        required: true
+        description: "Public site URL"
+    depends_on:
+      - component: postgres
+        condition: healthy
+    health: /health
+    restart: always
+
+  rest:
+    image: postgrest/postgrest:latest
+    provides:
+      - protocol: http
+        port: 3000
+    env:
+      PGRST_DB_URI:
+        required: true
+        description: "Postgres connection string"
+      PGRST_JWT_SECRET:
+        generator: secret
+        sensitive: true
+    depends_on:
+      - component: postgres
+        condition: healthy
+    restart: always
+
+  realtime:
+    image: supabase/realtime:latest
+    provides:
+      - protocol: ws
+        port: 4000
+    env:
+      DB_HOST:
+        default: "postgres"
+      DB_PORT:
+        default: "5432"
+      DB_USER:
+        default: "postgres"
+      DB_PASSWORD:
+        required: true
+        sensitive: true
+      DB_NAME:
+        default: "postgres"
+    depends_on:
+      - component: postgres
+        condition: healthy
+    restart: always
+
+  kong:
+    image: kong:latest
+    provides:
+      - protocol: http
+        port: 8000
+        exposed: true
+    depends_on:
+      - "auth"
+      - "rest"
+      - "realtime"
+    restart: always
+
+  studio:
+    image: supabase/studio:latest
+    provides:
+      - protocol: http
+        port: 3000
+    env:
+      SUPABASE_URL:
+        required: true
+        description: "Public Supabase API URL"
+      STUDIO_PG_META_URL:
+        required: true
+        description: "pg-meta service URL"
+    depends_on:
+      - "kong"
+    restart: always

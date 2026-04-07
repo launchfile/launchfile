@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: home-assistant
+description: "Open-source home automation platform"
+
+# GAP: Home Assistant typically requires host network mode for device discovery
+# (mDNS, SSDP, Zigbee/Z-Wave USB access). The launch spec has no way to
+# express network_mode: host or device passthrough.
+
+image: homeassistant/home-assistant:stable
+provides:
+  - protocol: http
+    port: 8123
+    exposed: true
+storage:
+  config:
+    path: /config
+    persistent: true
+health: /api/
+restart: always

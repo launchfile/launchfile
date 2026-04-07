@@ -1,0 +1,57 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: librechat
+description: "AI chat platform supporting multiple LLM providers"
+
+image: ghcr.io/danny-avila/librechat:latest
+provides:
+  - protocol: http
+    port: 3080
+    exposed: true
+requires:
+  - type: mongodb
+    set_env:
+      MONGO_URI: $url
+env:
+  OPENAI_API_KEY:
+    required: true
+    sensitive: true
+    description: "OpenAI API key"
+  ANTHROPIC_API_KEY:
+    required: true
+    sensitive: true
+    description: "Anthropic API key"
+  DOMAIN_SERVER:
+    default: "http://localhost:3080"
+    description: "Server domain URL"
+  DOMAIN_CLIENT:
+    default: "http://localhost:3080"
+    description: "Client domain URL"
+  ALLOW_REGISTRATION:
+    default: "true"
+    description: "Allow new user registration"
+  CREDS_KEY:
+    generator: secret
+    sensitive: true
+    description: "Credential encryption key"
+  CREDS_IV:
+    generator: secret
+    sensitive: true
+    description: "Credential encryption IV"
+  JWT_SECRET:
+    generator: secret
+    sensitive: true
+    description: "JWT signing secret"
+  JWT_REFRESH_SECRET:
+    generator: secret
+    sensitive: true
+    description: "JWT refresh token secret"
+storage:
+  uploads:
+    path: /app/uploads
+    persistent: true
+  logs:
+    path: /app/logs
+    persistent: true
+health: /api/health
+restart: always

@@ -1,0 +1,65 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: appwrite
+description: "Open-source backend platform for web and mobile apps"
+
+# GAP: Appwrite uses MariaDB. The spec allows arbitrary resource types via
+# (string & {}) so type: mariadb works, but there are no well-known $prop
+# mappings defined for mariadb specifically.
+
+components:
+  main:
+    image: appwrite/appwrite:latest
+    provides:
+      - protocol: http
+        port: 80
+        exposed: true
+    requires:
+      - type: redis
+        set_env:
+          _APP_REDIS_HOST: $host
+          _APP_REDIS_PORT: $port
+      - type: mariadb
+        set_env:
+          _APP_DB_HOST: $host
+          _APP_DB_PORT: $port
+          _APP_DB_USER: $user
+          _APP_DB_PASS: $password
+          _APP_DB_SCHEMA: $name
+    env:
+      _APP_ENV:
+        default: "production"
+      _APP_OPENSSL_KEY_V1:
+        generator: secret
+        sensitive: true
+      _APP_DOMAIN:
+        required: true
+        description: "Public domain for the Appwrite instance"
+    health: /v1/health
+    restart: always
+
+  worker:
+    image: appwrite/appwrite:latest
+    commands:
+      start: "worker-audits"
+    requires:
+      - type: redis
+        set_env:
+          _APP_REDIS_HOST: $host
+          _APP_REDIS_PORT: $port
+    depends_on:
+      - "main"
+    restart: always
+
+  scheduler:
+    image: appwrite/appwrite:latest
+    commands:
+      start: "schedule-functions"
+    requires:
+      - type: redis
+        set_env:
+          _APP_REDIS_HOST: $host
+          _APP_REDIS_PORT: $port
+    depends_on:
+      - "main"
+    restart: always

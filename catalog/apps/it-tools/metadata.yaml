@@ -1,0 +1,15 @@
+category: Utilities
+tagline: "Handy online tools for developers"
+homepage: https://it-tools.tech
+test_results:
+  last_tested: 2026-04-06
+  pull_time_seconds: 3
+  startup_time_seconds: 1
+  total_disk_mb: 57
+  health_check_passed: true
+  notes: ""
+images:
+  - name: corentinth/it-tools:latest
+    size_mb: 57
+    platform:
+      - linux/arm64

@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: plex
+description: "Media server for organizing and streaming personal media"
+
+# GAP: Plex uses a non-standard port (32400) and may need GPU passthrough
+# for transcoding. The claim token (PLEX_CLAIM) is a one-time-use token
+# from plex.tv that expires after 4 minutes — the generator model
+# cannot express this.
+
+image: plexinc/pms-docker:latest
+platform: linux/amd64
+provides:
+  - protocol: http
+    port: 32400
+    exposed: true
+env:
+  PLEX_CLAIM:
+    description: "One-time claim token from https://plex.tv/claim (expires in 4 min)"
+    sensitive: true
+  TZ:
+    default: "UTC"
+    description: "Timezone for the Plex server"
+storage:
+  config:
+    path: /config
+    persistent: true
+  transcode:
+    path: /transcode
+    persistent: false
+  data:
+    path: /data
+    persistent: true
+restart: always

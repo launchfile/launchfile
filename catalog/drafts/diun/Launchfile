@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: diun
+description: "Docker image update notifier"
+
+image: crazymax/diun:latest
+schedule: "0 */6 * * *"
+env:
+  DIUN_WATCH_SCHEDULE:
+    default: "0 */6 * * *"
+    description: "Cron schedule for checking image updates"
+  DIUN_PROVIDERS_DOCKER:
+    default: "true"
+    description: "Enable Docker provider"
+  DIUN_WATCH_FIRSTCHECKNOTIF:
+    default: "false"
+    description: "Send notification on first check"
+  LOG_LEVEL:
+    default: info
+    description: "Logging level"
+storage:
+  data:
+    path: /data
+    persistent: true
+restart: always

@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: rocketchat
+description: "Open-source team communication platform"
+
+# GAP: Rocket.Chat requires MongoDB with replica set configuration.
+# The spec supports type: mongodb but MongoDB's $prop mappings
+# (e.g., $url producing mongodb://user:pass@host:port/db?replicaSet=rs0)
+# may differ from relational databases. Replica set config and oplog access
+# cannot be expressed via requires.config today.
+
+image: rocket.chat:latest
+provides:
+  - protocol: http
+    port: 3000
+    exposed: true
+requires:
+  - type: mongodb
+    set_env:
+      MONGO_URL: $url
+      MONGO_OPLOG_URL: $url
+env:
+  ROOT_URL:
+    required: true
+    description: "Public URL for Rocket.Chat (e.g., https://chat.example.com)"
+  DEPLOY_METHOD:
+    default: "docker"
+health:
+  path: /health
+  start_period: 60s
+restart: always

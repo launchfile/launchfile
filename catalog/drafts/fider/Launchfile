@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: fider
+description: "Open-source community feedback platform"
+
+image: getfider/fider:stable
+provides:
+  - protocol: http
+    port: 3000
+    exposed: true
+requires:
+  - type: postgres
+    set_env:
+      DATABASE_URL: $url
+env:
+  BASE_URL:
+    required: true
+    description: "Public URL (e.g. https://feedback.example.com)"
+  JWT_SECRET:
+    generator: secret
+    sensitive: true
+    description: "Secret used to sign JWT tokens"
+  EMAIL_NOREPLY:
+    required: true
+    description: "Sender address for outbound emails"
+  EMAIL_SMTP_HOST:
+    required: true
+    description: "SMTP server hostname"
+  EMAIL_SMTP_PORT:
+    default: "587"
+  EMAIL_SMTP_USERNAME:
+    description: "SMTP username (if authentication required)"
+  EMAIL_SMTP_PASSWORD:
+    sensitive: true
+    description: "SMTP password"
+  EMAIL_SMTP_ENABLE_STARTTLS:
+    default: "true"
+health: /api/health
+restart: always
