@@ -33,10 +33,16 @@ Existing tools describe **how** to build infrastructure. A Launchfile describes 
 | Directory    | Description                                                    |
 |--------------|----------------------------------------------------------------|
 | [`spec/`]     | The Launchfile specification, design docs, and JSON Schema     |
-| [`catalog/`]  | Community-maintained Launchfiles for popular open-source apps  |
+| [`catalog/`]  | Launchfiles for popular open-source apps                       |
+| [`sdk/`]      | TypeScript reference implementation (parser, validator, serializer) |
 
 [`spec/`]: spec/
 [`catalog/`]: catalog/
+[`sdk/`]: sdk/
+
+## Repository Structure
+
+This is a monorepo containing the specification, reference SDK, and catalog. Components will be split into separate repositories as they develop independent contributor bases or release cadences.
 
 ## License
 

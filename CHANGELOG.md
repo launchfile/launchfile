@@ -9,5 +9,5 @@ Initial specification release.
 - Expression syntax with `$prop`, `${prop}`, `${prop:-default}`, and cross-component references
 - JSON Schema for validation and IDE autocompletion
 - TypeScript reference SDK (parser, validator, resolver, serializer)
-- Catalog of 67+ community Launchfiles for popular open-source apps
+- Catalog of Launchfiles for popular open-source apps
 - Constitutional AI governance model
