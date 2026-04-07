@@ -1,0 +1,59 @@
+<svg width="224" height="40" viewBox="0 0 224 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="lkl-bg" x1="16" y1="0" x2="16" y2="32" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4A3FA0"/>
+      <stop offset="0.4" stop-color="#3C3489"/>
+      <stop offset="1" stop-color="#302A6E"/>
+    </linearGradient>
+    <linearGradient id="lkl-arrow" x1="11" y1="23" x2="21" y2="8" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="rgba(255,255,255,0.82)"/>
+      <stop offset="1" stop-color="#FFFFFF"/>
+    </linearGradient>
+    <radialGradient id="lkl-glow" cx="16" cy="13" r="11" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7F77DD" stop-opacity="0.45"/>
+      <stop offset="0.6" stop-color="#7F77DD" stop-opacity="0.1"/>
+      <stop offset="1" stop-color="#7F77DD" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="lkl-as" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0.3" stdDeviation="0.3" flood-color="#101828" flood-opacity="0.08"/>
+    </filter>
+    <filter id="lkl-glass" x="-5%" y="-5%" width="110%" height="110%" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feGaussianBlur in="BackgroundImage" stdDeviation="1.5"/>
+      <feComposite in2="SourceAlpha" operator="in" result="effect1_backgroundBlur"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_backgroundBlur" result="shape"/>
+    </filter>
+    <clipPath id="lkl-sq">
+      <rect width="32" height="32" rx="7"/>
+    </clipPath>
+  </defs>
+
+  <g transform="translate(0, 4)">
+    <rect width="32" height="32" rx="7" fill="url(#lkl-bg)"/>
+    <rect width="32" height="32" rx="7" fill="url(#lkl-glow)"/>
+
+    <g opacity="0.25" stroke="#7F77DD" stroke-width="0.4">
+      <line x1="8" y1="0" x2="8" y2="32"/>
+      <line x1="16" y1="0" x2="16" y2="32"/>
+      <line x1="24" y1="0" x2="24" y2="32"/>
+      <line x1="0" y1="8" x2="32" y2="8"/>
+      <line x1="0" y1="16" x2="32" y2="16"/>
+      <line x1="0" y1="24" x2="32" y2="24"/>
+    </g>
+
+    <circle cx="16" cy="16" r="13" stroke="#7F77DD" stroke-width="0.4" opacity="0.12" fill="none"/>
+
+    <g filter="url(#lkl-as)">
+      <line x1="16" y1="8" x2="16" y2="24" stroke="url(#lkl-arrow)" stroke-width="2" stroke-linecap="round"/>
+      <polyline points="10,14 16,8 22,14" stroke="url(#lkl-arrow)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </g>
+
+    <g filter="url(#lkl-glass)" clip-path="url(#lkl-sq)">
+      <rect x="0" y="16" width="32" height="16" fill="white" fill-opacity="0.2"/>
+    </g>
+
+    <rect width="32" height="32" rx="7" stroke="white" stroke-width="0.2" stroke-opacity="0.12" fill="none"/>
+  </g>
+
+  <text x="44" y="28" font-family="Inter, system-ui, -apple-system, sans-serif" font-size="24" font-weight="500" letter-spacing="-0.48" fill="#FAFAF8">Launchfile</text>
+</svg>
