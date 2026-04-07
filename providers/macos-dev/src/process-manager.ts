@@ -40,7 +40,8 @@ export class ProcessManager {
 
 	constructor(projectDir: string) {
 		this.logDir = join(projectDir, ".launchfile", "logs");
-		mkdirSync(this.logDir, { recursive: true });
+		// Security: restrict permissions — logs may contain sensitive output
+		mkdirSync(this.logDir, { recursive: true, mode: 0o700 });
 	}
 
 	register(
