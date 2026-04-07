@@ -3,6 +3,7 @@
  */
 
 import { writeFile } from "node:fs/promises";
+import { createInterface } from "node:readline";
 import { readLaunch } from "@launchfile/sdk";
 import { checkPrereqs } from "./prereqs.js";
 import { resolveSource } from "./source-resolver.js";
@@ -24,6 +25,8 @@ import { readdir } from "node:fs/promises";
 export interface DockerUpOpts {
 	detach?: boolean;
 	dryRun?: boolean;
+	/** Skip confirmation prompt for remote Launchfiles */
+	yes?: boolean;
 }
 
 export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise<void> {
@@ -48,6 +51,28 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 	console.log(`  App: ${launch.name}`);
 	const componentNames = Object.keys(launch.components);
 	console.log(`  Components: ${componentNames.join(", ")}`);
+
+	// Security: prompt for confirmation before executing remote Launchfiles.
+	// Remote content can specify arbitrary images, commands, and env vars.
+	if (resolved.source !== "local" && !opts.yes && !opts.dryRun) {
+		const resources = componentNames.flatMap((name) => {
+			const comp = launch.components[name];
+			return (comp?.requires ?? []).map((r) => r.type);
+		});
+		const images = componentNames
+			.map((name) => launch.components[name]?.image)
+			.filter(Boolean) as string[];
+
+		if (resources.length) console.log(`  Resources: ${resources.join(", ")}`);
+		if (images.length) console.log(`  Images: ${images.join(", ")}`);
+		console.log("");
+
+		const confirmed = await confirm("  Proceed? [Y/n] ");
+		if (!confirmed) {
+			console.log("Aborted.");
+			process.exit(0);
+		}
+	}
 
 	// 4. Load or init state
 	let state = await loadState(resolved.slug);
@@ -292,6 +317,17 @@ function printSummary(appName: string, ports: Record<string, number>): void {
 		const label = name === "default" ? appName : name;
 		console.log(`  ${label}: http://localhost:${port}`);
 	}
+}
+
+/** Prompt user for yes/no confirmation via stdin */
+function confirm(prompt: string): Promise<boolean> {
+	const rl = createInterface({ input: process.stdin, output: process.stdout });
+	return new Promise((resolve) => {
+		rl.question(prompt, (answer) => {
+			rl.close();
+			resolve(answer.toLowerCase() !== "n");
+		});
+	});
 }
 
 /** Try to detect the current slug from the most recently updated state */
