@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=../schema/launchfile.schema.json
+version: launch/v1
+name: simple-api
+
+runtime: node
+provides:
+  - protocol: http
+    port: 8080
+    exposed: true
+requires:
+  - type: postgres
+    set_env:
+      DATABASE_URL: $url
+supports:
+  - type: redis
+    set_env:
+      CACHE_URL: $url
+      USE_CACHE: "1"
+env:
+  PORT:
+    default: "8080"
+  API_KEY:
+    required: true
+    description: "Third-party API key"
+  SESSION_SECRET:
+    generator: secret
+    sensitive: true
+commands:
+  start: "node server.js"
+  build: "npm install"
+  release: "npx prisma migrate deploy"
+  test: "npm test"
+health: /health

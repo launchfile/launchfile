@@ -1,0 +1,6 @@
+# yaml-language-server: $schema=../schema/launchfile.schema.json
+version: launch/v1
+name: my-api
+runtime: node
+commands:
+  start: "node server.js"
