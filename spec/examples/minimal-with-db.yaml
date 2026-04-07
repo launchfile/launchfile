@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=../schema/launchfile.schema.json
+version: launch/v1
+name: my-app
+runtime: node
+requires: [postgres]
+commands:
+  start: "node server.js"

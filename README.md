@@ -28,6 +28,14 @@ health: /healthz
 
 Existing tools describe **how** to build infrastructure. A Launchfile describes **what** an app needs — and lets the platform figure out the how.
 
+## What's in this repo
+
+| Directory    | Description                                                    |
+|--------------|----------------------------------------------------------------|
+| [`spec/`]   | The Launchfile specification, design docs, and JSON Schema     |
+
+[`spec/`]: spec/
+
 ## License
 
 [MIT](LICENSE)

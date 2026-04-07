@@ -1,0 +1,40 @@
+# Example: App that orchestrates Docker containers on the host
+# This pattern applies to deployment tools, CI runners, monitoring agents,
+# and anything that needs direct access to host infrastructure.
+#
+# The `host` field tells the deployer that this app cannot run inside
+# a standard container — it needs Docker daemon access and host-level
+# filesystem access. A deployer should refuse or warn rather than
+# attempting Docker-in-Docker, which is fragile.
+
+version: launch/v1
+name: launchpad
+description: DevOps agent — give it a GitHub URL, get a running app
+runtime: bun
+
+host:
+  docker: required        # Needs Docker daemon (not Docker-in-Docker)
+  network: host           # Shares host network to manage container ports
+  filesystem: read-write  # Persistent state in ~/.launchpad/
+
+requires:
+  - type: docker
+    description: Orchestrates app containers on the host
+
+provides:
+  - protocol: http
+    port: 3001
+    exposed: true
+
+env:
+  ANTHROPIC_API_KEY:
+    required: true
+  LAUNCHPAD_HOME:
+    default: ~/.launchpad
+
+commands:
+  install: bun install
+  build: bun run build
+  start: bun run src/server.ts
+
+health: /api/health

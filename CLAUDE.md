@@ -2,6 +2,14 @@
 
 An open specification for describing application deployment requirements.
 
+## Monorepo Structure
+
+This repo contains independently-splittable packages:
+
+- `spec/` — The specification document, JSON Schema, design docs, examples
+
+Each directory has its own `CLAUDE.md` with directory-specific context (where applicable).
+
 ## Commit Conventions
 
 This monorepo is designed for future splitting via `git subtree split`. To keep that clean:

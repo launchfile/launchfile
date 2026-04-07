@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=../schema/launchfile.schema.json
+version: launch/v1
+name: daily-sync
+runtime: node
+schedule: "0 0 * * *"
+restart: "no"
+requires:
+  - type: postgres
+    set_env:
+      DATABASE_URL: $url
+commands:
+  start: "node scripts/sync.js"
