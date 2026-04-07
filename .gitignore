@@ -15,3 +15,9 @@ sdk/schema/
 
 # Pagefind search index (copied from dist/ by dev:search script)
 **/public/pagefind/
+
+# Cloudflare Wrangler local state
+.wrangler/
+
+# Bun lockfiles (each package manages its own)
+bun.lock

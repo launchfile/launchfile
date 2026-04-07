@@ -1,0 +1,104 @@
+version: 2
+updates:
+  # SDK
+  - package-ecosystem: npm
+    directory: /sdk
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      dev-dependencies:
+        dependency-type: development
+      production-dependencies:
+        dependency-type: production
+
+  # Docker provider
+  - package-ecosystem: npm
+    directory: /providers/docker
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      all-dependencies:
+        patterns: ["*"]
+
+  # macOS dev provider
+  - package-ecosystem: npm
+    directory: /providers/macos-dev
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      all-dependencies:
+        patterns: ["*"]
+
+  # www-dev (launchfile.dev)
+  - package-ecosystem: npm
+    directory: /www-dev
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      astro-ecosystem:
+        patterns: ["astro", "@astrojs/*"]
+      tailwind:
+        patterns: ["tailwindcss", "@tailwindcss/*"]
+      other:
+        patterns: ["*"]
+        exclude-patterns: ["astro", "@astrojs/*", "tailwindcss", "@tailwindcss/*"]
+
+  # www-io (launchfile.io)
+  - package-ecosystem: npm
+    directory: /www-io
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      astro-ecosystem:
+        patterns: ["astro", "@astrojs/*"]
+      tailwind:
+        patterns: ["tailwindcss", "@tailwindcss/*"]
+      other:
+        patterns: ["*"]
+        exclude-patterns: ["astro", "@astrojs/*", "tailwindcss", "@tailwindcss/*"]
+
+  # www-org (launchfile.org)
+  - package-ecosystem: npm
+    directory: /www-org
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      astro-ecosystem:
+        patterns: ["astro", "@astrojs/*"]
+      tailwind:
+        patterns: ["tailwindcss", "@tailwindcss/*"]
+      other:
+        patterns: ["*"]
+        exclude-patterns: ["astro", "@astrojs/*", "tailwindcss", "@tailwindcss/*"]
+
+  # Catalog test harness
+  - package-ecosystem: npm
+    directory: /catalog/test
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    groups:
+      all-dependencies:
+        patterns: ["*"]
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
