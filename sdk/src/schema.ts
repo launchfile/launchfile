@@ -9,7 +9,7 @@ import { z } from "zod";
 
 // --- Name constraint: letters, digits, hyphens; starts with letter ---
 const namePattern = /^[a-z][a-z0-9-]*$/;
-const NameSchema = z.string().regex(namePattern, "Names must match ^[a-z][a-z0-9-]*$");
+const NameSchema = z.string().max(63).regex(namePattern, "Names must match ^[a-z][a-z0-9-]*$");
 
 // --- Scalar enums ---
 
@@ -30,7 +30,7 @@ const DependsOnConditionSchema = z.enum(["started", "healthy"]);
 
 const SecretSchema = z.object({
 	generator: GeneratorSchema,
-	description: z.string().optional(),
+	description: z.string().max(1024).optional(),
 });
 
 // --- Provides ---
@@ -48,8 +48,10 @@ const ProvidesSchema = z.object({
 
 const RequirementObjectSchema = z.object({
 	name: NameSchema.optional(),
-	type: z.string().min(1),
-	version: z.string().optional(),
+	type: z.string().min(1).max(256),
+	version: z.string().max(256).optional(),
+	// Security: config is intentionally unconstrained — providers MUST validate/sanitize
+	// these values before using them in shell commands, SQL, or other injectable contexts.
 	config: z.record(z.string(), z.unknown()).optional(),
 	set_env: z.record(z.string(), z.string()).optional(),
 });
@@ -69,8 +71,8 @@ const SupportSchema = RequirementSchema;
 
 const EnvVarObjectSchema = z.object({
 	default: z.union([z.string(), z.number(), z.boolean()]).optional(),
-	description: z.string().optional(),
-	label: z.string().optional(),
+	description: z.string().max(1024).optional(),
+	label: z.string().max(256).optional(),
 	required: z.boolean().optional(),
 	generator: GeneratorSchema.optional(),
 	sensitive: z.boolean().optional(),
@@ -87,9 +89,9 @@ const EnvVarSchema = z.union([
 // --- Build ---
 
 const BuildObjectSchema = z.object({
-	context: z.string().optional(),
-	dockerfile: z.string().optional(),
-	target: z.string().optional(),
+	context: z.string().max(1024).optional(),
+	dockerfile: z.string().max(1024).optional(),
+	target: z.string().max(256).optional(),
 	args: z.record(z.string(), z.string()).optional(),
 	secrets: z.array(z.string()).optional(),
 });
@@ -100,12 +102,12 @@ const BuildSchema = z.union([z.string(), BuildObjectSchema]);
 // --- Health ---
 
 const HealthObjectSchema = z.object({
-	path: z.string().optional(),
-	command: z.string().optional(),
-	interval: z.string().optional(),
-	timeout: z.string().optional(),
+	path: z.string().max(1024).optional(),
+	command: z.string().max(10240).optional(),
+	interval: z.string().max(64).optional(),
+	timeout: z.string().max(64).optional(),
 	retries: z.number().int().min(1).optional(),
-	start_period: z.string().optional(),
+	start_period: z.string().max(64).optional(),
 });
 
 /** Accepts string shorthand ("/health") or full object */
@@ -114,19 +116,19 @@ const HealthSchema = z.union([z.string(), HealthObjectSchema]);
 // --- Commands ---
 
 const CommandDetailSchema = z.object({
-	command: z.string(),
-	timeout: z.string().optional(),
+	command: z.string().max(10240),
+	timeout: z.string().max(64).optional(),
 });
 
 /** Accepts string shorthand ("node server.js") or object with timeout */
-const CommandValueSchema = z.union([z.string(), CommandDetailSchema]);
+const CommandValueSchema = z.union([z.string().max(10240), CommandDetailSchema]);
 
 const CommandsSchema = z.record(z.string(), CommandValueSchema);
 
 // --- Storage ---
 
 const StorageVolumeSchema = z.object({
-	path: z.string(),
+	path: z.string().max(1024),
 	persistent: z.boolean().optional(),
 });
 
@@ -146,8 +148,12 @@ const DependsOnEntrySchema = z.union([
 // --- Output ---
 
 const OutputSchema = z.object({
-	pattern: z.string(),
-	description: z.string().optional(),
+	// Security: validate that patterns compile as RegExp to catch errors early,
+	// and cap length to limit ReDoS attack surface.
+	pattern: z.string().max(1024).refine((p) => {
+		try { new RegExp(p); return true; } catch { return false; }
+	}, "Invalid regex pattern"),
+	description: z.string().max(1024).optional(),
 	sensitive: z.boolean().optional(),
 });
 
@@ -168,7 +174,7 @@ const PlatformSchema = z.union([z.string(), z.array(z.string())]);
 
 const ComponentSchema = z.object({
 	runtime: RuntimeSchema.optional(),
-	image: z.string().optional(),
+	image: z.string().max(1024).optional(),
 	build: BuildSchema.optional(),
 	provides: z.array(ProvidesSchema).optional(),
 	requires: z.array(RequirementSchema).optional(),
@@ -189,17 +195,17 @@ const ComponentSchema = z.object({
 // --- Top-Level Launch ---
 
 export const LaunchSchema = z.object({
-	version: z.string().optional(),
-	generator: z.string().optional(),
+	version: z.string().max(64).optional(),
+	generator: z.string().max(256).optional(),
 	name: NameSchema,
-	description: z.string().optional(),
+	description: z.string().max(4096).optional(),
 
 	// App-wide secrets
 	secrets: z.record(z.string(), SecretSchema).optional(),
 
 	// Single-component shorthand fields
 	runtime: RuntimeSchema.optional(),
-	image: z.string().optional(),
+	image: z.string().max(1024).optional(),
 	build: BuildSchema.optional(),
 	provides: z.array(ProvidesSchema).optional(),
 	requires: z.array(RequirementSchema).optional(),
