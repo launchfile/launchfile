@@ -1,0 +1,5 @@
+# JSON Schema for editor integration and validation tools
+/schema/v1
+  Content-Type: application/schema+json
+  Access-Control-Allow-Origin: *
+  Cache-Control: public, max-age=3600

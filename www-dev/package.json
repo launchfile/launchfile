@@ -1,0 +1,27 @@
+{
+  "name": "launchfile-www-dev",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build && pagefind --site dist",
+    "dev:search": "astro build && pagefind --site dist && cp -r dist/pagefind public/pagefind && astro dev",
+    "preview": "astro preview",
+    "typecheck": "astro check",
+    "publish": "bun run build && bunx wrangler pages deploy dist/client --project-name launchfile-dev"
+  },
+  "dependencies": {
+    "@astrojs/cloudflare": "13.1.7",
+    "@tailwindcss/typography": "^0.5.19",
+    "@tailwindcss/vite": "^4.2.2",
+    "astro": "6.1.4",
+    "marked": "^17.0.6",
+    "shiki": "^4.0.2",
+    "tailwindcss": "^4.2.2"
+  },
+  "devDependencies": {
+    "pagefind": "^1.5.0",
+    "typescript": "^6.0.0"
+  }
+}

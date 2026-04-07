@@ -1,0 +1,29 @@
+---
+import DocsLayout from "@/layouts/DocsLayout.astro";
+---
+
+<DocsLayout title="Installation — Launchfile" description="Install the Launchfile SDK and start using it in your project." currentPath="/installation/">
+  <h1>Installation</h1>
+
+  <p>The Launchfile SDK is a TypeScript package for parsing, validating, and serializing Launchfiles. Install it with your package manager of choice.</p>
+
+  <h2 id="sdk">SDK</h2>
+
+  <pre><code class="language-bash">bun add launchfile</code></pre>
+
+  <p>Or with npm:</p>
+
+  <pre><code class="language-bash">npm install launchfile</code></pre>
+
+  <h2 id="json-schema">JSON Schema</h2>
+
+  <p>For editor autocompletion, add this comment to the top of your Launchfile:</p>
+
+  <pre><code class="language-yaml"># yaml-language-server: $schema=https://launchfile.dev/schema/v1</code></pre>
+
+  <p>This enables validation and IntelliSense in VS Code (with the YAML extension), JetBrains IDEs, and any editor that supports JSON Schema.</p>
+
+  <h2 id="whats-next">What's next?</h2>
+
+  <p>Once installed, check out the <a href="/quick-start/">Quick Start</a> guide to write your first Launchfile, or browse the <a href="/examples/">examples</a> for common patterns.</p>
+</DocsLayout>

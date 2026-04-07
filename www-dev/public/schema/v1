@@ -1,0 +1,438 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://launchfile.dev/schema/v1",
+  "title": "Launchfile",
+  "description": "Universal app descriptor — describes what an app needs to run, not how to deploy it.",
+  "type": "object",
+  "required": ["name"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Spec version (e.g., 'launch/v1')",
+      "examples": ["launch/v1"]
+    },
+    "generator": {
+      "type": "string",
+      "description": "Tool that generated this file (e.g., 'my-tool/0.1.0')"
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "App name (lowercase kebab-case, used as subdomain)"
+    },
+    "description": {
+      "type": "string",
+      "description": "Brief description of the app"
+    },
+    "repository": {
+      "type": "string",
+      "format": "uri",
+      "description": "Source code URL (e.g. GitHub repository)"
+    },
+    "website": {
+      "type": "string",
+      "format": "uri",
+      "description": "Project homepage URL"
+    },
+    "logo": {
+      "type": "string",
+      "format": "uri",
+      "description": "Logo image URL"
+    },
+    "keywords": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Discovery tags for catalog listings"
+    },
+    "secrets": {
+      "type": "object",
+      "description": "App-wide generated secrets, shared across components via $secrets.name",
+      "additionalProperties": { "$ref": "#/$defs/secret" }
+    },
+    "runtime": { "$ref": "#/$defs/runtime" },
+    "image": {
+      "type": "string",
+      "description": "Pre-built OCI image (alternative to build)"
+    },
+    "build": { "$ref": "#/$defs/buildOrString" },
+    "provides": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/provides" }
+    },
+    "requires": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/requirementOrString" }
+    },
+    "supports": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/requirementOrString" }
+    },
+    "env": {
+      "type": "object",
+      "description": "App-owned environment variables",
+      "additionalProperties": { "$ref": "#/$defs/envVarOrScalar" }
+    },
+    "commands": { "$ref": "#/$defs/commands" },
+    "outputs": {
+      "type": "object",
+      "description": "Named outputs extracted from release command stdout via regex patterns",
+      "additionalProperties": { "$ref": "#/$defs/output" }
+    },
+    "health": { "$ref": "#/$defs/healthOrString" },
+    "depends_on": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/dependsOnOrString" }
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/storageVolume" }
+    },
+    "restart": { "$ref": "#/$defs/restartPolicy" },
+    "schedule": {
+      "type": "string",
+      "description": "Cron schedule for scheduled jobs (e.g., '0 0 * * *')"
+    },
+    "singleton": {
+      "type": "boolean",
+      "description": "Cannot be horizontally scaled"
+    },
+    "platform": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "array", "items": { "type": "string" } }
+      ],
+      "description": "OCI platform constraint (e.g., 'linux/amd64') or array of platforms"
+    },
+    "host": { "$ref": "#/$defs/host" },
+    "components": {
+      "type": "object",
+      "description": "Named components for multi-service apps",
+      "additionalProperties": { "$ref": "#/$defs/component" }
+    }
+  },
+  "$defs": {
+    "runtime": {
+      "type": "string",
+      "enum": ["node", "bun", "deno", "python", "ruby", "go", "rust", "java", "php", "elixir", "csharp", "static"],
+      "description": "Application runtime"
+    },
+    "protocol": {
+      "type": "string",
+      "enum": ["http", "https", "tcp", "udp", "grpc", "ws"],
+      "description": "Network protocol"
+    },
+    "generator": {
+      "type": "string",
+      "enum": ["secret", "uuid", "port"],
+      "description": "Auto-generation strategy"
+    },
+    "restartPolicy": {
+      "type": "string",
+      "enum": ["always", "on-failure", "no"],
+      "description": "Restart policy"
+    },
+    "secret": {
+      "type": "object",
+      "required": ["generator"],
+      "properties": {
+        "generator": { "$ref": "#/$defs/generator" },
+        "description": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "provides": {
+      "type": "object",
+      "required": ["protocol", "port"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "Endpoint name for cross-component referencing"
+        },
+        "protocol": { "$ref": "#/$defs/protocol" },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "bind": {
+          "type": "string",
+          "description": "Bind address (default: '0.0.0.0')",
+          "default": "0.0.0.0"
+        },
+        "exposed": {
+          "type": "boolean",
+          "description": "Reachable from outside the host",
+          "default": false
+        },
+        "spec": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "requirement": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "Resource name for referencing (defaults to type)"
+        },
+        "type": {
+          "type": "string",
+          "description": "Resource type (e.g., 'postgres', 'redis')"
+        },
+        "version": {
+          "type": "string",
+          "description": "Version constraint (e.g., '>=15')"
+        },
+        "config": {
+          "type": "object",
+          "description": "Resource-specific configuration"
+        },
+        "set_env": {
+          "type": "object",
+          "description": "Maps resource properties to app env vars. Use $prop for references, plain strings for literals.",
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "requirementOrString": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        { "$ref": "#/$defs/requirement" }
+      ]
+    },
+    "envVar": {
+      "type": "object",
+      "properties": {
+        "default": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "number" },
+            { "type": "boolean" }
+          ],
+          "description": "Default value"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human description (supports markdown)"
+        },
+        "label": {
+          "type": "string",
+          "description": "Short label for CLI prompts"
+        },
+        "required": {
+          "type": "boolean",
+          "description": "App cannot start without this value"
+        },
+        "example": {
+          "type": "string",
+          "description": "Example value showing expected format"
+        },
+        "generator": { "$ref": "#/$defs/generator" },
+        "sensitive": {
+          "type": "boolean",
+          "description": "Store in secrets manager"
+        }
+      },
+      "additionalProperties": false
+    },
+    "envVarOrScalar": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "boolean" },
+        { "$ref": "#/$defs/envVar" }
+      ]
+    },
+    "build": {
+      "type": "object",
+      "properties": {
+        "context": { "type": "string", "description": "Build context directory" },
+        "dockerfile": { "type": "string", "description": "Path to Dockerfile" },
+        "target": { "type": "string", "description": "Multi-stage build target" },
+        "args": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "secrets": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Secrets available during build (never in image)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "buildOrString": {
+      "oneOf": [
+        { "type": "string", "description": "Build context path (shorthand)" },
+        { "$ref": "#/$defs/build" }
+      ]
+    },
+    "health": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string", "description": "HTTP path to check" },
+        "command": { "type": "string", "description": "Command for non-HTTP checks. If both path and command are present, path takes precedence." },
+        "interval": { "type": "string", "description": "Check interval (e.g., '30s')" },
+        "timeout": { "type": "string", "description": "Timeout per check" },
+        "retries": { "type": "integer", "minimum": 1, "description": "Failures before unhealthy" },
+        "start_period": { "type": "string", "description": "Grace period before failures count" }
+      },
+      "additionalProperties": false
+    },
+    "healthOrString": {
+      "oneOf": [
+        { "type": "string", "description": "Health check path (shorthand)" },
+        { "$ref": "#/$defs/health" }
+      ]
+    },
+    "commandDetail": {
+      "type": "object",
+      "required": ["command"],
+      "properties": {
+        "command": { "type": "string" },
+        "timeout": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "commandOrString": {
+      "oneOf": [
+        { "type": "string" },
+        { "$ref": "#/$defs/commandDetail" }
+      ]
+    },
+    "commands": {
+      "type": "object",
+      "properties": {
+        "build": { "$ref": "#/$defs/commandOrString" },
+        "release": { "$ref": "#/$defs/commandOrString" },
+        "start": { "$ref": "#/$defs/commandOrString" },
+        "seed": { "$ref": "#/$defs/commandOrString" },
+        "test": { "$ref": "#/$defs/commandOrString" }
+      },
+      "additionalProperties": { "$ref": "#/$defs/commandOrString" }
+    },
+    "output": {
+      "type": "object",
+      "required": ["pattern"],
+      "properties": {
+        "pattern": { "type": "string", "description": "Regex with one capture group, matched against release command stdout" },
+        "description": { "type": "string", "description": "Human-readable description of this output" },
+        "sensitive": { "type": "boolean", "default": false, "description": "If true, value is masked in API/UI unless explicitly revealed" }
+      },
+      "additionalProperties": false
+    },
+    "storageVolume": {
+      "type": "object",
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "description": "Mount path inside the container" },
+        "size": { "type": "string", "description": "Minimum size hint (e.g. '512MB', '10GB')" },
+        "persistent": { "type": "boolean", "description": "Data survives restarts", "default": true }
+      },
+      "additionalProperties": false
+    },
+    "dependsOnEntry": {
+      "type": "object",
+      "required": ["component"],
+      "properties": {
+        "component": { "type": "string" },
+        "condition": {
+          "type": "string",
+          "enum": ["started", "healthy"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "dependsOnOrString": {
+      "oneOf": [
+        { "type": "string", "minLength": 1 },
+        { "$ref": "#/$defs/dependsOnEntry" }
+      ]
+    },
+    "component": {
+      "type": "object",
+      "properties": {
+        "runtime": { "$ref": "#/$defs/runtime" },
+        "image": { "type": "string" },
+        "build": { "$ref": "#/$defs/buildOrString" },
+        "provides": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/provides" }
+        },
+        "requires": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/requirementOrString" }
+        },
+        "supports": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/requirementOrString" }
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/envVarOrScalar" }
+        },
+        "commands": { "$ref": "#/$defs/commands" },
+        "outputs": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/output" }
+        },
+        "health": { "$ref": "#/$defs/healthOrString" },
+        "depends_on": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/dependsOnOrString" }
+        },
+        "storage": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/storageVolume" }
+        },
+        "restart": { "$ref": "#/$defs/restartPolicy" },
+        "schedule": { "type": "string" },
+        "singleton": { "type": "boolean" },
+        "platform": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" } }
+          ]
+        },
+        "host": { "$ref": "#/$defs/host" }
+      },
+      "additionalProperties": false
+    },
+    "host": {
+      "type": "object",
+      "description": "Host-level capabilities the app requires beyond a standard container",
+      "properties": {
+        "docker": {
+          "type": "string",
+          "enum": ["required", "optional"],
+          "description": "Whether the app needs Docker daemon access on the host"
+        },
+        "network": {
+          "type": "string",
+          "enum": ["host", "bridge"],
+          "description": "Network mode",
+          "default": "bridge"
+        },
+        "filesystem": {
+          "type": "string",
+          "enum": ["read-write", "read-only", "none"],
+          "description": "Host filesystem access level",
+          "default": "none"
+        },
+        "privileged": {
+          "type": "boolean",
+          "description": "Requires elevated privileges (e.g., device access)",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
