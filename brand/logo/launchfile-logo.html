@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Launchfile Logo — Brand Showcase</title>
+<link rel="preconnect" href="https://rsms.me/">
+<link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: #F5F4F0;
+    padding: 48px;
+    display: flex;
+    flex-direction: column;
+    gap: 64px;
+    align-items: center;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+
+  h1 { font-size: 24px; font-weight: 600; color: #111111; letter-spacing: -0.02em; }
+  h2 { font-size: 14px; font-weight: 500; color: #444441; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 24px; }
+  p.subtitle { font-size: 14px; color: #444441; margin-top: 4px; }
+  .row { display: flex; gap: 32px; align-items: end; flex-wrap: wrap; justify-content: center; }
+  .item { text-align: center; }
+  .variant-label { font-size: 11px; color: #444441; text-align: center; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  .section { width: 100%; }
+  .bg-dark { background: #111111; padding: 32px; border-radius: 12px; }
+  .bg-paper { background: #FAFAF8; padding: 32px; border-radius: 12px; border: 1px solid #E5E5E5; }
+
+  hr { border: none; border-top: 1px solid #E5E5E5; width: 100%; }
+
+  /* ================================================================
+     SHADOW APPLIED VIA CSS — not baked into the SVG.
+     Raw SVGs have no shadow so consumers can apply their own.
+     Use filter: drop-shadow() which extends beyond the element.
+     ================================================================ */
+  .logo-shadow {
+    filter: drop-shadow(0px 2px 4px rgba(16, 24, 40, 0.08))
+            drop-shadow(0px 4px 12px rgba(16, 24, 40, 0.1));
+  }
+  .logo-shadow-dark {
+    filter: drop-shadow(0px 2px 4px rgba(0, 0, 0, 0.2))
+            drop-shadow(0px 4px 12px rgba(0, 0, 0, 0.15));
+  }
+
+  /* Sizing */
+  .logo-200 { width: 200px; height: 200px; }
+  .logo-160 { width: 160px; height: 160px; }
+  .logo-80 { width: 80px; height: 80px; }
+  .logo-48 { width: 48px; height: 48px; }
+  .logo-28 { width: 28px; height: 28px; }
+  .logo-16 { width: 16px; height: 16px; }
+
+  /* Lockups */
+  .lockup { display: flex; align-items: center; gap: 14px; }
+  .lockup__wordmark { font-weight: 500; letter-spacing: -0.02em; color: #111111; }
+  .lockup__wordmark--light { color: #FAFAF8; }
+  .lockup--lg .lockup__wordmark { font-size: 32px; }
+  .lockup--md .lockup__wordmark { font-size: 20px; }
+  .lockup__tagline { font-size: 12px; font-weight: 400; color: #444441; letter-spacing: 0.02em; margin-top: 2px; }
+  .lockup__tagline--light { color: rgba(250,250,248,0.6); }
+
+  /* Info boxes */
+  .info {
+    background: #EEEDFE; border-radius: 8px; padding: 16px 20px;
+    font-size: 13px; color: #26215C; line-height: 1.6;
+    max-width: 640px;
+  }
+  .info code {
+    background: rgba(38,33,92,0.08); padding: 1px 5px; border-radius: 3px;
+    font-family: 'SF Mono', monospace; font-size: 12px;
+  }
+</style>
+</head>
+<body>
+
+<div class="section" style="text-align: center;">
+  <h1>Launchfile</h1>
+  <p class="subtitle">Logo & Brand Showcase</p>
+</div>
+
+<div class="info">
+  <strong>Raw marks vs. display versions:</strong> These SVGs contain no baked-in shadow.
+  The shadow you see below is applied via CSS <code>filter: drop-shadow()</code>, which
+  extends naturally beyond the element. Use the raw SVGs when you want to control
+  your own shadow. For ready-to-use assets with shadow included, see <code>display/</code>.
+</div>
+
+<hr>
+
+<div class="section">
+  <h2>Primary Variant — All Sizes</h2>
+  <div class="row">
+    <div class="item">
+      <img src="mark.svg" class="logo-160 logo-shadow" alt="Primary 160px">
+      <div class="variant-label">160px</div>
+    </div>
+    <div class="item">
+      <img src="mark.svg" class="logo-80 logo-shadow" alt="Primary 80px">
+      <div class="variant-label">80px</div>
+    </div>
+    <div class="item">
+      <img src="mark-simple.svg" class="logo-48 logo-shadow" alt="Mark 48px">
+      <div class="variant-label">48px</div>
+    </div>
+    <div class="item">
+      <img src="mark-simple.svg" class="logo-28 logo-shadow" alt="Mark 28px">
+      <div class="variant-label">28px</div>
+    </div>
+    <div class="item">
+      <img src="favicon.svg" class="logo-16" alt="Favicon 16px">
+      <div class="variant-label">16px</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Without Shadow vs. With CSS Shadow</h2>
+  <div class="row">
+    <div class="item">
+      <img src="mark.svg" class="logo-80" alt="No shadow">
+      <div class="variant-label">Raw SVG (no shadow)</div>
+    </div>
+    <div class="item">
+      <img src="mark.svg" class="logo-80 logo-shadow" alt="CSS shadow">
+      <div class="variant-label">+ CSS drop-shadow</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Light Variant</h2>
+  <div class="row bg-paper">
+    <div class="item">
+      <img src="mark-light.svg" class="logo-160 logo-shadow" alt="Light 160px">
+      <div class="variant-label">160px</div>
+    </div>
+    <div class="item">
+      <img src="mark-light.svg" class="logo-80 logo-shadow" alt="Light 80px">
+      <div class="variant-label">80px</div>
+    </div>
+    <div class="item">
+      <img src="mark-light.svg" class="logo-48 logo-shadow" alt="Light 48px">
+      <div class="variant-label">48px</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Dark Variant</h2>
+  <div class="row bg-dark">
+    <div class="item">
+      <img src="mark-dark.svg" class="logo-160 logo-shadow-dark" alt="Dark 160px">
+      <div class="variant-label" style="color:#999">160px</div>
+    </div>
+    <div class="item">
+      <img src="mark-dark.svg" class="logo-80 logo-shadow-dark" alt="Dark 80px">
+      <div class="variant-label" style="color:#999">80px</div>
+    </div>
+    <div class="item">
+      <img src="mark-dark.svg" class="logo-48 logo-shadow-dark" alt="Dark 48px">
+      <div class="variant-label" style="color:#999">48px</div>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<div class="section">
+  <h2>Lockups</h2>
+  <div style="display: flex; flex-direction: column; gap: 32px; padding: 24px 0;">
+    <div class="item" style="text-align: left;">
+      <div class="lockup lockup--lg">
+        <img src="mark-simple.svg" class="logo-48 logo-shadow" alt="">
+        <div><div class="lockup__wordmark">Launchfile</div></div>
+      </div>
+      <div class="variant-label" style="text-align: left;">Horizontal</div>
+    </div>
+    <div class="item" style="text-align: left;">
+      <div class="lockup lockup--md">
+        <img src="mark-simple.svg" class="logo-28 logo-shadow" alt="">
+        <div>
+          <div class="lockup__wordmark">Launchfile</div>
+          <div class="lockup__tagline">the deployment standard</div>
+        </div>
+      </div>
+      <div class="variant-label" style="text-align: left;">With tagline</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="row bg-dark" style="gap: 48px; flex-direction: column; align-items: flex-start;">
+    <div class="item">
+      <div class="lockup lockup--lg">
+        <img src="mark-simple.svg" class="logo-48 logo-shadow-dark" alt="">
+        <div><div class="lockup__wordmark lockup__wordmark--light">Launchfile</div></div>
+      </div>
+      <div class="variant-label" style="color:#999; text-align: left;">On dark</div>
+    </div>
+    <div class="item">
+      <div class="lockup lockup--md">
+        <img src="mark-simple.svg" class="logo-28 logo-shadow-dark" alt="">
+        <div>
+          <div class="lockup__wordmark lockup__wordmark--light">Launchfile</div>
+          <div class="lockup__tagline lockup__tagline--light">the deployment standard</div>
+        </div>
+      </div>
+      <div class="variant-label" style="color:#999; text-align: left;">Dark + tagline</div>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<div class="section">
+  <h2>Asset Types</h2>
+  <div style="font-size: 13px; color: #444441; line-height: 1.8; max-width: 640px;">
+    <table style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr style="border-bottom: 1px solid #E5E5E5; text-align: left;">
+          <th style="padding: 8px 12px 8px 0; font-weight: 600; color: #111;">Type</th>
+          <th style="padding: 8px 12px; font-weight: 600; color: #111;">Shadow</th>
+          <th style="padding: 8px 12px; font-weight: 600; color: #111;">Use for</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom: 1px solid #F5F4F0;">
+          <td style="padding: 8px 12px 8px 0;"><strong>Raw SVG</strong><br><code style="font-size:11px;">logo/*.svg</code></td>
+          <td style="padding: 8px 12px;">None — add via CSS</td>
+          <td style="padding: 8px 12px;">Websites, apps, UI — you control the shadow via <code style="font-size:11px;">filter: drop-shadow()</code></td>
+        </tr>
+        <tr style="border-bottom: 1px solid #F5F4F0;">
+          <td style="padding: 8px 12px 8px 0;"><strong>Display</strong><br><code style="font-size:11px;">display/*.svg</code></td>
+          <td style="padding: 8px 12px;">Baked in (padded viewBox)</td>
+          <td style="padding: 8px 12px;">README badges, social cards, marketing — consumer can't add their own shadow</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 12px 8px 0;"><strong>Favicon</strong><br><code style="font-size:11px;">favicon.svg</code></td>
+          <td style="padding: 8px 12px;">None</td>
+          <td style="padding: 8px 12px;">Browser tab — simplified arrow on solid purple, 16px</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Recommended CSS Shadow</h2>
+  <div style="background: #111; color: #E5E7EB; padding: 20px 24px; border-radius: 12px; font-family: 'SF Mono', monospace; font-size: 13px; line-height: 1.7; overflow-x: auto;">
+<span style="color: #AFA9EC;">/* Light backgrounds */</span>
+.logo { filter:
+  drop-shadow(0px 2px 4px rgba(16, 24, 40, 0.08))
+  drop-shadow(0px 4px 12px rgba(16, 24, 40, 0.1));
+}
+
+<span style="color: #AFA9EC;">/* Dark backgrounds */</span>
+.logo-dark { filter:
+  drop-shadow(0px 2px 4px rgba(0, 0, 0, 0.2))
+  drop-shadow(0px 4px 12px rgba(0, 0, 0, 0.15));
+}
+  </div>
+</div>
+
+<div class="section">
+  <h2>Construction</h2>
+  <div style="font-size: 13px; color: #444441; line-height: 1.6; max-width: 640px;">
+    <p>The logo uses <strong>layered SVG construction</strong> with no global clip-path:</p>
+    <ol style="margin-top: 8px; padding-left: 20px;">
+      <li><strong>Background</strong> — Gradient-filled rounded rect (rx=22%)</li>
+      <li><strong>Glow</strong> — Radial gradient in purple-400</li>
+      <li><strong>Grid</strong> — Individual lines that bleed past rounded corners</li>
+      <li><strong>Arrow</strong> — Behind the glass, emerging from the frosted pocket</li>
+      <li><strong>Frosted glass</strong> — Lower half, clipped to rounded rect</li>
+      <li><strong>Border</strong> — Hairline stroke on the rounded rect</li>
+    </ol>
+    <p style="margin-top: 12px;">Grid lines extend past corners (unclipped). Glass is clipped. Shadow is external (CSS, not in SVG).</p>
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,46 @@
+/**
+ * Launchfile color palette
+ *
+ * Purple chosen to differentiate from the sea of blue DevOps tools
+ * (Docker, K8s, Terraform, GitHub Actions) while connecting to
+ * the CogZero brand family.
+ */
+
+:root {
+  /* Primary — Purple ramp */
+  --lf-purple-900: #26215C;
+  --lf-purple-800: #3C3489;
+  --lf-purple-600: #534AB7;
+  --lf-purple-400: #7F77DD;
+  --lf-purple-200: #AFA9EC;
+  --lf-purple-100: #CECBF6;
+  --lf-purple-50: #EEEDFE;
+
+  /* Neutrals */
+  --lf-ink: #111111;
+  --lf-charcoal: #2C2C2A;
+  --lf-slate: #444441;
+  --lf-paper: #F5F4F0;
+  --lf-white: #FAFAF8;
+
+  /* Semantic */
+  --lf-success: #059669;
+  --lf-warning: #D97706;
+  --lf-error: #DC2626;
+
+  /* Aliases — map semantic roles to palette */
+  --lf-primary: var(--lf-purple-800);
+  --lf-primary-dark: var(--lf-purple-900);
+  --lf-primary-light: var(--lf-purple-600);
+  --lf-primary-glow: var(--lf-purple-400);
+  --lf-primary-accent: var(--lf-purple-200);
+  --lf-primary-border: var(--lf-purple-100);
+  --lf-primary-bg: var(--lf-purple-50);
+
+  --lf-bg: var(--lf-white);
+  --lf-bg-alt: var(--lf-paper);
+  --lf-text: var(--lf-ink);
+  --lf-text-secondary: var(--lf-slate);
+  --lf-text-muted: var(--lf-charcoal);
+  --lf-border: var(--lf-purple-100);
+}
