@@ -1,0 +1,12 @@
+---
+import DocsLayout from "@/layouts/DocsLayout.astro";
+import { getEntry, render } from "astro:content";
+
+const entry = await getEntry("spec", "why");
+if (!entry) throw new Error("WHY.md not found in spec collection");
+const { Content } = await render(entry);
+---
+
+<DocsLayout title="Why Launchfile" description="The origin, hypothesis, and landscape behind the Launchfile specification." currentPath="/why/">
+  <Content />
+</DocsLayout>

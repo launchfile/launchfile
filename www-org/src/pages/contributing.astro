@@ -1,0 +1,12 @@
+---
+import DocsLayout from "@/layouts/DocsLayout.astro";
+import { getEntry, render } from "astro:content";
+
+const entry = await getEntry("spec", "contributing");
+if (!entry) throw new Error("CONTRIBUTING.md not found in spec collection");
+const { Content } = await render(entry);
+---
+
+<DocsLayout title="Contributing — Launchfile" description="How to propose changes, submit Launchfiles, and improve the specification." currentPath="/contributing/">
+  <Content />
+</DocsLayout>

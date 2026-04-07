@@ -1,0 +1,16 @@
+---
+import DocsLayout from "@/layouts/DocsLayout.astro";
+import { getSpecSection } from "@/lib/spec-sections";
+
+const section = await getSpecSection("overview");
+if (!section) throw new Error("Overview section not found in SPEC.md");
+---
+
+<DocsLayout
+  title="Launchfile Specification — Overview"
+  description="A declarative app descriptor for deployment platforms."
+  currentPath="/spec/"
+>
+  <h1>{section.title}</h1>
+  <Fragment set:html={section.html} />
+</DocsLayout>
