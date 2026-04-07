@@ -1,0 +1,42 @@
+---
+import { navigation, type NavGroup } from "@/lib/navigation";
+
+interface Props {
+  currentPath: string;
+}
+
+const { currentPath } = Astro.props;
+---
+
+<nav class="sidebar-nav" aria-label="Documentation">
+  <ul>
+    {navigation.map((group: NavGroup) => (
+      <li class="sidebar-group">
+        <h3 class="sidebar-group-title">{group.title}</h3>
+        <ul class="sidebar-group-links">
+          {group.items.map((item) => {
+            const isActive = !item.external && currentPath === item.href;
+            return (
+              <li>
+                <a
+                  href={item.href}
+                  class:list={["sidebar-link", { active: isActive }]}
+                  aria-current={isActive ? "page" : undefined}
+                  target={item.external ? "_blank" : undefined}
+                  rel={item.external ? "noopener" : undefined}
+                >
+                  {item.title}
+                  {item.external && (
+                    <svg class="sidebar-external-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                      <path d="M3.5 3.5h5v5M8.5 3.5L3.5 8.5" />
+                    </svg>
+                  )}
+                </a>
+              </li>
+            );
+          })}
+        </ul>
+      </li>
+    ))}
+  </ul>
+</nav>

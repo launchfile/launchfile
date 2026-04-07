@@ -1,0 +1,16 @@
+---
+import SidebarNav from "./SidebarNav.astro";
+
+interface Props {
+  currentPath: string;
+}
+
+const { currentPath } = Astro.props;
+---
+
+<!-- Desktop sidebar -->
+<aside class="docs-sidebar" aria-label="Navigation">
+  <div class="docs-sidebar-inner">
+    <SidebarNav currentPath={currentPath} />
+  </div>
+</aside>

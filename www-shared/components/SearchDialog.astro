@@ -1,0 +1,155 @@
+<!-- Search dialog powered by Pagefind (static search index built at build time) -->
+<dialog id="search-dialog" class="search-dialog" aria-label="Search documentation">
+  <div class="search-dialog-panel">
+    <div class="search-input-wrapper">
+      <svg class="search-input-icon" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        <circle cx="8.5" cy="8.5" r="5.5" />
+        <path d="M13 13l4 4" />
+      </svg>
+      <input
+        id="search-input"
+        class="search-input"
+        type="search"
+        placeholder="Search documentation..."
+        autocomplete="off"
+        autofocus
+      />
+      <kbd class="search-close-hint">esc</kbd>
+    </div>
+    <div id="search-results" class="search-results">
+      <div class="search-empty">Type to search the docs</div>
+    </div>
+  </div>
+</dialog>
+
+<script>
+  // Pagefind integration — uses dynamic URL to prevent Vite static analysis.
+  // Kept outside the page-load handler so the module persists across navigations.
+  let pagefind: any = null;
+
+  async function loadPagefind() {
+    if (pagefind) return pagefind;
+    try {
+      const base = window.location.origin;
+      const url = new URL("/pagefind/pagefind.js", base).href;
+      pagefind = await import(/* @vite-ignore */ url);
+      await pagefind.init();
+    } catch {
+      pagefind = null;
+    }
+    return pagefind;
+  }
+
+  /** Render Pagefind excerpt with <mark> highlights using DOM APIs */
+  function renderExcerpt(excerpt: string, container: HTMLElement) {
+    const parts = excerpt.split(/(<mark>[^<]*<\/mark>)/g);
+    for (const part of parts) {
+      const markMatch = part.match(/^<mark>([^<]*)<\/mark>$/);
+      if (markMatch) {
+        const mark = document.createElement("mark");
+        mark.textContent = markMatch[1];
+        container.appendChild(mark);
+      } else {
+        container.appendChild(document.createTextNode(part));
+      }
+    }
+  }
+
+  // Re-bind listeners after every navigation (View Transitions compatibility).
+  // Without this, DOM references go stale after page swap and search breaks.
+  document.addEventListener('astro:page-load', () => {
+    const searchDialog = document.getElementById("search-dialog") as HTMLDialogElement;
+    const searchInput = document.getElementById("search-input") as HTMLInputElement;
+    const searchResults = document.getElementById("search-results") as HTMLElement;
+
+    function openSearch() {
+      searchDialog?.showModal();
+      requestAnimationFrame(() => {
+        searchDialog?.classList.add("open");
+        searchInput?.focus();
+      });
+    }
+
+    function closeSearch() {
+      searchDialog?.classList.remove("open");
+      setTimeout(() => searchDialog?.close(), 150);
+    }
+
+    // Both the full search bar and the mobile magnifying glass icon open search
+    document.querySelectorAll(".docs-search, .docs-search-icon").forEach((btn) => {
+      btn.addEventListener("click", () => openSearch());
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        openSearch();
+      }
+    });
+
+    searchDialog?.addEventListener("click", (e) => {
+      if (e.target === searchDialog) closeSearch();
+    });
+
+    searchDialog?.addEventListener("cancel", (e) => {
+      e.preventDefault();
+      closeSearch();
+    });
+
+    searchInput?.addEventListener("input", async () => {
+      const query = searchInput.value.trim();
+      if (!query) {
+        searchResults.textContent = "";
+        const empty = document.createElement("div");
+        empty.className = "search-empty";
+        empty.textContent = "Type to search the docs";
+        searchResults.appendChild(empty);
+        return;
+      }
+
+      const pf = await loadPagefind();
+      if (!pf) {
+        searchResults.textContent = "";
+        const msg = document.createElement("div");
+        msg.className = "search-empty";
+        msg.textContent = "Search available after build (run bun run build)";
+        searchResults.appendChild(msg);
+        return;
+      }
+
+      const search = await pf.search(query);
+      searchResults.textContent = "";
+
+      if (search.results.length === 0) {
+        const noResults = document.createElement("div");
+        noResults.className = "search-empty";
+        noResults.textContent = `No results for "${query}"`;
+        searchResults.appendChild(noResults);
+        return;
+      }
+
+      const top = search.results.slice(0, 8);
+      for (const result of top) {
+        const data = await result.data();
+        const item = document.createElement("a");
+        item.href = data.url;
+        item.className = "search-result-item";
+        item.addEventListener("click", () => closeSearch());
+
+        const title = document.createElement("div");
+        title.className = "search-result-title";
+        title.textContent = data.meta?.title || data.url;
+        item.appendChild(title);
+
+        if (data.excerpt) {
+          const excerpt = document.createElement("div");
+          excerpt.className = "search-result-excerpt";
+          renderExcerpt(data.excerpt, excerpt);
+          item.appendChild(excerpt);
+        }
+
+        searchResults.appendChild(item);
+      }
+    });
+  });
+</script>
