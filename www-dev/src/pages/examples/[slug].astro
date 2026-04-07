@@ -1,0 +1,244 @@
+---
+import DocsLayout from "@/layouts/DocsLayout.astro";
+import { Code } from "astro:components";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+interface ExampleMeta {
+  slug: string;
+  title: string;
+  description: string;
+  catalogLink: string;
+  concepts: string[];
+  guidance: string;
+  specLinks: { label: string; href: string }[];
+  annotations: { line: string; text: string }[];
+}
+
+export function getStaticPaths() {
+  const examples: ExampleMeta[] = [
+    {
+      slug: "minimal",
+      title: "Minimal",
+      description: "The simplest possible Launchfile — three fields plus a start command.",
+      catalogLink: 'Browse the <a href="https://launchfile.io/apps/">app catalog</a> for real-world Launchfiles.',
+      concepts: [
+        "The `version` field identifies the spec version",
+        "App `name` follows kebab-case convention",
+        "The `runtime` field tells providers what language runtime to use",
+        "A single `start` command is all you need to run",
+      ],
+      guidance: "Starting point for any new app — add complexity only as you need it.",
+      specLinks: [
+        { label: "Top-Level Fields", href: "https://launchfile.org/spec/top-level-fields/" },
+        { label: "Commands", href: "https://launchfile.org/spec/commands/" },
+      ],
+      annotations: [
+        { line: "runtime: node", text: "Providers use this to install the right version manager (fnm, nvm, etc.)." },
+      ],
+    },
+    {
+      slug: "minimal-with-db",
+      title: "Minimal with Database",
+      description: "Single component with Postgres and a health check.",
+      catalogLink: '<a href="https://launchfile.io/apps/miniflux/">Miniflux</a>, <a href="https://launchfile.io/apps/umami/">Umami</a>, and <a href="https://launchfile.io/apps/linkding/">Linkding</a> all follow this pattern.',
+      concepts: [
+        "The `requires` array shorthand — `[postgres]` expands to `[{type: postgres}]`",
+        "Providers auto-provision required resources and inject connection details",
+        "The `health` shorthand — a path string expands to `{path: /health}`",
+      ],
+      guidance: "Most web apps need a database — this is the typical starting point.",
+      specLinks: [
+        { label: "Requires", href: "https://launchfile.org/spec/requires/" },
+        { label: "Health", href: "https://launchfile.org/spec/health/" },
+      ],
+      annotations: [
+        { line: "requires: [postgres]", text: "Shorthand for [{type: postgres}]. The provider creates the DB and injects $url, $host, etc." },
+        { line: "health: /health", text: "Shorthand for {path: /health}. Providers poll this endpoint to confirm readiness." },
+      ],
+    },
+    {
+      slug: "single-component",
+      title: "Single Component",
+      description: "Full-featured single component with services, env vars, and lifecycle commands.",
+      catalogLink: '<a href="https://launchfile.io/apps/ghost/">Ghost</a>, <a href="https://launchfile.io/apps/metabase/">Metabase</a>, and <a href="https://launchfile.io/apps/redmine/">Redmine</a> use this pattern.',
+      concepts: [
+        "`provides` declares what your app exposes (ports, protocols)",
+        "`requires` with `set_env` wires resource properties into your environment",
+        "`supports` declares optional resources (skipped if unavailable)",
+        "Environment variables with `generator: secret` are auto-created",
+        "Lifecycle commands: build, release, start, seed, test",
+      ],
+      guidance: "Full-featured single-component app — covers most production deployments.",
+      specLinks: [
+        { label: "Provides", href: "https://launchfile.org/spec/provides/" },
+        { label: "Requires", href: "https://launchfile.org/spec/requires/" },
+        { label: "Environment", href: "https://launchfile.org/spec/environment-variables/" },
+        { label: "Commands", href: "https://launchfile.org/spec/commands/" },
+        { label: "Health", href: "https://launchfile.org/spec/health/" },
+      ],
+      annotations: [
+        { line: "set_env:", text: "Maps resource properties ($host, $port, etc.) into your app's env vars." },
+        { line: "generator: secret", text: "Auto-generates a cryptographic secret at deploy time." },
+      ],
+    },
+    {
+      slug: "multi-component",
+      title: "Multi-Component",
+      description: "HedgeDoc with separate backend and frontend, inter-component wiring via $ expressions.",
+      catalogLink: '<a href="https://launchfile.io/apps/chatwoot/">Chatwoot</a> and <a href="https://launchfile.io/apps/dify/">Dify</a> use multi-component Launchfiles.',
+      concepts: [
+        "The `components` map defines multiple services in one Launchfile",
+        "`depends_on` with `condition: healthy` ensures startup order",
+        "`$components.backend.url` wires cross-component endpoints",
+        "`exposed: true` marks a port as externally reachable",
+      ],
+      guidance: "Apps with separate frontend/backend/workers — like HedgeDoc, Chatwoot, Dify.",
+      specLinks: [
+        { label: "Components", href: "https://launchfile.org/spec/components/" },
+        { label: "Depends On", href: "https://launchfile.org/spec/depends-on/" },
+        { label: "Expressions", href: "https://launchfile.org/spec/expression-syntax/" },
+      ],
+      annotations: [
+        { line: "depends_on:", text: "Frontend waits for backend to be healthy before starting." },
+        { line: "$components.backend.url", text: "Resolves to the backend's actual URL at deploy time — no hardcoded ports." },
+      ],
+    },
+    {
+      slug: "prebuilt-image",
+      title: "Prebuilt Image",
+      description: "Deploy from an existing OCI/Docker image instead of building from source.",
+      catalogLink: 'Most <a href="https://launchfile.io/apps/">catalog apps</a> use prebuilt images.',
+      concepts: [
+        "The `image` field deploys a pre-built OCI/Docker image",
+        "No `runtime` or `build` needed when using an image",
+        "`start_period` gives slow-starting apps time before health checks kick in",
+      ],
+      guidance: "Deploying existing Docker images without building from source.",
+      specLinks: [
+        { label: "Top-Level Fields", href: "https://launchfile.org/spec/top-level-fields/" },
+        { label: "Health", href: "https://launchfile.org/spec/health/" },
+      ],
+      annotations: [
+        { line: "image:", text: "Uses a pre-built image instead of runtime + build. Most catalog apps use this." },
+        { line: "start_period: 60s", text: "Grace period before health checks start — useful for apps with slow initialization." },
+      ],
+    },
+    {
+      slug: "cron-job",
+      title: "Cron Job",
+      description: "Scheduled task that runs on a cron schedule with no persistent process.",
+      catalogLink: 'Browse the <a href="https://launchfile.io/apps/">app catalog</a> for more patterns.',
+      concepts: [
+        "The `schedule` field defines a cron expression",
+        "`restart: no` means the process runs once and exits",
+        "No `provides` — cron jobs aren't servers, they don't expose ports",
+      ],
+      guidance: "Periodic tasks like backups, cleanup scripts, report generation.",
+      specLinks: [
+        { label: "Other Fields", href: "https://launchfile.org/spec/other-fields/" },
+      ],
+      annotations: [
+        { line: "schedule:", text: "Standard cron syntax. This job runs once daily at midnight." },
+        { line: "restart: no", text: "The process exits after each run — the scheduler handles re-invocation." },
+      ],
+    },
+    {
+      slug: "host-orchestrator",
+      title: "Host Orchestrator",
+      description: "Docker daemon access and host networking for deployment tools and CI runners.",
+      catalogLink: 'Browse the <a href="https://launchfile.io/apps/">app catalog</a> for more patterns.',
+      concepts: [
+        "The `host` field grants access to host-level resources",
+        "`host.docker: true` enables Docker socket access",
+        "`host.network: true` uses the host network stack",
+        "`host.filesystem` mounts host paths into the container",
+      ],
+      guidance: "CI runners, deployment tools, and infrastructure agents that need host access.",
+      specLinks: [
+        { label: "Host", href: "https://launchfile.org/spec/host/" },
+      ],
+      annotations: [
+        { line: "host:", text: "Declares privileged host access — providers should treat this as a security-sensitive feature." },
+        { line: "requires: [{type: docker}]", text: "Declares the Docker daemon as a dependency." },
+      ],
+    },
+  ];
+
+  return examples.map((ex) => ({
+    params: { slug: ex.slug },
+    props: {
+      title: ex.title,
+      description: ex.description,
+      catalogLink: ex.catalogLink,
+      concepts: ex.concepts,
+      guidance: ex.guidance,
+      specLinks: ex.specLinks,
+      annotations: ex.annotations,
+    },
+  }));
+}
+
+const { slug } = Astro.params;
+const { title, description, catalogLink, concepts, guidance, specLinks, annotations } = Astro.props;
+const yaml = readFileSync(resolve(process.cwd(), `../spec/examples/${slug}.yaml`), "utf-8");
+---
+
+<DocsLayout title={`${title} — Launchfile Examples`} description={description} currentPath="/examples/">
+  <h1>{title}</h1>
+  <p>{description}</p>
+
+  <h2>What this demonstrates</h2>
+  <ul>
+    {concepts.map((c: string) => <li>{c}</li>)}
+  </ul>
+
+  <p><strong>When to use this:</strong> {guidance}</p>
+
+  <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem;">
+    {specLinks.map((link: { label: string; href: string }) => (
+      <a href={link.href} style="display: inline-block; padding: 0.25rem 0.75rem; border-radius: 0.5rem; border: 1px solid var(--lf-purple-100); font-size: 0.875rem; color: var(--lf-primary); text-decoration: none; transition: background-color 0.15s;" onmouseover="this.style.backgroundColor='var(--lf-purple-50)'" onmouseout="this.style.backgroundColor='transparent'">
+        {link.label}
+      </a>
+    ))}
+  </div>
+
+  <div class="example-code-block">
+    <div class="example-code-header">
+      <span class="example-code-filename">{slug}.yaml</span>
+      <a
+        href={`https://github.com/launchfile/launchfile/blob/main/spec/examples/${slug}.yaml`}
+        class="example-code-github"
+        target="_blank"
+        rel="noopener"
+      >
+        View on GitHub
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.5 3.5h5v5M8.5 3.5L3.5 8.5" /></svg>
+      </a>
+    </div>
+    <Code code={yaml} lang="yaml" theme="github-dark" />
+  </div>
+
+  {annotations.length > 0 && (
+    <>
+      <h2>Key lines explained</h2>
+      <dl>
+        {annotations.map((a: { line: string; text: string }) => (
+          <>
+            <dt><code>{a.line}</code></dt>
+            <dd>{a.text}</dd>
+          </>
+        ))}
+      </dl>
+    </>
+  )}
+
+  {catalogLink && (
+    <div class="example-catalog-link" style="margin-top: 2rem; padding: 1rem 1.25rem; border-radius: 0.5rem; border: 1px solid var(--lf-purple-100); background: var(--lf-purple-50);">
+      <p style="margin: 0; font-size: 0.875rem; color: var(--lf-charcoal);">
+        <strong>See this pattern in real apps</strong> —{" "}
+        <Fragment set:html={catalogLink} />
+      </p>
+    </div>
+  )}
+</DocsLayout>

@@ -1,0 +1,17 @@
+# HTML pages: always revalidate so deploys take effect immediately
+/*
+  Cache-Control: public, max-age=0, must-revalidate
+
+# Hashed assets: cache forever (filenames change on rebuild)
+/_astro/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Pagefind: short cache (index changes on rebuild, not hashed)
+/pagefind/*
+  Cache-Control: public, max-age=300, must-revalidate
+
+# JSON Schema for editor integration and validation tools
+/schema/v1
+  Content-Type: application/schema+json
+  Access-Control-Allow-Origin: *
+  Cache-Control: public, max-age=3600

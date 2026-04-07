@@ -1,0 +1,180 @@
+---
+import Base from "@shared/layouts/Base.astro";
+import DocsHeader from "@shared/components/DocsHeader.astro";
+import SearchDialog from "@shared/components/SearchDialog.astro";
+import "@/styles/global.css";
+
+const quickLinks = [
+  {
+    title: "Specification",
+    desc: "The complete format reference — fields, types, expressions, and shorthand patterns.",
+    href: "https://launchfile.org/spec/",
+    icon: "book",
+  },
+  {
+    title: "SDK Reference",
+    desc: "TypeScript parser, validator, and serializer. Parse, validate, and generate Launchfiles.",
+    href: "/sdk/",
+    icon: "code",
+  },
+  {
+    title: "Examples",
+    desc: "Real-world patterns from minimal three-liners to multi-component apps.",
+    href: "/examples/",
+    icon: "layers",
+  },
+  {
+    title: "App Catalog",
+    desc: "Community-ready Launchfiles for popular open-source apps, tested and verified.",
+    href: "https://launchfile.io",
+    icon: "grid",
+  },
+];
+---
+
+<Base title="Launchfile — Describe your app. Deploy it anywhere." description="Developer documentation for the Launchfile deployment specification. SDK, examples, and guides." site="dev">
+  <DocsHeader slot="nav" />
+
+  <main>
+    <!-- Dark hero section -->
+    <div class="dev-hero">
+      <div class="dev-hero-grid" aria-hidden="true"></div>
+      <div class="dev-hero-glow" aria-hidden="true"></div>
+      <div class="dev-hero-inner">
+        <div class="dev-hero-text">
+          <h1 class="dev-hero-title">
+            Describe your app.<br/>Deploy it anywhere.
+          </h1>
+          <p class="dev-hero-subtitle">
+            A Launchfile is a simple YAML file that declares what your application needs to run.
+            Platform-agnostic. Human-writable. Machine-parseable.
+          </p>
+          <div class="dev-hero-actions">
+            <a href="/quick-start/" class="dev-hero-btn-primary">
+              Get Started
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 3l5 5-5 5" /></svg>
+            </a>
+            <a href="https://github.com/launchfile/launchfile" class="dev-hero-btn-secondary" target="_blank" rel="noopener">
+              View on GitHub
+            </a>
+          </div>
+        </div>
+        <div class="dev-hero-code">
+          <div class="dev-hero-code-chrome">
+            <div class="dev-hero-code-dots"><span></span><span></span><span></span></div>
+            <span class="dev-hero-code-filename">Launchfile</span>
+          </div>
+          <pre class="dev-hero-code-block"><code><span class="hl-ln"> 1</span><span class="hl-key">name</span>: <span class="hl-str">my-app</span>
+<span class="hl-ln"> 2</span><span class="hl-key">runtime</span>: <span class="hl-str">node</span>
+<span class="hl-ln"> 3</span>
+<span class="hl-ln"> 4</span><span class="hl-key">requires</span>: <span class="hl-bracket">[</span><span class="hl-str">postgres</span>, <span class="hl-str">redis</span><span class="hl-bracket">]</span>
+<span class="hl-ln"> 5</span>
+<span class="hl-ln"> 6</span><span class="hl-key">env</span>:
+<span class="hl-ln"> 7</span>  <span class="hl-key">PORT</span>: <span class="hl-str">"3000"</span>
+<span class="hl-ln"> 8</span>  <span class="hl-key">SECRET_KEY</span>:
+<span class="hl-ln"> 9</span>    <span class="hl-key">generator</span>: <span class="hl-str">secret</span>
+<span class="hl-ln">10</span>
+<span class="hl-ln">11</span><span class="hl-key">commands</span>:
+<span class="hl-ln">12</span>  <span class="hl-key">start</span>: <span class="hl-str">"node server.js"</span>
+<span class="hl-ln">13</span>
+<span class="hl-ln">14</span><span class="hl-key">health</span>: <span class="hl-str">/healthz</span></code></pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Links -->
+    <div class="dev-section">
+      <div class="dev-quicklinks">
+        {quickLinks.map((link) => (
+          <a href={link.href} class="dev-quicklink" target={link.href.startsWith("http") ? "_blank" : undefined} rel={link.href.startsWith("http") ? "noopener" : undefined}>
+            <div class="dev-quicklink-icon" data-icon={link.icon}>
+              {link.icon === "book" && (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+              )}
+              {link.icon === "code" && (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+              )}
+              {link.icon === "layers" && (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+              )}
+              {link.icon === "grid" && (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+              )}
+            </div>
+            <h3 class="dev-quicklink-title">{link.title}</h3>
+            <p class="dev-quicklink-desc">{link.desc}</p>
+          </a>
+        ))}
+      </div>
+    </div>
+
+    <!-- Comparison table -->
+    <div class="dev-section">
+      <h2 class="dev-section-heading">Why Launchfile?</h2>
+      <div class="dev-table-wrapper">
+        <table class="dev-table">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Dockerfile</th>
+              <th>docker-compose</th>
+              <th>Procfile</th>
+              <th class="dev-table-highlight">Launchfile</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="dev-table-label">Declares services</td>
+              <td>No</td>
+              <td>You define them</td>
+              <td>No</td>
+              <td class="dev-table-highlight">You declare them</td>
+            </tr>
+            <tr>
+              <td class="dev-table-label">Platform-agnostic</td>
+              <td>No</td>
+              <td>No</td>
+              <td>Heroku-ish</td>
+              <td class="dev-table-highlight">Yes</td>
+            </tr>
+            <tr>
+              <td class="dev-table-label">Multi-component</td>
+              <td>No</td>
+              <td>Yes</td>
+              <td>Flat</td>
+              <td class="dev-table-highlight">Yes</td>
+            </tr>
+            <tr>
+              <td class="dev-table-label">Environment wiring</td>
+              <td>No</td>
+              <td>Manual</td>
+              <td>No</td>
+              <td class="dev-table-highlight">Automatic ($ expressions)</td>
+            </tr>
+            <tr>
+              <td class="dev-table-label">Human-writable</td>
+              <td>Medium</td>
+              <td>Verbose</td>
+              <td>Simple</td>
+              <td class="dev-table-highlight">Simple</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <SearchDialog />
+
+  <footer slot="footer" class="home-footer">
+    <div class="home-footer-inner">
+      <div class="home-footer-links">
+        <a href="https://launchfile.dev">Docs</a>
+        <a href="https://launchfile.org">Specification</a>
+        <a href="https://launchfile.io">Catalog</a>
+        <a href="https://github.com/launchfile/launchfile">GitHub</a>
+      </div>
+      <p class="home-footer-license">Launchfile is open source under the <a href="https://github.com/launchfile/launchfile/blob/main/LICENSE">MIT license</a>.</p>
+    </div>
+  </footer>
+</Base>

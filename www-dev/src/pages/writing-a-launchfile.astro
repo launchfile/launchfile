@@ -1,0 +1,77 @@
+---
+import DocsLayout from "@/layouts/DocsLayout.astro";
+---
+
+<DocsLayout title="Writing a Launchfile — Guide" description="A practical guide to writing Launchfiles for your applications." currentPath="/writing-a-launchfile/">
+  <h1>Writing a Launchfile</h1>
+
+  <p>A Launchfile is a YAML file called <code>Launchfile</code> (no extension) that lives in your project root. It declares what your application needs — the platform handles the rest.</p>
+
+  <h2 id="structure">File structure</h2>
+
+  <p>Every Launchfile has a <code>name</code> field. Everything else is optional and additive — you pay complexity cost only for the complexity you actually have.</p>
+
+  <pre><code class="language-yaml"># The simplest valid Launchfile
+name: my-app
+runtime: node
+commands:
+  start: "node server.js"</code></pre>
+
+  <h2 id="resources">Declaring resources</h2>
+
+  <p>Use <code>requires</code> for resources your app cannot run without, and <code>supports</code> for optional enhancements:</p>
+
+  <pre><code class="language-yaml">requires:
+  - type: postgres
+    set_env:
+      DATABASE_URL: $url
+
+supports:
+  - type: redis
+    set_env:
+      CACHE_URL: $url</code></pre>
+
+  <p>The <code>$url</code> expression resolves to the resource's connection URL at deploy time. See the <a href="https://launchfile.org/spec/expression-syntax/">expression syntax</a> reference for all available patterns.</p>
+
+  <h2 id="environment">Environment variables</h2>
+
+  <p>The <code>env</code> block declares app-owned environment variables with optional defaults, descriptions, and generators:</p>
+
+  <pre><code class="language-yaml">env:
+  PORT:
+    default: "3000"
+  API_KEY:
+    required: true
+    description: "Third-party API key"
+  SESSION_SECRET:
+    generator: secret
+    sensitive: true</code></pre>
+
+  <h2 id="multi-component">Multi-component apps</h2>
+
+  <p>For apps with multiple services (e.g., a backend API + a frontend), use the <code>components</code> map:</p>
+
+  <pre><code class="language-yaml">name: my-platform
+components:
+  api:
+    runtime: node
+    provides:
+      - protocol: http
+        port: 3000
+    requires: [postgres]
+    commands:
+      start: "node api.js"
+  web:
+    runtime: node
+    depends_on:
+      - component: api
+        condition: healthy
+    provides:
+      - protocol: http
+        port: 3001
+        exposed: true</code></pre>
+
+  <h2 id="next">Learn more</h2>
+
+  <p>This guide covers the basics. For the full field reference, see the <a href="https://launchfile.org/spec/">specification</a>. For real-world patterns, browse the <a href="/examples/">examples</a>.</p>
+</DocsLayout>
