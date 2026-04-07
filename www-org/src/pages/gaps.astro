@@ -1,0 +1,59 @@
+---
+import DocsLayout from "@/layouts/DocsLayout.astro";
+import { getEntry, render } from "astro:content";
+
+const entry = await getEntry("catalog", "gaps");
+if (!entry) throw new Error("GAPS.md not found in catalog collection");
+const { Content } = await render(entry);
+---
+
+<DocsLayout title="Known Gaps — Launchfile" description="Spec limitations discovered by testing real apps against the Launchfile format." currentPath="/gaps/">
+  <div class="gaps-page">
+    <Content />
+  </div>
+</DocsLayout>
+
+<script>
+  // Transform the gaps page rendering:
+  // 1. Style the legend paragraph as a card
+  // 2. Move emoji severity indicators from end of h3 to left side
+  const gapsPage = document.querySelector('.gaps-page');
+  if (gapsPage) {
+    // Find and style the legend line (contains the emoji indicators)
+    const paragraphs = gapsPage.querySelectorAll('p');
+    paragraphs.forEach((p) => {
+      const text = p.textContent || '';
+      if (text.includes('Blocks real apps') && text.includes('Workaround exists')) {
+        p.classList.add('gaps-legend');
+      }
+    });
+
+    // Move emoji from end of h3 to indicator position
+    gapsPage.querySelectorAll('h3').forEach((h3) => {
+      const text = h3.textContent || '';
+      const emojiMatch = text.match(/([\u{1F534}\u{1F7E1}\u{1F7E2}])\s*$/u);
+      if (emojiMatch) {
+        const emoji = emojiMatch[1];
+        // Remove emoji from heading text
+        // Walk text nodes to find and modify the one with the emoji
+        const walker = document.createTreeWalker(h3, NodeFilter.SHOW_TEXT);
+        let node;
+        while (node = walker.nextNode()) {
+          if (node.textContent?.includes(emoji)) {
+            node.textContent = node.textContent.replace(/\s*[\u{1F534}\u{1F7E1}\u{1F7E2}]\s*$/u, '');
+          }
+        }
+        // Add indicator as first child
+        const indicator = document.createElement('span');
+        indicator.className = 'gap-indicator';
+        indicator.textContent = emoji;
+        indicator.setAttribute('aria-label',
+          emoji === '\u{1F534}' ? 'Blocks real apps' :
+          emoji === '\u{1F7E1}' ? 'Workaround exists' :
+          'Nice-to-have'
+        );
+        h3.insertBefore(indicator, h3.firstChild);
+      }
+    });
+  }
+</script>

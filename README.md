@@ -37,12 +37,14 @@ Existing tools describe **how** to build infrastructure. A Launchfile describes 
 | [`sdk/`]      | TypeScript reference implementation (parser, validator, serializer) |
 | [`providers/`] | Platform providers that turn Launchfiles into running apps         |
 | [`brand/`]     | Logos, colors, and design assets                                  |
+| [`www-org/`]   | [launchfile.org](https://launchfile.org) — The specification      |
 
 [`spec/`]: spec/
 [`catalog/`]: catalog/
 [`sdk/`]: sdk/
 [`providers/`]: providers/
 [`brand/`]: brand/
+[`www-org/`]: www-org/
 
 ## Repository Structure
 
