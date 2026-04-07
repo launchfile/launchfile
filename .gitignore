@@ -1,6 +1,8 @@
 node_modules/
 dist/
+sdk/schema/
 *.tsbuildinfo
+*.tgz
 .DS_Store
 .env
 .env.local
