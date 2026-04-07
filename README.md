@@ -35,10 +35,12 @@ Existing tools describe **how** to build infrastructure. A Launchfile describes 
 | [`spec/`]     | The Launchfile specification, design docs, and JSON Schema     |
 | [`catalog/`]  | Launchfiles for popular open-source apps                       |
 | [`sdk/`]      | TypeScript reference implementation (parser, validator, serializer) |
+| [`providers/`] | Platform providers that turn Launchfiles into running apps         |
 
 [`spec/`]: spec/
 [`catalog/`]: catalog/
 [`sdk/`]: sdk/
+[`providers/`]: providers/
 
 ## Repository Structure
 
