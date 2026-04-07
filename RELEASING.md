@@ -24,7 +24,9 @@ launchfile               ← depends on SDK + docker
 
 ## Workspaces
 
-This monorepo uses Bun workspaces. Internal dependencies use `"workspace:*"` in `package.json`, which Bun resolves to local packages during development. When publishing, `bun publish` rewrites `workspace:*` to the actual version number automatically.
+This monorepo uses Bun workspaces (defined in the root `package.json`). Internal dependencies use caret ranges like `"@launchfile/sdk": "^0.1.4"` — Bun resolves these to the local workspace copy during development, and they publish to npm as-is.
+
+**Why not `workspace:*`?** Neither `bun publish` nor `npm publish` reliably rewrites `workspace:*` to real version numbers. We burned several patch versions learning this. Use explicit `^x.y.z` ranges instead — they work correctly for both local dev and publishing.
 
 ## Publishing Checklist
 
