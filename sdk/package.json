@@ -1,6 +1,6 @@
 {
   "name": "@launchfile/sdk",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "description": "TypeScript SDK for parsing, validating, and serializing Launchfiles",
   "type": "module",
   "main": "dist/index.js",
