@@ -4,9 +4,6 @@
   "description": "TypeScript SDK for parsing, validating, and serializing Launchfiles",
   "type": "module",
   "main": "dist/index.js",
-  "bin": {
-    "launchfile": "dist/cli.js"
-  },
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
