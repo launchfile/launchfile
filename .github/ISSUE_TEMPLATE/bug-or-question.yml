@@ -1,0 +1,16 @@
+name: Bug or Question
+description: Report a bug in the SDK/schema, or ask a question about the spec
+labels: []
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What's the issue or question?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context (optional)
+      description: Relevant Launchfile snippet, error message, or SDK version.
