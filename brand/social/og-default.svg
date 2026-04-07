@@ -1,0 +1,131 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="600" y1="0" x2="600" y2="630" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4A3FA0"/>
+      <stop offset="0.4" stop-color="#3C3489"/>
+      <stop offset="1" stop-color="#26215C"/>
+    </linearGradient>
+
+    <!-- Logo mark gradients -->
+    <linearGradient id="mark-bg" x1="60" y1="0" x2="60" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5A4FB0"/>
+      <stop offset="1" stop-color="#3C3489"/>
+    </linearGradient>
+    <radialGradient id="mark-glow" cx="60" cy="48" r="42" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7F77DD" stop-opacity="0.5"/>
+      <stop offset="0.5" stop-color="#7F77DD" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#7F77DD" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="mark-arrow-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0.5" stdDeviation="0.5" flood-color="#101828" flood-opacity="0.1"/>
+    </filter>
+    <filter id="glass-blur-m" x="-5%" y="-5%" width="110%" height="110%" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feGaussianBlur in="BackgroundImage" stdDeviation="1.5"/>
+      <feComposite in2="SourceAlpha" operator="in" result="effect1_backgroundBlur"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_backgroundBlur" result="shape"/>
+    </filter>
+    <clipPath id="mark-squircle">
+      <rect width="120" height="120" rx="26"/>
+    </clipPath>
+
+    <!-- Code panel -->
+    <rect id="code-bg" width="420" height="200" rx="12"/>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <!-- Grid lines — architectural precision feel -->
+  <g opacity="0.08" stroke="#7F77DD" stroke-width="1">
+    <!-- Vertical -->
+    <line x1="120" y1="0" x2="120" y2="630"/>
+    <line x1="240" y1="0" x2="240" y2="630"/>
+    <line x1="360" y1="0" x2="360" y2="630"/>
+    <line x1="480" y1="0" x2="480" y2="630"/>
+    <line x1="600" y1="0" x2="600" y2="630"/>
+    <line x1="720" y1="0" x2="720" y2="630"/>
+    <line x1="840" y1="0" x2="840" y2="630"/>
+    <line x1="960" y1="0" x2="960" y2="630"/>
+    <line x1="1080" y1="0" x2="1080" y2="630"/>
+    <!-- Horizontal -->
+    <line x1="0" y1="126" x2="1200" y2="126"/>
+    <line x1="0" y1="252" x2="1200" y2="252"/>
+    <line x1="0" y1="378" x2="1200" y2="378"/>
+    <line x1="0" y1="504" x2="1200" y2="504"/>
+  </g>
+
+  <!-- Concentric circles (centered on the card) -->
+  <circle cx="600" cy="315" r="280" stroke="#7F77DD" stroke-width="0.8" opacity="0.06" fill="none"/>
+  <circle cx="600" cy="315" r="180" stroke="#7F77DD" stroke-width="0.8" opacity="0.05" fill="none"/>
+
+  <!-- === Left side: Logo lockup === -->
+
+  <!-- Mark icon at 120px -->
+  <g transform="translate(100, 160)">
+    <rect width="120" height="120" rx="26" fill="url(#mark-bg)"/>
+    <rect width="120" height="120" rx="26" fill="url(#mark-glow)"/>
+
+    <!-- Grid in mark -->
+    <g opacity="0.25" stroke="#7F77DD" stroke-width="0.5">
+      <line x1="30" y1="0" x2="30" y2="120"/>
+      <line x1="60" y1="0" x2="60" y2="120"/>
+      <line x1="90" y1="0" x2="90" y2="120"/>
+      <line x1="0" y1="30" x2="120" y2="30"/>
+      <line x1="0" y1="60" x2="120" y2="60"/>
+      <line x1="0" y1="90" x2="120" y2="90"/>
+    </g>
+    <circle cx="60" cy="60" r="50" stroke="#7F77DD" stroke-width="0.5" opacity="0.12" fill="none"/>
+
+    <!-- Arrow behind glass -->
+    <g filter="url(#mark-arrow-shadow)">
+      <line x1="60" y1="30" x2="60" y2="90" stroke="white" stroke-width="7" stroke-linecap="round"/>
+      <polyline points="38,52 60,30 82,52" stroke="white" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </g>
+
+    <!-- Frosted glass -->
+    <g filter="url(#glass-blur-m)" clip-path="url(#mark-squircle)">
+      <rect x="0" y="60" width="120" height="60" fill="white" fill-opacity="0.18"/>
+    </g>
+
+    <rect width="120" height="120" rx="26" stroke="white" stroke-width="0.5" stroke-opacity="0.12" fill="none"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="240" y="240" font-family="Inter, system-ui, -apple-system, sans-serif" font-size="56" font-weight="500" letter-spacing="-1.12" fill="white">Launchfile</text>
+
+  <!-- Tagline -->
+  <text x="100" y="340" font-family="Inter, system-ui, -apple-system, sans-serif" font-size="28" font-weight="400" fill="white" fill-opacity="0.75">Describe your app. Deploy it anywhere.</text>
+
+  <!-- === Right side: Code snippet === -->
+
+  <!-- Code panel background -->
+  <g transform="translate(680, 150)">
+    <rect width="420" height="280" rx="12" fill="#26215C" fill-opacity="0.6"/>
+    <rect width="420" height="280" rx="12" stroke="#7F77DD" stroke-width="0.5" stroke-opacity="0.2" fill="none"/>
+
+    <!-- Window dots -->
+    <circle cx="24" cy="20" r="4" fill="#7F77DD" fill-opacity="0.3"/>
+    <circle cx="38" cy="20" r="4" fill="#7F77DD" fill-opacity="0.3"/>
+    <circle cx="52" cy="20" r="4" fill="#7F77DD" fill-opacity="0.3"/>
+
+    <!-- Code content -->
+    <g font-family="'SF Mono', 'Fira Code', 'JetBrains Mono', monospace" font-size="18">
+      <text x="24" y="64"><tspan fill="#AFA9EC">name:</tspan><tspan dx="6" fill="white">my-app</tspan></text>
+      <text x="24" y="94"><tspan fill="#AFA9EC">runtime:</tspan><tspan dx="6" fill="white">node</tspan></text>
+      <text x="24" y="124"><tspan fill="#AFA9EC">requires:</tspan><tspan dx="6" fill="white">[postgres]</tspan></text>
+      <text x="24" y="154"><tspan fill="#AFA9EC">commands:</tspan></text>
+      <text x="48" y="184"><tspan fill="#AFA9EC">start:</tspan><tspan dx="6" fill="#86EFAC">"node server.js"</tspan></text>
+      <text x="24" y="214"><tspan fill="#AFA9EC">health:</tspan><tspan dx="6" fill="white">/health</tspan></text>
+    </g>
+  </g>
+
+  <!-- Bottom: URL -->
+  <text x="100" y="560" font-family="Inter, system-ui, -apple-system, sans-serif" font-size="20" font-weight="400" fill="white" fill-opacity="0.5">launchfile.dev</text>
+
+  <!-- Bottom: tagline badge -->
+  <g transform="translate(840, 540)">
+    <rect width="260" height="32" rx="6" fill="white" fill-opacity="0.1"/>
+    <text x="130" y="22" text-anchor="middle" font-family="Inter, system-ui, -apple-system, sans-serif" font-size="13" font-weight="500" letter-spacing="0.5" fill="white" fill-opacity="0.6">THE DEPLOYMENT STANDARD</text>
+  </g>
+</svg>

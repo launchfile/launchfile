@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Launchfile — Style Guide</title>
+<link rel="preconnect" href="https://rsms.me/">
+<link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+<link rel="stylesheet" href="colors/palette.css">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--lf-bg);
+    color: var(--lf-text);
+    line-height: 1.6;
+  }
+
+  /* ---- Layout ---- */
+  .page { max-width: 1080px; margin: 0 auto; padding: 64px 32px; }
+  .section { margin-bottom: 80px; }
+  .section:last-child { margin-bottom: 0; }
+
+  /* ---- Typography classes ---- */
+  .hero-title {
+    font-size: 48px; font-weight: 700; letter-spacing: -0.03em;
+    line-height: 1.1; color: var(--lf-text);
+  }
+  .hero-subtitle {
+    font-size: 20px; font-weight: 400; color: var(--lf-text-secondary);
+    margin-top: 12px;
+  }
+  .section-label {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--lf-primary-light);
+    margin-bottom: 8px;
+  }
+  .section-title {
+    font-size: 28px; font-weight: 600; letter-spacing: -0.02em;
+    color: var(--lf-text); margin-bottom: 24px;
+  }
+  .subsection-title {
+    font-size: 16px; font-weight: 600; color: var(--lf-text);
+    margin-bottom: 16px; margin-top: 40px;
+  }
+  .body-text {
+    font-size: 15px; color: var(--lf-text-secondary); line-height: 1.7;
+    max-width: 640px;
+  }
+  .caption {
+    font-size: 12px; color: var(--lf-text-secondary); margin-top: 6px;
+  }
+  .code {
+    font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+    font-size: 13px; background: var(--lf-bg-alt); border: 1px solid var(--lf-border);
+    padding: 2px 6px; border-radius: 4px;
+  }
+
+  /* ---- Divider ---- */
+  hr {
+    border: none; border-top: 1px solid var(--lf-border);
+    margin: 64px 0;
+  }
+
+  /* ---- Header ---- */
+  .header {
+    display: flex; align-items: center; gap: 20px;
+    padding-bottom: 48px; border-bottom: 1px solid var(--lf-border);
+    margin-bottom: 64px;
+  }
+  .header img { width: 56px; height: 56px; }
+  .header-text { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }
+  .header-sub { font-size: 14px; color: var(--lf-text-secondary); margin-top: 2px; }
+
+  /* ---- Color grid ---- */
+  .color-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 16px;
+  }
+  .color-card {
+    border-radius: 12px; overflow: hidden;
+    border: 1px solid var(--lf-border);
+  }
+  .color-swatch {
+    height: 80px; display: flex; align-items: flex-end;
+    padding: 8px 12px;
+  }
+  .color-swatch span {
+    font-size: 11px; font-weight: 500; opacity: 0.8;
+  }
+  .color-info {
+    padding: 10px 12px; background: var(--lf-bg);
+  }
+  .color-name { font-size: 13px; font-weight: 600; }
+  .color-hex { font-size: 12px; color: var(--lf-text-secondary); font-family: monospace; }
+  .color-usage { font-size: 11px; color: var(--lf-text-secondary); margin-top: 2px; }
+
+  /* ---- Type specimens ---- */
+  .type-specimen {
+    padding: 24px 0; border-bottom: 1px solid var(--lf-border);
+    display: grid; grid-template-columns: 1fr 200px; gap: 24px; align-items: baseline;
+  }
+  .type-specimen:last-child { border-bottom: none; }
+  .type-meta { font-size: 12px; color: var(--lf-text-secondary); text-align: right; }
+  .type-meta span { display: block; }
+
+  /* ---- Logo showcase ---- */
+  .logo-grid {
+    display: flex; gap: 24px; align-items: end; flex-wrap: wrap;
+  }
+  .logo-item { text-align: center; }
+  .logo-bg-dark {
+    background: var(--lf-ink); padding: 24px; border-radius: 12px;
+  }
+  .logo-bg-light {
+    background: var(--lf-bg); padding: 24px; border-radius: 12px;
+    border: 1px solid var(--lf-border);
+  }
+
+  /* Shadow applied via CSS — raw SVGs have no baked-in shadow */
+  .logo-shadow {
+    filter: drop-shadow(0px 2px 4px rgba(16, 24, 40, 0.08))
+            drop-shadow(0px 4px 12px rgba(16, 24, 40, 0.1));
+  }
+  .logo-shadow-dark {
+    filter: drop-shadow(0px 2px 4px rgba(0, 0, 0, 0.2))
+            drop-shadow(0px 4px 12px rgba(0, 0, 0, 0.15));
+  }
+
+  /* ---- Spacing scale ---- */
+  .spacing-row {
+    display: flex; align-items: center; gap: 16px;
+    padding: 8px 0;
+  }
+  .spacing-bar {
+    height: 8px; background: var(--lf-primary-light); border-radius: 4px;
+    transition: width 0.3s;
+  }
+  .spacing-label {
+    font-size: 12px; color: var(--lf-text-secondary); font-family: monospace;
+    width: 60px; flex-shrink: 0; text-align: right;
+  }
+  .spacing-value {
+    font-size: 12px; color: var(--lf-text-secondary); font-family: monospace;
+    width: 40px; flex-shrink: 0;
+  }
+
+  /* ---- Radius specimens ---- */
+  .radius-grid {
+    display: flex; gap: 20px; align-items: end; flex-wrap: wrap;
+  }
+  .radius-box {
+    width: 80px; height: 80px; background: var(--lf-primary-bg);
+    border: 2px solid var(--lf-primary-border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; color: var(--lf-text-secondary); font-family: monospace;
+  }
+
+  /* ---- Shadows ---- */
+  .shadow-grid {
+    display: flex; gap: 24px; flex-wrap: wrap;
+  }
+  .shadow-card {
+    width: 120px; height: 80px; background: var(--lf-bg);
+    border-radius: 12px; display: flex; align-items: center;
+    justify-content: center; font-size: 11px; color: var(--lf-text-secondary);
+    font-family: monospace;
+  }
+
+  /* ---- Button specimens ---- */
+  .button-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 10px 20px; border-radius: 8px; font-size: 14px;
+    font-weight: 500; border: none; cursor: pointer;
+    font-family: inherit; transition: all 0.15s;
+    text-decoration: none;
+  }
+  .btn-primary { background: var(--lf-primary); color: white; }
+  .btn-primary:hover { background: var(--lf-primary-dark); }
+  .btn-secondary {
+    background: var(--lf-bg); color: var(--lf-text);
+    border: 1px solid var(--lf-border);
+  }
+  .btn-secondary:hover { background: var(--lf-bg-alt); }
+  .btn-ghost { background: transparent; color: var(--lf-primary-light); }
+  .btn-ghost:hover { background: var(--lf-primary-bg); }
+  .btn-sm { padding: 6px 14px; font-size: 13px; }
+  .btn-lg { padding: 14px 28px; font-size: 16px; }
+
+  /* ---- Badge specimens ---- */
+  .badge {
+    display: inline-flex; align-items: center; padding: 3px 10px;
+    border-radius: 6px; font-size: 12px; font-weight: 500;
+    border: 1px solid transparent;
+  }
+  .badge-primary { background: var(--lf-primary-bg); color: var(--lf-primary-light); border-color: rgba(83, 74, 183, 0.2); }
+  .badge-success { background: #ECFDF5; color: var(--lf-success); border-color: rgba(5, 150, 105, 0.2); }
+  .badge-warning { background: #FFFBEB; color: var(--lf-warning); border-color: rgba(217, 119, 6, 0.2); }
+  .badge-error { background: #FEF2F2; color: var(--lf-error); border-color: rgba(220, 38, 38, 0.2); }
+  .badge-neutral { background: var(--lf-bg-alt); color: var(--lf-text-secondary); border-color: rgba(68, 68, 65, 0.15); }
+
+  /* ---- Input specimens ---- */
+  .input-demo { display: flex; flex-direction: column; gap: 16px; max-width: 360px; }
+  .input {
+    padding: 10px 14px; border: 1px solid var(--lf-border); border-radius: 8px;
+    font-size: 14px; font-family: inherit; background: var(--lf-bg);
+    color: var(--lf-text); outline: none; transition: border-color 0.15s;
+  }
+  .input:focus { border-color: var(--lf-primary-light); box-shadow: 0 0 0 3px var(--lf-primary-bg); }
+  .input::placeholder { color: var(--lf-text-secondary); }
+  .input-label { font-size: 14px; font-weight: 500; color: var(--lf-text); }
+  .input-hint { font-size: 13px; color: var(--lf-text-secondary); margin-top: -8px; }
+
+  /* ---- Code block ---- */
+  .code-block {
+    background: var(--lf-ink); color: #E5E7EB; padding: 20px 24px;
+    border-radius: 12px; font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 14px; line-height: 1.7; overflow-x: auto;
+    white-space: pre;
+  }
+  .code-block .kw { color: var(--lf-primary-accent); }
+  .code-block .str { color: #86EFAC; }
+  .code-block .cmt { color: #6B7280; }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- ============================================================ -->
+  <!-- HEADER                                                        -->
+  <!-- ============================================================ -->
+  <div class="header">
+    <img src="logo/mark-simple.svg" alt="Launchfile">
+    <div>
+      <div class="header-text">Launchfile Style Guide</div>
+      <div class="header-sub">Brand guidelines, design tokens, and component specimens</div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- BRAND ATTRIBUTES                                              -->
+  <!-- ============================================================ -->
+  <div class="section">
+    <div class="section-label">Brand</div>
+    <div class="section-title">Brand Attributes</div>
+    <p class="body-text" style="margin-bottom: 16px; font-size: 16px; color: var(--lf-text);">
+      <strong>Launchfile</strong> is an open standard for describing application deployment requirements — a single file that declares what an app needs to run, so any platform can deploy it.
+    </p>
+    <p class="body-text">
+      Launchfile is an open deployment standard. The brand should feel
+      <strong>precise</strong>, <strong>confident</strong>, and
+      <strong>engineered</strong> — like infrastructure that just works.
+      It's an open standard that should feel inevitable, like it should
+      have always existed.
+    </p>
+    <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 24px;">
+      <span class="badge badge-primary">Precise</span>
+      <span class="badge badge-primary">Confident</span>
+      <span class="badge badge-primary">Engineered</span>
+      <span class="badge badge-primary">Actionable</span>
+      <span class="badge badge-primary">Infrastructure</span>
+      <span class="badge badge-primary">Open Standard</span>
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- ============================================================ -->
+  <!-- COLORS                                                        -->
+  <!-- ============================================================ -->
+  <div class="section">
+    <div class="section-label">Colors</div>
+    <div class="section-title">Primary — Purple Ramp</div>
+    <p class="body-text" style="margin-bottom: 24px;">
+      Purple differentiates from the sea of blue DevOps tools (Docker, K8s, Terraform, GitHub Actions) while connecting to the CogZero brand family.
+    </p>
+
+    <div class="color-grid">
+      <div class="color-card">
+        <div class="color-swatch" style="background: #26215C;"><span style="color:white;">900</span></div>
+        <div class="color-info">
+          <div class="color-name">Purple 900</div>
+          <div class="color-hex">#26215C</div>
+          <div class="color-usage">Deep bg, darkest text</div>
+        </div>
+      </div>
+      <div class="color-card">
+        <div class="color-swatch" style="background: #3C3489;"><span style="color:white;">800</span></div>
+        <div class="color-info">
+          <div class="color-name">Purple 800</div>
+          <div class="color-hex">#3C3489</div>
+          <div class="color-usage">Primary, icon bg</div>
+        </div>
+      </div>
+      <div class="color-card">
+        <div class="color-swatch" style="background: #534AB7;"><span style="color:white;">600</span></div>
+        <div class="color-info">
+          <div class="color-name">Purple 600</div>
+          <div class="color-hex">#534AB7</div>
+          <div class="color-usage">Grid lines, secondary</div>
+        </div>
+      </div>
+      <div class="color-card">
+        <div class="color-swatch" style="background: #7F77DD;"><span style="color:white;">400</span></div>
+        <div class="color-info">
+          <div class="color-name">Purple 400</div>
+          <div class="color-hex">#7F77DD</div>
+          <div class="color-usage">Glow, mid-tone</div>
+        </div>
+      </div>
+      <div class="color-card">
+        <div class="color-swatch" style="background: #AFA9EC;"><span style="color:#26215C;">200</span></div>
+        <div class="color-info">
+          <div class="color-name">Purple 200</div>
+          <div class="color-hex">#AFA9EC</div>
+          <div class="color-usage">Light accents</div>
+        </div>
+      </div>
+      <div class="color-card">
+        <div class="color-swatch" style="background: #CECBF6;"><span style="color:#26215C;">100</span></div>
+        <div class="color-info">
+          <div class="color-name">Purple 100</div>
+          <div class="color-hex">#CECBF6</div>
+          <div class="color-usage">Borders</div>
+        </div>
+      </div>
+      <div class="color-card">
+        <div class="color-swatch" style="background: #EEEDFE;"><span style="color:#26215C;">50</span></div>
+        <div class="color-info">
+          <div class="color-name">Purple 50</div>
+          <div class="color-hex">#EEEDFE</div>
+          <div class="color-usage">Light bg, hover</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subsection-title">Neutrals</div>
+    <div class="color-grid">
+      <div class="color-card">
+        <div class="color-swatch" style="background: #111111;"><span style="color:white;">ink</span></div>
+        <div class="color-info">
+          <div class="color-name">Ink</div>
+          <div class="color-hex">#111111</div>
+          <div class="color-usage">Body text, dark UI</div>
+        </div>
+      </div>
+      <div class="color-card">
+        <div class="color-swatch" style="background: #2C2C2A;"><span style="color:white;">charcoal</span></div>
+        <div class="color-info">
+          <div class="color-name">Charcoal</div>
+          <div class="color-hex">#2C2C2A</div>
+          <div class="color-usage">Secondary text</div>
+        </div>
+      </div>
+      <div class="color-card">
+        <div class="color-swatch" style="background: #444441;"><span style="color:white;">slate</span></div>
+        <div class="color-info">
+          <div class="color-name">Slate</div>
+          <div class="color-hex">#444441</div>
+          <div class="color-usage">Muted text, labels</div>
+        </div>
+      </div>
+      <div class="color-card">
+        <div class="color-swatch" style="background: #F5F4F0;"><span style="color:#444441;">paper</span></div>
+        <div class="color-info">
+          <div class="color-name">Paper</div>
+          <div class="color-hex">#F5F4F0</div>
+          <div class="color-usage">Alt backgrounds</div>
+        </div>
+      </div>
+      <div class="color-card">
+        <div class="color-swatch" style="background: #FAFAF8; border-bottom: 1px solid #E5E5E5;"><span style="color:#444441;">white</span></div>
+        <div class="color-info">
+          <div class="color-name">White</div>
+          <div class="color-hex">#FAFAF8</div>
+          <div class="color-usage">Primary bg</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subsection-title">Semantic</div>
+    <div class="color-grid">
+      <div class="color-card">
+        <div class="color-swatch" style="background: #059669;"><span style="color:white;">success</span></div>
+        <div class="color-info">
+          <div class="color-name">Success</div>
+          <div class="color-hex">#059669</div>
+        </div>
+      </div>
+      <div class="color-card">
+        <div class="color-swatch" style="background: #D97706;"><span style="color:white;">warning</span></div>
+        <div class="color-info">
+          <div class="color-name">Warning</div>
+          <div class="color-hex">#D97706</div>
+        </div>
+      </div>
+      <div class="color-card">
+        <div class="color-swatch" style="background: #DC2626;"><span style="color:white;">error</span></div>
+        <div class="color-info">
+          <div class="color-name">Error</div>
+          <div class="color-hex">#DC2626</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- ============================================================ -->
+  <!-- TYPOGRAPHY                                                    -->
+  <!-- ============================================================ -->
+  <div class="section">
+    <div class="section-label">Typography</div>
+    <div class="section-title">Type Scale</div>
+
+    <div class="type-specimen">
+      <div style="font-size: 48px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1;">
+        Describe your app
+      </div>
+      <div class="type-meta">
+        <span>Hero / H1</span>
+        <span>48px / 700</span>
+        <span>-0.03em</span>
+      </div>
+    </div>
+
+    <div class="type-specimen">
+      <div style="font-size: 32px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2;">
+        Deploy it anywhere
+      </div>
+      <div class="type-meta">
+        <span>H2</span>
+        <span>32px / 600</span>
+        <span>-0.02em</span>
+      </div>
+    </div>
+
+    <div class="type-specimen">
+      <div style="font-size: 24px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.3;">
+        The deployment standard
+      </div>
+      <div class="type-meta">
+        <span>H3</span>
+        <span>24px / 600</span>
+        <span>-0.01em</span>
+      </div>
+    </div>
+
+    <div class="type-specimen">
+      <div style="font-size: 18px; font-weight: 500; line-height: 1.5;">
+        Platform-agnostic, human-writable, machine-parseable
+      </div>
+      <div class="type-meta">
+        <span>H4 / Lead</span>
+        <span>18px / 500</span>
+        <span>normal</span>
+      </div>
+    </div>
+
+    <div class="type-specimen">
+      <div style="font-size: 15px; line-height: 1.7; color: var(--lf-text-secondary);">
+        A Launchfile is a simple YAML file that declares what your application needs to run — its components, services, environment, and health checks.
+      </div>
+      <div class="type-meta">
+        <span>Body</span>
+        <span>15px / 400</span>
+        <span>1.7 line-height</span>
+      </div>
+    </div>
+
+    <div class="type-specimen">
+      <div style="font-size: 13px; line-height: 1.5; color: var(--lf-text-secondary);">
+        All brand assets are MIT licensed.
+      </div>
+      <div class="type-meta">
+        <span>Small / Caption</span>
+        <span>13px / 400</span>
+      </div>
+    </div>
+
+    <div class="type-specimen">
+      <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--lf-primary-light);">
+        SECTION LABEL
+      </div>
+      <div class="type-meta">
+        <span>Overline</span>
+        <span>11px / 600</span>
+        <span>0.1em / uppercase</span>
+      </div>
+    </div>
+
+    <div class="subsection-title">Wordmark Treatments</div>
+    <div style="display: flex; flex-direction: column; gap: 20px; padding: 24px 0;">
+      <div>
+        <div style="font-size: 32px; font-weight: 500; letter-spacing: -0.02em;">Launchfile</div>
+        <div class="caption">Sans-serif wordmark — Inter Medium, -0.02em tracking</div>
+      </div>
+      <div>
+        <div style="font-size: 32px; font-family: 'SF Mono', 'Fira Code', monospace; font-weight: 400;">Launchfile</div>
+        <div class="caption">Code context — monospace, regular weight</div>
+      </div>
+      <div>
+        <div style="font-size: 14px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--lf-text-secondary);">LAUNCHFILE</div>
+        <div class="caption">Label/micro — uppercase, tracked, semibold</div>
+      </div>
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- ============================================================ -->
+  <!-- LOGO                                                          -->
+  <!-- ============================================================ -->
+  <div class="section">
+    <div class="section-label">Logo</div>
+    <div class="section-title">Logo Variants</div>
+
+    <p class="body-text" style="margin-bottom: 16px;">
+      Raw SVGs contain no shadow. Apply shadow via CSS <code class="code">filter: drop-shadow()</code> which extends naturally beyond the element.
+    </p>
+
+    <div style="font-size: 13px; line-height: 1.8; margin-bottom: 32px;">
+      <table style="border-collapse: collapse; max-width: 640px;">
+        <thead>
+          <tr style="border-bottom: 1px solid var(--lf-border); text-align: left;">
+            <th style="padding: 6px 12px 6px 0; font-weight: 600;">File</th>
+            <th style="padding: 6px 12px; font-weight: 600;">What</th>
+            <th style="padding: 6px 12px; font-weight: 600;">Use at</th>
+          </tr>
+        </thead>
+        <tbody style="color: var(--lf-text-secondary);">
+          <tr style="border-bottom: 1px solid var(--lf-bg-alt);">
+            <td style="padding: 6px 12px 6px 0;"><strong style="color: var(--lf-text);">mark.svg</strong> <span style="font-size:11px; color:var(--lf-primary-light);">DEFAULT</span></td>
+            <td style="padding: 6px 12px;">Full detail — grid, circles, diagonals, glass</td>
+            <td style="padding: 6px 12px;">48px and up</td>
+          </tr>
+          <tr style="border-bottom: 1px solid var(--lf-bg-alt);">
+            <td style="padding: 6px 12px 6px 0;"><strong style="color: var(--lf-text);">mark-simple.svg</strong></td>
+            <td style="padding: 6px 12px;">Simplified — fewer grid lines, no circles/diagonals</td>
+            <td style="padding: 6px 12px;">28–48px, fixed-size rasters</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 12px 6px 0;"><strong style="color: var(--lf-text);">favicon.svg</strong></td>
+            <td style="padding: 6px 12px;">Arrow silhouette on solid purple, no grid</td>
+            <td style="padding: 6px 12px;">16px, browser tab</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="subsection-title">Primary (mark.svg — default)</div>
+    <div class="logo-grid">
+      <div class="logo-item">
+        <img src="logo/mark.svg" class="logo-shadow" style="width: 160px; height: 160px;" alt="Primary 160px">
+        <div class="caption">160px</div>
+      </div>
+      <div class="logo-item">
+        <img src="logo/mark.svg" class="logo-shadow" style="width: 80px; height: 80px;" alt="Primary 80px">
+        <div class="caption">80px</div>
+      </div>
+      <div class="logo-item">
+        <img src="logo/mark-simple.svg" class="logo-shadow" style="width: 48px; height: 48px;" alt="Mark 48px">
+        <div class="caption">48px</div>
+      </div>
+      <div class="logo-item">
+        <img src="logo/mark-simple.svg" class="logo-shadow" style="width: 28px; height: 28px;" alt="Mark 28px">
+        <div class="caption">28px</div>
+      </div>
+      <div class="logo-item">
+        <img src="logo/favicon.svg" style="width: 16px; height: 16px;" alt="Favicon 16px">
+        <div class="caption">16px</div>
+      </div>
+    </div>
+
+    <div class="subsection-title">Light</div>
+    <div class="logo-bg-light">
+      <div class="logo-grid">
+        <div class="logo-item">
+          <img src="logo/mark-light.svg" class="logo-shadow" style="width: 80px; height: 80px;" alt="Light 80px">
+          <div class="caption">80px</div>
+        </div>
+        <div class="logo-item">
+          <img src="logo/mark-light.svg" class="logo-shadow" style="width: 48px; height: 48px;" alt="Light 48px">
+          <div class="caption">48px</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subsection-title">Dark</div>
+    <div class="logo-bg-dark">
+      <div class="logo-grid">
+        <div class="logo-item">
+          <img src="logo/mark-dark.svg" class="logo-shadow-dark" style="width: 80px; height: 80px;" alt="Dark 80px">
+          <div class="caption" style="color: #999;">80px</div>
+        </div>
+        <div class="logo-item">
+          <img src="logo/mark-dark.svg" class="logo-shadow-dark" style="width: 48px; height: 48px;" alt="Dark 48px">
+          <div class="caption" style="color: #999;">48px</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subsection-title">Lockups</div>
+    <div style="display: flex; flex-direction: column; gap: 32px; padding: 24px 0;">
+      <div style="display: flex; align-items: center; gap: 14px;">
+        <img src="logo/mark-simple.svg" class="logo-shadow" style="width: 40px; height: 40px;" alt="">
+        <span style="font-size: 28px; font-weight: 500; letter-spacing: -0.02em;">Launchfile</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <img src="logo/mark-simple.svg" class="logo-shadow" style="width: 28px; height: 28px;" alt="">
+        <div>
+          <div style="font-size: 18px; font-weight: 500; letter-spacing: -0.02em;">Launchfile</div>
+          <div style="font-size: 12px; color: var(--lf-text-secondary);">the deployment standard</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subsection-title">Asset Types</div>
+    <div style="font-size: 13px; line-height: 1.8;">
+      <table style="width: 100%; border-collapse: collapse; max-width: 640px;">
+        <thead>
+          <tr style="border-bottom: 1px solid var(--lf-border); text-align: left;">
+            <th style="padding: 8px 12px 8px 0; font-weight: 600;">Type</th>
+            <th style="padding: 8px 12px; font-weight: 600;">Shadow</th>
+            <th style="padding: 8px 12px; font-weight: 600;">Use for</th>
+          </tr>
+        </thead>
+        <tbody style="color: var(--lf-text-secondary);">
+          <tr style="border-bottom: 1px solid var(--lf-bg-alt);">
+            <td style="padding: 8px 12px 8px 0;"><strong style="color: var(--lf-text);">Raw SVG</strong><br><code class="code">logo/*.svg</code></td>
+            <td style="padding: 8px 12px;">None — add via CSS</td>
+            <td style="padding: 8px 12px;">Websites, apps, UI</td>
+          </tr>
+          <tr style="border-bottom: 1px solid var(--lf-bg-alt);">
+            <td style="padding: 8px 12px 8px 0;"><strong style="color: var(--lf-text);">Display</strong><br><code class="code">display/*.svg</code></td>
+            <td style="padding: 8px 12px;">Baked in</td>
+            <td style="padding: 8px 12px;">README, social cards, marketing</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 12px 8px 0;"><strong style="color: var(--lf-text);">Favicon</strong><br><code class="code">favicon.svg</code></td>
+            <td style="padding: 8px 12px;">None</td>
+            <td style="padding: 8px 12px;">Browser tab, 16px</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- ============================================================ -->
+  <!-- SPACING                                                       -->
+  <!-- ============================================================ -->
+  <div class="section">
+    <div class="section-label">Spacing</div>
+    <div class="section-title">Spacing Scale</div>
+    <p class="body-text" style="margin-bottom: 24px;">
+      Standard 4px base unit. Tailwind numeric scale.
+    </p>
+
+    <div style="display: flex; flex-direction: column; gap: 4px;">
+      <div class="spacing-row"><div class="spacing-label">4px</div><div class="spacing-bar" style="width: 4px;"></div><div class="spacing-value">1</div></div>
+      <div class="spacing-row"><div class="spacing-label">8px</div><div class="spacing-bar" style="width: 8px;"></div><div class="spacing-value">2</div></div>
+      <div class="spacing-row"><div class="spacing-label">12px</div><div class="spacing-bar" style="width: 12px;"></div><div class="spacing-value">3</div></div>
+      <div class="spacing-row"><div class="spacing-label">16px</div><div class="spacing-bar" style="width: 16px;"></div><div class="spacing-value">4</div></div>
+      <div class="spacing-row"><div class="spacing-label">20px</div><div class="spacing-bar" style="width: 20px;"></div><div class="spacing-value">5</div></div>
+      <div class="spacing-row"><div class="spacing-label">24px</div><div class="spacing-bar" style="width: 24px;"></div><div class="spacing-value">6</div></div>
+      <div class="spacing-row"><div class="spacing-label">32px</div><div class="spacing-bar" style="width: 32px;"></div><div class="spacing-value">8</div></div>
+      <div class="spacing-row"><div class="spacing-label">48px</div><div class="spacing-bar" style="width: 48px;"></div><div class="spacing-value">12</div></div>
+      <div class="spacing-row"><div class="spacing-label">64px</div><div class="spacing-bar" style="width: 64px;"></div><div class="spacing-value">16</div></div>
+      <div class="spacing-row"><div class="spacing-label">80px</div><div class="spacing-bar" style="width: 80px;"></div><div class="spacing-value">20</div></div>
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- ============================================================ -->
+  <!-- RADII                                                         -->
+  <!-- ============================================================ -->
+  <div class="section">
+    <div class="section-label">Shape</div>
+    <div class="section-title">Border Radius</div>
+
+    <div class="radius-grid">
+      <div class="logo-item">
+        <div class="radius-box" style="border-radius: 4px;">4px</div>
+        <div class="caption">sm</div>
+      </div>
+      <div class="logo-item">
+        <div class="radius-box" style="border-radius: 8px;">8px</div>
+        <div class="caption">md</div>
+      </div>
+      <div class="logo-item">
+        <div class="radius-box" style="border-radius: 12px;">12px</div>
+        <div class="caption">lg</div>
+      </div>
+      <div class="logo-item">
+        <div class="radius-box" style="border-radius: 16px;">16px</div>
+        <div class="caption">xl</div>
+      </div>
+      <div class="logo-item">
+        <div class="radius-box" style="border-radius: 100px;">full</div>
+        <div class="caption">full</div>
+      </div>
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- ============================================================ -->
+  <!-- SHADOWS                                                       -->
+  <!-- ============================================================ -->
+  <div class="section">
+    <div class="section-label">Elevation</div>
+    <div class="section-title">Shadows</div>
+
+    <div class="shadow-grid">
+      <div class="logo-item">
+        <div class="shadow-card" style="box-shadow: 0 1px 2px rgba(0,0,0,0.05);">sm</div>
+        <div class="caption">Subtle</div>
+      </div>
+      <div class="logo-item">
+        <div class="shadow-card" style="box-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);">md</div>
+        <div class="caption">Default</div>
+      </div>
+      <div class="logo-item">
+        <div class="shadow-card" style="box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);">lg</div>
+        <div class="caption">Elevated</div>
+      </div>
+      <div class="logo-item">
+        <div class="shadow-card" style="box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);">xl</div>
+        <div class="caption">Overlay</div>
+      </div>
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- ============================================================ -->
+  <!-- COMPONENTS                                                    -->
+  <!-- ============================================================ -->
+  <div class="section">
+    <div class="section-label">Components</div>
+    <div class="section-title">Buttons</div>
+
+    <div class="subsection-title">Variants</div>
+    <div class="button-row">
+      <button class="btn btn-primary">Primary</button>
+      <button class="btn btn-secondary">Secondary</button>
+      <button class="btn btn-ghost">Ghost</button>
+    </div>
+
+    <div class="subsection-title">Sizes</div>
+    <div class="button-row">
+      <button class="btn btn-primary btn-sm">Small</button>
+      <button class="btn btn-primary">Default</button>
+      <button class="btn btn-primary btn-lg">Large</button>
+    </div>
+
+    <div class="subsection-title">Badges</div>
+    <div class="button-row">
+      <span class="badge badge-primary">Launchfile v1</span>
+      <span class="badge badge-success">Running</span>
+      <span class="badge badge-warning">Pending</span>
+      <span class="badge badge-error">Failed</span>
+      <span class="badge badge-neutral">Draft</span>
+    </div>
+
+    <div class="subsection-title">Inputs</div>
+    <div class="input-demo">
+      <div>
+        <div class="input-label">GitHub URL</div>
+        <input class="input" type="text" placeholder="https://github.com/org/repo" style="width: 100%; margin-top: 6px;">
+      </div>
+      <div>
+        <div class="input-label">App Name</div>
+        <input class="input" type="text" value="my-app" style="width: 100%; margin-top: 6px;">
+        <div class="input-hint">Kebab-case, used as subdomain</div>
+      </div>
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- ============================================================ -->
+  <!-- BADGES                                                        -->
+  <!-- ============================================================ -->
+  <div class="section">
+    <div class="section-label">Badges</div>
+    <div class="section-title">README Badges</div>
+    <p class="body-text" style="margin-bottom: 24px;">
+      Shields-style badges for repos and platforms. Left side is always
+      Launchfile purple (<code class="code">#3C3489</code>). Right side
+      indicates status.
+    </p>
+
+    <div class="subsection-title">For App Repos</div>
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+      <div style="display: flex; align-items: center; gap: 16px;">
+        <img src="badges/launchfile-ready.svg" alt="Launchfile ready">
+        <span style="font-size: 13px; color: var(--lf-text-secondary);">Repo has a valid Launchfile — add to your README</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 16px;">
+        <img src="badges/launchfile-v1.svg" alt="Launchfile v1">
+        <span style="font-size: 13px; color: var(--lf-text-secondary);">Specifies the version</span>
+      </div>
+    </div>
+
+    <div class="subsection-title">For Catalog Apps</div>
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+      <div style="display: flex; align-items: center; gap: 16px;">
+        <img src="badges/launchfile-tested.svg" alt="Launchfile tested">
+        <span style="font-size: 13px; color: var(--lf-text-secondary);">Verified to launch successfully</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 16px;">
+        <img src="badges/launchfile-proposed.svg" alt="Launchfile proposed">
+        <span style="font-size: 13px; color: var(--lf-text-secondary);">Draft Launchfile, not yet verified</span>
+      </div>
+    </div>
+
+    <div class="subsection-title">For Platforms & Tools</div>
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+      <div style="display: flex; align-items: center; gap: 16px;">
+        <img src="badges/launchfile-supported.svg" alt="Launchfile supported">
+        <span style="font-size: 13px; color: var(--lf-text-secondary);">Platform can deploy from a Launchfile</span>
+      </div>
+    </div>
+
+    <div class="subsection-title">Usage</div>
+    <div class="code-block" style="font-size: 12px;">
+<span class="cmt">&lt;!-- Markdown --&gt;</span>
+[![Launchfile ready](https://launchfile.dev/badges/launchfile-ready.svg)](https://launchfile.dev)
+
+<span class="cmt">&lt;!-- HTML --&gt;</span>
+&lt;a href="https://launchfile.dev"&gt;
+  &lt;img src="https://launchfile.dev/badges/launchfile-ready.svg" alt="Launchfile ready"&gt;
+&lt;/a&gt;
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- ============================================================ -->
+  <!-- CODE                                                          -->
+  <!-- ============================================================ -->
+  <div class="section">
+    <div class="section-label">Code</div>
+    <div class="section-title">Code Blocks</div>
+
+    <div class="code-block">
+<span class="cmt"># yaml-language-server: $schema=https://launchfile.dev/schema/v1</span>
+<span class="kw">version</span>: launch/v1
+<span class="kw">name</span>: my-app
+<span class="kw">runtime</span>: node
+<span class="kw">requires</span>: [postgres]
+<span class="kw">commands</span>:
+  <span class="kw">start</span>: <span class="str">"node server.js"</span>
+<span class="kw">health</span>: /health
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- ============================================================ -->
+  <!-- CSS TOKENS                                                    -->
+  <!-- ============================================================ -->
+  <div class="section">
+    <div class="section-label">Tokens</div>
+    <div class="section-title">CSS Custom Properties</div>
+    <p class="body-text" style="margin-bottom: 16px;">
+      Import <span class="code">colors/palette.css</span> to use all tokens.
+    </p>
+
+    <div class="code-block" style="font-size: 13px;">
+<span class="cmt">/* Primary */</span>
+--lf-primary: <span class="str">#3C3489</span>;
+--lf-primary-dark: <span class="str">#26215C</span>;
+--lf-primary-light: <span class="str">#534AB7</span>;
+--lf-primary-glow: <span class="str">#7F77DD</span>;
+--lf-primary-bg: <span class="str">#EEEDFE</span>;
+
+<span class="cmt">/* Neutrals */</span>
+--lf-text: <span class="str">#111111</span>;
+--lf-text-secondary: <span class="str">#444441</span>;
+--lf-bg: <span class="str">#FAFAF8</span>;
+--lf-bg-alt: <span class="str">#F5F4F0</span>;
+--lf-border: <span class="str">#CECBF6</span>;
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

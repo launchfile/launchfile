@@ -1,0 +1,61 @@
+<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg-m" x1="24" y1="0" x2="24" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4A3FA0"/>
+      <stop offset="0.4" stop-color="#3C3489"/>
+      <stop offset="1" stop-color="#302A6E"/>
+    </linearGradient>
+    <linearGradient id="arrow-m" x1="17" y1="34" x2="31" y2="12" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="rgba(255,255,255,0.82)"/>
+      <stop offset="1" stop-color="#FFFFFF"/>
+    </linearGradient>
+    <radialGradient id="glow-m" cx="24" cy="19" r="17" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7F77DD" stop-opacity="0.45"/>
+      <stop offset="0.6" stop-color="#7F77DD" stop-opacity="0.1"/>
+      <stop offset="1" stop-color="#7F77DD" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="as-m" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0.5" stdDeviation="0.5" flood-color="#101828" flood-opacity="0.08"/>
+      <feDropShadow dx="0" dy="0.5" stdDeviation="1" flood-color="#101828" flood-opacity="0.1"/>
+    </filter>
+    <filter id="glass-m" x="-5%" y="-5%" width="110%" height="110%" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feGaussianBlur in="BackgroundImage" stdDeviation="2"/>
+      <feComposite in2="SourceAlpha" operator="in" result="effect1_backgroundBlur"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_backgroundBlur" result="shape"/>
+    </filter>
+    <clipPath id="sq-m">
+      <rect width="48" height="48" rx="11"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background — no clip-path, grid bleeds past corners -->
+  <rect width="48" height="48" rx="11" fill="url(#bg-m)"/>
+  <rect width="48" height="48" rx="11" fill="url(#glow-m)"/>
+
+  <!-- Grid — bleeds past rounded corners -->
+  <g opacity="0.25" stroke="#7F77DD" stroke-width="0.5">
+    <line x1="12" y1="0" x2="12" y2="48"/>
+    <line x1="24" y1="0" x2="24" y2="48"/>
+    <line x1="36" y1="0" x2="36" y2="48"/>
+    <line x1="0" y1="12" x2="48" y2="12"/>
+    <line x1="0" y1="24" x2="48" y2="24"/>
+    <line x1="0" y1="36" x2="48" y2="36"/>
+  </g>
+
+  <circle cx="24" cy="24" r="20" stroke="#7F77DD" stroke-width="0.5" opacity="0.15" fill="none"/>
+
+  <!-- Arrow BEHIND glass -->
+  <g filter="url(#as-m)">
+    <line x1="24" y1="12" x2="24" y2="36" stroke="url(#arrow-m)" stroke-width="3" stroke-linecap="round"/>
+    <polyline points="15,21 24,12 33,21" stroke="url(#arrow-m)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </g>
+
+  <!-- Frosted glass — lower half, clipped to rounded rect -->
+  <g filter="url(#glass-m)" clip-path="url(#sq-m)">
+    <rect x="0" y="24" width="48" height="24" fill="white" fill-opacity="0.2"/>
+  </g>
+
+  <!-- Border -->
+  <rect width="48" height="48" rx="11" stroke="white" stroke-width="0.3" stroke-opacity="0.12" fill="none"/>
+</svg>
