@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: immich
+description: "High-performance self-hosted photo and video management"
+
+components:
+  server:
+    image: ghcr.io/immich-app/immich-server:release
+    provides:
+      - protocol: http
+        port: 2283
+        exposed: true
+    requires:
+      - type: postgres
+        set_env:
+          DB_URL: $url
+      - type: redis
+        set_env:
+          REDIS_URL: $url
+    env:
+      IMMICH_MACHINE_LEARNING_URL:
+        default: "http://machine-learning:3003"
+        description: "URL of the machine learning service"
+    storage:
+      upload:
+        path: /usr/src/app/upload
+        persistent: true
+    health: /api/server-info/ping
+    depends_on:
+      - "machine-learning"
+    restart: always
+
+  machine-learning:
+    image: ghcr.io/immich-app/immich-machine-learning:release
+    provides:
+      - protocol: http
+        port: 3003
+    storage:
+      cache:
+        path: /cache
+        persistent: true
+    health: /ping
+    restart: always

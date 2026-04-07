@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: gitea
+description: "Lightweight self-hosted Git service"
+repository: https://github.com/go-gitea/gitea
+logo: https://raw.githubusercontent.com/go-gitea/gitea/main/assets/logo.svg
+
+image: gitea/gitea:latest
+provides:
+  - protocol: http
+    port: 3000
+    exposed: true
+  - name: ssh
+    protocol: tcp
+    port: 22
+requires:
+  - type: postgres
+    set_env:
+      GITEA__database__DB_TYPE: $host
+      GITEA__database__HOST: $host
+      GITEA__database__NAME: $name
+      GITEA__database__USER: $user
+      GITEA__database__PASSWD: $password
+env:
+  GITEA__database__DB_TYPE:
+    default: "postgres"
+storage:
+  data:
+    path: /data
+    persistent: true
+restart: always

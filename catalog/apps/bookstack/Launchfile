@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: bookstack
+description: "Simple, self-hosted, easy-to-use wiki platform"
+repository: https://github.com/BookStackApp/BookStack
+logo: https://raw.githubusercontent.com/BookStackApp/BookStack/development/public/logo.png
+
+image: lscr.io/linuxserver/bookstack:latest
+provides:
+  - protocol: http
+    port: 80
+    exposed: true
+requires:
+  - type: mysql
+    set_env:
+      DB_HOST: $host
+      DB_PORT: $port
+      DB_DATABASE: $name
+      DB_USERNAME: $user
+      DB_PASSWORD: $password
+env:
+  APP_URL:
+    required: true
+    description: "Public URL of the BookStack instance"
+  APP_KEY:
+    generator: secret
+    sensitive: true
+    description: "Application encryption key"
+storage:
+  config:
+    path: /config
+    persistent: true
+restart: always

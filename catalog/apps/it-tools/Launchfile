@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: it-tools
+description: "Collection of handy online tools for developers"
+repository: https://github.com/CorentinTh/it-tools
+logo: https://raw.githubusercontent.com/CorentinTh/it-tools/main/public/favicon-32x32.png
+
+image: corentinth/it-tools:latest
+provides:
+  - protocol: http
+    port: 80
+    exposed: true
+restart: always

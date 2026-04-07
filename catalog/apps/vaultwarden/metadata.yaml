@@ -1,0 +1,15 @@
+category: Passwords
+tagline: "Self-hosted password manager — works with all Bitwarden apps and browser extensions"
+homepage: https://github.com/dani-garcia/vaultwarden
+test_results:
+  last_tested: 2026-04-06
+  pull_time_seconds: 3
+  startup_time_seconds: 61
+  total_disk_mb: 251
+  health_check_passed: true
+  notes: ""
+images:
+  - name: vaultwarden/server:latest
+    size_mb: 251
+    platform:
+      - linux/arm64

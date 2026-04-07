@@ -1,0 +1,23 @@
+category: Documents
+tagline: "Searchable archive for physical documents"
+homepage: https://docs.paperless-ngx.com
+test_results:
+  last_tested: 2026-04-06
+  pull_time_seconds: 3
+  startup_time_seconds: 27
+  total_disk_mb: 1621
+  health_check_passed: true
+  notes: ""
+images:
+  - name: ghcr.io/paperless-ngx/paperless-ngx:latest
+    size_mb: 1322
+    platform:
+      - linux/arm64
+  - name: postgres:16-alpine
+    size_mb: 259
+    platform:
+      - linux/arm64
+  - name: redis:7-alpine
+    size_mb: 40
+    platform:
+      - linux/arm64

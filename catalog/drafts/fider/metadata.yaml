@@ -1,0 +1,19 @@
+category: Feedback
+tagline: "Open-source community feedback platform"
+homepage: https://fider.io
+test_results:
+  last_tested: 2026-04-06
+  pull_time_seconds: 3
+  startup_time_seconds: 107
+  total_disk_mb: 433
+  health_check_passed: false
+  notes: "Migration errors: column 'created_at' of relation 'logs' does not exist. Likely upstream app bug or schema incompatibility with postgres 16."
+images:
+  - name: getfider/fider:stable
+    size_mb: 174
+    platform:
+      - linux/arm64
+  - name: postgres:16-alpine
+    size_mb: 259
+    platform:
+      - linux/arm64

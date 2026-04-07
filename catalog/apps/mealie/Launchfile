@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: mealie
+description: "Self-hosted recipe manager and meal planner"
+repository: https://github.com/mealie-recipes/mealie
+logo: https://raw.githubusercontent.com/mealie-recipes/mealie/mealie-next/docs/docs/assets/img/favicon.png
+
+image: ghcr.io/mealie-recipes/mealie:latest
+provides:
+  - protocol: http
+    port: 9000
+    exposed: true
+supports:
+  - type: postgres
+    set_env:
+      DB_ENGINE: "postgres"
+      POSTGRES_URL_OVERRIDE: $url
+env:
+  ALLOW_SIGNUP:
+    default: "true"
+    description: "Allow new user registration"
+  BASE_URL:
+    required: true
+    description: "Public URL for the Mealie instance"
+  DEFAULT_EMAIL:
+    default: "changeme@example.com"
+    description: "Default admin email"
+  DEFAULT_PASSWORD:
+    generator: secret
+    sensitive: true
+    description: "Default admin password"
+storage:
+  data:
+    path: /app/data
+    persistent: true
+health: /api/app/about
+restart: always

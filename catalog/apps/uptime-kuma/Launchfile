@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: uptime-kuma
+description: "Self-hosted monitoring tool"
+repository: https://github.com/louislam/uptime-kuma
+logo: https://raw.githubusercontent.com/louislam/uptime-kuma/master/public/icon.svg
+
+image: louislam/uptime-kuma:1
+provides:
+  - protocol: http
+    port: 3001
+    exposed: true
+health: /
+storage:
+  data:
+    path: /app/data
+    persistent: true
+restart: always

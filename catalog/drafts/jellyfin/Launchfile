@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: jellyfin
+description: "Free media system for streaming movies, TV, and music"
+
+# GAP: Jellyfin benefits from GPU passthrough for hardware-accelerated
+# transcoding (VAAPI, NVENC, QSV). The launch spec has no way to express
+# device mappings (--device /dev/dri) or GPU resource requests.
+
+image: jellyfin/jellyfin:latest
+provides:
+  - protocol: http
+    port: 8096
+    exposed: true
+storage:
+  config:
+    path: /config
+    persistent: true
+  cache:
+    path: /cache
+    persistent: true
+  media:
+    path: /media
+    persistent: true
+health: /health
+restart: always

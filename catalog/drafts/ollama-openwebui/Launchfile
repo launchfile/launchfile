@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: ollama-openwebui
+description: "LLM inference server with chat UI"
+
+components:
+  ollama:
+    image: ollama/ollama:latest
+    platform: linux/amd64
+    provides:
+      - protocol: http
+        port: 11434
+    health:
+      path: /api/tags
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+    storage:
+      models:
+        path: /root/.ollama
+        persistent: true
+    restart: always
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    provides:
+      - protocol: http
+        port: 8080
+        exposed: true
+    depends_on:
+      - component: ollama
+        condition: healthy
+    env:
+      OLLAMA_BASE_URL:
+        default: $components.ollama.url
+        description: "URL of the Ollama API server"
+    storage:
+      data:
+        path: /app/backend/data
+        persistent: true
+    health: /
+    restart: always

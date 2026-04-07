@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: pihole
+description: "Network-wide ad blocking via DNS"
+
+# GAP: Pi-hole needs DNS on port 53 (both TCP and UDP). The spec can express
+# TCP via protocol: tcp but has no UDP protocol option. Pi-hole also often
+# requires host network mode or specific port bindings for DNS to function
+# correctly on the host.
+
+image: pihole/pihole:latest
+provides:
+  - name: admin
+    protocol: http
+    port: 80
+    exposed: true
+  - name: dns
+    protocol: tcp
+    port: 53
+env:
+  WEBPASSWORD:
+    generator: secret
+    sensitive: true
+    description: "Admin web interface password"
+  TZ:
+    default: "UTC"
+    description: "Timezone"
+storage:
+  pihole:
+    path: /etc/pihole
+    persistent: true
+  dnsmasq:
+    path: /etc/dnsmasq.d
+    persistent: true
+restart: always

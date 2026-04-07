@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: linkding
+description: "Self-hosted bookmark manager"
+repository: https://github.com/sissbruecker/linkding
+logo: https://raw.githubusercontent.com/sissbruecker/linkding/master/bookmarks/static/logo.svg
+
+image: sissbruecker/linkding:latest
+provides:
+  - protocol: http
+    port: 9090
+    exposed: true
+supports:
+  - type: postgres
+    set_env:
+      LD_DB_ENGINE: postgres
+      LD_DB_HOST: $host
+      LD_DB_PORT: $port
+      LD_DB_DATABASE: $name
+      LD_DB_USER: $user
+      LD_DB_PASSWORD: $password
+storage:
+  data:
+    path: /etc/linkding/data
+    persistent: true
+restart: always

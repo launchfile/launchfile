@@ -1,0 +1,19 @@
+category: RSS
+tagline: "Minimalist and opinionated feed reader"
+homepage: https://miniflux.app
+test_results:
+  last_tested: 2026-04-06
+  pull_time_seconds: 3
+  startup_time_seconds: 12
+  total_disk_mb: 290
+  health_check_passed: true
+  notes: ""
+images:
+  - name: miniflux/miniflux:latest
+    size_mb: 31
+    platform:
+      - linux/arm64
+  - name: postgres:16-alpine
+    size_mb: 259
+    platform:
+      - linux/arm64

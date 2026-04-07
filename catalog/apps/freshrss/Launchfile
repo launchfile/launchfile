@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: freshrss
+description: "Self-hosted RSS feed aggregator"
+repository: https://github.com/FreshRSS/FreshRSS
+logo: https://raw.githubusercontent.com/FreshRSS/FreshRSS/edge/docs/img/FreshRSS-logo.svg
+
+image: freshrss/freshrss:latest
+provides:
+  - protocol: http
+    port: 80
+    exposed: true
+supports:
+  - type: postgres
+    set_env:
+      DB_HOST: $host
+      DB_BASE: $name
+      DB_USER: $user
+      DB_PASSWORD: $password
+env:
+  CRON_MIN:
+    default: "1,31"
+    description: "Cron schedule for feed refresh (minutes)"
+storage:
+  data:
+    path: /var/www/FreshRSS/data
+    persistent: true
+restart: always

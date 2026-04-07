@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: flowise
+description: "Low-code LLM workflow builder"
+repository: https://github.com/FlowiseAI/Flowise
+logo: https://raw.githubusercontent.com/FlowiseAI/Flowise/main/packages/ui/src/assets/images/flowise_logo.png
+
+image: flowiseai/flowise:latest
+provides:
+  - protocol: http
+    port: 3000
+    exposed: true
+supports:
+  - type: postgres
+    set_env:
+      DATABASE_TYPE: postgres
+      DATABASE_HOST: $host
+      DATABASE_PORT: $port
+      DATABASE_NAME: $name
+      DATABASE_USER: $user
+      DATABASE_PASSWORD: $password
+env:
+  FLOWISE_USERNAME:
+    required: true
+    description: "Admin username"
+  FLOWISE_PASSWORD:
+    required: true
+    sensitive: true
+    description: "Admin password"
+  APIKEY_PATH:
+    default: /root/.flowise
+    description: "Path to store API keys"
+  LOG_LEVEL:
+    default: info
+    description: "Logging level"
+storage:
+  data:
+    path: /root/.flowise
+    persistent: true
+health: /
+restart: always

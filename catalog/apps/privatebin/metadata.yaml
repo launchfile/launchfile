@@ -1,0 +1,15 @@
+category: Pastebin
+tagline: "Minimalist zero-knowledge online pastebin"
+homepage: https://privatebin.info
+test_results:
+  last_tested: 2026-04-06
+  pull_time_seconds: 2
+  startup_time_seconds: 1
+  total_disk_mb: 117
+  health_check_passed: true
+  notes: ""
+images:
+  - name: privatebin/nginx-fpm-alpine:latest
+    size_mb: 117
+    platform:
+      - linux/arm64
