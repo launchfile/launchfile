@@ -32,9 +32,17 @@ import type {
 	Component,
 } from "./types.js";
 
+// Security: cap input size and YAML alias expansion to prevent
+// billion-laughs DoS and memory exhaustion from untrusted input.
+const MAX_YAML_SIZE = 1_048_576; // 1 MB
+const MAX_ALIAS_COUNT = 100;
+
 /** Parse and validate a YAML string into a normalized Launch object */
 export function readLaunch(yaml: string): NormalizedLaunch {
-	const raw = parse(yaml);
+	if (yaml.length > MAX_YAML_SIZE) {
+		throw new Error(`Launchfile exceeds maximum size of ${MAX_YAML_SIZE} bytes`);
+	}
+	const raw = parse(yaml, { maxAliasCount: MAX_ALIAS_COUNT });
 	const validated = LaunchSchema.parse(raw) as Launch;
 	return normalizeLaunch(validated);
 }

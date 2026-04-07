@@ -188,6 +188,11 @@ export function parseDotPath(path: string): string[] {
 	}
 	if (current) segments.push(current);
 
+	// Security: cap path depth to prevent abuse via deeply nested expressions
+	if (segments.length > 10) {
+		throw new Error(`Expression path exceeds maximum of 10 segments: "${path}"`);
+	}
+
 	return segments;
 }
 
