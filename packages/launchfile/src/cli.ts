@@ -21,7 +21,7 @@ import { handleLogs } from "./commands/logs.js";
 import { handleList } from "./commands/list.js";
 import { cmdValidate, cmdInspect, cmdSchema } from "@launchfile/sdk";
 
-const VERSION = "0.2.0";
+const VERSION = "0.1.7";
 
 const args = process.argv.slice(2);
 
