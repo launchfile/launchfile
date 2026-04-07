@@ -1,0 +1,46 @@
+name: Smoke Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version to test (default: latest)"
+        default: "latest"
+  schedule:
+    - cron: "0 8 * * 1-5" # Weekdays at 8am UTC
+  push:
+    branches: [main]
+    paths:
+      - "sdk/**"
+      - "packages/**"
+      - "smoke-tests/**"
+
+jobs:
+  smoke-npm:
+    name: "Smoke (Node ${{ matrix.node-version }})"
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: smoke-tests
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      - uses: oven-sh/setup-bun@v2
+      - name: Run smoke tests
+        run: bash smoke-tests/run.sh
+        env:
+          SMOKE_TEST_VERSION: ${{ github.event.inputs.version || 'latest' }}
+
+  smoke-websites:
+    name: "Websites"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: smoke-tests
+      - name: Website smoke tests
+        run: bash smoke-tests/run.sh --websites-only
