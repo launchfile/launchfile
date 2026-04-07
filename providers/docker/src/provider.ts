@@ -84,8 +84,9 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 	}
 
 	// 7. Write compose file
+	// Security: compose file contains passwords in environment variables
 	const composeFile = composePath(resolved.slug);
-	await writeFile(composeFile, result.yaml);
+	await writeFile(composeFile, result.yaml, { mode: 0o600 });
 	console.log(`  Wrote ${composeFile}`);
 
 	// 8. Save state

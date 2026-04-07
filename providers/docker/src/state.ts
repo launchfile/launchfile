@@ -72,10 +72,12 @@ export function initState(slug: string, appName: string, launchfileContent: stri
 
 export async function saveState(slug: string, state: DockerState): Promise<void> {
 	state.updatedAt = new Date().toISOString();
-	await mkdir(stateDir(slug), { recursive: true });
-	await writeFile(statePath(slug), JSON.stringify(state, null, 2) + "\n");
+	// Security: restrict directory/file permissions — state.json contains
+	// database passwords and generated secrets in plaintext.
+	await mkdir(stateDir(slug), { recursive: true, mode: 0o700 });
+	await writeFile(statePath(slug), JSON.stringify(state, null, 2) + "\n", { mode: 0o600 });
 }
 
 export async function ensureStateDir(slug: string): Promise<void> {
-	await mkdir(stateDir(slug), { recursive: true });
+	await mkdir(stateDir(slug), { recursive: true, mode: 0o700 });
 }
