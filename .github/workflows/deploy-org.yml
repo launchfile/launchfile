@@ -1,0 +1,32 @@
+name: Deploy launchfile.org
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "www-org/**"
+      - "www-shared/**"
+      - "brand/**"
+      - "spec/**"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+      - name: Install dependencies
+        run: cd www-org && bun install --frozen-lockfile
+      - name: Build
+        run: cd www-org && bun run build
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3.14.1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy www-org/dist --project-name=launchfile-org
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
