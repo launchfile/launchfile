@@ -1,0 +1,15 @@
+category: Monitoring
+tagline: "Self-hosted monitoring tool"
+homepage: https://uptime.kuma.pet
+test_results:
+  last_tested: 2026-04-06
+  pull_time_seconds: 3
+  startup_time_seconds: 6
+  total_disk_mb: 418
+  health_check_passed: true
+  notes: ""
+images:
+  - name: louislam/uptime-kuma:1
+    size_mb: 418
+    platform:
+      - linux/arm64

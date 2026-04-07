@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: audiobookshelf
+description: "Self-hosted audiobook and podcast server"
+repository: https://github.com/advplyr/audiobookshelf
+logo: https://raw.githubusercontent.com/advplyr/audiobookshelf/master/client/static/icon.svg
+
+image: ghcr.io/advplyr/audiobookshelf:latest
+provides:
+  - protocol: http
+    port: 80
+    exposed: true
+storage:
+  config:
+    path: /config
+    persistent: true
+  metadata:
+    path: /metadata
+    persistent: true
+  audiobooks:
+    path: /audiobooks
+    persistent: true
+  podcasts:
+    path: /podcasts
+    persistent: true
+health: /healthcheck
+restart: always

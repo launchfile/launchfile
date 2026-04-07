@@ -1,0 +1,15 @@
+category: Recipes
+tagline: "Self-hosted recipe manager and meal planner"
+homepage: https://mealie.io
+test_results:
+  last_tested: 2026-04-06
+  pull_time_seconds: 2
+  startup_time_seconds: 11
+  total_disk_mb: 1122
+  health_check_passed: true
+  notes: ""
+images:
+  - name: ghcr.io/mealie-recipes/mealie:latest
+    size_mb: 1122
+    platform:
+      - linux/arm64

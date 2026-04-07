@@ -1,0 +1,19 @@
+category: Analytics
+tagline: "Business intelligence and analytics tool"
+homepage: https://www.metabase.com
+test_results:
+  last_tested: 2026-04-06
+  pull_time_seconds: 3
+  startup_time_seconds: 42
+  total_disk_mb: 1122
+  health_check_passed: true
+  notes: ""
+images:
+  - name: metabase/metabase:latest
+    size_mb: 863
+    platform:
+      - linux/arm64
+  - name: postgres:16-alpine
+    size_mb: 259
+    platform:
+      - linux/arm64

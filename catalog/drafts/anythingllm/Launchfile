@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: anythingllm
+description: "All-in-one RAG and AI chat application"
+
+image: mintplexlabs/anythingllm:latest
+provides:
+  - protocol: http
+    port: 3001
+    exposed: true
+env:
+  STORAGE_DIR:
+    default: /app/server/storage
+    description: "Storage directory for documents and data"
+  SIG_KEY:
+    generator: secret
+    sensitive: true
+    description: "Signing key for authentication tokens"
+  SIG_SALT:
+    generator: secret
+    sensitive: true
+    description: "Salt for authentication tokens"
+  JWT_SECRET:
+    generator: secret
+    sensitive: true
+    description: "JWT signing secret"
+storage:
+  data:
+    path: /app/server/storage
+    persistent: true
+  hotdir:
+    path: /app/collector/hotdir
+    persistent: true
+health: /api/ping
+restart: always

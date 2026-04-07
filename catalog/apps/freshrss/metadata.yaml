@@ -1,0 +1,15 @@
+category: RSS
+tagline: "Self-hosted RSS feed aggregator"
+homepage: https://freshrss.org
+test_results:
+  last_tested: 2026-04-06
+  pull_time_seconds: 3
+  startup_time_seconds: 1
+  total_disk_mb: 277
+  health_check_passed: true
+  notes: ""
+images:
+  - name: freshrss/freshrss:latest
+    size_mb: 277
+    platform:
+      - linux/arm64

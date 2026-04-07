@@ -1,0 +1,19 @@
+category: Wiki
+tagline: "Simple, self-hosted, easy-to-use wiki platform"
+homepage: https://www.bookstackapp.com
+test_results:
+  last_tested: 2026-04-06
+  pull_time_seconds: 3
+  startup_time_seconds: 6
+  total_disk_mb: 1113
+  health_check_passed: true
+  notes: ""
+images:
+  - name: lscr.io/linuxserver/bookstack:latest
+    size_mb: 357
+    platform:
+      - linux/arm64
+  - name: mysql:8
+    size_mb: 756
+    platform:
+      - linux/arm64

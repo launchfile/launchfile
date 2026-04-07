@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: ghost
+description: "Professional publishing platform"
+repository: https://github.com/TryGhost/Ghost
+logo: https://raw.githubusercontent.com/TryGhost/Ghost/main/ghost/admin/public/assets/icons/ghost-orb.svg
+
+image: ghost:5-alpine
+provides:
+  - protocol: http
+    port: 2368
+    exposed: true
+requires:
+  - type: mysql
+    set_env:
+      database__connection__host: $host
+      database__connection__user: $user
+      database__connection__password: $password
+      database__connection__database: $name
+      database__connection__port: $port
+env:
+  database__client:
+    default: "mysql"
+  url:
+    required: true
+    description: "Public URL of the Ghost instance"
+storage:
+  content:
+    path: /var/lib/ghost/content
+    persistent: true
+health: /ghost/api/v4/admin/site/
+restart: always

@@ -1,0 +1,109 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: dify
+description: "AI application development platform"
+
+components:
+  api:
+    image: langgenius/dify-api:latest
+    provides:
+      - name: api
+        protocol: http
+        port: 5001
+    requires:
+      - type: postgres
+        set_env:
+          DB_HOST: $host
+          DB_PORT: $port
+          DB_USERNAME: $user
+          DB_PASSWORD: $password
+          DB_DATABASE: $name
+      - type: redis
+        set_env:
+          REDIS_HOST: $host
+          REDIS_PORT: $port
+          REDIS_PASSWORD: $password
+    env:
+      SECRET_KEY:
+        generator: secret
+        sensitive: true
+        description: "Application secret key"
+      CONSOLE_WEB_URL:
+        default: "http://localhost:3000"
+        description: "Console web URL"
+      CONSOLE_API_URL:
+        default: "http://localhost:5001"
+        description: "Console API URL"
+      SERVICE_API_URL:
+        default: "http://localhost:5001"
+        description: "Service API URL"
+      APP_WEB_URL:
+        default: "http://localhost:3000"
+        description: "App web URL"
+      LOG_LEVEL:
+        default: INFO
+        description: "Logging level"
+      MIGRATION_ENABLED:
+        default: "true"
+        description: "Run database migrations on startup"
+    storage:
+      data:
+        path: /app/api/storage
+        persistent: true
+    health:
+      path: /health
+      start_period: 30s
+    restart: always
+
+  worker:
+    image: langgenius/dify-api:latest
+    depends_on:
+      - component: api
+        condition: healthy
+    requires:
+      - type: postgres
+        set_env:
+          DB_HOST: $host
+          DB_PORT: $port
+          DB_USERNAME: $user
+          DB_PASSWORD: $password
+          DB_DATABASE: $name
+      - type: redis
+        set_env:
+          REDIS_HOST: $host
+          REDIS_PORT: $port
+          REDIS_PASSWORD: $password
+    env:
+      SECRET_KEY:
+        generator: secret
+        sensitive: true
+        description: "Application secret key (must match api)"
+      MODE:
+        default: worker
+        description: "Run mode"
+      LOG_LEVEL:
+        default: INFO
+        description: "Logging level"
+    commands:
+      start: "celery -A app.celery worker -Q dataset,generation,mail,ops_trace --loglevel=info"
+    singleton: true
+    restart: always
+
+  web:
+    image: langgenius/dify-web:latest
+    depends_on:
+      - component: api
+        condition: healthy
+    provides:
+      - protocol: http
+        port: 3000
+        exposed: true
+    env:
+      CONSOLE_API_URL:
+        default: $components.api.url
+        description: "Backend API URL"
+      APP_API_URL:
+        default: $components.api.url
+        description: "App API URL"
+    health: /
+    restart: always

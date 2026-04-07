@@ -1,0 +1,19 @@
+category: Automation
+tagline: "Workflow automation tool"
+homepage: https://n8n.io
+test_results:
+  last_tested: 2026-04-06
+  pull_time_seconds: 3
+  startup_time_seconds: 11
+  total_disk_mb: 1401
+  health_check_passed: true
+  notes: "Health check passes but root URL shows 'Cannot GET /'. n8n UI is likely at a different path or requires initial setup. Screenshot not usable."
+images:
+  - name: n8nio/n8n:latest
+    size_mb: 1142
+    platform:
+      - linux/arm64
+  - name: postgres:16-alpine
+    size_mb: 259
+    platform:
+      - linux/arm64

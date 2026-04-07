@@ -1,0 +1,15 @@
+category: Notes
+tagline: "Lightweight self-hosted memo hub"
+homepage: https://www.usememos.com
+test_results:
+  last_tested: 2026-04-06
+  pull_time_seconds: 3
+  startup_time_seconds: 1
+  total_disk_mb: 49
+  health_check_passed: true
+  notes: ""
+images:
+  - name: neosmemo/memos:stable
+    size_mb: 49
+    platform:
+      - linux/arm64

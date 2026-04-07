@@ -1,0 +1,19 @@
+category: AI/ML
+tagline: "AI chat platform supporting multiple LLM providers"
+homepage: https://www.librechat.ai
+test_results:
+  last_tested: 2026-04-06
+  pull_time_seconds: 13
+  startup_time_seconds: 107
+  total_disk_mb: 2728
+  health_check_passed: false
+  notes: "MongoDB wiring works. App starts but health check times out — likely slow startup or needs additional config. API keys use PLACEHOLDER values."
+images:
+  - name: ghcr.io/danny-avila/librechat:latest
+    size_mb: 1936
+    platform:
+      - linux/arm64
+  - name: mongo:7
+    size_mb: 792
+    platform:
+      - linux/arm64

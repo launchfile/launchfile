@@ -1,0 +1,15 @@
+category: AI/ML
+tagline: "All-in-one RAG and AI chat application"
+homepage: https://anythingllm.com
+test_results:
+  last_tested: 2026-04-06
+  pull_time_seconds: 75
+  startup_time_seconds: 7
+  total_disk_mb: 3237
+  health_check_passed: true
+  notes: ""
+images:
+  - name: mintplexlabs/anythingllm:latest
+    size_mb: 3237
+    platform:
+      - linux/arm64

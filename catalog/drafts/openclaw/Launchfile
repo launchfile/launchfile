@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: openclaw
+description: "Open-source AI tools platform"
+
+# NOTE: Gateway binds to localhost only (::1). Orchestrator must provide
+# a reverse proxy or socat forwarder to expose the UI externally.
+image: ghcr.io/openclaw/openclaw:latest
+provides:
+  - protocol: http
+    port: 18789
+    exposed: true
+  - protocol: http
+    port: 18790
+    name: bridge
+env:
+  OPENCLAW_GATEWAY_TOKEN:
+    generator: secret
+    sensitive: true
+    description: "Authentication token for the gateway"
+  OPENCLAW_TZ:
+    default: "UTC"
+    description: "Timezone"
+storage:
+  data:
+    path: /home/node/.openclaw
+    persistent: true
+health: /
+restart: always

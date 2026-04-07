@@ -32,9 +32,11 @@ Existing tools describe **how** to build infrastructure. A Launchfile describes 
 
 | Directory    | Description                                                    |
 |--------------|----------------------------------------------------------------|
-| [`spec/`]   | The Launchfile specification, design docs, and JSON Schema     |
+| [`spec/`]     | The Launchfile specification, design docs, and JSON Schema     |
+| [`catalog/`]  | Community-maintained Launchfiles for popular open-source apps  |
 
 [`spec/`]: spec/
+[`catalog/`]: catalog/
 
 ## License
 

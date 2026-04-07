@@ -1,0 +1,15 @@
+category: Bookmarks
+tagline: "Self-hosted bookmark manager"
+homepage: https://github.com/sissbruecker/linkding
+test_results:
+  last_tested: 2026-04-06
+  pull_time_seconds: 3
+  startup_time_seconds: 31
+  total_disk_mb: 380
+  health_check_passed: true
+  notes: ""
+images:
+  - name: sissbruecker/linkding:latest
+    size_mb: 380
+    platform:
+      - linux/arm64

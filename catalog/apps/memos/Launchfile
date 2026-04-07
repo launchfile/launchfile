@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: memos
+description: "Lightweight self-hosted memo hub"
+repository: https://github.com/usememos/memos
+logo: https://raw.githubusercontent.com/usememos/memos/main/web/public/logo.webp
+
+image: neosmemo/memos:stable
+provides:
+  - protocol: http
+    port: 5230
+    exposed: true
+storage:
+  data:
+    path: /var/opt/memos
+    persistent: true
+restart: always

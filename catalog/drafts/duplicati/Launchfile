@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: duplicati
+description: "Free backup software with cloud storage support"
+
+image: lscr.io/linuxserver/duplicati:latest
+provides:
+  - protocol: http
+    port: 8200
+    exposed: true
+env:
+  PUID:
+    default: "1000"
+    description: "User ID for file permissions"
+  PGID:
+    default: "1000"
+    description: "Group ID for file permissions"
+  TZ:
+    default: "Etc/UTC"
+    description: "Timezone"
+storage:
+  config:
+    path: /config
+    persistent: true
+  backups:
+    path: /backups
+    persistent: true
+  source:
+    path: /source
+    persistent: true
+health: /
+restart: always

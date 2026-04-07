@@ -1,0 +1,53 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: hedgedoc
+description: "Collaborative markdown editor"
+
+components:
+  backend:
+    runtime: node
+    build:
+      dockerfile: ./docker/Dockerfile.backend
+    provides:
+      - name: api
+        protocol: http
+        port: 3000
+        bind: "0.0.0.0"
+        spec:
+          openapi: file:docs/openapi.yaml
+    requires:
+      - type: postgres
+        version: ">=15"
+        set_env:
+          HD_DATABASE_URL: $url
+          HD_DATABASE_USERNAME: $user
+          HD_DATABASE_PASSWORD: $password
+          HD_DATABASE_NAME: $name
+    env:
+      HD_AUTH_SESSION_SECRET:
+        generator: secret
+        sensitive: true
+      HD_BACKEND_BIND_IP:
+        default: "0.0.0.0"
+    commands:
+      start: "node dist/main.js"
+      release: "node dist/migrations.js"
+    health:
+      path: /api/private/config
+      start_period: 30s
+
+  frontend:
+    runtime: node
+    build:
+      dockerfile: ./docker/Dockerfile.frontend
+    depends_on:
+      - component: backend
+        condition: healthy
+    provides:
+      - protocol: http
+        port: 3001
+        exposed: true
+    env:
+      HD_BASE_URL:
+        default: $components.backend.url
+        description: "Backend URL for SSR API calls"

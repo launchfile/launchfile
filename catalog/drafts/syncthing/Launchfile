@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: syncthing
+description: "Continuous peer-to-peer file synchronization"
+
+# GAP: Syncthing exposes port 22000 for its sync protocol (TCP/QUIC).
+# While we can model this via provides with protocol: tcp, the QUIC (UDP)
+# transport cannot be expressed. The spec also has no way to express UDP ports.
+
+image: syncthing/syncthing:latest
+provides:
+  - name: web-ui
+    protocol: http
+    port: 8384
+    exposed: true
+  - name: sync
+    protocol: tcp
+    port: 22000
+storage:
+  data:
+    path: /var/syncthing
+    persistent: true
+health: /rest/noauth/health
+restart: always
