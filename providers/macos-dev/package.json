@@ -1,6 +1,6 @@
 {
   "name": "@launchfile/macos-dev",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "description": "macOS dev provider for Launchfile — run apps locally via brew services and native runtimes",
   "type": "module",
   "main": "dist/index.js",
