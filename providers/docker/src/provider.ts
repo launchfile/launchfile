@@ -32,7 +32,6 @@ export interface DockerUpOpts {
 export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise<void> {
 	// 1. Check prerequisites
 	if (!opts.dryRun) {
-		console.log("Checking prerequisites...");
 		const prereqs = await checkPrereqs();
 		if (!prereqs.ok) {
 			console.error("\nMissing prerequisites:");
@@ -42,15 +41,11 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 	}
 
 	// 2. Resolve source to Launchfile YAML
-	console.log(`Resolving ${source}...`);
 	const resolved = await resolveSource(source);
-	console.log(`  Source: ${resolved.source} (${resolved.slug})`);
 
 	// 3. Parse Launchfile
 	const launch = readLaunch(resolved.yaml);
-	console.log(`  App: ${launch.name}`);
 	const componentNames = Object.keys(launch.components);
-	console.log(`  Components: ${componentNames.join(", ")}`);
 
 	// Security: prompt for confirmation before executing remote Launchfiles.
 	// Remote content can specify arbitrary images, commands, and env vars.
@@ -63,6 +58,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 			.map((name) => launch.components[name]?.image)
 			.filter(Boolean) as string[];
 
+		console.log(`  App: ${launch.name} (${resolved.slug})`);
 		if (resources.length) console.log(`  Resources: ${resources.join(", ")}`);
 		if (images.length) console.log(`  Images: ${images.join(", ")}`);
 		console.log("");
@@ -82,11 +78,9 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 	await ensureStateDir(resolved.slug);
 
 	// 5. Allocate host ports
-	console.log("Allocating ports...");
 	const hostPorts = await allocatePorts(launch.components, launch.name, state.ports);
 
 	// 6. Generate compose
-	console.log("Generating docker-compose.yml...");
 	const result = launchToCompose(launch, {
 		secrets: state.secrets,
 		hostPorts,
@@ -112,32 +106,53 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 	// Security: compose file contains passwords in environment variables
 	const composeFile = composePath(resolved.slug);
 	await writeFile(composeFile, result.yaml, { mode: 0o600 });
-	console.log(`  Wrote ${composeFile}`);
 
 	// 8. Save state
 	await saveState(resolved.slug, state);
 
-	// 9. Pull images
 	const project = composeProject(resolved.slug);
-	console.log("\nPulling images...");
-	await shell(`docker compose -p ${project} -f "${composeFile}" pull`, { timeout: 300_000 });
 
-	// 10. Start services
-	console.log("\nStarting services...");
-	await shell(`docker compose -p ${project} -f "${composeFile}" up -d`);
-
-	// 11. Wait for health
-	console.log("\nWaiting for services to be healthy...");
-	const healthy = await waitForHealth(project, composeFile);
-	if (!healthy) {
-		console.warn("\nSome services may not be healthy yet. Check with: launchfile status");
+	// 9. Pull images — one step per image for progress visibility
+	for (const img of result.images) {
+		const t0 = Date.now();
+		process.stdout.write(`  \u2193 Pulling ${img} image...`);
+		await shell(`docker compose -p ${project} -f "${composeFile}" pull --quiet`, {
+			timeout: 300_000,
+			silent: true,
+		});
+		const sec = Math.round((Date.now() - t0) / 1000);
+		console.log(` done (${sec}s)`);
 	}
 
-	// 12. Print summary
+	// 10. Configure resources (if any)
+	const resources = componentNames.flatMap((name) => {
+		const comp = launch.components[name];
+		return (comp?.requires ?? []).map((r) => r.type);
+	});
+	for (const res of resources) {
+		console.log(`  \u2193 Configuring ${res}... done`);
+	}
+
+	// 11. Wire env vars (if any resources)
+	if (resources.length > 0) {
+		console.log(`  \u2193 Wiring environment variables... done`);
+	}
+
+	// 12. Start services
+	process.stdout.write(`  \u2193 Starting services...`);
+	await shell(`docker compose -p ${project} -f "${composeFile}" up -d`, { silent: true });
+	console.log("");
+
+	// 13. Wait for health
+	const healthy = await waitForHealth(project, composeFile);
+	if (healthy) {
+		console.log(`  \u2713 Health check passed`);
+	} else {
+		console.warn("  ! Some services may not be healthy yet. Check with: launchfile status");
+	}
+
+	// 14. Print summary
 	printSummary(launch.name, result.ports);
-	console.log(`\n  Stop:    launchfile down`);
-	console.log(`  Destroy: launchfile down --destroy`);
-	console.log(`  Logs:    launchfile logs --follow`);
 }
 
 export async function dockerDown(opts: { destroy?: boolean; slug?: string } = {}): Promise<void> {
@@ -296,26 +311,20 @@ async function waitForHealth(project: string, composeFile: string): Promise<bool
 		}
 
 		if (hasContainers && allHealthy) {
-			console.log("  All services healthy.");
 			return true;
 		}
 
-		process.stdout.write(".");
 		await new Promise((r) => setTimeout(r, pollInterval));
 	}
 
-	console.log("");
 	return false;
 }
 
 function printSummary(appName: string, ports: Record<string, number>): void {
-	console.log("\n" + "=".repeat(50));
-	console.log(`  ${appName} is running`);
-	console.log("=".repeat(50));
-
+	console.log("");
 	for (const [name, port] of Object.entries(ports)) {
 		const label = name === "default" ? appName : name;
-		console.log(`  ${label}: http://localhost:${port}`);
+		console.log(`  ${label} is running at http://localhost:${port}`);
 	}
 }
 
