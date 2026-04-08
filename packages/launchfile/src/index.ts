@@ -1,7 +1,26 @@
 /**
  * Public API for the unified Launchfile CLI.
+ *
+ * Re-exports the SDK public API so `import { readLaunch } from "launchfile"` works.
  */
 
+// SDK re-exports
+export {
+	readLaunch,
+	validateLaunch,
+	writeLaunch,
+	parseExpression,
+	resolveExpression,
+	parseDotPath,
+	isExpression,
+	LaunchSchema,
+	cmdValidate,
+	cmdInspect,
+	cmdSchema,
+} from "@launchfile/sdk";
+export type { ResolverContext } from "@launchfile/sdk";
+
+// CLI exports
 export { handleUp } from "./commands/up.js";
 export { handleDown } from "./commands/down.js";
 export { handleStatus } from "./commands/status.js";
