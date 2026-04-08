@@ -31,9 +31,9 @@ jobs:
       # Install all workspace dependencies, then build each package
       - run: bun install --frozen-lockfile
       - run: cd sdk && bun run build
-      - run: cd providers/docker && npx tsc --skipLibCheck
-      - run: cd providers/macos-dev && npx tsc --skipLibCheck
-      - run: cd packages/launchfile && npx tsc --skipLibCheck
+      - run: cd providers/docker && bunx tsc --skipLibCheck
+      - run: cd providers/macos-dev && bunx tsc --skipLibCheck
+      - run: cd packages/launchfile && bunx tsc --skipLibCheck
 
       # Publish in dependency order — skip already-published versions
       - name: Publish @launchfile/sdk
