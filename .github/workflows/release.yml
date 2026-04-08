@@ -31,9 +31,12 @@ jobs:
       # Install all workspace dependencies, then build each package
       - run: bun install --frozen-lockfile
       - run: cd sdk && bun run build
-      - run: cd providers/docker && bunx tsc --skipLibCheck --types ""
-      - run: cd providers/macos-dev && bunx tsc --skipLibCheck --types ""
-      - run: cd packages/launchfile && bunx tsc --skipLibCheck --types ""
+      - name: Build providers and CLI for publishing
+        run: |
+          for dir in providers/docker providers/macos-dev packages/launchfile; do
+            echo '{"extends":"./tsconfig.json","compilerOptions":{"types":[],"skipLibCheck":true}}' > "$dir/tsconfig.publish.json"
+            cd "$dir" && bunx tsc -p tsconfig.publish.json && rm tsconfig.publish.json && cd -
+          done
 
       # Publish in dependency order — skip already-published versions
       - name: Publish @launchfile/sdk
