@@ -28,8 +28,11 @@ jobs:
           registry-url: "https://registry.npmjs.org"
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
-      # Build SDK first (other packages depend on it)
+      # Install and build all packages
       - run: cd sdk && bun install --frozen-lockfile && bun run build
+      - run: cd providers/docker && bun install --frozen-lockfile && bun run build
+      - run: cd providers/macos-dev && bun install --frozen-lockfile && bun run build
+      - run: cd packages/launchfile && bun install --frozen-lockfile && bun run build
 
       # Publish in dependency order — skip already-published versions
       - name: Publish @launchfile/sdk
