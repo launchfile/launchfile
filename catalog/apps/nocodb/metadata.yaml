@@ -1,3 +1,6 @@
+category: Database
+tagline: "Open-source Airtable alternative — turns any database into a smart spreadsheet"
+homepage: https://nocodb.com
 test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 62

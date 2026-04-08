@@ -1,3 +1,6 @@
+category: Notifications
+tagline: "Self-hosted push notification server with REST API and web UI"
+homepage: https://gotify.net
 test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 13

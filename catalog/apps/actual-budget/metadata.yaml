@@ -1,3 +1,6 @@
+category: Finance
+tagline: "Local-first personal budgeting app inspired by YNAB"
+homepage: https://actualbudget.org
 test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 16

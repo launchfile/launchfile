@@ -1,3 +1,6 @@
+category: Development
+tagline: "Self-hosted pastebin and code snippet manager powered by Git"
+homepage: https://github.com/thomiceli/opengist
 test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 7

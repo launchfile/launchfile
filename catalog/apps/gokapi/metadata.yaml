@@ -1,3 +1,6 @@
+category: File Sharing
+tagline: "Self-hosted file sharing with expiring download links"
+homepage: https://github.com/Forceu/Gokapi
 test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 10

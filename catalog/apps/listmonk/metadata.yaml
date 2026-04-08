@@ -1,3 +1,6 @@
+category: Email
+tagline: "High-performance self-hosted newsletter and mailing list manager"
+homepage: https://listmonk.app
 test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 9

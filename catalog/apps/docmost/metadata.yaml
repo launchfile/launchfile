@@ -1,3 +1,6 @@
+category: Wiki
+tagline: "Collaborative wiki and documentation platform (Notion/Confluence alternative)"
+homepage: https://docmost.com
 test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 50

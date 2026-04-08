@@ -1,3 +1,6 @@
+category: Monitoring
+tagline: "Developer-oriented health dashboard and status page with alerting"
+homepage: https://gatus.io
 test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 8

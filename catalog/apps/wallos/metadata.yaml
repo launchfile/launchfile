@@ -1,3 +1,6 @@
+category: Finance
+tagline: "Subscription and expense tracker with multi-currency support"
+homepage: https://github.com/ellite/Wallos
 test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 19

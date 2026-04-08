@@ -1,3 +1,6 @@
+category: Dashboard
+tagline: "Self-hosted dashboard with RSS, weather, bookmarks, and more"
+homepage: https://github.com/glanceapp/glance
 test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 7
