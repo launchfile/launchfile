@@ -8,9 +8,11 @@ This repo contains independently-splittable packages and two websites:
 
 - `spec/` — The specification document, JSON Schema, design docs, examples
 - `sdk/` — TypeScript reference parser, validator, and serializer
-- `providers/` — Reference provider implementations (e.g., macOS dev)
+- `providers/` — Reference provider implementations (Docker, macOS dev)
+- `packages/` — Published npm packages (`launchfile` unified CLI)
 - `catalog/` — Community Launchfiles for popular open-source apps
 - `brand/` — Logos, colors, social cards, and design assets
+- `smoke-tests/` — Post-publish smoke tests for npm packages and websites
 
 ### Websites
 
@@ -33,7 +35,7 @@ Each directory has its own `CLAUDE.md` with directory-specific context (where ap
 This monorepo is designed for future splitting via `git subtree split`. To keep that clean:
 
 - **One commit, one directory.** Every commit is scoped to exactly one top-level directory.
-- **Prefix format:** `spec:`, `sdk:`, `providers:`, `catalog:`, `brand:`, `www-dev:`, `www-org:`, `www-shared:`, or `chore:` (for root-level files).
+- **Prefix format:** `spec:`, `sdk:`, `providers:`, `packages:`, `catalog:`, `brand:`, `www-dev:`, `www-org:`, `www-shared:`, or `chore:` (for root-level files).
 - **Cross-cutting changes** become multiple commits (e.g., a spec change + SDK update = 2 commits).
 - **Commit bodies** explain *why*, not just *what*.
 

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.1.3/schema.json",
+  "changelog": ["@changesets/changelog-github", { "repo": "launchfile/launchfile" }],
+  "commit": false,
+  "fixed": [],
+  "linked": [
+    ["@launchfile/sdk", "@launchfile/docker", "@launchfile/macos-dev", "launchfile"]
+  ],
+  "access": "public",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "ignore": []
+}
