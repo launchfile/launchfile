@@ -1,0 +1,12 @@
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 3
+  startup_time_seconds: 2
+  total_disk_mb: 34
+  health_check_passed: true
+  notes: ""
+images:
+  - name: axllent/mailpit:latest
+    size_mb: 34
+    platform:
+      - linux/arm64

@@ -1,0 +1,15 @@
+category: AI/ML
+tagline: Open-source AI tools platform
+homepage: https://github.com/openclaw/openclaw
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 2
+  startup_time_seconds: 7
+  total_disk_mb: 2299
+  health_check_passed: true
+  notes: "Binds to 0.0.0.0 when run as root (test harness default). When run as non-root node user, binds to ::1 only — would need provides.bind and socat sidecar."
+images:
+  - name: ghcr.io/openclaw/openclaw:latest
+    size_mb: 2299
+    platform:
+      - linux/arm64

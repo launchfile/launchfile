@@ -1,0 +1,16 @@
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 9
+  startup_time_seconds: 10
+  total_disk_mb: 292
+  health_check_passed: true
+  notes: ""
+images:
+  - name: listmonk/listmonk:latest
+    size_mb: 33
+    platform:
+      - linux/arm64
+  - name: postgres:16-alpine
+    size_mb: 259
+    platform:
+      - linux/arm64

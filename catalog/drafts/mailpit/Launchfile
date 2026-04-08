@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: mailpit
+description: "Email testing tool with SMTP server and web UI (successor to MailHog)"
+repository: https://github.com/axllent/mailpit
+logo: https://raw.githubusercontent.com/axllent/mailpit/develop/server/ui-src/public/mailpit.svg
+
+# Mailpit is the actively maintained successor to MailHog.
+# Drop-in replacement: point your app's SMTP at this on port 1025,
+# then view captured emails in the web UI on port 8025.
+image: axllent/mailpit:latest
+provides:
+  - name: web-ui
+    protocol: http
+    port: 8025
+    exposed: true
+  - name: smtp
+    protocol: tcp
+    port: 1025
+storage:
+  data:
+    path: /data
+    persistent: true
+env:
+  MP_DATABASE:
+    default: "/data/mailpit.db"
+    description: "Path to the SQLite database for message storage"
+  MP_MAX_MESSAGES:
+    default: "5000"
+    description: "Maximum number of messages to store (0 = unlimited)"
+restart: always

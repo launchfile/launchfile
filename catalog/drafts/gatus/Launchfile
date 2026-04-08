@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: gatus
+description: "Developer-oriented health dashboard and status page with alerting"
+repository: https://github.com/TwiN/gatus
+logo: https://raw.githubusercontent.com/TwiN/gatus/master/.github/assets/logo-with-dark-text.svg
+
+image: twinproduction/gatus:latest
+provides:
+  - protocol: http
+    port: 8080
+    exposed: true
+storage:
+  config:
+    path: /config
+    persistent: true
+restart: always

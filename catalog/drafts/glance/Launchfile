@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: glance
+description: "Self-hosted dashboard with RSS, weather, bookmarks, and more"
+repository: https://github.com/glanceapp/glance
+logo: https://raw.githubusercontent.com/glanceapp/glance/main/docs/images/icon.svg
+
+image: glanceapp/glance:latest
+provides:
+  - protocol: http
+    port: 8080
+    exposed: true
+storage:
+  config:
+    path: /app/data
+    persistent: true
+restart: always

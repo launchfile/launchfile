@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: gokapi
+description: "Self-hosted file sharing with expiring download links"
+repository: https://github.com/Forceu/Gokapi
+logo: https://raw.githubusercontent.com/Forceu/Gokapi/master/internal/webserver/web/static/img/logo.svg
+
+image: f0rc3/gokapi:latest
+provides:
+  - protocol: http
+    port: 53842
+    exposed: true
+storage:
+  data:
+    path: /app/data
+    persistent: true
+restart: always

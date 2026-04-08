@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: wallos
+description: "Subscription and expense tracker with multi-currency support"
+repository: https://github.com/ellite/Wallos
+logo: https://raw.githubusercontent.com/ellite/Wallos/main/images/icon/favicon.svg
+
+image: bellamy/wallos:latest
+provides:
+  - protocol: http
+    port: 80
+    exposed: true
+storage:
+  data:
+    path: /var/www/html/db
+    persistent: true
+restart: always

@@ -1,0 +1,12 @@
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 10
+  startup_time_seconds: 11
+  total_disk_mb: 65
+  health_check_passed: true
+  notes: ""
+images:
+  - name: f0rc3/gokapi:latest
+    size_mb: 65
+    platform:
+      - linux/arm64

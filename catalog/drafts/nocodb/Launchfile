@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: nocodb
+description: "Open-source Airtable alternative — turns any database into a smart spreadsheet"
+repository: https://github.com/nocodb/nocodb
+logo: https://raw.githubusercontent.com/nocodb/nocodb/develop/packages/nc-gui/assets/img/brand/nocodb-logo.svg
+
+image: nocodb/nocodb:latest
+provides:
+  - protocol: http
+    port: 8080
+    exposed: true
+env:
+  NC_AUTH_JWT_SECRET:
+    generator: secret
+    sensitive: true
+    description: "JWT secret for authentication"
+storage:
+  data:
+    path: /usr/app/data
+    persistent: true
+restart: always

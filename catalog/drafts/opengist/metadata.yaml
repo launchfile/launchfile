@@ -1,0 +1,12 @@
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 7
+  startup_time_seconds: 6
+  total_disk_mb: 87
+  health_check_passed: true
+  notes: ""
+images:
+  - name: ghcr.io/thomiceli/opengist:1
+    size_mb: 87
+    platform:
+      - linux/arm64

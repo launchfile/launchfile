@@ -1,0 +1,12 @@
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 13
+  startup_time_seconds: 6
+  total_disk_mb: 146
+  health_check_passed: true
+  notes: ""
+images:
+  - name: gotify/server:latest
+    size_mb: 146
+    platform:
+      - linux/arm64

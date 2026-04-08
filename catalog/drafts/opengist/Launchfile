@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: opengist
+description: "Self-hosted pastebin and code snippet manager powered by Git"
+repository: https://github.com/thomiceli/opengist
+logo: https://raw.githubusercontent.com/thomiceli/opengist/master/public/opengist.svg
+
+image: ghcr.io/thomiceli/opengist:1
+provides:
+  - name: web-ui
+    protocol: http
+    port: 6157
+    exposed: true
+  - name: ssh
+    protocol: tcp
+    port: 2222
+storage:
+  data:
+    path: /opengist
+    persistent: true
+restart: always

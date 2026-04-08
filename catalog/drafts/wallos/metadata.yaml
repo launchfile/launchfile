@@ -1,0 +1,12 @@
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 19
+  startup_time_seconds: 6
+  total_disk_mb: 224
+  health_check_passed: true
+  notes: ""
+images:
+  - name: bellamy/wallos:latest
+    size_mb: 224
+    platform:
+      - linux/arm64

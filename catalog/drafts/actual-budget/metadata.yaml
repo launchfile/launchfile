@@ -1,0 +1,12 @@
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 16
+  startup_time_seconds: 1
+  total_disk_mb: 343
+  health_check_passed: true
+  notes: ""
+images:
+  - name: actualbudget/actual-server:latest
+    size_mb: 343
+    platform:
+      - linux/arm64

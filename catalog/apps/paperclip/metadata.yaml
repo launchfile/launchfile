@@ -1,0 +1,19 @@
+category: AI/Automation
+tagline: Open-source orchestration for zero-human companies
+homepage: https://paperclip.ing
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 3
+  startup_time_seconds: 11
+  total_disk_mb: 2098
+  health_check_passed: true
+  notes: ""
+images:
+  - name: ghcr.io/paperclipai/paperclip:latest
+    size_mb: 1839
+    platform:
+      - linux/arm64
+  - name: postgres:16-alpine
+    size_mb: 259
+    platform:
+      - linux/arm64
