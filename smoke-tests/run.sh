@@ -8,6 +8,7 @@
 #   bash smoke-tests/run.sh --websites-only   # Only website checks
 #   bash smoke-tests/run.sh --skip-websites   # Skip website checks
 #   bash smoke-tests/run.sh --skip-bun        # Skip bun-specific tests
+#   bash smoke-tests/run.sh --browser          # Also run Playwright browser tests
 #
 # Environment:
 #   SMOKE_TEST_VERSION  Package version to test (default: "latest")
@@ -22,12 +23,14 @@ VERSION="${SMOKE_TEST_VERSION:-latest}"
 WEBSITES_ONLY=false
 SKIP_WEBSITES=false
 SKIP_BUN=false
+RUN_BROWSER=false
 
 for arg in "$@"; do
   case "$arg" in
     --websites-only) WEBSITES_ONLY=true ;;
     --skip-websites) SKIP_WEBSITES=true ;;
     --skip-bun)      SKIP_BUN=true ;;
+    --browser)       RUN_BROWSER=true ;;
     *) echo "Unknown flag: $arg"; exit 2 ;;
   esac
 done
@@ -325,6 +328,33 @@ run_api_tests() {
 }
 
 # ============================================================================
+# Category E: Browser Tests (Playwright)
+# ============================================================================
+
+run_browser_tests() {
+  echo "=== E: Browser Tests (Playwright) ==="
+  local start=$SECONDS
+
+  cd "$SCRIPT_DIR"
+
+  # Install deps if needed
+  if [ ! -d node_modules ]; then
+    echo "  Installing Playwright dependencies..."
+    bun install --silent 2>&1 >/dev/null
+  fi
+
+  # Run Playwright tests
+  if bunx playwright test 2>&1; then
+    pass "E: Browser tests (search, navigation, console errors)"
+  else
+    fail "E: Browser tests — see Playwright output above"
+  fi
+
+  echo "  ($(( SECONDS - start ))s)"
+  echo ""
+}
+
+# ============================================================================
 # Run
 # ============================================================================
 
@@ -332,12 +362,18 @@ TOTAL_START=$SECONDS
 
 if [ "$WEBSITES_ONLY" = true ]; then
   run_website_tests
+  if [ "$RUN_BROWSER" = true ]; then
+    run_browser_tests
+  fi
 else
   run_install_tests
   run_cli_tests
   run_api_tests
   if [ "$SKIP_WEBSITES" = false ]; then
     run_website_tests
+  fi
+  if [ "$RUN_BROWSER" = true ]; then
+    run_browser_tests
   fi
 fi
 
