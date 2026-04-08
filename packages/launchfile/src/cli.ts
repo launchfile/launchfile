@@ -13,7 +13,9 @@
  *   launchfile schema                  Dump JSON Schema
  */
 
-import { resolve } from "node:path";
+import { resolve, dirname, join } from "node:path";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { handleUp } from "./commands/up.js";
 import { handleDown } from "./commands/down.js";
 import { handleStatus } from "./commands/status.js";
@@ -21,7 +23,10 @@ import { handleLogs } from "./commands/logs.js";
 import { handleList } from "./commands/list.js";
 import { cmdValidate, cmdInspect, cmdSchema } from "@launchfile/sdk";
 
-const VERSION = "0.2.0";
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const { version: VERSION } = JSON.parse(
+	readFileSync(join(__dirname, "..", "package.json"), "utf-8"),
+);
 
 const args = process.argv.slice(2);
 
