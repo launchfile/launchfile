@@ -21,10 +21,9 @@ requires:
     set_env:
       CLICKHOUSE_HOST: $host
       CLICKHOUSE_DATABASE: $name
-      CLICKHOUSE_USER: $user
-      CLICKHOUSE_PASSWORD: $password
-# NOTE: PostHog also requires Kafka (or Redpanda) for event ingestion.
-# The spec doesn't yet have a `type: kafka` resource — tracked in GAPS.md.
+  - type: kafka
+    set_env:
+      KAFKA_HOSTS: $url
 env:
   SECRET_KEY:
     generator: secret
@@ -41,8 +40,8 @@ env:
     description: "Disable forced SSL redirect (handled by proxy)"
 health:
   path: /_health
-  start_period: 60s
+  start_period: 300s
   interval: 10s
   timeout: 5s
-  retries: 12
+  retries: 30
 restart: always
