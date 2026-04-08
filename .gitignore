@@ -3,6 +3,8 @@ dist/
 sdk/schema/
 *.tsbuildinfo
 *.tgz
+# npm pack extracted output
+packages/*/package/
 .DS_Store
 .env
 .env.local
