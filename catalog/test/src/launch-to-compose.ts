@@ -11,6 +11,7 @@ import type {
   NormalizedRequirement,
   NormalizedEnvVar,
   NormalizedHealth,
+  Provides,
 } from "../../../sdk/src/types.ts";
 
 // --- Backing service definitions ---
@@ -244,11 +245,18 @@ export function launchToCompose(launch: NormalizedLaunch): ComposeResult {
       user: "0:0",
     };
 
-    // Ports — map to ephemeral host ports to avoid conflicts
-    if (component.provides?.length) {
-      service.ports = component.provides
-        .filter((p) => p.exposed)
-        .map((p) => `0:${p.port}`);
+    // Ports — map to ephemeral host ports to avoid conflicts.
+    // Loopback-bound exposed ports need a socat sidecar (added after main service)
+    // that shares the network namespace. Port mappings for those go on the main
+    // service since Docker disallows `ports` on `network_mode: service:*` containers.
+    const directPorts = (component.provides ?? [])
+      .filter((p) => p.exposed && !isLoopback(p.bind));
+    const loopbackPorts = (component.provides ?? [])
+      .filter((p) => p.exposed && isLoopback(p.bind));
+
+    const allExposedPorts = [...directPorts, ...loopbackPorts];
+    if (allExposedPorts.length > 0) {
+      service.ports = allExposedPorts.map((p) => `0:${p.port}`);
     }
 
     // Environment variables
@@ -342,6 +350,26 @@ export function launchToCompose(launch: NormalizedLaunch): ComposeResult {
     }
 
     services[serviceName] = service;
+
+    // Socat sidecar for loopback-bound exposed ports.
+    // Docker port forwarding can't reach ::1 or 127.0.0.1 inside the container,
+    // so we add a forwarder sharing the network namespace that listens on 0.0.0.0
+    // and proxies to the app's loopback address. The main service owns the port
+    // mapping (Docker disallows `ports` on `network_mode: service:*` containers).
+    for (const p of loopbackPorts) {
+      const proxyName = `${serviceName}-proxy-${p.port}`;
+      const target = p.bind === "::1" ? `TCP6:[::1]:${p.port}` : `TCP:127.0.0.1:${p.port}`;
+      services[proxyName] = {
+        image: "alpine/socat:latest",
+        network_mode: `service:${serviceName}`,
+        depends_on: {
+          [serviceName]: { condition: component.health ? "service_healthy" : "service_started" },
+        },
+        command: `TCP-LISTEN:${p.port},fork,bind=0.0.0.0,reuseaddr ${target}`,
+        restart: "on-failure",
+      };
+      images.push("alpine/socat:latest");
+    }
   }
 
   const compose: Record<string, unknown> = { services };
@@ -454,9 +482,13 @@ function addBackingService(
   };
 }
 
+function isLoopback(bind: string | undefined): boolean {
+  return bind === "::1" || bind === "127.0.0.1";
+}
+
 function translateHealth(
   health: NormalizedHealth,
-  provides?: { port: number; protocol: string }[],
+  provides?: Provides[],
 ): ComposeHealthcheck {
   if (health.command) {
     return {
@@ -468,12 +500,14 @@ function translateHealth(
     };
   }
 
-  // HTTP path-based health check
-  const port = provides?.[0]?.port ?? 80;
+  // HTTP path-based health check — respect provides.bind for localhost-only apps
+  const first = provides?.[0];
+  const port = first?.port ?? 80;
+  const host = first?.bind === "::1" ? "[::1]" : "localhost";
   const path = health.path ?? "/";
 
   return {
-    test: ["CMD-SHELL", `wget -qO /dev/null http://localhost:${port}${path} || curl -sf http://localhost:${port}${path} > /dev/null || exit 1`],
+    test: ["CMD-SHELL", `wget -qO /dev/null http://${host}:${port}${path} || curl -sf http://${host}:${port}${path} > /dev/null || exit 1`],
     interval: health.interval ?? "10s",
     timeout: health.timeout ?? "5s",
     retries: health.retries ?? 5,

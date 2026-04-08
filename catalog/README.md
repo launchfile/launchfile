@@ -8,6 +8,7 @@ These apps have been verified to launch successfully from their Launchfile:
 
 | App | Category | Services | Components |
 |-----|----------|----------|------------|
+| [OpenClaw](apps/openclaw/) | AI/ML | — | 1 |
 | [Remote Claude Concentrator](apps/remote-claude-concentrator/) | AI/ML | — | 1 |
 
 ## Proposed Apps
@@ -50,7 +51,6 @@ The following apps have draft Launchfiles in [`drafts/`](drafts/) but have not y
 | [Navidrome](drafts/navidrome/) | Music | — | 1 | |
 | [Nextcloud](drafts/nextcloud/) | Files | Postgres, Redis | 2 | Gaps: G-13, G-17 |
 | [Ollama + Open WebUI](drafts/ollama-openwebui/) | AI/ML | — | 2 | Gap: GPU (G-10) |
-| [OpenClaw](drafts/openclaw/) | — | Postgres | Multi | |
 | [Paperless](drafts/paperless/) | Documents | Postgres, Redis | 1 | |
 | [Penpot](drafts/penpot/) | Design | Postgres, Redis | Multi | |
 | [Pi-hole](drafts/pihole/) | DNS | — | 1 | |

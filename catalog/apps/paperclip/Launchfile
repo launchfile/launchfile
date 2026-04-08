@@ -1,0 +1,38 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: paperclip
+description: "Open-source orchestration for zero-human companies"
+repository: https://github.com/paperclipai/paperclip
+logo: https://avatars.githubusercontent.com/u/264498616?v=4&s=64
+
+image: ghcr.io/paperclipai/paperclip:latest
+provides:
+  - protocol: http
+    port: 3100
+    exposed: true
+requires:
+  - type: postgres
+    set_env:
+      DATABASE_URL: $url
+env:
+  HOST:
+    default: "0.0.0.0"
+  BETTER_AUTH_SECRET:
+    generator: secret
+    sensitive: true
+  PAPERCLIP_HOME:
+    default: "/paperclip"
+  SERVE_UI:
+    default: "true"
+  ANTHROPIC_API_KEY:
+    description: "Anthropic API key for Claude agents"
+    sensitive: true
+  OPENAI_API_KEY:
+    description: "OpenAI API key for Codex agents"
+    sensitive: true
+storage:
+  data:
+    path: /paperclip
+    persistent: true
+health: /api/health
+restart: always

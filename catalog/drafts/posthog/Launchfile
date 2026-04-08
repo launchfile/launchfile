@@ -1,0 +1,48 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: posthog
+description: "Open-source product analytics, session replay, and feature flags"
+repository: https://github.com/PostHog/posthog
+logo: https://raw.githubusercontent.com/PostHog/posthog.com/master/contents/images/post-hog-logo.svg
+
+image: posthog/posthog:latest
+provides:
+  - protocol: http
+    port: 8000
+    exposed: true
+requires:
+  - type: postgres
+    set_env:
+      DATABASE_URL: $url
+  - type: redis
+    set_env:
+      REDIS_URL: $url
+  - type: clickhouse
+    set_env:
+      CLICKHOUSE_HOST: $host
+      CLICKHOUSE_DATABASE: $name
+      CLICKHOUSE_USER: $user
+      CLICKHOUSE_PASSWORD: $password
+# NOTE: PostHog also requires Kafka (or Redpanda) for event ingestion.
+# The spec doesn't yet have a `type: kafka` resource — tracked in GAPS.md.
+env:
+  SECRET_KEY:
+    generator: secret
+    sensitive: true
+    description: "Django secret key for session signing and CSRF"
+  SITE_URL:
+    required: true
+    description: "Public-facing URL of the PostHog instance"
+  IS_BEHIND_PROXY:
+    default: "true"
+    description: "Set to true when running behind a reverse proxy"
+  DISABLE_SECURE_SSL_REDIRECT:
+    default: "true"
+    description: "Disable forced SSL redirect (handled by proxy)"
+health:
+  path: /_health
+  start_period: 60s
+  interval: 10s
+  timeout: 5s
+  retries: 12
+restart: always
