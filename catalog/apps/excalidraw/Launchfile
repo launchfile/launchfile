@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: excalidraw
+description: "Virtual whiteboard for sketching hand-drawn diagrams"
+repository: https://github.com/excalidraw/excalidraw
+logo: https://raw.githubusercontent.com/excalidraw/excalidraw/master/public/apple-touch-icon.png
+
+image: excalidraw/excalidraw:latest
+provides:
+  - protocol: http
+    port: 80
+    exposed: true
+restart: always

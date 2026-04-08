@@ -1,0 +1,15 @@
+category: Backend
+tagline: "Real-time backend in a single Go binary with embedded SQLite"
+homepage: https://pocketbase.io
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 5
+  startup_time_seconds: 6
+  total_disk_mb: 40
+  health_check_passed: true
+  notes: ""
+images:
+  - name: ghcr.io/muchobien/pocketbase:latest
+    size_mb: 40
+    platform:
+      - linux/arm64

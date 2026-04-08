@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: ntfy
+description: "Simple HTTP-based pub-sub push notification service"
+repository: https://github.com/binwiederhier/ntfy
+logo: https://raw.githubusercontent.com/binwiederhier/ntfy/main/web/public/static/images/ntfy.svg
+
+image: binwiederhier/ntfy:latest
+provides:
+  - protocol: http
+    port: 80
+    exposed: true
+storage:
+  data:
+    path: /var/lib/ntfy
+    persistent: true
+restart: always

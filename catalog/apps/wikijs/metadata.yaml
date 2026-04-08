@@ -1,0 +1,19 @@
+category: Wiki
+tagline: "Powerful wiki engine with markdown support and Git sync"
+homepage: https://js.wiki
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 25
+  startup_time_seconds: 7
+  total_disk_mb: 839
+  health_check_passed: true
+  notes: ""
+images:
+  - name: ghcr.io/requarks/wiki:2
+    size_mb: 580
+    platform:
+      - linux/arm64
+  - name: postgres:16-alpine
+    size_mb: 259
+    platform:
+      - linux/arm64

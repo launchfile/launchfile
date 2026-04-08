@@ -1,0 +1,15 @@
+category: Development
+tagline: "Web app for data encoding, decoding, encryption, and analysis"
+homepage: https://gchq.github.io/CyberChef
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 12
+  startup_time_seconds: 1
+  total_disk_mb: 203
+  health_check_passed: true
+  notes: ""
+images:
+  - name: ghcr.io/gchq/cyberchef:latest
+    size_mb: 203
+    platform:
+      - linux/arm64

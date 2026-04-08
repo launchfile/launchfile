@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: cobalt
+description: "Fast, no-nonsense media downloader for YouTube, Twitter, and more"
+repository: https://github.com/imputnet/cobalt
+logo: https://raw.githubusercontent.com/imputnet/cobalt/current/web/static/favicon.svg
+
+image: ghcr.io/imputnet/cobalt:latest
+provides:
+  - protocol: http
+    port: 9000
+    exposed: true
+restart: always

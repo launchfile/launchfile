@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+# NOTE: wg-easy requires the NET_ADMIN Linux capability for managing WireGuard interfaces.
+# Providers must grant this capability or run the container in privileged mode.
+version: launch/v1
+name: wg-easy
+description: "WireGuard VPN server with simple web management UI"
+repository: https://github.com/wg-easy/wg-easy
+logo: https://raw.githubusercontent.com/wg-easy/wg-easy/master/src/www/img/logo.svg
+
+image: ghcr.io/wg-easy/wg-easy:latest
+provides:
+  - protocol: http
+    port: 51821
+    exposed: true
+  - protocol: udp
+    port: 51820
+env:
+  WG_HOST:
+    required: true
+    description: "Public hostname or IP for WireGuard"
+  PASSWORD_HASH:
+    generator: secret
+    sensitive: true
+    description: "bcrypt hash of admin password"
+restart: always

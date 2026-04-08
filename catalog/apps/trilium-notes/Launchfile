@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: trilium-notes
+description: "Hierarchical note-taking and personal knowledge base"
+repository: https://github.com/TriliumNext/Notes
+logo: https://raw.githubusercontent.com/TriliumNext/Notes/master/images/app-icons/png/icon.png
+
+image: triliumnext/notes:latest
+provides:
+  - protocol: http
+    port: 8080
+    exposed: true
+storage:
+  data:
+    path: /home/node/trilium-data
+    persistent: true
+restart: always

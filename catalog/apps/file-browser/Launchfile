@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: file-browser
+description: "Web-based file manager for browsing and managing files"
+repository: https://github.com/filebrowser/filebrowser
+logo: https://raw.githubusercontent.com/filebrowser/logo/master/icon.svg
+
+image: filebrowser/filebrowser:latest
+provides:
+  - protocol: http
+    port: 80
+    exposed: true
+storage:
+  data:
+    path: /srv
+    persistent: true
+  config:
+    path: /database
+    persistent: true
+restart: always

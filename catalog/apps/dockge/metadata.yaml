@@ -1,0 +1,15 @@
+category: Docker Management
+tagline: "Easy-to-use Docker Compose stack manager with web UI"
+homepage: https://dockge.kuma.pet
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 28
+  startup_time_seconds: 7
+  total_disk_mb: 734
+  health_check_passed: true
+  notes: ""
+images:
+  - name: louislam/dockge:1
+    size_mb: 734
+    platform:
+      - linux/arm64

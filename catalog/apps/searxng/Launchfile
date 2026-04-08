@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: searxng
+description: "Privacy-respecting metasearch engine aggregating results from 70+ sources"
+repository: https://github.com/searxng/searxng
+logo: https://raw.githubusercontent.com/searxng/searxng/master/src/brand/searxng-wordmark.svg
+
+image: searxng/searxng:latest
+provides:
+  - protocol: http
+    port: 8080
+    exposed: true
+env:
+  SEARXNG_SECRET:
+    generator: secret
+    sensitive: true
+    description: "Secret key for session encryption"
+storage:
+  data:
+    path: /etc/searxng
+    persistent: true
+restart: always

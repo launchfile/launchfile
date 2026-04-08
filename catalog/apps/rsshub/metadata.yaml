@@ -1,0 +1,15 @@
+category: RSS
+tagline: "Generate RSS feeds from almost any website"
+homepage: https://docs.rsshub.app
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 57
+  startup_time_seconds: 2
+  total_disk_mb: 446
+  health_check_passed: true
+  notes: ""
+images:
+  - name: diygod/rsshub:latest
+    size_mb: 446
+    platform:
+      - linux/arm64

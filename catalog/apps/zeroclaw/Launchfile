@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: zeroclaw
+description: "Lightweight Rust-based AI personal assistant (OpenClaw family)"
+repository: https://github.com/zeroclaw-labs/zeroclaw
+logo: https://raw.githubusercontent.com/zeroclaw-labs/zeroclaw/main/assets/logo.svg
+
+image: ghcr.io/zeroclaw-labs/zeroclaw:latest
+provides:
+  - protocol: http
+    port: 42617
+    exposed: true
+env:
+  ZEROCLAW_GATEWAY_PORT:
+    default: "42617"
+  ZEROCLAW_LOG_LEVEL:
+    default: "info"
+storage:
+  data:
+    path: /zeroclaw-data
+    persistent: true
+restart: always

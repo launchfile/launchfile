@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: pocketbase
+description: "Real-time backend in a single Go binary with embedded SQLite"
+repository: https://github.com/pocketbase/pocketbase
+logo: https://raw.githubusercontent.com/pocketbase/pocketbase/master/ui/public/images/logo.svg
+
+image: ghcr.io/muchobien/pocketbase:latest
+provides:
+  - protocol: http
+    port: 8090
+    exposed: true
+storage:
+  data:
+    path: /pb_data
+    persistent: true
+health: /api/health
+restart: always

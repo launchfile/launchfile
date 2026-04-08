@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: dockge
+description: "Easy-to-use Docker Compose stack manager with web UI"
+repository: https://github.com/louislam/dockge
+logo: https://raw.githubusercontent.com/louislam/dockge/master/frontend/public/icon.svg
+
+image: louislam/dockge:1
+provides:
+  - protocol: http
+    port: 5001
+    exposed: true
+storage:
+  stacks:
+    path: /opt/stacks
+    persistent: true
+  data:
+    path: /app/data
+    persistent: true
+restart: always

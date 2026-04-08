@@ -1,0 +1,19 @@
+category: CRM
+tagline: "Personal CRM for managing relationships and social interactions"
+homepage: https://www.monicahq.com
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 24
+  startup_time_seconds: 7
+  total_disk_mb: 1428
+  health_check_passed: true
+  notes: ""
+images:
+  - name: monica:latest
+    size_mb: 672
+    platform:
+      - linux/arm64
+  - name: mysql:8
+    size_mb: 756
+    platform:
+      - linux/arm64

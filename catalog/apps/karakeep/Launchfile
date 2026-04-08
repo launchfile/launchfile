@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: karakeep
+description: "Bookmark-everything app with full-text search and AI tagging"
+repository: https://github.com/karakeep-app/karakeep
+logo: https://raw.githubusercontent.com/karakeep-app/karakeep/main/apps/web/public/logo.svg
+
+image: ghcr.io/karakeep-app/karakeep:latest
+provides:
+  - protocol: http
+    port: 3000
+    exposed: true
+env:
+  NEXTAUTH_SECRET:
+    generator: secret
+    sensitive: true
+  NEXTAUTH_URL:
+    default: "http://localhost:3000"
+storage:
+  data:
+    path: /data
+    persistent: true
+restart: always
