@@ -8,8 +8,9 @@
  */
 
 import { readFile } from "node:fs/promises";
-import { basename, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 export interface ResolvedSource {
 	yaml: string;
@@ -55,8 +56,30 @@ async function readLocal(path: string): Promise<ResolvedSource> {
 	return { yaml, slug, source: "local" };
 }
 
+/**
+ * Find local catalog directory (exists in the monorepo, not when published).
+ * Layout: providers/docker/src/ → ../../../catalog
+ */
+function findLocalCatalog(): string | null {
+	const here = dirname(fileURLToPath(import.meta.url));
+	const candidate = join(here, "..", "..", "..", "catalog");
+	return existsSync(candidate) ? candidate : null;
+}
+
 async function fetchFromCatalog(slug: string): Promise<ResolvedSource> {
-	// Try apps/ first, then drafts/
+	// Try local catalog first (monorepo / development)
+	const localCatalog = findLocalCatalog();
+	if (localCatalog) {
+		for (const dir of ["apps", "drafts"]) {
+			const path = join(localCatalog, dir, slug, "Launchfile");
+			if (existsSync(path)) {
+				const yaml = await readFile(path, "utf8");
+				return { yaml, slug, source: "catalog" };
+			}
+		}
+	}
+
+	// Fall back to remote catalog (GitHub)
 	for (const dir of ["apps", "drafts"]) {
 		const url = `${CATALOG_RAW_BASE}/${dir}/${slug}/Launchfile`;
 		const response = await fetch(url);
