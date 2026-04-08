@@ -1,5 +1,11 @@
 # launchfile
 
+## 0.1.9
+
+### Patch Changes
+
+- [`cfc48c1`](https://github.com/launchfile/launchfile/commit/cfc48c1f2ace3074c14252127b44f9c3b2f93a55) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Fixed missing dist/ in published package — CLI binary was not included in 0.1.8.
+
 ## 0.1.8
 
 ### Patch Changes

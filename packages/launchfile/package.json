@@ -1,6 +1,6 @@
 {
   "name": "launchfile",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Launchfile CLI — describe your app, deploy it anywhere",
   "type": "module",
   "bin": {
