@@ -51,22 +51,6 @@ updates:
         patterns: ["*"]
         exclude-patterns: ["astro", "@astrojs/*", "tailwindcss", "@tailwindcss/*"]
 
-  # www-io (launchfile.io)
-  - package-ecosystem: npm
-    directory: /www-io
-    schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
-    groups:
-      astro-ecosystem:
-        patterns: ["astro", "@astrojs/*"]
-      tailwind:
-        patterns: ["tailwindcss", "@tailwindcss/*"]
-      other:
-        patterns: ["*"]
-        exclude-patterns: ["astro", "@astrojs/*", "tailwindcss", "@tailwindcss/*"]
-
   # www-org (launchfile.org)
   - package-ecosystem: npm
     directory: /www-org

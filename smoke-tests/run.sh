@@ -178,7 +178,7 @@ run_cli_tests() {
 
   # B1: --version
   out=$(npx launchfile --version 2>&1) ; rc=$?
-  if [ $rc -eq 0 ] && echo "$out" | grep -q "0.1."; then pass "B1: --version"
+  if [ $rc -eq 0 ] && echo "$out" | grep -qE "^launchfile [0-9]+\.[0-9]+\."; then pass "B1: --version"
   else fail "B1: --version (rc=$rc, out='$out')"; fi
 
   # B2: --help
@@ -257,7 +257,7 @@ run_cli_tests() {
     cd "$BUN_DIR"
 
     out=$(bunx launchfile --version 2>&1) ; rc=$?
-    if [ $rc -eq 0 ] && echo "$out" | grep -q "0.1."; then pass "B15: bunx --version"
+    if [ $rc -eq 0 ] && echo "$out" | grep -qE "^launchfile [0-9]+\.[0-9]+\."; then pass "B15: bunx --version"
     else fail "B15: bunx --version (rc=$rc, out='$out')"; fi
 
     out=$(bunx launchfile validate minimal.yaml --no-color 2>&1) ; rc=$?
