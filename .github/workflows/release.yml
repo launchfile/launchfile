@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+permissions: {}
+
+jobs:
+  release:
+    # Only run after the Version Packages PR is merged
+    if: startsWith(github.event.head_commit.message, 'chore: version packages')
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    permissions:
+      id-token: write # OIDC for npm trusted publishing
+      contents: write # Create GitHub Release + tags
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - run: npm install -g npm@latest
+
+      # Build SDK first (other packages depend on it)
+      - run: cd sdk && bun install --frozen-lockfile && bun run build
+
+      # Publish in dependency order — skip already-published versions
+      - name: Publish @launchfile/sdk
+        run: cd sdk && npm publish --access public --provenance || true
+      - name: Publish @launchfile/docker
+        run: cd providers/docker && npm publish --access public --provenance || true
+      - name: Publish @launchfile/macos-dev
+        run: cd providers/macos-dev && npm publish --access public --provenance || true
+      - name: Publish launchfile
+        run: cd packages/launchfile && npm publish --access public --provenance || true
+
+      # Create a GitHub Release from the tag
+      - name: Create git tag
+        run: |
+          VERSION=$(node -p "require('./sdk/package.json').version")
+          git tag "v${VERSION}"
+          git push origin "v${VERSION}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create GitHub Release
+        run: |
+          VERSION=$(node -p "require('./sdk/package.json').version")
+          gh release create "v${VERSION}" --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
