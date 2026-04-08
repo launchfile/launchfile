@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "astro dev",
-    "dev:search": "astro build && pagefind --site dist && cp -r dist/pagefind public/pagefind && astro dev",
-    "build": "astro build && pagefind --site dist",
+    "dev:search": "astro build && pagefind --site dist/client && cp -r dist/client/pagefind public/pagefind && astro dev",
+    "build": "astro build && pagefind --site dist/client",
     "preview": "astro preview",
     "typecheck": "astro check",
     "publish": "bun run build && bunx wrangler pages deploy dist/client --project-name launchfile-org"
