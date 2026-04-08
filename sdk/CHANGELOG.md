@@ -1,5 +1,11 @@
 # @launchfile/sdk
 
+## 0.1.10
+
+### Patch Changes
+
+- [`d0298ba`](https://github.com/launchfile/launchfile/commit/d0298ba3e630087613e9b6a2ce63e0ba649f9d7d) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Fixed missing dist/ in Docker provider and SDK packages published in 0.1.8.
+
 ## 0.1.8
 
 ### Patch Changes
