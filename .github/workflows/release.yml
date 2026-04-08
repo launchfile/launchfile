@@ -34,8 +34,10 @@ jobs:
       - name: Build providers and CLI for publishing
         run: |
           for dir in providers/docker providers/macos-dev packages/launchfile; do
-            echo '{"extends":"./tsconfig.json","compilerOptions":{"types":[],"skipLibCheck":true}}' > "$dir/tsconfig.publish.json"
-            cd "$dir" && bunx tsc -p tsconfig.publish.json && rm tsconfig.publish.json && cd -
+            cat > "$dir/tsconfig.publish.json" << 'EOF'
+          {"extends":"./tsconfig.json","compilerOptions":{"types":["node"],"skipLibCheck":true},"exclude":["src/**/*.test.ts","src/**/__tests__/**"]}
+          EOF
+            (cd "$dir" && bunx tsc -p tsconfig.publish.json && rm tsconfig.publish.json)
           done
 
       # Publish in dependency order — skip already-published versions
