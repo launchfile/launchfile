@@ -33,7 +33,7 @@
       const base = window.location.origin;
       const url = new URL("/pagefind/pagefind.js", base).href;
       pagefind = await import(/* @vite-ignore */ url);
-      await pagefind.init();
+      await pagefind.init({});
     } catch {
       pagefind = null;
     }
