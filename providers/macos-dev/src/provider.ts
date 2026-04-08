@@ -37,7 +37,6 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 
 	// 1. Check prerequisites
-	console.log("Checking prerequisites...");
 	const prereqs = await checkPrereqs();
 	if (!prereqs.ok) {
 		console.error("Missing prerequisites:");
@@ -46,7 +45,6 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	}
 
 	// 2. Read and parse Launchfile
-	console.log("Reading Launchfile...");
 	const launchfilePath = join(projectDir, "Launchfile");
 	let launchfileContent: string;
 	try {
@@ -57,9 +55,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	}
 
 	const launch = readLaunch(launchfileContent);
-	console.log(`  App: ${launch.name}`);
 	const componentNames = Object.keys(launch.components);
-	console.log(`  Components: ${componentNames.join(", ")}`);
 
 	// 3. Load or init state
 	let state = await loadState(projectDir);
@@ -71,11 +67,9 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	await ensureDirs(projectDir);
 
 	// 5. Generate secrets
-	console.log("Generating secrets...");
 	state.secrets = await generateSecrets(launch.secrets, state.secrets);
 
 	// 6. Provision required resources
-	console.log("Provisioning resources...");
 	const resourceMap: Record<string, ResourceProperties> = {};
 
 	for (const [_compName, component] of Object.entries(launch.components)) {
@@ -85,7 +79,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 
 			const provisioner = getProvisioner(req.type);
 			if (!provisioner) {
-				console.warn(`  No provisioner for resource type: ${req.type} (skipping)`);
+				console.warn(`  ! No provisioner for resource type: ${req.type} (skipping)`);
 				continue;
 			}
 
@@ -95,11 +89,12 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 				continue;
 			}
 
-			console.log(`  Provisioning ${req.type} (${resourceName})...`);
+			process.stdout.write(`  \u2193 Provisioning ${req.type}...`);
 			const existing = state.resources[resourceName];
 			const result = await provisioner.provision(req, { appName: launch.name, projectDir }, existing);
 			resourceMap[resourceName] = result.properties;
 			state.resources[resourceName] = result.state;
+			console.log(" done");
 		}
 
 		// Optional supports resources
@@ -109,10 +104,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 				if (resourceMap[resourceName]) continue;
 
 				const provisioner = getProvisioner(sup.type);
-				if (!provisioner) {
-					console.log(`  Optional resource ${sup.type} not supported (skipping)`);
-					continue;
-				}
+				if (!provisioner) continue;
 
 				if (opts.dryRun) {
 					console.log(`  [dry-run] Would provision optional ${sup.type} as "${resourceName}"`);
@@ -121,20 +113,20 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 				}
 
 				try {
-					console.log(`  Provisioning optional ${sup.type} (${resourceName})...`);
+					process.stdout.write(`  \u2193 Provisioning ${sup.type} (optional)...`);
 					const existing = state.resources[resourceName];
 					const result = await provisioner.provision(sup, { appName: launch.name, projectDir }, existing);
 					resourceMap[resourceName] = result.properties;
 					state.resources[resourceName] = result.state;
-				} catch (err) {
-					console.log(`  Optional resource ${sup.type} failed to provision (skipping): ${err}`);
+					console.log(" done");
+				} catch {
+					console.log(" skipped");
 				}
 			}
 		}
 	}
 
 	// 7. Allocate ports
-	console.log("Allocating ports...");
 	const componentPorts = await allocatePorts(launch.components, launch.name, state.ports);
 	state.ports = componentPorts;
 
@@ -145,14 +137,14 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	for (const [name, component] of Object.entries(launch.components)) {
 		if (!component.runtime) {
 			if (!component.image) {
-				console.warn(`  [${name}] No runtime declared — cannot run natively`);
+				console.warn(`  ! [${name}] No runtime declared — cannot run natively`);
 			}
 			continue;
 		}
 
 		const installer = getRuntimeInstaller(component.runtime);
 		if (!installer) {
-			console.warn(`  [${name}] No installer for runtime: ${component.runtime}`);
+			console.warn(`  ! [${name}] No installer for runtime: ${component.runtime}`);
 			continue;
 		}
 
@@ -163,18 +155,15 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 
 		const version = await installer.detectVersion(projectDir);
 		if (version) {
-			console.log(`  [${name}] Runtime ${component.runtime} ${version}`);
+			console.log(`  \u2193 Installing ${component.runtime} ${version}... done`);
 			await installer.install(version);
 		} else {
-			console.log(`  [${name}] Runtime ${component.runtime} (using system default)`);
+			console.log(`  \u2193 Using system ${component.runtime}`);
 		}
 	}
 
 	// 10. Detect package manager
 	const pm = await detectPackageManager(projectDir);
-	if (pm) {
-		console.log(`  Package manager: ${pm.name} (${pm.lockfile})`);
-	}
 
 	// 11. Create storage directories
 	for (const [name, component] of Object.entries(launch.components)) {
@@ -182,7 +171,6 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	}
 
 	// 12. Resolve env vars and write .env files
-	console.log("Resolving environment variables...");
 	const allEnvs: Record<string, Record<string, string>> = {};
 	const isSingleComponent = componentNames.length === 1 && componentNames[0] === "default";
 
@@ -204,12 +192,12 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 
 		if (isSingleComponent) {
 			await writeEnvFile(join(projectDir, ".env.local"), env);
-			console.log(`  Wrote .env.local (${Object.keys(env).length} vars)`);
+			console.log(`  \u2193 Wiring environment variables... done (${Object.keys(env).length} vars)`);
 		} else {
 			const { mkdir } = await import("node:fs/promises");
 			await mkdir(join(projectDir, ".launchfile", "env"), { recursive: true });
 			await writeEnvFile(join(projectDir, ".launchfile", "env", `${name}.env`), env);
-			console.log(`  Wrote .launchfile/env/${name}.env (${Object.keys(env).length} vars)`);
+			console.log(`  \u2193 Wiring ${name} environment... done (${Object.keys(env).length} vars)`);
 		}
 	}
 
@@ -228,7 +216,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 			const buildCmd = component.commands?.build?.command;
 			const cmd = buildCmd ?? pm?.installCommand;
 			if (cmd) {
-				console.log(`\n  [${name}] Building: ${cmd}`);
+				console.log(`  \u2193 Building${componentNames.length > 1 ? ` [${name}]` : ""}...`);
 				await shell(cmd, {
 					cwd: projectDir,
 					env: allEnvs[name],
@@ -241,7 +229,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	for (const [name, component] of Object.entries(launch.components)) {
 		const releaseCmd = component.commands?.release?.command;
 		if (releaseCmd) {
-			console.log(`\n  [${name}] Release: ${releaseCmd}`);
+			console.log(`  \u2193 Running release${componentNames.length > 1 ? ` [${name}]` : ""}...`);
 			await shell(releaseCmd, {
 				cwd: projectDir,
 				env: allEnvs[name],
@@ -250,13 +238,13 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	}
 
 	// 16. Start all components
-	console.log("\nStarting components...");
+	process.stdout.write(`  \u2193 Starting services...`);
 	const pm2 = new ProcessManager(projectDir);
 
 	for (const [name, component] of Object.entries(launch.components)) {
 		const startCmd = component.commands?.start?.command;
 		if (!startCmd) {
-			console.warn(`  [${name}] No start command — skipping`);
+			console.warn(`\n  ! [${name}] No start command — skipping`);
 			continue;
 		}
 
@@ -279,6 +267,8 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	});
 
 	await pm2.startAll();
+	console.log("");
+	console.log(`  \u2713 All components started`);
 
 	// 17. Print summary
 	printSummary(launch, componentPorts, resourceMap);
@@ -290,28 +280,14 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 function printSummary(
 	launch: NormalizedLaunch,
 	ports: Record<string, number>,
-	resources: Record<string, ResourceProperties>,
+	_resources: Record<string, ResourceProperties>,
 ): void {
-	console.log("\n" + "=".repeat(60));
-	console.log(`  ${launch.name} is running`);
-	console.log("=".repeat(60));
-
+	console.log("");
 	for (const [name, port] of Object.entries(ports)) {
-		const component = launch.components[name];
-		const exposed = component?.provides?.some((p) => p.exposed);
-		const label = exposed ? "(public)" : "(internal)";
-		console.log(`  ${name}: http://localhost:${port} ${label}`);
+		const label = name === "default" ? launch.name : name;
+		console.log(`  ${label} is running at http://localhost:${port}`);
 	}
-
-	if (Object.keys(resources).length > 0) {
-		console.log("\n  Resources:");
-		for (const [name, props] of Object.entries(resources)) {
-			console.log(`    ${name}: ${props.url}`);
-		}
-	}
-
 	console.log("\n  Press Ctrl+C to stop all processes.");
-	console.log("=".repeat(60));
 }
 
 export async function launchDown(opts: { destroy?: boolean; projectDir?: string } = {}): Promise<void> {
