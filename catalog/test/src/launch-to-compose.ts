@@ -160,6 +160,33 @@ const BACKING_SERVICES: Record<string, (name: string) => BackingService> = {
       retries: 5,
     },
   }),
+
+  kafka: (name) => ({
+    image: "redpandadata/redpanda:latest",
+    environment: {},
+    properties: {
+      host: `${name}-kafka`,
+      port: "9092",
+      url: `${name}-kafka:9092`,
+    },
+    healthcheck: {
+      test: ["CMD-SHELL", "rpk topic list > /dev/null 2>&1"],
+      interval: "5s",
+      timeout: "5s",
+      retries: 10,
+    },
+    extra: {
+      command: [
+        "redpanda", "start",
+        "--smp", "1",
+        "--memory", "512M",
+        "--reserve-memory", "0M",
+        "--overprovisioned",
+        "--kafka-addr", "PLAINTEXT://0.0.0.0:9092",
+        "--advertise-kafka-addr", `PLAINTEXT://${name}-kafka:9092`,
+      ],
+    },
+  }),
 };
 
 // --- Generator helpers ---
