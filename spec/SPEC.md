@@ -652,6 +652,8 @@ Each resource type exposes well-known properties for use in `set_env` expression
 | `rabbitmq` | `url`, `host`, `port`, `user`, `password` |
 | `elasticsearch` | `url`, `host`, `port` |
 | `minio` | `url`, `host`, `port`, `access_key`, `secret_key`, `bucket` |
+| `clickhouse` | `url`, `host`, `port`, `user`, `password`, `name` |
+| `kafka` | `url`, `host`, `port` |
 | `s3` | `url`, `access_key`, `secret_key`, `bucket`, `region` |
 
 The `url` property is always a fully-formed connection string (e.g. `postgresql://user:pass@host:5432/dbname`). Other properties provide individual components for apps that require them separately.
