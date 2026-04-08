@@ -28,17 +28,11 @@ jobs:
           registry-url: "https://registry.npmjs.org"
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
-      # Install all workspace dependencies, then build each package
-      - run: bun install --frozen-lockfile
-      - run: cd sdk && bun run build
-      - name: Build providers and CLI for publishing
-        run: |
-          for dir in providers/docker providers/macos-dev packages/launchfile; do
-            cat > "$dir/tsconfig.publish.json" << 'EOF'
-          {"extends":"./tsconfig.json","compilerOptions":{"types":["node"],"skipLibCheck":true},"exclude":["src/**/*.test.ts","src/**/__tests__/**"]}
-          EOF
-            (cd "$dir" && bunx tsc -p tsconfig.publish.json && rm tsconfig.publish.json)
-          done
+      # Install and build each package in dependency order
+      - run: cd sdk && bun install --frozen-lockfile && bun run build
+      - run: cd providers/docker && bun install && bun run build
+      - run: cd providers/macos-dev && bun install && bun run build
+      - run: cd packages/launchfile && bun install && bun run build
 
       # Publish in dependency order — skip already-published versions
       - name: Publish @launchfile/sdk
