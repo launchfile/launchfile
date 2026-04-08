@@ -132,10 +132,10 @@ Each gap includes the apps that exposed it and a severity rating.
 **Assessment**: This belongs in the Docker provider, not the spec. Kubernetes solves it with `fsGroup`. The Launchfile spec should not add user/group fields — that's platform-specific. Docker providers should inspect the image's `USER` directive and set volume ownership accordingly.
 
 ### G-20: Apps binding to localhost only 🟡
-**Apps**: OpenClaw (gateway on `::1:18789`)
+**Apps**: *(no catalog apps currently affected — OpenClaw binds to `0.0.0.0` when run as root)*
 **Issue**: Some apps bind their HTTP server to `127.0.0.1` or `::1` only, making them unreachable from outside the container even with Docker port mapping. The Launchfile `provides.port` declares what the app exposes, but if the app itself refuses connections from non-loopback addresses, Docker port forwarding silently fails.
 **Workaround**: Orchestrator adds a sidecar reverse proxy (nginx/socat) or the app provides an env var to configure the bind address.
-**Assessment**: This is an app configuration concern. The spec could add a `provides.bind` field (already exists) to hint at the expected bind address, but enforcement is on the orchestrator side.
+**Assessment**: This is an app configuration concern. The spec's `provides.bind` field declares the expected bind address. The test harness compose translator now detects loopback-bound exposed ports (`provides.bind` set to `::1` or `127.0.0.1`) and auto-generates a socat sidecar sharing the network namespace to forward `0.0.0.0:PORT → bind:PORT`. Health checks also use the declared bind address instead of defaulting to `localhost`. Note: OpenClaw was originally flagged here because its gateway binds to `::1` when running as the `node` user, but the test harness runs containers as root (`user: "0:0"` for G-19), which causes OpenClaw to bind to `0.0.0.0` instead.
 
 ---
 

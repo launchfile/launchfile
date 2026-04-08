@@ -2,14 +2,13 @@
 version: launch/v1
 name: openclaw
 description: "Open-source AI tools platform"
-
-# NOTE: Gateway binds to localhost only (::1). Orchestrator must provide
-# a reverse proxy or socat forwarder to expose the UI externally.
 image: ghcr.io/openclaw/openclaw:latest
+platform: linux/arm64
 provides:
   - protocol: http
     port: 18789
     exposed: true
+  # Bridge — channel integrations for messaging services
   - protocol: http
     port: 18790
     name: bridge
@@ -25,5 +24,7 @@ storage:
   data:
     path: /home/node/.openclaw
     persistent: true
-health: /
+health:
+  path: /
+  start_period: 120s
 restart: always
