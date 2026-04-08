@@ -11,7 +11,7 @@
     "sourceMap": true,
     "rootDir": "src",
     "outDir": "dist",
-    "types": ["bun-types", "vitest/globals"],
+    "types": ["@types/bun", "vitest/globals"],
     "skipLibCheck": true
   },
   "include": ["src/**/*.ts"]
