@@ -349,7 +349,7 @@ TOML was considered but rejected: it lacks nested structure depth (tables-of-tab
 - Hash/fragment (`$secrets.key#base64`) — no chainability precedent; developers don't associate `#` with transforms.
 - Function syntax (`base64($secrets.key)`) — breaks `$` prefix detection, reads inside-out for chains, requires major parser changes.
 - Field-level encoding (`format: base64` on generators) — doesn't compose with string interpolation for prefixes.
-**Why**: The `|` pipe operator has universal precedent in Unix, Jinja2, Ansible, Helm, and Go templates. It's unambiguous (dots navigate, pipes transform), naturally chainable (`$ref|base64|urlsafe`), has zero YAML conflicts (`|` is only special as a block scalar indicator at value-start), and works on any reference — not just secrets. The parser change is minimal (split on `|` after path parsing). Motivated by Laravel apps (Firefly III, Monica) requiring `base64:`-prefixed keys. See [#12](https://github.com/launchfile/launchfile/issues/12).
+**Why**: The `|` pipe operator has universal precedent in Unix, Jinja2, Ansible, Helm, and Go templates. It's unambiguous (dots navigate, pipes transform), naturally chainable (`$ref|base64|urlsafe`), has zero YAML conflicts (`|` is only special as a block scalar indicator at value-start), and works on any reference — not just secrets. The parser change is minimal (split on `|` after path parsing). Motivated by Laravel apps (Firefly III, Monica) requiring `base64:`-prefixed keys. Currently defined transforms: `base64` and `hex`. The pipeline is extensible for future additions (e.g. `urlsafe`, `sha256`). See [#12](https://github.com/launchfile/launchfile/issues/12).
 
 ---
 

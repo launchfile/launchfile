@@ -307,6 +307,10 @@ env:
 
 The `|` is unambiguous — dots navigate paths, pipes apply transforms. This distinction matters for future extensibility (e.g., key pair properties like `$secrets.key.private` are navigation, not transforms).
 
+Currently defined transforms: `base64`, `hex`. The pipeline is extensible — future spec versions may add transforms like `urlsafe` or `sha256`.
+
+**`base64` encoding behavior:** When the input is a hex string (even-length, all hex characters — as produced by `generator: secret`), `|base64` decodes the hex to raw bytes first, then base64-encodes the bytes. For non-hex inputs, `|base64` encodes the raw string directly. This means `$secrets.key|base64` produces compact base64 from the secret's underlying bytes, not a base64 encoding of the hex *text*.
+
 ## Environment Variables
 
 The `env` map declares app-owned environment variables. Each value is a **string** (shorthand for default value) or an **object**.
