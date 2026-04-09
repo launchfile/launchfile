@@ -12,8 +12,7 @@ permissions: {}
 
 jobs:
   release:
-    # TODO: re-enable condition after first successful run
-    # if: github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'chore: version packages')
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'chore: version packages')
     name: Publish to npm
     runs-on: ubuntu-latest
     environment: npm-publish
