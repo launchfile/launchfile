@@ -25,12 +25,12 @@ export interface ResolverContext {
 /** Result of parsing a set_env value */
 export type ParsedExpression =
 	| { kind: "literal"; value: string }
-	| { kind: "reference"; path: string[]; fallback?: string }
+	| { kind: "reference"; path: string[]; fallback?: string; transforms?: string[] }
 	| { kind: "template"; parts: Array<TemplatePart> };
 
 export type TemplatePart =
 	| { kind: "text"; value: string }
-	| { kind: "ref"; path: string[]; fallback?: string };
+	| { kind: "ref"; path: string[]; fallback?: string; transforms?: string[] };
 
 /**
  * Determine if a set_env value contains any $ references.
@@ -67,22 +67,24 @@ export function parseExpression(value: string): ParsedExpression {
 	}
 
 	// Check if this is a simple $prop (entire value is one reference)
-	const simpleMatch = /^\$([a-zA-Z][a-zA-Z0-9_.[\]-]*)$/.exec(value);
+	// Allows pipe transforms: $prop|base64
+	const simpleMatch = /^\$([a-zA-Z][a-zA-Z0-9_.[\]|-]*)$/.exec(value);
 	if (simpleMatch) {
-		const path = parseDotPath(simpleMatch[1]!);
-		return { kind: "reference", path };
+		const { path, transforms } = splitTransforms(simpleMatch[1]!);
+		return { kind: "reference", path, ...(transforms.length > 0 && { transforms }) };
 	}
 
 	// Check if entire string is a single ${prop} or ${prop:-default}
-	const bracedSimple = /^\$\{([a-zA-Z][a-zA-Z0-9_.[\]-]*)(?::([^}]*))?\}$/.exec(value);
+	// Allows pipe transforms: ${prop|base64:-fallback}
+	const bracedSimple = /^\$\{([a-zA-Z][a-zA-Z0-9_.[\]|-]*)(?::([^}]*))?\}$/.exec(value);
 	if (bracedSimple) {
-		const path = parseDotPath(bracedSimple[1]!);
+		const { path, transforms } = splitTransforms(bracedSimple[1]!);
 		// The default separator is ":-" so strip the leading "-"
 		const rawDefault = bracedSimple[2];
 		const fallback = rawDefault !== undefined && rawDefault.startsWith("-")
 			? rawDefault.slice(1)
 			: rawDefault;
-		return { kind: "reference", path, fallback };
+		return { kind: "reference", path, fallback, ...(transforms.length > 0 && { transforms }) };
 	}
 
 	// Complex template — contains ${...} or $prop embedded in a string
@@ -120,11 +122,13 @@ function parseTemplate(value: string): ParsedExpression {
 			const inner = remaining.slice(2, closeIdx);
 			const defaultSep = inner.indexOf(":-");
 			if (defaultSep !== -1) {
-				const pathStr = inner.slice(0, defaultSep);
+				const refPart = inner.slice(0, defaultSep);
 				const fallback = inner.slice(defaultSep + 2);
-				parts.push({ kind: "ref", path: parseDotPath(pathStr), fallback });
+				const { path, transforms } = splitTransforms(refPart);
+				parts.push({ kind: "ref", path, fallback, ...(transforms.length > 0 && { transforms }) });
 			} else {
-				parts.push({ kind: "ref", path: parseDotPath(inner) });
+				const { path, transforms } = splitTransforms(inner);
+				parts.push({ kind: "ref", path, ...(transforms.length > 0 && { transforms }) });
 			}
 			remaining = remaining.slice(closeIdx + 1);
 			continue;
@@ -136,9 +140,10 @@ function parseTemplate(value: string): ParsedExpression {
 				parts.push({ kind: "text", value: textBuffer });
 				textBuffer = "";
 			}
-			const bareMatch = /^\$([a-zA-Z][a-zA-Z0-9_.]*)/.exec(remaining);
+			const bareMatch = /^\$([a-zA-Z][a-zA-Z0-9_.|]*)/.exec(remaining);
 			if (bareMatch) {
-				parts.push({ kind: "ref", path: parseDotPath(bareMatch[1]!) });
+				const { path, transforms } = splitTransforms(bareMatch[1]!);
+				parts.push({ kind: "ref", path, ...(transforms.length > 0 && { transforms }) });
 				remaining = remaining.slice(bareMatch[0].length);
 				continue;
 			}
@@ -159,6 +164,20 @@ function parseTemplate(value: string): ParsedExpression {
 	}
 
 	return { kind: "template", parts };
+}
+
+/** Split pipe transforms from a reference string: "secrets.key|base64" → { path, transforms: ["base64"] } */
+function splitTransforms(ref: string): { path: string[]; transforms: string[] } {
+	const pipeIdx = ref.indexOf("|");
+	if (pipeIdx === -1) {
+		return { path: parseDotPath(ref), transforms: [] };
+	}
+	const pathStr = ref.slice(0, pipeIdx);
+	const transformStr = ref.slice(pipeIdx + 1);
+	return {
+		path: parseDotPath(pathStr),
+		transforms: transformStr.split("|").filter(Boolean),
+	};
 }
 
 /**
@@ -216,13 +235,15 @@ export function resolveExpression(
 	}
 
 	if (parsed.kind === "reference") {
-		return resolvePath(parsed.path, context) ?? parsed.fallback ?? "";
+		const resolved = resolvePath(parsed.path, context) ?? parsed.fallback ?? "";
+		return applyTransforms(resolved, parsed.transforms);
 	}
 
 	return parsed.parts
 		.map((part) => {
 			if (part.kind === "text") return part.value;
-			return resolvePath(part.path, context) ?? part.fallback ?? "";
+			const resolved = resolvePath(part.path, context) ?? part.fallback ?? "";
+			return applyTransforms(resolved, part.transforms);
 		})
 		.join("");
 }
@@ -278,4 +299,35 @@ function resolvePath(
 	}
 
 	return undefined;
+}
+
+/** Apply pipe transforms to a resolved value */
+function applyTransforms(value: string, transforms?: string[]): string {
+	if (!transforms || transforms.length === 0) return value;
+	let result = value;
+	for (const transform of transforms) {
+		result = applyTransform(result, transform);
+	}
+	return result;
+}
+
+/** Apply a single named transform to a string value */
+function applyTransform(value: string, transform: string): string {
+	switch (transform) {
+		case "base64": {
+			// If value looks like hex (even-length, all hex chars), decode as hex bytes first
+			if (/^[0-9a-fA-F]+$/.test(value) && value.length % 2 === 0) {
+				const bytes = new Uint8Array(
+					value.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) ?? [],
+				);
+				return btoa(String.fromCharCode(...bytes));
+			}
+			// Otherwise base64-encode the raw string
+			return btoa(value);
+		}
+		case "hex":
+			return value;
+		default:
+			return value;
+	}
 }

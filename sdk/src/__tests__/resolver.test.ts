@@ -353,6 +353,42 @@ describe("resolveExpression", () => {
 		expect(resolveExpression("$secrets.missing", ctx)).toBe("");
 	});
 
+	// D-32: Pipe transforms
+	it("resolves $secrets.key|hex as the raw hex value", () => {
+		const ctx = { secrets: { key: "deadbeef" } };
+		expect(resolveExpression("$secrets.key|hex", ctx)).toBe("deadbeef");
+	});
+
+	it("resolves $secrets.key|base64 as base64-encoded bytes", () => {
+		// "deadbeef" hex = bytes [0xde, 0xad, 0xbe, 0xef] = base64 "3q2+7w=="
+		const ctx = { secrets: { key: "deadbeef" } };
+		expect(resolveExpression("$secrets.key|base64", ctx)).toBe("3q2+7w==");
+	});
+
+	it("composes base64 with literal prefix (Laravel APP_KEY pattern)", () => {
+		const ctx = { secrets: { "app-key": "deadbeef" } };
+		expect(resolveExpression("base64:${secrets.app-key|base64}", ctx)).toBe("base64:3q2+7w==");
+	});
+
+	it("returns raw value for unknown transform", () => {
+		const ctx = { secrets: { key: "deadbeef" } };
+		expect(resolveExpression("$secrets.key|unknown", ctx)).toBe("deadbeef");
+	});
+
+	it("applies transforms to non-secret references", () => {
+		const ctx = { resource: { host: "db.example.com" } };
+		expect(resolveExpression("$host|base64", ctx)).toBe(btoa("db.example.com"));
+	});
+
+	it("parses pipe transforms in braced expressions", () => {
+		const result = parseExpression("${secrets.key|base64}");
+		expect(result).toEqual({
+			kind: "reference",
+			path: ["secrets", "key"],
+			transforms: ["base64"],
+		});
+	});
+
 	// Missing property with no fallback
 	it("returns empty string for missing property", () => {
 		const emptyCtx = { resource: {} };
