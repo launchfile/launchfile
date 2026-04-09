@@ -32,6 +32,24 @@ jobs:
       - run: cd providers/${{ matrix.provider }} && bun run typecheck
       - run: cd providers/${{ matrix.provider }} && bun test
 
+  cli:
+    name: CLI
+    runs-on: ubuntu-latest
+    needs: [sdk, providers]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - name: Build SDK and providers (local dependencies)
+        run: |
+          cd sdk && bun install --frozen-lockfile && bun run build
+          cd ../providers/docker && bun install --frozen-lockfile && bun run build
+      - run: cd packages/launchfile && bun install --frozen-lockfile
+      - run: cd packages/launchfile && bun run typecheck
+      - run: cd packages/launchfile && bun run build
+      - run: cd packages/launchfile && bun test
+      - name: Verify dist/cli.js exists
+        run: test -f packages/launchfile/dist/cli.js || (echo "dist/cli.js missing!" && exit 1)
+
   websites:
     name: "Website (${{ matrix.site }})"
     runs-on: ubuntu-latest

@@ -57,3 +57,58 @@ cd providers/macos-dev && bun install && bun test
 cd www-dev && bun install && bun run dev   # launchfile.dev
 cd www-org && bun install && bun run dev   # launchfile.org
 ```
+
+## Build & Packaging Rules
+
+Past incidents: dist/cli.js missing from published packages, wrong dist/ paths, pagefind indexes not generated, source maps shipped to npm. These rules prevent recurrence.
+
+### npm packages — what gets published
+
+Every publishable package MUST have a `files` array in package.json. This is the allowlist of what npm publish ships. Without it, everything (src/, tests, maps) gets published.
+
+| Package | npm name | `files` must include | `bin` |
+|---------|----------|---------------------|-------|
+| `sdk/` | `@launchfile/sdk` | `dist/**/*.js`, `dist/**/*.d.ts`, `schema/**`, `README.md` | — |
+| `providers/docker/` | `@launchfile/docker` | `dist/**/*.js`, `dist/**/*.d.ts`, `README.md` | — |
+| `providers/macos-dev/` | `@launchfile/macos-dev` | `dist/**/*.js`, `dist/**/*.d.ts`, `README.md` | — |
+| `packages/launchfile/` | `launchfile` | `dist/**/*.js`, `dist/**/*.d.ts`, `README.md` | `dist/cli.js` |
+
+Never include: `src/`, `**/__tests__/`, `*.map`, `tsconfig*.json`, `bun.lock`.
+
+### CI build order
+
+The CI pipeline must match dependency order: SDK → Providers → CLI. Each step must build before test (tests may import from dist/).
+
+```
+SDK (typecheck → build → test)
+  ↓
+Providers (build SDK first, then typecheck → build → test)
+  ↓
+CLI package (build SDK + providers first, then typecheck → build → test)
+  ↓
+Websites (need Node >= 22 for Astro 6, need wrangler.toml with pinned compat_date)
+```
+
+### Websites — Astro + Cloudflare
+
+- Both sites use `output: "static"` with `@astrojs/cloudflare` adapter
+- `astro check` (typecheck) spawns a Node process via miniflare — requires Node >= 22.12.0
+- `wrangler.toml` must pin `compatibility_date` to avoid race with workerd binary releases
+- Pagefind runs post-build: `astro build && pagefind --site dist/client`
+- Deploy path is `dist/client/` (not `dist/`)
+
+### Local pre-push validation
+
+Before pushing, run this to catch CI failures locally:
+
+```bash
+# SDK
+cd sdk && bun run typecheck && bun run build && bun test
+
+# Providers
+cd providers/docker && bun run typecheck && bun test
+cd providers/macos-dev && bun run build && bun test
+
+# CLI package
+cd packages/launchfile && bun run typecheck && bun run build && bun test
+```
