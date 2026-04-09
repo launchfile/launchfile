@@ -257,7 +257,7 @@ Generator strategies:
 
 | Generator | Produces | Example |
 |---|---|---|
-| `secret` | Cryptographically random string (suitable for signing keys, tokens) | `a3f8b2c1d9e7...` |
+| `secret` | Cryptographically random hex string (suitable for signing keys, tokens). Use `\|base64` pipe for base64 encoding. | `a3f8b2c1d9e7...` |
 | `uuid` | UUID v4 | `550e8400-e29b-41d4-a716-446655440000` |
 | `port` | Allocates an available port on the host | `8432` |
 
@@ -279,6 +279,33 @@ components:
 ```
 
 Both components receive the same generated value.
+
+### Pipe transforms
+
+Any resolved value can be piped through encoding transforms using the `|` operator, following the same convention as Unix pipes, Jinja2 filters, and Helm template pipelines:
+
+| Expression | Output | Notes |
+|---|---|---|
+| `$secrets.key` | `a3f8b2c1d9e7...` | Default (hex) |
+| `$secrets.key\|hex` | `a3f8b2c1d9e7...` | Explicit hex, same as default |
+| `$secrets.key\|base64` | `o/iywd6X...` | Base64-encoded (standard, with padding) |
+| `$host\|base64` | `ZGIuZXhhbXBsZS5jb20=` | Works on any reference, not just secrets |
+
+Transforms compose with string interpolation for literal prefixes:
+
+```yaml
+secrets:
+  app-key:
+    generator: secret
+
+env:
+  # Raw hex (default)
+  SESSION_SECRET: "$secrets.app-key"
+  # Base64 with Laravel's required prefix
+  APP_KEY: "base64:${secrets.app-key|base64}"
+```
+
+The `|` is unambiguous — dots navigate paths, pipes apply transforms. This distinction matters for future extensibility (e.g., key pair properties like `$secrets.key.private` are navigation, not transforms).
 
 ## Environment Variables
 
@@ -596,6 +623,7 @@ The `$` reference system is used in `set_env` values and `env` defaults to wire 
 | `$components.name.prop` | Property from another component's provides |
 | `$components.name.endpoint.prop` | Property from a named endpoint on another component |
 | `$secrets.name` | App-wide generated secret |
+| `$ref\|transform` | Any reference piped through a transform (e.g. `\|base64`) |
 | `${prop}` | Explicit braced form (same as `$prop`) |
 | `${prop:-default}` | Reference with fallback value |
 | `$$` | Literal `$` (escape) |
