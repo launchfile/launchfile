@@ -6,6 +6,7 @@
  */
 
 import { stringify } from "yaml";
+import { resolveExpression, isExpression } from "../../../sdk/src/resolver.ts";
 import type {
   NormalizedLaunch,
   NormalizedRequirement,
@@ -427,8 +428,11 @@ function resolveEnvVar(
 
   if (envVar.default !== undefined) {
     const val = String(envVar.default);
-    // Resolve $secrets.* references in defaults
-    return val.replace(/\$secrets\.(\w+)/g, (_, name) => secrets[name] ?? "");
+    // Resolve expressions ($secrets.*, ${secrets.*}, etc.) via SDK resolver
+    if (isExpression(val)) {
+      return resolveExpression(val, { secrets });
+    }
+    return val;
   }
 
   // For required vars without defaults, provide smart placeholders
