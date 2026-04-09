@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: matomo
+description: "Privacy-focused web analytics platform (formerly Piwik, Google Analytics alternative)"
+repository: https://github.com/matomo-org/matomo
+logo: https://raw.githubusercontent.com/matomo-org/matomo/5.x-dev/plugins/CoreHome/images/applogo_256.png
+
+image: matomo:latest
+provides:
+  - protocol: http
+    port: 80
+    exposed: true
+requires:
+  - type: mariadb
+    set_env:
+      MATOMO_DATABASE_HOST: $host
+      MATOMO_DATABASE_USERNAME: $user
+      MATOMO_DATABASE_PASSWORD: $password
+      MATOMO_DATABASE_DBNAME: $name
+storage:
+  html:
+    path: /var/www/html
+    persistent: true
+restart: always

@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: beszel
+description: "Lightweight server monitoring with Docker stats, historical data, and alerts"
+repository: https://github.com/henrygd/beszel
+logo: https://raw.githubusercontent.com/henrygd/beszel/main/beszel/site/src/assets/logo.svg
+
+image: henrygd/beszel:latest
+provides:
+  - protocol: http
+    port: 8090
+    exposed: true
+storage:
+  data:
+    path: /beszel_data
+    persistent: true
+restart: always

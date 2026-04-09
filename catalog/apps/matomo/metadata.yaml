@@ -1,0 +1,16 @@
+test_results:
+  last_tested: 2026-04-09
+  pull_time_seconds: 30
+  startup_time_seconds: 12
+  total_disk_mb: 919
+  health_check_passed: true
+  notes: ""
+images:
+  - name: matomo:latest
+    size_mb: 575
+    platform:
+      - linux/arm64
+  - name: mariadb:11
+    size_mb: 344
+    platform:
+      - linux/arm64

@@ -1,0 +1,15 @@
+category: Archiving
+tagline: "Self-hosted web archiving — saves HTML, JS, PDFs, media from any URL"
+homepage: https://archivebox.io
+test_results:
+  last_tested: 2026-04-09
+  pull_time_seconds: 67
+  startup_time_seconds: 2
+  total_disk_mb: 2116
+  health_check_passed: true
+  notes: ""
+images:
+  - name: archivebox/archivebox:latest
+    size_mb: 2116
+    platform:
+      - linux/arm64

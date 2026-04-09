@@ -1,0 +1,15 @@
+category: Bookmarks
+tagline: Read-it-later app for saving web pages to read offline (Pocket alternative)
+homepage: https://www.wallabag.org
+test_results:
+  last_tested: 2026-04-09
+  pull_time_seconds: 16
+  startup_time_seconds: 31
+  total_disk_mb: 304
+  health_check_passed: true
+  notes: ""
+images:
+  - name: wallabag/wallabag:latest
+    size_mb: 304
+    platform:
+      - linux/arm64

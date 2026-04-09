@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: snipe-it
+description: "IT asset management for tracking hardware, software licenses, and accessories"
+repository: https://github.com/snipe/snipe-it
+logo: https://raw.githubusercontent.com/snipe/snipe-it/master/public/img/snipe-logo.png
+
+image: snipe/snipe-it:latest
+provides:
+  - protocol: http
+    port: 80
+    exposed: true
+requires:
+  - type: mariadb
+    set_env:
+      DB_HOST: $host
+      DB_PORT: $port
+      DB_DATABASE: $name
+      DB_USERNAME: $user
+      DB_PASSWORD: $password
+env:
+  APP_KEY:
+    generator: secret
+    sensitive: true
+    description: "Application encryption key"
+  APP_URL:
+    default: "http://localhost"
+    description: "Public URL of the Snipe-IT instance"
+storage:
+  data:
+    path: /var/lib/snipeit
+    persistent: true
+restart: always

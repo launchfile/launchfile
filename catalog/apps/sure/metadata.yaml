@@ -1,0 +1,15 @@
+category: Finance
+tagline: Financial planning and wealth management platform for personal finance overview
+homepage: https://github.com/we-promise/sure
+test_results:
+  last_tested: 2026-04-09
+  pull_time_seconds: 30
+  startup_time_seconds: 1
+  total_disk_mb: 808
+  health_check_passed: true
+  notes: ""
+images:
+  - name: ghcr.io/we-promise/sure:latest
+    size_mb: 808
+    platform:
+      - linux/arm64

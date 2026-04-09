@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: wallabag
+description: "Read-it-later app for saving web pages to read offline (Pocket alternative)"
+repository: https://github.com/wallabag/wallabag
+logo: https://raw.githubusercontent.com/wallabag/wallabag/master/app/Resources/static/themes/_global/img/logo-square.png
+
+image: wallabag/wallabag:latest
+provides:
+  - protocol: http
+    port: 80
+    exposed: true
+env:
+  SYMFONY__ENV__DOMAIN_NAME:
+    default: "http://localhost"
+    description: "Public URL of the wallabag instance"
+  SYMFONY__ENV__SECRET:
+    generator: secret
+    sensitive: true
+    description: "Symfony application secret"
+storage:
+  data:
+    path: /var/www/wallabag/data
+    persistent: true
+restart: always

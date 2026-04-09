@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: twenty
+description: "Modern open-source CRM platform for managing customer relationships"
+repository: https://github.com/twentyhq/twenty
+logo: https://raw.githubusercontent.com/twentyhq/twenty/main/packages/twenty-website/public/images/core/logo.svg
+
+image: twentycrm/twenty:latest
+provides:
+  - protocol: http
+    port: 3000
+    exposed: true
+requires:
+  - type: postgres
+    set_env:
+      PG_DATABASE_URL: $url
+  - type: redis
+    set_env:
+      REDIS_URL: $url
+env:
+  ACCESS_TOKEN_SECRET:
+    generator: secret
+    sensitive: true
+  LOGIN_TOKEN_SECRET:
+    generator: secret
+    sensitive: true
+  SERVER_URL:
+    default: "http://localhost:3000"
+storage:
+  data:
+    path: /app/.local-storage
+    persistent: true
+restart: always

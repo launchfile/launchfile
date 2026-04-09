@@ -1,0 +1,15 @@
+category: Collaboration
+tagline: Real-time collaborative document editor
+homepage: https://etherpad.org
+test_results:
+  last_tested: 2026-04-09
+  pull_time_seconds: 22
+  startup_time_seconds: 11
+  total_disk_mb: 310
+  health_check_passed: true
+  notes: ""
+images:
+  - name: etherpad/etherpad:latest
+    size_mb: 310
+    platform:
+      - linux/arm64

@@ -1,0 +1,15 @@
+category: Media
+tagline: Fast ebook and manga library supporting a wide array of file formats
+homepage: https://www.kavitareader.com
+test_results:
+  last_tested: 2026-04-09
+  pull_time_seconds: 17
+  startup_time_seconds: 17
+  total_disk_mb: 624
+  health_check_passed: true
+  notes: ""
+images:
+  - name: jvmilazz0/kavita:latest
+    size_mb: 624
+    platform:
+      - linux/arm64
