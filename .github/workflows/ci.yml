@@ -13,8 +13,8 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - run: cd sdk && bun install --frozen-lockfile
       - run: cd sdk && bun run typecheck
-      - run: cd sdk && bun test
       - run: cd sdk && bun run build
+      - run: cd sdk && bun test
 
   providers:
     name: "Provider (${{ matrix.provider }})"
@@ -40,6 +40,9 @@ jobs:
         site: [www-dev, www-org]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
       - run: cd ${{ matrix.site }} && bun install --frozen-lockfile
       - run: cd ${{ matrix.site }} && bun run typecheck

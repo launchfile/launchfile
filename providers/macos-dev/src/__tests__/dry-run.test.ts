@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { readLaunch } from "@launchfile/sdk";
 import {
@@ -11,7 +12,16 @@ import { getProvisioner } from "../resources/index.js";
 import type { ResourceProperties } from "../resources/types.js";
 import { allocatePorts } from "../port-allocator.js";
 
-const CATALOG_DIR = join(import.meta.dirname, "../../../../catalog/drafts");
+const CATALOG_ROOT = join(import.meta.dirname, "../../../../catalog");
+const CATALOG_APPS = join(CATALOG_ROOT, "apps");
+const CATALOG_DRAFTS = join(CATALOG_ROOT, "drafts");
+
+/** Find a Launchfile in apps/ or drafts/ */
+function catalogPath(app: string): string {
+	const appsPath = join(CATALOG_APPS, app, "Launchfile");
+	if (existsSync(appsPath)) return appsPath;
+	return join(CATALOG_DRAFTS, app, "Launchfile");
+}
 
 /**
  * Dry-run test: parse a catalog Launchfile, simulate provisioning,
@@ -19,7 +29,7 @@ const CATALOG_DIR = join(import.meta.dirname, "../../../../catalog/drafts");
  */
 describe("dry-run against catalog", () => {
 	it("resolves miniflux Launchfile", async () => {
-		const yaml = await readFile(join(CATALOG_DIR, "miniflux/Launchfile"), "utf8");
+		const yaml = await readFile(catalogPath("miniflux"), "utf8");
 		const launch = readLaunch(yaml);
 
 		expect(launch.name).toBe("miniflux");
@@ -64,7 +74,7 @@ describe("dry-run against catalog", () => {
 	});
 
 	it("resolves langfuse Launchfile", async () => {
-		const yaml = await readFile(join(CATALOG_DIR, "langfuse/Launchfile"), "utf8");
+		const yaml = await readFile(catalogPath("langfuse"), "utf8");
 		const launch = readLaunch(yaml);
 
 		expect(launch.name).toBe("langfuse");
@@ -79,7 +89,7 @@ describe("dry-run against catalog", () => {
 	});
 
 	it("resolves chatwoot multi-component Launchfile", async () => {
-		const yaml = await readFile(join(CATALOG_DIR, "chatwoot/Launchfile"), "utf8");
+		const yaml = await readFile(catalogPath("chatwoot"), "utf8");
 		const launch = readLaunch(yaml);
 
 		expect(launch.name).toBe("chatwoot");
@@ -127,12 +137,14 @@ describe("dry-run against catalog", () => {
 	it("identifies unsupported resource types", async () => {
 		// Check all catalog Launchfiles for resource types we support
 		const { readdir } = await import("node:fs/promises");
-		const apps = await readdir(CATALOG_DIR);
+		const appsEntries = await readdir(CATALOG_APPS).catch(() => [] as string[]);
+		const draftsEntries = await readdir(CATALOG_DRAFTS).catch(() => [] as string[]);
+		const allApps = [...new Set([...appsEntries, ...draftsEntries])];
 		const unsupported = new Set<string>();
 
-		for (const app of apps) {
+		for (const app of allApps) {
 			try {
-				const yaml = await readFile(join(CATALOG_DIR, app, "Launchfile"), "utf8");
+				const yaml = await readFile(catalogPath(app), "utf8");
 				const launch = readLaunch(yaml);
 
 				for (const component of Object.values(launch.components)) {
