@@ -20,6 +20,13 @@ export interface ResolverContext {
 	components?: Record<string, Record<string, string | number>>;
 	/** App-wide generated secrets (e.g., { "jwt-secret": "abc123" }) */
 	secrets?: Record<string, string>;
+	/**
+	 * Platform-injected app properties (D-33). Standard set: url, host, port,
+	 * name. Providers may expose additional properties as platform-specific
+	 * extensions. The provider populates this from its routing strategy at
+	 * deploy time.
+	 */
+	app?: Record<string, string | number>;
 }
 
 /** Result of parsing a set_env value */
@@ -219,10 +226,11 @@ export function parseDotPath(path: string): string[] {
  * Resolve an expression against a context, returning the final string value.
  *
  * Resolution order for a path:
- * 1. Starts with "secrets" → app-wide secret lookup
- * 2. Starts with "components" → component lookup
- * 3. Single segment → enclosing resource property
- * 4. Multi-segment → first segment is resource name, rest is property
+ * 1. Starts with "app" → platform-injected app property (reserved namespace, D-33)
+ * 2. Starts with "secrets" → app-wide secret lookup
+ * 3. Starts with "components" → component lookup
+ * 4. Single segment → enclosing resource property
+ * 5. Multi-segment → first segment is resource name, rest is property
  */
 export function resolveExpression(
 	value: string,
@@ -256,6 +264,16 @@ function resolvePath(
 	if (path.length === 0) return undefined;
 
 	const first = path[0]!;
+
+	// app.prop → platform-injected app property (reserved namespace, D-33).
+	// Checked first so a user-named resource cannot shadow it. Unknown
+	// properties resolve to undefined (caller falls back to "" or `:-default`).
+	if (first === "app" && path.length === 2 && context.app) {
+		const propName = path[1]!;
+		const val = context.app[propName];
+		if (val !== undefined) return String(val);
+		return undefined;
+	}
 
 	// secrets.name → app-wide generated secret
 	if (first === "secrets" && path.length === 2 && context.secrets) {
