@@ -55,7 +55,7 @@ describe("dry-run against catalog", () => {
 		};
 
 		const ports = await allocatePorts(launch.components, "miniflux");
-		const context = buildResolverContext(resourceMap, ports, {});
+		const context = buildResolverContext(resourceMap, ports, {}, {});
 
 		const env = resolveComponentEnv(component, context, resourceMap);
 		await resolveGenerators(component, env);
@@ -123,7 +123,7 @@ describe("dry-run against catalog", () => {
 			}
 		}
 
-		const context = buildResolverContext(resourceMap, ports, secrets);
+		const context = buildResolverContext(resourceMap, ports, secrets, {});
 
 		// Resolve env for each component — should not throw
 		for (const [name, component] of Object.entries(launch.components)) {
