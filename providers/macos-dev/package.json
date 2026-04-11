@@ -1,6 +1,6 @@
 {
   "name": "@launchfile/macos-dev",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "macOS dev provider for Launchfile — run apps locally via brew services and native runtimes",
   "type": "module",
   "main": "dist/index.js",
@@ -33,7 +33,7 @@
     "directory": "providers/macos-dev"
   },
   "dependencies": {
-    "@launchfile/sdk": "^0.1.10",
+    "@launchfile/sdk": "^0.2.0",
     "semver": "^7.7.4"
   },
   "devDependencies": {

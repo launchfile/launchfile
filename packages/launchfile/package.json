@@ -1,6 +1,6 @@
 {
   "name": "launchfile",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "description": "Launchfile CLI — describe your app, deploy it anywhere",
   "type": "module",
   "bin": {
@@ -38,8 +38,8 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@launchfile/sdk": "^0.1.10",
-    "@launchfile/docker": "^0.1.10"
+    "@launchfile/sdk": "^0.2.0",
+    "@launchfile/docker": "^0.2.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.10",

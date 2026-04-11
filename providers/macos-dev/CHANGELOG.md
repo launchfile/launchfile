@@ -1,4 +1,4 @@
-# launchfile
+# @launchfile/macos-dev
 
 ## 0.2.0
 
@@ -24,8 +24,6 @@
 
   See [#16](https://github.com/launchfile/launchfile/issues/16) for the RFC trail and the [DESIGN.md D-34](https://github.com/launchfile/launchfile/blob/main/spec/DESIGN.md#d-34-capture-block-co-located-with-commands-supersedes-d-23-placement) decision record for the full migration rationale.
 
-### Patch Changes
-
 - [#19](https://github.com/launchfile/launchfile/pull/19) [`11f4bdd`](https://github.com/launchfile/launchfile/commit/11f4bddca847993b12894649e2125187f7bff6cf) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - ## Features
 
   - **sdk**: `$app.*` resolver context (D-33) — platform-injected app properties (`$app.url`, `$app.host`, `$app.port`) now resolve alongside `$resources` in Launchfile expressions.
@@ -37,24 +35,7 @@
 
   All four packages release together at 0.2.0 via the linked group in `.changeset/config.json`. `@launchfile/macos-dev` catches up from 0.1.4 and the CLI advances from 0.1.9. Internal dependency ranges (sdk, docker) are pinned to `^0.2.0` in every consumer.
 
+### Patch Changes
+
 - Updated dependencies [[`b016d5a`](https://github.com/launchfile/launchfile/commit/b016d5afd0761332406ed7aba81828a51fb5e334), [`11f4bdd`](https://github.com/launchfile/launchfile/commit/11f4bddca847993b12894649e2125187f7bff6cf)]:
   - @launchfile/sdk@0.2.0
-  - @launchfile/docker@0.2.0
-
-## 0.1.9
-
-### Patch Changes
-
-- [`cfc48c1`](https://github.com/launchfile/launchfile/commit/cfc48c1f2ace3074c14252127b44f9c3b2f93a55) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Fixed missing dist/ in published package — CLI binary was not included in 0.1.8.
-
-## 0.1.8
-
-### Patch Changes
-
-- [`ab08260`](https://github.com/launchfile/launchfile/commit/ab08260f963ebc44a54148398b8992b63919dbda) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Added SDK public API re-exports to the `launchfile` package so `import { readLaunch, LaunchSchema } from "launchfile"` works as documented. CLI version is now read from package.json automatically.
-
-  Docker provider now resolves catalog slugs from the local directory during development, falling back to GitHub when published.
-
-- Updated dependencies [[`ab08260`](https://github.com/launchfile/launchfile/commit/ab08260f963ebc44a54148398b8992b63919dbda), [`ab08260`](https://github.com/launchfile/launchfile/commit/ab08260f963ebc44a54148398b8992b63919dbda)]:
-  - @launchfile/sdk@0.1.8
-  - @launchfile/docker@0.1.8
