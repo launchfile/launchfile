@@ -26,7 +26,8 @@ secrets:
 env:
   APP_KEY: "base64:${secrets.app-key|base64}"
   APP_URL:
-    default: "http://localhost"
+    default: $app.url
+    description: "Public URL Firefly III is reachable on (used in emails, OAuth, links)"
 health: /login
 storage:
   uploads:

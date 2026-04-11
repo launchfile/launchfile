@@ -347,6 +347,38 @@ function createBackingServices(
 	};
 }
 
+/**
+ * Compute the $app.* property set (D-33) for a Launchfile under the docker
+ * provider. The "primary" component is the first one (in declaration order)
+ * with at least one `exposed: true` provides entry; its host port becomes
+ * `$app.port` and `http://localhost:<hostPort>` becomes `$app.url`.
+ *
+ * Apps with no exposed component get `port: 0` and `url: ""`. For multi-
+ * exposed-component apps that need a specific component's URL, use
+ * `$components.<name>.url` instead — `$app.*` always points at the first
+ * exposed component to give a single, predictable answer.
+ */
+function computeAppProperties(
+	launch: NormalizedLaunch,
+	hostPorts: Record<string, number> | undefined,
+): Record<string, string | number> {
+	let primaryPort = 0;
+	for (const [name, component] of Object.entries(launch.components)) {
+		const exposed = component.provides?.filter((p) => p.exposed !== false) ?? [];
+		if (exposed.length === 0) continue;
+		// Prefer caller-supplied host port, fall back to the declared container port.
+		primaryPort = hostPorts?.[name] ?? exposed[0]!.port;
+		break;
+	}
+
+	return {
+		name: launch.name,
+		host: "localhost",
+		port: primaryPort,
+		url: primaryPort > 0 ? `http://localhost:${primaryPort}` : "",
+	};
+}
+
 // --- Main generator ---
 
 export interface ComposeOpts {
@@ -394,10 +426,19 @@ export function launchToCompose(
 	// Build resolver context — populated as backing services and components are processed
 	const resourceMap: Record<string, Record<string, string | number>> = {};
 	const componentMap: Record<string, Record<string, string | number>> = {};
+
+	// Compute $app.* properties (D-33) from the first component (in declaration
+	// order) that has at least one `exposed: true` provides entry. The "primary"
+	// component's host port is the app's externally-reachable port; the public
+	// URL is http://localhost:<hostPort>. For multi-exposed-component apps that
+	// need a specific component's URL, use $components.<name>.url instead.
+	const appProperties = computeAppProperties(launch, opts.hostPorts);
+
 	const resolverContext: ResolverContext = {
 		resources: resourceMap,
 		components: componentMap,
 		secrets,
+		app: appProperties,
 	};
 
 	for (const [componentName, component] of Object.entries(launch.components)) {

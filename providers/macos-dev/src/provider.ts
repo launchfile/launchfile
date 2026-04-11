@@ -12,6 +12,7 @@ import { checkPrereqs } from "./prereqs.js";
 import { loadState, initState, saveState, ensureDirs } from "./state.js";
 import {
 	buildResolverContext,
+	computeAppProperties,
 	resolveComponentEnv,
 	generateSecrets,
 	resolveGenerators,
@@ -130,8 +131,9 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const componentPorts = await allocatePorts(launch.components, launch.name, state.ports);
 	state.ports = componentPorts;
 
-	// 8. Build resolver context
-	const context = buildResolverContext(resourceMap, componentPorts, state.secrets);
+	// 8. Build resolver context (including $app.* properties from D-33)
+	const appProperties = computeAppProperties(launch, componentPorts);
+	const context = buildResolverContext(resourceMap, componentPorts, state.secrets, appProperties);
 
 	// 9. Install runtimes
 	for (const [name, component] of Object.entries(launch.components)) {
@@ -372,7 +374,8 @@ export async function launchEnv(opts: { component?: string; projectDir?: string 
 		}
 	}
 
-	const context = buildResolverContext(resourceMap, state.ports, state.secrets);
+	const appProperties = computeAppProperties(launch, state.ports);
+	const context = buildResolverContext(resourceMap, state.ports, state.secrets, appProperties);
 
 	for (const [name, component] of Object.entries(launch.components)) {
 		if (opts.component && name !== opts.component) continue;

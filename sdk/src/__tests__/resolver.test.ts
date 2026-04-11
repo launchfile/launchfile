@@ -395,3 +395,104 @@ describe("resolveExpression", () => {
 		expect(resolveExpression("$url", emptyCtx)).toBe("");
 	});
 });
+
+/*---
+req: REQ-414
+type: unit
+status: implemented
+area: launch-spec
+summary: Resolves $app.* platform-injected app property references (D-33)
+rationale: |
+  $app.* is a reserved namespace for platform-injected properties of the
+  deployed app itself: $app.url, $app.host, $app.port, $app.name. The
+  provider's routing strategy populates these at deploy time so a Launchfile
+  can reference its own public URL without hardcoding environment-specific
+  values. The reserved 'app' prefix is checked first in resolution order so
+  it cannot be shadowed by a user-named resource.
+acceptance:
+  - Resolves $app.url, $app.host, $app.port, $app.name from context.app
+  - Stringifies numeric values like $app.port
+  - Handles braced form ${app.url} and composed templates
+  - Honors :- fallback when context.app is missing the property
+  - Returns empty string when context.app is absent entirely
+  - Reserved 'app' prefix wins over a user-named resource of the same name
+  - Pipe transforms (e.g. |base64) compose with $app.* references
+tags: [launch-spec, resolver, app-prefix]
+---*/
+describe("resolveExpression — $app.* prefix (D-33)", () => {
+	const appContext = {
+		app: {
+			url: "https://my-app.example.com",
+			host: "my-app.example.com",
+			port: 10001,
+			name: "my-app",
+		},
+	};
+
+	it("resolves $app.url", () => {
+		expect(resolveExpression("$app.url", appContext)).toBe("https://my-app.example.com");
+	});
+
+	it("resolves $app.host", () => {
+		expect(resolveExpression("$app.host", appContext)).toBe("my-app.example.com");
+	});
+
+	it("resolves $app.port (stringified)", () => {
+		expect(resolveExpression("$app.port", appContext)).toBe("10001");
+	});
+
+	it("resolves $app.name", () => {
+		expect(resolveExpression("$app.name", appContext)).toBe("my-app");
+	});
+
+	it("resolves braced ${app.url}", () => {
+		expect(resolveExpression("${app.url}", appContext)).toBe("https://my-app.example.com");
+	});
+
+	it("composes $app.url in templates with literal text", () => {
+		expect(resolveExpression("${app.url}/oauth/callback", appContext))
+			.toBe("https://my-app.example.com/oauth/callback");
+	});
+
+	it("uses fallback when context.app lacks the property", () => {
+		const ctx = { app: { url: "https://my-app.example.com" } };
+		expect(resolveExpression("${app.region:-us-east-1}", ctx)).toBe("us-east-1");
+	});
+
+	it("returns empty string when context.app is absent", () => {
+		expect(resolveExpression("$app.url", {})).toBe("");
+	});
+
+	it("returns empty string for unknown $app.* property", () => {
+		expect(resolveExpression("$app.region", appContext)).toBe("");
+	});
+
+	// Reserved-namespace check: a user-named resource called "app" must not
+	// shadow $app.* — the reserved prefix wins because it is checked first.
+	it("reserved $app.* is not shadowed by a user-named resource called 'app'", () => {
+		const ctx = {
+			app: { url: "https://my-app.example.com" },
+			resources: {
+				app: { url: "postgresql://user@db:5432/app" },
+			},
+		};
+		expect(resolveExpression("$app.url", ctx)).toBe("https://my-app.example.com");
+	});
+
+	// D-32 + D-33: pipe transforms compose with $app.* references
+	it("supports pipe transforms on $app.* references", () => {
+		expect(resolveExpression("$app.host|base64", appContext)).toBe(btoa("my-app.example.com"));
+	});
+
+	// AppContext alongside other context types — verify no cross-talk
+	it("resolves $app.* without disturbing other context lookups", () => {
+		const ctx = {
+			app: { url: "https://my-app.example.com" },
+			resource: { host: "db", port: 5432 },
+			secrets: { token: "abc123" },
+		};
+		expect(resolveExpression("$app.url", ctx)).toBe("https://my-app.example.com");
+		expect(resolveExpression("$host", ctx)).toBe("db");
+		expect(resolveExpression("$secrets.token", ctx)).toBe("abc123");
+	});
+});

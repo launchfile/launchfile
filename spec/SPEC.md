@@ -627,6 +627,7 @@ The `$` reference system is used in `set_env` values and `env` defaults to wire 
 | `$components.name.prop` | Property from another component's provides |
 | `$components.name.endpoint.prop` | Property from a named endpoint on another component |
 | `$secrets.name` | App-wide generated secret |
+| `$app.prop` | Platform-injected app property (see [App Properties](#app-properties)) |
 | `$ref\|transform` | Any reference piped through a transform (e.g. `\|base64`) |
 | `${prop}` | Explicit braced form (same as `$prop`) |
 | `${prop:-default}` | Reference with fallback value |
@@ -647,10 +648,13 @@ flowchart TD
 
 **Resolution order** for a path:
 
-1. Starts with `secrets` -- app-wide secret lookup
-2. Starts with `components` -- component endpoint lookup
-3. Single segment -- enclosing resource property (e.g. `$url` inside a `set_env` block)
-4. Multi-segment -- first segment is the resource name (defaults to `type`, overridden by `name`), rest is property path
+1. Starts with `app` -- platform-injected app property (see [App Properties](#app-properties))
+2. Starts with `secrets` -- app-wide secret lookup
+3. Starts with `components` -- component endpoint lookup
+4. Single segment -- enclosing resource property (e.g. `$url` inside a `set_env` block)
+5. Multi-segment -- first segment is the resource name (defaults to `type`, overridden by `name`), rest is property path
+
+The `app` namespace is reserved: it is checked before any other prefix and cannot be shadowed by a user-named resource. If a `requires:` entry is named `app`, expressions like `$app.url` still resolve via the App Properties table rather than against that resource — use a different `name:` for resources to avoid the reserved word.
 
 **Examples:**
 
@@ -667,6 +671,36 @@ env:
     default: $components.backend.metrics.url                  # named endpoint
   SECRET_KEY_BASE: "$secrets.secret-key-base"                 # app-wide secret
   HOME_BIN: "$$HOME/bin"                                      # literal $
+  PUBLIC_URL: $app.url                                        # platform-injected app URL
+```
+
+## App Properties
+
+The `$app.*` namespace exposes platform-injected properties of the deployed app itself. These are resolved at deploy time by whichever provider is running the app, so a Launchfile can reference its own public URL without hardcoding environment-specific values.
+
+| Property | Description |
+|---|---|
+| `$app.url` | The app's public URL (e.g. `https://myapp.example.com`) |
+| `$app.host` | The app's public hostname (e.g. `myapp.example.com`) |
+| `$app.port` | The app's allocated public port number |
+| `$app.name` | The app name as deployed |
+
+The values are determined by the provider's routing strategy at deploy time. A Cloudflare Tunnel deployment might resolve `$app.url` to `https://myapp.example.com`; a local development provider might resolve it to `http://myapp.lvh.me:10001`; a Kubernetes deployment behind an Ingress might resolve it to `https://myapp.k8s.internal`. The Launchfile stays the same.
+
+The standard set above is the portable vocabulary every provider must support. Providers MAY expose additional `$app.*` properties (e.g. `$app.region`, `$app.deployment_id`) as platform-specific extensions; portable Launchfiles should use only the standard set. Unknown `$app.*` properties resolve to empty string, matching the behavior of unknown resource properties (see [L-4](DESIGN.md#l-4-resource-property-vocabulary-is-implicit)).
+
+`$app.url` differs from `$components.<this>.url` in two ways. First, it gives the *public* URL — the address external users reach the app on — not the internal component port. Second, it works in single-component mode where there is no component name to reference. Use `$app.url` for public-facing values (auth callback URLs, webhook registration, public-facing email links) and `$components.<name>.url` for internal cross-component wiring.
+
+Similarly, `$app.port` is the allocated *external* port that the platform exposes; `provides[].port` is the *container* port the component binds inside its sandbox. They can differ — a component might bind `3000` while the platform exposes `10001`.
+
+Example use:
+
+```yaml
+env:
+  PUBLIC_URL: $app.url                # Drupal, BookStack, Mealie, Firefly III
+  BETTER_AUTH_URL: $app.url           # better-auth callback base
+  OAUTH_REDIRECT_URI: "${app.url}/oauth/callback"
+  WEBHOOK_URL: "${app.url}/webhooks/incoming"
 ```
 
 ## Resource Property Vocabulary

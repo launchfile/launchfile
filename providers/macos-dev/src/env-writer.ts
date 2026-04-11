@@ -12,29 +12,55 @@ import {
 	isExpression,
 	type NormalizedComponent,
 	type NormalizedLaunch,
+	type ResolverContext,
 	type Secret,
 } from "@launchfile/sdk";
 import type { ResourceProperties } from "./resources/types.js";
 import { generateValue } from "./secret-generator.js";
 
+// Re-export so existing callers in the macos-dev provider keep their import path.
+export type { ResolverContext };
+
 /**
- * Context for the SDK's resolveExpression().
- * Mirrors the interface from sdk/src/resolver.ts since it's not exported.
+ * Compute the $app.* property set for a Launchfile under the macos-dev
+ * provider. The app's "primary" port comes from the first component (in
+ * declaration order) that has at least one `exposed: true` provides entry.
+ * Apps with no exposed component get `port: 0` and `url: ""`.
+ *
+ * For multi-exposed-component apps that need a specific component's URL,
+ * use `$components.<name>.url` instead — `$app.*` always points at the
+ * first exposed component to give a single, predictable answer.
  */
-export interface ResolverContext {
-	resource?: Record<string, string | number>;
-	resources?: Record<string, Record<string, string | number>>;
-	components?: Record<string, Record<string, string | number>>;
-	secrets?: Record<string, string>;
+export function computeAppProperties(
+	launch: NormalizedLaunch,
+	componentPorts: Record<string, number>,
+): Record<string, string | number> {
+	let primaryPort = 0;
+	for (const [name, component] of Object.entries(launch.components)) {
+		const hasExposed = component.provides?.some((p) => p.exposed !== false) ?? false;
+		if (hasExposed && componentPorts[name]) {
+			primaryPort = componentPorts[name]!;
+			break;
+		}
+	}
+
+	return {
+		name: launch.name,
+		host: "localhost",
+		port: primaryPort,
+		url: primaryPort > 0 ? `http://localhost:${primaryPort}` : "",
+	};
 }
 
 /**
- * Build a ResolverContext from provisioned resources, component ports, and secrets.
+ * Build a ResolverContext from provisioned resources, component ports,
+ * secrets, and (D-33) the platform-injected app properties.
  */
 export function buildResolverContext(
 	resourceMap: Record<string, ResourceProperties>,
 	componentPorts: Record<string, number>,
 	secrets: Record<string, string>,
+	app: Record<string, string | number>,
 ): ResolverContext {
 	// Build components map from ports
 	const components: Record<string, Record<string, string | number>> = {};
@@ -58,7 +84,7 @@ export function buildResolverContext(
 		resources[name] = record;
 	}
 
-	return { resources, components, secrets };
+	return { resources, components, secrets, app };
 }
 
 /**

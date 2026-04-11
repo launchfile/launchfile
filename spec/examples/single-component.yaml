@@ -19,6 +19,9 @@ supports:
 env:
   PORT:
     default: "8080"
+  PUBLIC_URL:
+    default: $app.url
+    description: "Public URL the app is reachable on (e.g. for OAuth callbacks)"
   API_KEY:
     required: true
     description: "Third-party API key"

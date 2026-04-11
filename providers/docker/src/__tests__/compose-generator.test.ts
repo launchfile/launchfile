@@ -181,6 +181,88 @@ commands:
 	});
 });
 
+// D-33: $app.* prefix end-to-end through the docker provider
+describe("compose-generator $app.* properties (D-33)", () => {
+	it("resolves $app.url to http://localhost:<hostPort> in env vars", () => {
+		const launch = readLaunch(`
+name: my-app
+image: nginx
+provides:
+  - port: 8080
+    protocol: http
+    exposed: true
+env:
+  PUBLIC_URL: $app.url
+`);
+		const result = launchToCompose(launch, { hostPorts: { default: 10042 } });
+		expect(result.yaml).toContain("PUBLIC_URL: http://localhost:10042");
+	});
+
+	it("resolves $app.host, $app.port, and $app.name in templates", () => {
+		const launch = readLaunch(`
+name: my-app
+image: nginx
+provides:
+  - port: 3000
+    protocol: http
+    exposed: true
+env:
+  HOSTS: "\${app.host}"
+  PORTS: "\${app.port}"
+  NAMES: "\${app.name}"
+  CALLBACK: "\${app.url}/oauth/callback"
+`);
+		const result = launchToCompose(launch, { hostPorts: { default: 10043 } });
+		expect(result.yaml).toContain("HOSTS: localhost");
+		expect(result.yaml).toContain('PORTS: "10043"');
+		expect(result.yaml).toContain("NAMES: my-app");
+		expect(result.yaml).toContain("CALLBACK: http://localhost:10043/oauth/callback");
+	});
+
+	it("falls back to the declared container port when no host port override is given", () => {
+		const launch = readLaunch(`
+name: ghost-like
+image: nginx
+provides:
+  - port: 2368
+    protocol: http
+    exposed: true
+env:
+  URL: $app.url
+`);
+		const result = launchToCompose(launch);
+		// With no host port override, the docker provider uses the container
+		// port as-is, so $app.url reflects that.
+		expect(result.yaml).toContain("URL: http://localhost:2368");
+	});
+
+	it("validates the $app.url shape used by the firefly-iii catalog entry", async () => {
+		const launch = await loadApp("firefly-iii");
+		const result = launchToCompose(launch, { hostPorts: { default: 10044 } });
+		// firefly-iii's APP_URL is now `default: $app.url` per the catalog update.
+		expect(result.yaml).toContain("APP_URL: http://localhost:10044");
+	});
+
+	it("picks the first exposed component for multi-component apps", () => {
+		const launch = readLaunch(`
+name: multi-app
+components:
+  api:
+    image: nginx
+    provides:
+      - port: 4000
+        protocol: http
+        exposed: true
+    env:
+      MY_URL: $app.url
+  worker:
+    image: nginx
+`);
+		const result = launchToCompose(launch, { hostPorts: { api: 10045 } });
+		expect(result.yaml).toContain("MY_URL: http://localhost:10045");
+	});
+});
+
 describe("compose-generator secrets", () => {
 	it("generates app-wide secrets from launch.secrets", () => {
 		const launch = readLaunch(`
