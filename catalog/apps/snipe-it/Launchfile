@@ -18,11 +18,11 @@ requires:
       DB_DATABASE: $name
       DB_USERNAME: $user
       DB_PASSWORD: $password
-env:
-  APP_KEY:
+secrets:
+  app-key:
     generator: secret
-    sensitive: true
-    description: "Application encryption key"
+env:
+  APP_KEY: "base64:${secrets.app-key|base64}"
   APP_URL:
     default: "http://localhost"
     description: "Public URL of the Snipe-IT instance"

@@ -1,15 +1,15 @@
 category: Monitoring
-tagline: "Observability and data visualization platform for metrics and logs"
+tagline: Observability and data visualization platform for metrics and logs
 homepage: https://grafana.com/oss/grafana
 test_results:
-  last_tested: 2026-04-08
-  pull_time_seconds: 19
-  startup_time_seconds: 1
+  last_tested: 2026-04-11
+  pull_time_seconds: 23
+  startup_time_seconds: 6
   total_disk_mb: 681
   health_check_passed: true
   notes: ""
 images:
-  - name: grafana/grafana-oss:latest
+  - name: grafana/grafana:latest
     size_mb: 681
     platform:
       - linux/arm64

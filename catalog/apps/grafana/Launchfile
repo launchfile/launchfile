@@ -5,7 +5,7 @@ description: "Observability and data visualization platform for metrics and logs
 repository: https://github.com/grafana/grafana
 logo: https://raw.githubusercontent.com/grafana/grafana/main/public/img/grafana_icon.svg
 
-image: grafana/grafana-oss:latest
+image: grafana/grafana:latest
 provides:
   - protocol: http
     port: 3000
@@ -15,6 +15,7 @@ env:
     generator: secret
     sensitive: true
     description: "Admin password"
+health: /api/health
 storage:
   data:
     path: /var/lib/grafana
