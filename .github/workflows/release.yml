@@ -12,7 +12,9 @@ permissions: {}
 
 jobs:
   release:
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'chore: version packages')
+    # Value is double-quoted because 'chore: version packages' contains a
+    # colon-space, which YAML otherwise interprets as a mapping separator.
+    if: "github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'chore: version packages')"
     name: Publish to npm
     runs-on: ubuntu-latest
     environment: npm-publish
