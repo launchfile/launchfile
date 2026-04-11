@@ -182,15 +182,29 @@ export interface CommandDetail {
 	command: string;
 	/** Timeout for command execution */
 	timeout?: string;
+	/**
+	 * Named captures extracted from the command's stdout via regex (D-34).
+	 * Supersedes the top-level `outputs:` placement from D-23.
+	 */
+	capture?: Record<string, Output>;
 }
 
-// --- Output ---
+// --- Output / Capture entry ---
 
-/** Named output captured from release command stdout */
+/**
+ * A named capture entry — a regex pattern matched against a command's
+ * stdout, with optional description and sensitivity flag.
+ *
+ * Originally introduced by D-23 as the value type for component-level
+ * `outputs:`, this shape is now used by D-34 as the value type for the
+ * nested `capture:` field on expanded commands. The `Output` name is
+ * preserved for backward compatibility with external consumers who
+ * imported it directly.
+ */
 export interface Output {
-	/** Regex with one capture group, matched against release command stdout */
+	/** Regex pattern matched line-by-line against the command's stdout */
 	pattern: string;
-	/** Human-readable description */
+	/** Human-readable description of the captured value */
 	description?: string;
 	/** If true, value is masked in API/UI unless explicitly revealed */
 	sensitive?: boolean;
@@ -251,10 +265,8 @@ export interface Component {
 	supports?: Array<string | Support>;
 	/** App-owned environment variables */
 	env?: Record<string, string | EnvVar>;
-	/** Lifecycle commands */
+	/** Lifecycle commands (see expanded form for optional capture:) */
 	commands?: Commands;
-	/** Named outputs captured from release command stdout */
-	outputs?: Record<string, Output>;
 	/** Health check */
 	health?: string | Health;
 	/** Startup ordering */
@@ -307,7 +319,6 @@ export interface Launch {
 	supports?: Array<string | Support>;
 	env?: Record<string, string | EnvVar>;
 	commands?: Commands;
-	outputs?: Record<string, Output>;
 	health?: string | Health;
 	depends_on?: Array<string | DependsOnEntry>;
 	storage?: Record<string, StorageVolume>;
@@ -352,6 +363,8 @@ export interface NormalizedDependsOnEntry {
 export interface NormalizedCommand {
 	command: string;
 	timeout?: string;
+	/** Named captures extracted from stdout via regex (D-34) */
+	capture?: Record<string, Output>;
 }
 
 /** Fully expanded build */
@@ -383,7 +396,6 @@ export interface NormalizedComponent {
 	supports?: NormalizedRequirement[];
 	env?: Record<string, NormalizedEnvVar>;
 	commands?: Record<string, NormalizedCommand>;
-	outputs?: Record<string, Output>;
 	health?: NormalizedHealth;
 	depends_on?: NormalizedDependsOnEntry[];
 	storage?: Record<string, StorageVolume>;
