@@ -20,6 +20,9 @@ env:
   BETTER_AUTH_SECRET:
     generator: secret
     sensitive: true
+  BETTER_AUTH_URL:
+    default: $app.url
+    description: "Public URL for better-auth callbacks (email links, OAuth redirects)"
   PAPERCLIP_HOME:
     default: "/paperclip"
   SERVE_UI:
@@ -36,3 +39,19 @@ storage:
     persistent: true
 health: /api/health
 restart: always
+
+commands:
+  # Post-start setup: provision the first admin (CEO) and capture the
+  # one-time invite link. Re-runnable; failures are reported rather than
+  # deploy-failing. A full Paperclip bootstrap also writes a config.json
+  # and restarts the server, but those steps are held for Proposal B
+  # (templated file-placement primitive) pending the incubation-mechanism
+  # decision on issue #16. For now this captures the invite step, which
+  # is the user-facing piece.
+  bootstrap:
+    command: "bootstrap-ceo invite --admin"
+    capture:
+      invite_link:
+        pattern: "https?://\\S+invite\\S*"
+        description: "One-time invite link — open in your browser to register the CEO account"
+        sensitive: true
