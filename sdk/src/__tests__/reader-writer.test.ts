@@ -395,3 +395,187 @@ components:
 		expect(roundtripped).toEqual(original);
 	});
 });
+
+/*---
+req: REQ-415
+type: unit
+status: implemented
+area: launch-spec
+summary: Reads and writes commands.*.capture (D-34) for any lifecycle stage
+rationale: |
+  D-34 moves capture from the top-level `outputs:` field into a nested
+  `capture:` field on any command that uses the expanded form. The reader
+  normalization must preserve capture through to NormalizedCommand, and
+  the writer must emit the expanded command form whenever capture is
+  present (not collapse to the string shorthand). This also covers the
+  new `commands.bootstrap` lifecycle stage, which exists precisely to host
+  post-start setup commands that capture output like invite links.
+acceptance:
+  - Reader parses a nested capture block on commands.bootstrap
+  - Reader parses a nested capture block on commands.release
+  - Reader preserves the expanded command form when both timeout and
+    capture are present
+  - Writer emits the expanded form whenever capture is present, even
+    when timeout is absent
+  - Round-trip (read → write → read) preserves capture content
+  - Commands without capture still collapse to the string shorthand
+tags: [launch-spec, reader, writer, commands, d-34]
+---*/
+describe("commands.*.capture (D-34)", () => {
+	it("reads nested capture on commands.bootstrap", () => {
+		const result = readLaunch(`
+version: launch/v1
+name: concentrator
+runtime: bun
+commands:
+  start: "bun run start"
+  bootstrap:
+    command: "concentrator-cli create-invite --name admin --url $app.url"
+    capture:
+      invite_link:
+        pattern: "https?://\\\\S+"
+        description: "One-time invite link"
+        sensitive: true
+`);
+		expect(result.components.default?.commands?.bootstrap).toEqual({
+			command: "concentrator-cli create-invite --name admin --url $app.url",
+			capture: {
+				invite_link: {
+					pattern: "https?://\\S+",
+					description: "One-time invite link",
+					sensitive: true,
+				},
+			},
+		});
+	});
+
+	it("reads nested capture on commands.release (the old outputs use case)", () => {
+		const result = readLaunch(`
+version: launch/v1
+name: example
+runtime: node
+commands:
+  release:
+    command: "./setup.sh"
+    capture:
+      admin_password:
+        pattern: "Admin password: (.+)"
+        description: "Generated admin password"
+        sensitive: true
+      admin_url:
+        pattern: "Dashboard: (https?://\\\\S+)"
+`);
+		const release = result.components.default?.commands?.release;
+		expect(release?.command).toBe("./setup.sh");
+		expect(release?.capture?.admin_password).toEqual({
+			pattern: "Admin password: (.+)",
+			description: "Generated admin password",
+			sensitive: true,
+		});
+		expect(release?.capture?.admin_url).toEqual({
+			pattern: "Dashboard: (https?://\\S+)",
+		});
+	});
+
+	it("preserves timeout and capture together in the expanded form", () => {
+		const result = readLaunch(`
+version: launch/v1
+name: example
+runtime: node
+commands:
+  release:
+    command: "./setup.sh"
+    timeout: "5m"
+    capture:
+      token:
+        pattern: "token=(\\\\S+)"
+`);
+		expect(result.components.default?.commands?.release).toEqual({
+			command: "./setup.sh",
+			timeout: "5m",
+			capture: {
+				token: { pattern: "token=(\\S+)" },
+			},
+		});
+	});
+
+	it("writer emits expanded form when capture is set (even without timeout)", () => {
+		const original = readLaunch(`
+version: launch/v1
+name: example
+runtime: node
+commands:
+  bootstrap:
+    command: "my-cli init --url $app.url"
+    capture:
+      link:
+        pattern: "https?://\\\\S+"
+        sensitive: true
+`);
+		const yaml = writeLaunch(original);
+		// Must NOT collapse to the string shorthand
+		expect(yaml).not.toMatch(/bootstrap:\s*"my-cli/);
+		// Must keep capture visible in the output
+		expect(yaml).toContain("capture:");
+		expect(yaml).toContain("link:");
+		expect(yaml).toContain("sensitive: true");
+	});
+
+	it("writer still collapses to string shorthand for capture-less commands", () => {
+		const original = readLaunch(`
+version: launch/v1
+name: example
+runtime: node
+commands:
+  start: "node server.js"
+  release: "npx prisma migrate deploy"
+`);
+		const yaml = writeLaunch(original);
+		// Both should collapse to string form — no `command:` key introduced.
+		// Match the value only (YAML library chooses its own quoting style).
+		expect(yaml).toMatch(/start:\s*["']?node server\.js["']?/);
+		expect(yaml).toMatch(/release:\s*["']?npx prisma migrate deploy["']?/);
+		// And critically, no expanded-form artifacts
+		expect(yaml).not.toMatch(/start:\s*\n\s+command:/);
+		expect(yaml).not.toMatch(/release:\s*\n\s+command:/);
+	});
+
+	it("round-trips a Launchfile with commands.bootstrap + capture", () => {
+		const original = readLaunch(`
+version: launch/v1
+name: concentrator
+runtime: bun
+env:
+  ORIGIN:
+    default: $app.url
+commands:
+  start: "bun run start"
+  bootstrap:
+    command: "concentrator-cli create-invite --name admin --url $app.url"
+    capture:
+      invite_link:
+        pattern: "https?://\\\\S+"
+        description: "One-time invite link"
+        sensitive: true
+`);
+		const yaml = writeLaunch(original);
+		const roundtripped = readLaunch(yaml);
+		expect(roundtripped).toEqual(original);
+	});
+
+	it("rejects invalid regex patterns inside nested capture", () => {
+		expect(() =>
+			readLaunch(`
+version: launch/v1
+name: example
+runtime: node
+commands:
+  bootstrap:
+    command: "my-cli init"
+    capture:
+      bad:
+        pattern: "(unclosed"
+`),
+		).toThrow();
+	});
+});

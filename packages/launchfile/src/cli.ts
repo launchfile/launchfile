@@ -21,6 +21,7 @@ import { handleDown } from "./commands/down.js";
 import { handleStatus } from "./commands/status.js";
 import { handleLogs } from "./commands/logs.js";
 import { handleList } from "./commands/list.js";
+import { handleBootstrap } from "./commands/bootstrap.js";
 import { cmdValidate, cmdInspect, cmdSchema } from "@launchfile/sdk";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -64,6 +65,7 @@ Usage:
   launchfile down [id|slug]          Stop a deployment
   launchfile status [id|slug]        Show deployment status
   launchfile logs [id|slug]          View logs
+  launchfile bootstrap [id|slug]     Run post-start setup (commands.bootstrap)
   launchfile list                    List all deployments
   launchfile validate [path]         Validate a Launchfile
   launchfile inspect [path]          Print normalized JSON
@@ -78,6 +80,7 @@ Options:
   --destroy        Remove all containers and data (with down)
   --follow, -f     Stream logs continuously
   --name <name>    Name this deployment
+  --component <n>  Limit bootstrap to a single component
   --help           Show this help
   --version        Show version
 
@@ -130,6 +133,12 @@ async function main(): Promise<void> {
 		case "list":
 		case "ls":
 			await handleList();
+			break;
+
+		case "bootstrap":
+			await handleBootstrap(target, {
+				component: getFlagValue("component"),
+			});
 			break;
 
 		case "validate": {

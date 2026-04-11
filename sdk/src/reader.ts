@@ -88,7 +88,6 @@ function extractComponentFields(launch: Launch): Component {
 		supports: launch.supports,
 		env: launch.env,
 		commands: launch.commands,
-		outputs: launch.outputs,
 		health: launch.health,
 		depends_on: launch.depends_on,
 		storage: launch.storage,
@@ -111,7 +110,6 @@ function normalizeComponent(component: Component, defaults?: Launch): Normalized
 		supports: normalizeRequirements(component.supports),
 		env: normalizeEnv(component.env),
 		commands: normalizeCommands(component.commands),
-		outputs: component.outputs,
 		health: normalizeHealth(component.health),
 		depends_on: normalizeDependsOn(component.depends_on),
 		storage: component.storage,
@@ -185,7 +183,11 @@ function normalizeCommands(
 		if (typeof val === "string") {
 			result[key] = { command: val };
 		} else {
-			result[key] = { command: val.command, timeout: val.timeout };
+			result[key] = {
+				command: val.command,
+				timeout: val.timeout,
+				capture: val.capture,
+			};
 		}
 	}
 	return result;

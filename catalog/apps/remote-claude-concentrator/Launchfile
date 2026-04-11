@@ -14,12 +14,15 @@ provides:
 
 env:
   RCLAUDE_SECRET:
+    generator: secret
     sensitive: true
     description: "Shared secret for WebSocket auth between rclaude wrappers and concentrator (32-byte hex)"
   RP_ID:
-    description: "WebAuthn relying party ID — bare domain, no protocol (e.g. concentrator.cogzero.com)"
+    default: $app.host
+    description: "WebAuthn relying party ID — bare domain, no protocol (e.g. concentrator.example.com)"
   ORIGIN:
-    description: "WebAuthn origin — full URL with protocol (e.g. https://concentrator.cogzero.com)"
+    default: $app.url
+    description: "WebAuthn origin — full URL with protocol (e.g. https://concentrator.example.com)"
   VAPID_PUBLIC_KEY:
     sensitive: true
     description: "Web Push VAPID public key (generate with: bunx web-push generate-vapid-keys)"
@@ -45,3 +48,18 @@ storage:
 
 health: /health
 restart: always
+
+commands:
+  # Post-start setup: create the first admin and capture the invite link.
+  # Web-based registration is explicitly disabled by security design, so this
+  # CLI flow is the only way to create the first user. Run once via
+  # `launchfile bootstrap concentrator` (or the provider's equivalent) after
+  # the app is up, open the captured invite link, and register your passkey.
+  # Invites expire after 30 minutes; the command is re-runnable if needed.
+  bootstrap:
+    command: "concentrator-cli create-invite --name admin --url $app.url"
+    capture:
+      invite_link:
+        pattern: "https?://\\S+"
+        description: "One-time invite link — open in your browser to register (expires in 30 min)"
+        sensitive: true

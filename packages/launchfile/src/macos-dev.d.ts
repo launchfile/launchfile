@@ -24,4 +24,24 @@ declare module "@launchfile/macos-dev" {
 		component?: string;
 		projectDir?: string;
 	}): Promise<void>;
+
+	export interface BootstrapResult {
+		component: string;
+		command: string;
+		ok: boolean;
+		exitCode: number;
+		captures: Record<string, string>;
+		captureMeta: Record<string, {
+			pattern: string;
+			description?: string;
+			sensitive?: boolean;
+		}>;
+		stdout: string;
+		stderr: string;
+	}
+
+	export function launchBootstrap(opts?: {
+		component?: string;
+		projectDir?: string;
+	}): Promise<BootstrapResult[]>;
 }

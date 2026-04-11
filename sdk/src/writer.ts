@@ -81,8 +81,6 @@ function denormalizeComponent(comp: NormalizedComponent): Record<string, unknown
 	const commands = denormalizeCommands(comp.commands);
 	if (commands && Object.keys(commands).length > 0) result.commands = commands;
 
-	if (comp.outputs && Object.keys(comp.outputs).length > 0) result.outputs = comp.outputs;
-
 	const health = denormalizeHealth(comp.health);
 	if (health !== undefined) result.health = health;
 
@@ -171,11 +169,15 @@ function denormalizeCommands(
 	if (!commands) return undefined;
 	const result: Record<string, unknown> = {};
 	for (const [key, val] of Object.entries(commands)) {
-		// Collapse to string if only command is set
-		if (!val.timeout) {
+		const hasCapture = val.capture && Object.keys(val.capture).length > 0;
+		// Collapse to string shorthand only if there are no fields beyond command
+		if (!val.timeout && !hasCapture) {
 			result[key] = val.command;
 		} else {
-			result[key] = { command: val.command, timeout: val.timeout };
+			const expanded: Record<string, unknown> = { command: val.command };
+			if (val.timeout) expanded.timeout = val.timeout;
+			if (hasCapture) expanded.capture = val.capture;
+			result[key] = expanded;
 		}
 	}
 	return result;

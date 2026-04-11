@@ -73,11 +73,6 @@
       "additionalProperties": { "$ref": "#/$defs/envVarOrScalar" }
     },
     "commands": { "$ref": "#/$defs/commands" },
-    "outputs": {
-      "type": "object",
-      "description": "Named outputs extracted from release command stdout via regex patterns",
-      "additionalProperties": { "$ref": "#/$defs/output" }
-    },
     "health": { "$ref": "#/$defs/healthOrString" },
     "depends_on": {
       "type": "array",
@@ -297,7 +292,12 @@
       "required": ["command"],
       "properties": {
         "command": { "type": "string" },
-        "timeout": { "type": "string" }
+        "timeout": { "type": "string" },
+        "capture": {
+          "type": "object",
+          "description": "Named captures extracted from this command's stdout via regex (D-34). Supersedes the top-level outputs: placement from D-23.",
+          "additionalProperties": { "$ref": "#/$defs/output" }
+        }
       },
       "additionalProperties": false
     },
@@ -379,10 +379,6 @@
           "additionalProperties": { "$ref": "#/$defs/envVarOrScalar" }
         },
         "commands": { "$ref": "#/$defs/commands" },
-        "outputs": {
-          "type": "object",
-          "additionalProperties": { "$ref": "#/$defs/output" }
-        },
         "health": { "$ref": "#/$defs/healthOrString" },
         "depends_on": {
           "type": "array",

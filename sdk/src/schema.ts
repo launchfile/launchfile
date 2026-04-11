@@ -113,14 +113,42 @@ const HealthObjectSchema = z.object({
 /** Accepts string shorthand ("/health") or full object */
 const HealthSchema = z.union([z.string(), HealthObjectSchema]);
 
+// --- Capture entry (reusable shape, introduced by D-23, renamed by D-34) ---
+
+/**
+ * Schema for a named capture entry — a regex pattern matched against a
+ * command's stdout, with optional description and sensitivity flag.
+ *
+ * Originally introduced by D-23 as the value type for the top-level
+ * `outputs:` block, and renamed from `OutputSchema` to `CaptureEntrySchema`
+ * by D-34 when the capture block moved inside the expanded command form
+ * (`commands.*.capture`). The shape is unchanged; only the name reflects
+ * its new role.
+ */
+const CaptureEntrySchema = z.object({
+	// Security: validate that patterns compile as RegExp to catch errors early,
+	// and cap length to limit ReDoS attack surface.
+	pattern: z.string().max(1024).refine((p) => {
+		try { new RegExp(p); return true; } catch { return false; }
+	}, "Invalid regex pattern"),
+	description: z.string().max(1024).optional(),
+	sensitive: z.boolean().optional(),
+});
+
 // --- Commands ---
 
 const CommandDetailSchema = z.object({
 	command: z.string().max(10240),
 	timeout: z.string().max(64).optional(),
+	/**
+	 * Named captures extracted from the command's stdout via regex (D-34).
+	 * Supersedes the top-level `outputs:` placement from D-23 — the
+	 * mechanism is preserved, only the location changes (P-10).
+	 */
+	capture: z.record(z.string(), CaptureEntrySchema).optional(),
 });
 
-/** Accepts string shorthand ("node server.js") or object with timeout */
+/** Accepts string shorthand ("node server.js") or object with timeout + capture */
 const CommandValueSchema = z.union([z.string().max(10240), CommandDetailSchema]);
 
 const CommandsSchema = z.record(z.string(), CommandValueSchema);
@@ -144,18 +172,6 @@ const DependsOnEntrySchema = z.union([
 	z.string().min(1),
 	DependsOnEntryObjectSchema,
 ]);
-
-// --- Output ---
-
-const OutputSchema = z.object({
-	// Security: validate that patterns compile as RegExp to catch errors early,
-	// and cap length to limit ReDoS attack surface.
-	pattern: z.string().max(1024).refine((p) => {
-		try { new RegExp(p); return true; } catch { return false; }
-	}, "Invalid regex pattern"),
-	description: z.string().max(1024).optional(),
-	sensitive: z.boolean().optional(),
-});
 
 // --- Host ---
 
@@ -181,7 +197,6 @@ const ComponentSchema = z.object({
 	supports: z.array(SupportSchema).optional(),
 	env: z.record(z.string(), EnvVarSchema).optional(),
 	commands: CommandsSchema.optional(),
-	outputs: z.record(z.string(), OutputSchema).optional(),
 	health: HealthSchema.optional(),
 	depends_on: z.array(DependsOnEntrySchema).optional(),
 	storage: z.record(z.string(), StorageVolumeSchema).optional(),
@@ -212,7 +227,6 @@ export const LaunchSchema = z.object({
 	supports: z.array(SupportSchema).optional(),
 	env: z.record(z.string(), EnvVarSchema).optional(),
 	commands: CommandsSchema.optional(),
-	outputs: z.record(z.string(), OutputSchema).optional(),
 	health: HealthSchema.optional(),
 	depends_on: z.array(DependsOnEntrySchema).optional(),
 	storage: z.record(z.string(), StorageVolumeSchema).optional(),
@@ -248,7 +262,7 @@ export {
 	CommandDetailSchema,
 	CommandValueSchema,
 	CommandsSchema,
-	OutputSchema,
+	CaptureEntrySchema,
 	HostSchema,
 	PlatformSchema,
 	StorageVolumeSchema,
