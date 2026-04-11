@@ -65,3 +65,34 @@ jobs:
       - run: cd ${{ matrix.site }} && bun install --frozen-lockfile
       - run: cd ${{ matrix.site }} && bun run typecheck
       - run: cd ${{ matrix.site }} && bun run build
+
+  # Catches invalid YAML in workflow files before it gets merged and breaks
+  # the CI/release pipeline. actionlint alone is not sufficient here — it
+  # silently accepted the invalid release.yml that motivated this job (PR #23).
+  workflow-lint:
+    name: Workflow Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Validate workflow YAML with strict parser
+        run: |
+          python3 - <<'PY'
+          import glob, sys, yaml
+          files = sorted(
+              glob.glob('.github/workflows/*.yml')
+              + glob.glob('.github/workflows/*.yaml')
+          )
+          failed = []
+          for f in files:
+              try:
+                  with open(f) as fh:
+                      yaml.safe_load(fh)
+                  print(f'  ok  {f}')
+              except yaml.YAMLError as e:
+                  failed.append((f, str(e)))
+                  print(f'FAIL  {f}:\n{e}\n', file=sys.stderr)
+          if failed:
+              print(f'\n{len(failed)} workflow file(s) failed YAML validation', file=sys.stderr)
+              sys.exit(1)
+          print(f'\n{len(files)} workflow file(s) parsed cleanly')
+          PY
