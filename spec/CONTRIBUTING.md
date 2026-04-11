@@ -35,6 +35,10 @@ Open a pull request directly. No RFC needed.
 - Changes that break existing valid Launchfiles
 - Features that solve one app's problem but add complexity for everyone
 
+## AI Steward Review
+
+The AI Steward automatically reviews spec-change PRs against the design principles and posts line-level feedback as `launchfile-steward[bot]`. Every verdict cites specific principles from `spec/DESIGN.md`; see `governance/GOVERNANCE.md` for the decision process.
+
 ## Spec Review Checklist
 
 When reviewing spec PRs, check:

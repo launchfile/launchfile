@@ -30,6 +30,10 @@ All deploy to Cloudflare Pages (static output). Build from repo root: `cd www-{d
 
 Each directory has its own `CLAUDE.md` with directory-specific context (where applicable).
 
+## AI Steward
+
+The Launchfile AI Steward is an automated review agent that posts as `launchfile-steward[bot]` on GitHub. Its review framework grounds every verdict in citations to `spec/DESIGN.md` principles and `governance/GOVERNANCE.md` decisions, so any contributor can trace a review comment back to a published rule. Implementation and runtime live outside this repository.
+
 ## Commit Conventions
 
 This monorepo is designed for future splitting via `git subtree split`. To keep that clean:

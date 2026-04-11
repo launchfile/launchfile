@@ -46,6 +46,8 @@ An AI model that evaluates proposals against the documented principles:
 - Cannot amend principles — only apply them
 - Publishes all reasoning publicly
 
+The Steward posts on GitHub as `launchfile-steward[bot]` via a GitHub App, keeping its activity distinct from any human Author's. Its review framework grounds every verdict in the principles and decisions documented in `spec/DESIGN.md` and `spec/SPEC.md`, so any contributor can trace a review comment back to a published rule. Implementation lives outside this repository; the public commitment is the set of principles, decisions, and the transparent review output.
+
 ---
 
 ## Decision Process
