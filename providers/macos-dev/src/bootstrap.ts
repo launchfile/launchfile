@@ -186,7 +186,12 @@ export async function launchBootstrap(
 	}
 
 	// Rebuild resource map from state so the resolver context has real
-	// values at invocation time (same pattern as launchEnv).
+	// values at invocation time (same pattern as launchEnv). This calls
+	// provisioner.provision() on already-provisioned resources to retrieve
+	// their current property values — relies on every provisioner being
+	// idempotent: re-running provision() must not corrupt state or
+	// re-create the resource. All current provisioners satisfy this; new
+	// provisioners must as well.
 	const resourceMap: Record<string, ResourceProperties> = {};
 	for (const [name, res] of Object.entries(state.resources)) {
 		const provisioner = getProvisioner(res.type);

@@ -400,8 +400,6 @@ commands:
         pattern: "https?://\\S+"
         description: "One-time invite link"
         sensitive: true
-```
-
 ### Command Capture
 
 Any command that uses the expanded form can declare **captures** — named values extracted from the command's stdout via regex patterns. The platform matches each capture's regex against the command's stdout and stores the first capture group's value (or, if the pattern has no capture group, the full match).
