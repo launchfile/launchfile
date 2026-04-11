@@ -33,7 +33,7 @@
     "directory": "providers/macos-dev"
   },
   "dependencies": {
-    "@launchfile/sdk": "^0.1.4",
+    "@launchfile/sdk": "^0.1.10",
     "semver": "^7.7.4"
   },
   "devDependencies": {

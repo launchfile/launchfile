@@ -38,8 +38,8 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@launchfile/sdk": "^0.1.8",
-    "@launchfile/docker": "^0.1.8"
+    "@launchfile/sdk": "^0.1.10",
+    "@launchfile/docker": "^0.1.10"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.10",
