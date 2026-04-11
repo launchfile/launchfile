@@ -1,5 +1,27 @@
 name: Changesets
 
+# One workflow, two phases — on purpose.
+#
+# Every push to main runs this same job. What it does depends on whether
+# there are unreleased changesets sitting in `.changeset/`:
+#
+#   Phase A — VERSION (changesets present, e.g. a feature PR just merged):
+#     `changeset version` bumps package.json versions, rewrites
+#     CHANGELOG.md, deletes the consumed changeset files, and the action
+#     opens (or updates) the "chore: version packages" PR with those
+#     changes. No npm publish. No tags. Nothing ships yet.
+#
+#   Phase B — PUBLISH (no changesets, e.g. the version PR just merged):
+#     `changeset publish` runs `npm publish` for every package whose
+#     version isn't already on the registry, pushes git tags, and (with
+#     createGithubReleases: true) cuts a GitHub Release per package.
+#
+# changesets/action picks the phase automatically from repo state, so
+# both phases share the same build + auth setup above. A previous
+# incarnation split these across two workflows coupled by a commit-
+# message guard; PR #18 proved that fragile (merge commit skipped the
+# publish). Do NOT re-split without reading that postmortem first.
+
 on:
   push:
     branches:
@@ -34,10 +56,9 @@ jobs:
       - run: cd providers/macos-dev && bun install && bun run build
       - run: cd packages/launchfile && bun install && bun run build
 
-      # Single action handles both phases:
-      #   - If there are unreleased changesets → opens/updates the version PR
-      #   - If there are none (PR was just merged) → runs `changeset publish`
-      #     which calls `npm publish` per package and creates GitHub Releases.
+      # Phase selector. See the header comment at the top of this file for
+      # the full explanation of why `version:` and `publish:` are both set —
+      # the action decides which one to actually run based on repo state.
       - name: Create Release PR or Publish
         uses: changesets/action@c8bada60c408975afd1a20b3db81d6eee6789308 # v1
         with:
