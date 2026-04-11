@@ -1,6 +1,6 @@
 {
   "name": "@launchfile/docker",
-  "version": "0.1.10",
+  "version": "0.2.0",
   "description": "Docker provider for Launchfile — run any catalog app with one command via Docker Compose",
   "type": "module",
   "main": "dist/index.js",
@@ -33,7 +33,7 @@
     "directory": "providers/docker"
   },
   "dependencies": {
-    "@launchfile/sdk": "^0.1.10",
+    "@launchfile/sdk": "^0.2.0",
     "yaml": "^2.8.3"
   },
   "devDependencies": {
