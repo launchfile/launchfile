@@ -1,0 +1,19 @@
+category: Notes
+tagline: "AI-powered note tool for quickly capturing and organizing fleeting thoughts"
+homepage: https://github.com/blinko-space/blinko
+test_results:
+  last_tested: 2026-04-09
+  pull_time_seconds: 34
+  startup_time_seconds: 7
+  total_disk_mb: 1370
+  health_check_passed: true
+  notes: ""
+images:
+  - name: blinkospace/blinko:latest
+    size_mb: 1111
+    platform:
+      - linux/arm64
+  - name: postgres:16-alpine
+    size_mb: 259
+    platform:
+      - linux/arm64

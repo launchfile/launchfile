@@ -1,0 +1,15 @@
+category: Security
+tagline: "All-in-one OSINT tool for analyzing any website"
+homepage: https://web-check.xyz
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 64
+  startup_time_seconds: 1
+  total_disk_mb: 2251
+  health_check_passed: true
+  notes: ""
+images:
+  - name: lissy93/web-check:latest
+    size_mb: 2251
+    platform:
+      - linux/arm64

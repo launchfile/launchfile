@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: adguard-home
+description: "Network-wide ad and tracker blocking DNS server"
+repository: https://github.com/AdguardTeam/AdGuardHome
+logo: https://raw.githubusercontent.com/nicehash/adguardhome/master/client/public/favicon.svg
+
+image: adguard/adguardhome:latest
+provides:
+  - protocol: http
+    port: 3000
+    exposed: true
+  - protocol: tcp
+    port: 53
+storage:
+  work:
+    path: /opt/adguardhome/work
+    persistent: true
+  conf:
+    path: /opt/adguardhome/conf
+    persistent: true
+restart: always

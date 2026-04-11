@@ -1,0 +1,15 @@
+category: AI
+tagline: "Lightweight Rust-based AI personal assistant (OpenClaw family)"
+homepage: https://www.zeroclawlabs.ai
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 43
+  startup_time_seconds: 1
+  total_disk_mb: 63
+  health_check_passed: true
+  notes: ""
+images:
+  - name: ghcr.io/zeroclaw-labs/zeroclaw:latest
+    size_mb: 63
+    platform:
+      - linux/arm64

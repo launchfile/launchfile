@@ -1,0 +1,15 @@
+category: Dashboard
+tagline: "Customizable application dashboard with service integrations"
+homepage: https://gethomepage.dev
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 12
+  startup_time_seconds: 6
+  total_disk_mb: 257
+  health_check_passed: true
+  notes: ""
+images:
+  - name: ghcr.io/gethomepage/homepage:latest
+    size_mb: 257
+    platform:
+      - linux/arm64

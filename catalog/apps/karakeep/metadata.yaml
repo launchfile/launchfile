@@ -1,0 +1,15 @@
+category: Bookmarks
+tagline: "Bookmark-everything app with full-text search and AI tagging"
+homepage: https://karakeep.app
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 43
+  startup_time_seconds: 6
+  total_disk_mb: 1127
+  health_check_passed: true
+  notes: ""
+images:
+  - name: ghcr.io/karakeep-app/karakeep:latest
+    size_mb: 1127
+    platform:
+      - linux/arm64

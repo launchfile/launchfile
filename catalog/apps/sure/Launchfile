@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: sure
+description: "Financial planning and wealth management platform for personal finance overview"
+repository: https://github.com/we-promise/sure
+logo: https://raw.githubusercontent.com/we-promise/sure/main/public/logo.svg
+
+image: ghcr.io/we-promise/sure:latest
+provides:
+  - protocol: http
+    port: 3000
+    exposed: true
+storage:
+  data:
+    path: /app/data
+    persistent: true
+restart: always

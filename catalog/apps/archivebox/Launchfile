@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: archivebox
+description: "Self-hosted web archiving — saves HTML, JS, PDFs, media from any URL"
+repository: https://github.com/ArchiveBox/ArchiveBox
+logo: https://raw.githubusercontent.com/ArchiveBox/ArchiveBox/dev/archivebox/static/icon.png
+
+image: archivebox/archivebox:latest
+provides:
+  - protocol: http
+    port: 8000
+    exposed: true
+storage:
+  data:
+    path: /data
+    persistent: true
+restart: always

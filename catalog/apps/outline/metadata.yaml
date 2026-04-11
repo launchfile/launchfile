@@ -1,0 +1,23 @@
+category: Wiki
+tagline: "Modern team knowledge base for collaborative documentation"
+homepage: https://getoutline.com
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 42
+  startup_time_seconds: 68
+  total_disk_mb: 1264
+  health_check_passed: true
+  notes: ""
+images:
+  - name: outlinewiki/outline:latest
+    size_mb: 965
+    platform:
+      - linux/arm64
+  - name: postgres:16-alpine
+    size_mb: 259
+    platform:
+      - linux/arm64
+  - name: redis:7-alpine
+    size_mb: 40
+    platform:
+      - linux/arm64

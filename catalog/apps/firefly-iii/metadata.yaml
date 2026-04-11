@@ -1,7 +1,10 @@
+category: Finance
+tagline: "Personal finance manager with budgeting and reporting"
+homepage: https://firefly-iii.org
 test_results:
-  last_tested: 2026-04-09
-  pull_time_seconds: 3
-  startup_time_seconds: 32
+  last_tested: 2026-04-08
+  pull_time_seconds: 41
+  startup_time_seconds: 17
   total_disk_mb: 1149
   health_check_passed: true
   notes: ""

@@ -1,0 +1,20 @@
+test_results:
+  last_tested: 2026-04-09
+  pull_time_seconds: 81
+  startup_time_seconds: 7
+  total_disk_mb: 2028
+  health_check_passed: true
+  notes: ""
+images:
+  - name: ghcr.io/activepieces/activepieces:latest
+    size_mb: 1729
+    platform:
+      - linux/arm64
+  - name: postgres:16-alpine
+    size_mb: 259
+    platform:
+      - linux/arm64
+  - name: redis:7-alpine
+    size_mb: 40
+    platform:
+      - linux/arm64

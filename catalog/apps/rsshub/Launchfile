@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: rsshub
+description: "Generate RSS feeds from almost any website"
+repository: https://github.com/DIYgod/RSSHub
+logo: https://raw.githubusercontent.com/DIYgod/RSSHub/master/website/static/img/logo.png
+
+image: diygod/rsshub:latest
+provides:
+  - protocol: http
+    port: 1200
+    exposed: true
+restart: always

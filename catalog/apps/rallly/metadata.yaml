@@ -1,0 +1,16 @@
+test_results:
+  last_tested: 2026-04-09
+  pull_time_seconds: 31
+  startup_time_seconds: 37
+  total_disk_mb: 1211
+  health_check_passed: true
+  notes: ""
+images:
+  - name: lukevella/rallly:latest
+    size_mb: 952
+    platform:
+      - linux/arm64
+  - name: postgres:16-alpine
+    size_mb: 259
+    platform:
+      - linux/arm64

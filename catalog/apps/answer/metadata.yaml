@@ -1,0 +1,15 @@
+category: Forum
+tagline: Q&A platform for community knowledge sharing (Apache project)
+homepage: https://answer.dev
+test_results:
+  last_tested: 2026-04-09
+  pull_time_seconds: 9
+  startup_time_seconds: 1
+  total_disk_mb: 133
+  health_check_passed: true
+  notes: ""
+images:
+  - name: apache/answer:latest
+    size_mb: 133
+    platform:
+      - linux/arm64

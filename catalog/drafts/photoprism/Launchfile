@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: photoprism
+description: "AI-powered photo management with face recognition and maps"
+repository: https://github.com/photoprism/photoprism
+logo: https://raw.githubusercontent.com/photoprism/photoprism/develop/assets/static/icons/logo.svg
+
+image: photoprism/photoprism:latest
+provides:
+  - protocol: http
+    port: 2342
+    exposed: true
+requires:
+  - type: mariadb
+    set_env:
+      PHOTOPRISM_DATABASE_DRIVER: "mysql"
+      PHOTOPRISM_DATABASE_SERVER: "$host:$port"
+      PHOTOPRISM_DATABASE_NAME: $name
+      PHOTOPRISM_DATABASE_USER: $user
+      PHOTOPRISM_DATABASE_PASSWORD: $password
+env:
+  PHOTOPRISM_ADMIN_PASSWORD:
+    generator: secret
+    sensitive: true
+  PHOTOPRISM_SITE_URL:
+    default: "http://localhost:2342"
+storage:
+  originals:
+    path: /photoprism/originals
+    persistent: true
+  storage:
+    path: /photoprism/storage
+    persistent: true
+health: /api/v1/status
+restart: always

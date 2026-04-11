@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+# NOTE: Portainer requires access to the Docker socket (/var/run/docker.sock).
+# This is a host-level bind mount that cannot be expressed in a standard Launchfile.
+# Providers must handle this as a special case or via platform-specific configuration.
+version: launch/v1
+name: portainer
+description: "Container management platform with web UI"
+repository: https://github.com/portainer/portainer
+logo: https://raw.githubusercontent.com/portainer/portainer/develop/app/assets/images/logo_alt.svg
+
+image: portainer/portainer-ce:latest
+provides:
+  - protocol: http
+    port: 9000
+    exposed: true
+storage:
+  data:
+    path: /data
+    persistent: true
+restart: always

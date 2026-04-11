@@ -1,0 +1,15 @@
+category: Media
+tagline: "Fast, no-nonsense media downloader for YouTube, Twitter, and more"
+homepage: https://cobalt.tools
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 8
+  startup_time_seconds: 1
+  total_disk_mb: 255
+  health_check_passed: true
+  notes: ""
+images:
+  - name: ghcr.io/imputnet/cobalt:latest
+    size_mb: 255
+    platform:
+      - linux/arm64

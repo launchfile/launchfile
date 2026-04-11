@@ -1,0 +1,15 @@
+category: Note-Taking
+tagline: "Hierarchical note-taking and personal knowledge base"
+homepage: https://github.com/TriliumNext/Notes
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 16
+  startup_time_seconds: 6
+  total_disk_mb: 301
+  health_check_passed: true
+  notes: ""
+images:
+  - name: triliumnext/notes:latest
+    size_mb: 301
+    platform:
+      - linux/arm64

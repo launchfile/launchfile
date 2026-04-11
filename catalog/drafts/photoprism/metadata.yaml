@@ -1,0 +1,16 @@
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 44
+  startup_time_seconds: 113
+  total_disk_mb: 2633
+  health_check_passed: false
+  notes: Containers running but health check timed out
+images:
+  - name: photoprism/photoprism:latest
+    size_mb: 2289
+    platform:
+      - linux/arm64
+  - name: mariadb:11
+    size_mb: 344
+    platform:
+      - linux/arm64

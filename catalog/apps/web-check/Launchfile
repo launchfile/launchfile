@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: web-check
+description: "All-in-one OSINT tool for analyzing any website"
+repository: https://github.com/Lissy93/web-check
+logo: https://raw.githubusercontent.com/Lissy93/web-check/master/public/web-check.svg
+
+image: lissy93/web-check:latest
+provides:
+  - protocol: http
+    port: 3000
+    exposed: true
+restart: always

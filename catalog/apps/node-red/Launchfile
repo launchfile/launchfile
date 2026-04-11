@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: node-red
+description: "Low-code visual programming for event-driven automation"
+repository: https://github.com/node-red/node-red
+logo: https://raw.githubusercontent.com/node-red/node-red/master/packages/node_modules/node-red/node-red-256.svg
+
+image: nodered/node-red:latest
+provides:
+  - protocol: http
+    port: 1880
+    exposed: true
+storage:
+  data:
+    path: /data
+    persistent: true
+restart: always

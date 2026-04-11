@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: checkmate
+description: "Monitor uptime, response times, and server health with beautiful dashboards"
+repository: https://github.com/bluewave-labs/checkmate
+logo: https://raw.githubusercontent.com/bluewave-labs/checkmate/main/Client/public/logo.png
+
+image: bluewavelabs/checkmate:latest
+provides:
+  - protocol: http
+    port: 5000
+    exposed: true
+requires:
+  - type: mongodb
+    set_env:
+      DB_CONNECTION_STRING: $url
+env:
+  JWT_SECRET:
+    generator: secret
+    sensitive: true
+restart: always

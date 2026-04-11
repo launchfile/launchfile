@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: keycloak
+description: "Identity and access management with SSO, social login, and user federation"
+repository: https://github.com/keycloak/keycloak
+logo: https://raw.githubusercontent.com/keycloak/keycloak/main/js/apps/admin-ui/public/logo.svg
+
+image: quay.io/keycloak/keycloak:latest
+provides:
+  - protocol: http
+    port: 8080
+    exposed: true
+requires:
+  - type: postgres
+    set_env:
+      KC_DB_URL: "jdbc:postgresql://${host}:${port}/${name}"
+      KC_DB_USERNAME: $user
+      KC_DB_PASSWORD: $password
+env:
+  KC_DB:
+    default: "postgres"
+  KC_HTTP_ENABLED:
+    default: "true"
+  KC_HOSTNAME_STRICT:
+    default: "false"
+  KEYCLOAK_ADMIN:
+    default: "admin"
+  KEYCLOAK_ADMIN_PASSWORD:
+    generator: secret
+    sensitive: true
+commands:
+  start: "start --optimized"
+health: /health/ready
+restart: always

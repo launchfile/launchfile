@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: monica
+description: "Personal CRM for managing relationships and social interactions"
+repository: https://github.com/monicahq/monica
+logo: https://raw.githubusercontent.com/monicahq/monica/main/public/img/monica.svg
+
+image: monica:latest
+provides:
+  - protocol: http
+    port: 80
+    exposed: true
+requires:
+  - type: mariadb
+    set_env:
+      DB_HOST: $host
+      DB_PORT: $port
+      DB_DATABASE: $name
+      DB_USERNAME: $user
+      DB_PASSWORD: $password
+secrets:
+  app-key:
+    generator: secret
+env:
+  APP_KEY: "base64:${secrets.app-key|base64}"
+  APP_URL:
+    default: "http://localhost"
+storage:
+  data:
+    path: /var/www/html/storage
+    persistent: true
+restart: always

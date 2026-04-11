@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: kavita
+description: "Fast ebook and manga library supporting a wide array of file formats"
+repository: https://github.com/Kareadita/Kavita
+logo: https://raw.githubusercontent.com/Kareadita/Kavita/develop/Logo/kavita.svg
+
+image: jvmilazz0/kavita:latest
+provides:
+  - protocol: http
+    port: 5000
+    exposed: true
+storage:
+  config:
+    path: /kavita/config
+    persistent: true
+restart: always

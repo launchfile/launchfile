@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: authelia
+description: "Authentication and authorization server with SSO and 2FA"
+repository: https://github.com/authelia/authelia
+logo: https://raw.githubusercontent.com/authelia/authelia/master/docs/static/images/branding/logo-cropped.svg
+
+image: authelia/authelia:latest
+provides:
+  - protocol: http
+    port: 9091
+    exposed: true
+requires:
+  - type: redis
+    set_env:
+      AUTHELIA_SESSION_REDIS_HOST: $host
+      AUTHELIA_SESSION_REDIS_PORT: $port
+env:
+  AUTHELIA_JWT_SECRET:
+    generator: secret
+    sensitive: true
+  AUTHELIA_SESSION_SECRET:
+    generator: secret
+    sensitive: true
+  AUTHELIA_STORAGE_ENCRYPTION_KEY:
+    generator: secret
+    sensitive: true
+storage:
+  config:
+    path: /config
+    persistent: true
+restart: always

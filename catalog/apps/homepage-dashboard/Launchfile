@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: homepage-dashboard
+description: "Customizable application dashboard with service integrations"
+repository: https://github.com/gethomepage/homepage
+logo: https://raw.githubusercontent.com/gethomepage/homepage/main/public/homepage.svg
+
+image: ghcr.io/gethomepage/homepage:latest
+provides:
+  - protocol: http
+    port: 3000
+    exposed: true
+storage:
+  data:
+    path: /app/config
+    persistent: true
+restart: always

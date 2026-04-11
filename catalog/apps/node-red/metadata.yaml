@@ -1,0 +1,15 @@
+category: Automation
+tagline: "Low-code visual programming for event-driven automation"
+homepage: https://nodered.org
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 21
+  startup_time_seconds: 31
+  total_disk_mb: 587
+  health_check_passed: true
+  notes: ""
+images:
+  - name: nodered/node-red:latest
+    size_mb: 587
+    platform:
+      - linux/arm64

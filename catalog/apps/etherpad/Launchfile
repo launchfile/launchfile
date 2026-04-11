@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: etherpad
+description: "Real-time collaborative document editor"
+repository: https://github.com/ether/etherpad-lite
+logo: https://raw.githubusercontent.com/ether/etherpad-lite/develop/src/static/skins/colibris/images/etherpad_icon.svg
+
+image: etherpad/etherpad:latest
+provides:
+  - protocol: http
+    port: 9001
+    exposed: true
+restart: always

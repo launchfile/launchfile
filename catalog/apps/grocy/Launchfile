@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: grocy
+description: "Web-based groceries and household management for your home"
+repository: https://github.com/grocy/grocy
+logo: https://raw.githubusercontent.com/grocy/grocy/master/public/img/grocy_logo.svg
+
+image: linuxserver/grocy:latest
+provides:
+  - protocol: http
+    port: 80
+    exposed: true
+storage:
+  config:
+    path: /config
+    persistent: true
+restart: always

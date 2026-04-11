@@ -1,0 +1,15 @@
+category: File Management
+tagline: "Web-based file manager for browsing and managing files"
+homepage: https://filebrowser.org
+test_results:
+  last_tested: 2026-04-08
+  pull_time_seconds: 11
+  startup_time_seconds: 6
+  total_disk_mb: 34
+  health_check_passed: true
+  notes: ""
+images:
+  - name: filebrowser/filebrowser:latest
+    size_mb: 34
+    platform:
+      - linux/arm64

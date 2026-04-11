@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: nginx-proxy-manager
+description: "Reverse proxy with SSL management and a clean web UI"
+repository: https://github.com/NginxProxyManager/nginx-proxy-manager
+logo: https://raw.githubusercontent.com/NginxProxyManager/nginx-proxy-manager/develop/frontend/app-images/logo-256.png
+
+image: jc21/nginx-proxy-manager:latest
+provides:
+  - protocol: http
+    port: 81
+    exposed: true
+  - protocol: http
+    port: 80
+  - protocol: https
+    port: 443
+storage:
+  data:
+    path: /data
+    persistent: true
+  letsencrypt:
+    path: /etc/letsencrypt
+    persistent: true
+restart: always

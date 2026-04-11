@@ -21,6 +21,11 @@
     "provider",
     "brew"
   ],
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "README.md"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",

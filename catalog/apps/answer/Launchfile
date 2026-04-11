@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: answer
+description: "Q&A platform for community knowledge sharing (Apache project)"
+repository: https://github.com/apache/answer
+logo: https://raw.githubusercontent.com/apache/answer/main/ui/public/logo.svg
+
+image: apache/answer:latest
+provides:
+  - protocol: http
+    port: 80
+    exposed: true
+storage:
+  data:
+    path: /data
+    persistent: true
+restart: always

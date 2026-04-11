@@ -1,0 +1,15 @@
+category: Monitoring
+tagline: Lightweight server monitoring with Docker stats, historical data, and alerts
+homepage: https://beszel.dev
+test_results:
+  last_tested: 2026-04-09
+  pull_time_seconds: 7
+  startup_time_seconds: 2
+  total_disk_mb: 30
+  health_check_passed: true
+  notes: ""
+images:
+  - name: henrygd/beszel:latest
+    size_mb: 30
+    platform:
+      - linux/arm64
