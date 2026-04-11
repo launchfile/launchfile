@@ -1,0 +1,52 @@
+# yaml-language-server: $schema=../schema/launchfile.schema.json
+#
+# Example: post-start bootstrap with captured output.
+#
+# Some apps require imperative post-start setup that can only run against a
+# running component — creating the first admin user via a CLI that's only
+# available inside the container, or generating a one-time invite link that
+# the user needs to see.
+#
+# The `commands.bootstrap` stage runs after `start`, is invoked on user
+# request (not automatically after deploy), is re-runnable, and has no
+# deploy-failing failure mode. The nested `capture:` field extracts named
+# values from the command's stdout via regex — the same mechanism used for
+# release-time captures, now co-located with the command it captures from.
+#
+# See also: spec/DESIGN.md D-34.
+
+version: launch/v1
+name: my-app
+
+build:
+  dockerfile: ./Dockerfile
+
+provides:
+  - protocol: http
+    port: 9999
+    exposed: true
+
+env:
+  APP_SECRET:
+    generator: secret
+    sensitive: true
+  PUBLIC_URL:
+    default: $app.url
+    description: "Public URL the app is reachable on (auth callbacks, email links)"
+
+health: /health
+restart: always
+
+commands:
+  start: "node server.js"
+
+  # Post-start setup: create the first admin and capture the one-time invite link.
+  # Run by the user via `launchfile bootstrap my-app` (or the provider's equivalent)
+  # after the app is up. Re-runnable; failures are reported, not deploy-failing.
+  bootstrap:
+    command: "my-app-cli create-invite --name admin --url $app.url"
+    capture:
+      invite_link:
+        pattern: "https?://\\S+"
+        description: "One-time invite link — open in a browser to register your account"
+        sensitive: true

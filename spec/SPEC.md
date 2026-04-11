@@ -113,7 +113,7 @@ When `components` is present, top-level component fields serve as **defaults** i
 
 **Multi-component mode:** use the `components` map where each key is a component name (see Quick Start multi-component example).
 
-Each component supports: `runtime`, `image`, `build`, `provides`, `requires`, `supports`, `env`, `commands`, `outputs`, `health`, `depends_on`, `storage`, `restart`, `schedule`, `singleton`, `platform`, `host`.
+Each component supports: `runtime`, `image`, `build`, `provides`, `requires`, `supports`, `env`, `commands`, `health`, `depends_on`, `storage`, `restart`, `schedule`, `singleton`, `platform`, `host`. Named outputs captured from a command's stdout are declared via the `capture:` field inside an expanded command form — see [Command Capture](#command-capture).
 
 ```mermaid
 graph TD
@@ -346,15 +346,16 @@ env:
 
 ## Commands
 
-Lifecycle commands for build, release, and run stages. Each value is a **string** (shorthand) or an **object** with `command` and optional `timeout`.
+Lifecycle commands for build, release, run, and post-start stages. Each value is a **string** (shorthand) or an **object** with `command`, optional `timeout`, and optional [`capture`](#command-capture).
 
-Platforms execute well-known commands in this order: **build → release → start**. The `seed` and `test` commands are invoked on demand, not as part of the standard deploy lifecycle.
+Platforms execute well-known commands in this order: **build → release → start → (bootstrap on user request)**. The `seed`, `test`, and `bootstrap` commands are invoked on demand, not as part of the standard deploy lifecycle.
 
 | Stage | Purpose | When |
 |---|---|---|
 | `build` | Install dependencies, compile | Every deploy |
 | `release` | Migrations, cache clear, asset compilation | Every deploy, after build |
 | `start` | Start the application | Every deploy, after release |
+| `bootstrap` | Post-start setup that must run against a *running* component: create the first admin user, generate an initial invite link, write runtime config that depends on the deploy URL | On demand after `start` (user-invoked, re-runnable, non-deploy-failing). See [Bootstrap stage](#bootstrap-stage) below. |
 | `seed` | Seed the database with initial data | On demand (first deploy or explicit trigger) |
 | `test` | Run the test suite | On demand (CI or explicit trigger) |
 
@@ -377,33 +378,66 @@ commands:
     timeout: "5m"
 ```
 
-## Outputs
+### Bootstrap stage
 
-Named outputs capture values printed to stdout during the `release` command. The platform matches each output's regex pattern against the command's stdout and stores the first capture group's value.
+The `bootstrap` stage is for imperative post-start setup that can only run against a **running** component. Typical uses:
 
-| Field | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `pattern` | `string` | **yes** | -- | Regex with one capture group, matched line-by-line against release command stdout |
-| `description` | `string` | no | -- | Human-readable description of this output |
-| `sensitive` | `boolean` | no | `false` | If `true`, value is masked in API/UI unless explicitly revealed |
+- Creating the first admin user via a CLI that's only available inside the container
+- Generating a one-time invite link or password reset token the user needs to see
+- Writing runtime configuration whose values depend on the deployment's public URL (via `$app.url`) and must be picked up by an already-running process
 
-This is useful for capturing generated credentials, URLs, or configuration that the setup process produces:
+Unlike `release`, which runs before `start` in an ephemeral container and fails the whole deploy on error, `bootstrap` runs **after** `start` against the running component, is invoked on user request (not automatically after deploy), is **re-runnable**, and failures are **reported** rather than deploy-failing. It is the place to encode operational knowledge that today lives in READMEs (*"after deploying, run `docker exec … <app-cli> create-admin`"*).
+
+Bootstrap commands should be written to be idempotent — running them a second time should either no-op or produce a new one-time credential, not corrupt state. The spec recommends idempotency; it does not enforce it.
 
 ```yaml
 commands:
-  release: "./setup.sh"
-
-outputs:
-  admin_password:
-    pattern: "Admin password: (.+)"
-    description: "Generated admin password from initial setup"
-    sensitive: true
-  admin_url:
-    pattern: "Dashboard: (https?://\\S+)"
-    description: "URL to the admin dashboard"
+  start: "node server.js"
+  bootstrap:
+    command: "my-app-cli create-admin --url $app.url"
+    capture:
+      invite_link:
+        pattern: "https?://\\S+"
+        description: "One-time invite link"
+        sensitive: true
 ```
 
-Outputs are only captured during the `release` command. If the pattern does not match any line, the output is absent (not an error). Platforms should make captured outputs available through their API or UI.
+### Command Capture
+
+Any command that uses the expanded form can declare **captures** — named values extracted from the command's stdout via regex patterns. The platform matches each capture's regex against the command's stdout and stores the first capture group's value (or, if the pattern has no capture group, the full match).
+
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `pattern` | `string` | **yes** | -- | Regex matched line-by-line against the command's stdout |
+| `description` | `string` | no | -- | Human-readable description of the captured value |
+| `sensitive` | `boolean` | no | `false` | If `true`, value is masked in API/UI unless explicitly revealed |
+
+Captured values are surfaced by the platform under a `$outputs.*` namespace and made available through the platform's API or UI. If a pattern does not match any line, the capture is absent (not an error).
+
+Capture is most commonly used with `release` (for migration-time generated values) and `bootstrap` (for post-start admin creation and invite flows), but is allowed on any command that uses the expanded form:
+
+```yaml
+commands:
+  release:
+    command: "./setup.sh"
+    capture:
+      admin_password:
+        pattern: "Admin password: (.+)"
+        description: "Generated admin password from initial setup"
+        sensitive: true
+      admin_url:
+        pattern: "Dashboard: (https?://\\S+)"
+        description: "URL to the admin dashboard"
+  bootstrap:
+    command: "my-app-cli create-invite --url $app.url"
+    capture:
+      invite_link:
+        pattern: "https?://\\S+"
+        description: "One-time invite link — open in a browser to register"
+        sensitive: true
+```
+
+> **Note on D-23 placement supersede.** Earlier versions of this spec documented capture via a top-level `outputs:` field at component level. That placement has been superseded by the nested `capture:` form documented above. The capture mechanism (`pattern` / `description` / `sensitive`) is preserved verbatim; only the location of the capture block in the schema has changed. See [DESIGN.md D-34](DESIGN.md#d-34-capture-block-co-located-with-commands-supersedes-d-23-placement) for the migration rationale.
 
 ## Health
 
