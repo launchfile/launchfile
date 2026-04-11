@@ -186,22 +186,21 @@ export interface CommandDetail {
 	 * Named captures extracted from the command's stdout via regex (D-34).
 	 * Supersedes the top-level `outputs:` placement from D-23.
 	 */
-	capture?: Record<string, Output>;
+	capture?: Record<string, CaptureEntry>;
 }
 
-// --- Output / Capture entry ---
+// --- Capture entry ---
 
 /**
  * A named capture entry — a regex pattern matched against a command's
  * stdout, with optional description and sensitivity flag.
  *
- * Originally introduced by D-23 as the value type for component-level
- * `outputs:`, this shape is now used by D-34 as the value type for the
- * nested `capture:` field on expanded commands. The `Output` name is
- * preserved for backward compatibility with external consumers who
- * imported it directly.
+ * Originally introduced by D-23 as the `Output` type for component-level
+ * `outputs:`, renamed to `CaptureEntry` by D-34 when the capture block
+ * moved inside the expanded command form (`commands.*.capture`). The
+ * shape is unchanged; only the name reflects its new role.
  */
-export interface Output {
+export interface CaptureEntry {
 	/** Regex pattern matched line-by-line against the command's stdout */
 	pattern: string;
 	/** Human-readable description of the captured value */
@@ -364,7 +363,7 @@ export interface NormalizedCommand {
 	command: string;
 	timeout?: string;
 	/** Named captures extracted from stdout via regex (D-34) */
-	capture?: Record<string, Output>;
+	capture?: Record<string, CaptureEntry>;
 }
 
 /** Fully expanded build */

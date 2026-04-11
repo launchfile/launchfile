@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readLaunch } from "../reader.js";
 import { parseDotPath } from "../resolver.js";
-import { LaunchSchema, NameSchema, OutputSchema } from "../schema.js";
+import { LaunchSchema, NameSchema, CaptureEntrySchema } from "../schema.js";
 
 describe("YAML parser hardening", () => {
 	it("rejects input exceeding 1 MB", () => {
@@ -88,25 +88,25 @@ describe("schema string length limits", () => {
 describe("output pattern regex validation", () => {
 	it("rejects invalid regex patterns", () => {
 		expect(() =>
-			OutputSchema.parse({ pattern: "(unclosed" }),
+			CaptureEntrySchema.parse({ pattern: "(unclosed" }),
 		).toThrow();
 	});
 
 	it("rejects patterns longer than 1024 characters", () => {
 		expect(() =>
-			OutputSchema.parse({ pattern: "a".repeat(1025) }),
+			CaptureEntrySchema.parse({ pattern: "a".repeat(1025) }),
 		).toThrow();
 	});
 
 	it("accepts valid regex patterns", () => {
 		expect(() =>
-			OutputSchema.parse({ pattern: "version:\\s+(\\d+\\.\\d+\\.\\d+)" }),
+			CaptureEntrySchema.parse({ pattern: "version:\\s+(\\d+\\.\\d+\\.\\d+)" }),
 		).not.toThrow();
 	});
 
 	it("accepts simple capture group patterns", () => {
 		expect(() =>
-			OutputSchema.parse({ pattern: "URL: (https?://\\S+)" }),
+			CaptureEntrySchema.parse({ pattern: "URL: (https?://\\S+)" }),
 		).not.toThrow();
 	});
 });

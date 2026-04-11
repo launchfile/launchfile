@@ -113,18 +113,19 @@ const HealthObjectSchema = z.object({
 /** Accepts string shorthand ("/health") or full object */
 const HealthSchema = z.union([z.string(), HealthObjectSchema]);
 
-// --- Output / Capture entry (reusable shape) ---
+// --- Capture entry (reusable shape, introduced by D-23, renamed by D-34) ---
 
 /**
  * Schema for a named capture entry — a regex pattern matched against a
  * command's stdout, with optional description and sensitivity flag.
  *
- * Introduced by D-23 as the value type for component-level `outputs:`;
- * reused by D-34 as the value type for the nested `capture:` field on
- * expanded commands. The `OutputSchema` name is preserved for backward
- * compatibility with external consumers who imported it directly.
+ * Originally introduced by D-23 as the value type for the top-level
+ * `outputs:` block, and renamed from `OutputSchema` to `CaptureEntrySchema`
+ * by D-34 when the capture block moved inside the expanded command form
+ * (`commands.*.capture`). The shape is unchanged; only the name reflects
+ * its new role.
  */
-const OutputSchema = z.object({
+const CaptureEntrySchema = z.object({
 	// Security: validate that patterns compile as RegExp to catch errors early,
 	// and cap length to limit ReDoS attack surface.
 	pattern: z.string().max(1024).refine((p) => {
@@ -141,11 +142,10 @@ const CommandDetailSchema = z.object({
 	timeout: z.string().max(64).optional(),
 	/**
 	 * Named captures extracted from the command's stdout via regex (D-34).
-	 * Each entry uses the same shape as OutputSchema (pattern, description,
-	 * sensitive). Supersedes the top-level `outputs:` placement from D-23 —
-	 * the mechanism is preserved, only the location changes (P-10).
+	 * Supersedes the top-level `outputs:` placement from D-23 — the
+	 * mechanism is preserved, only the location changes (P-10).
 	 */
-	capture: z.record(z.string(), OutputSchema).optional(),
+	capture: z.record(z.string(), CaptureEntrySchema).optional(),
 });
 
 /** Accepts string shorthand ("node server.js") or object with timeout + capture */
@@ -262,7 +262,7 @@ export {
 	CommandDetailSchema,
 	CommandValueSchema,
 	CommandsSchema,
-	OutputSchema,
+	CaptureEntrySchema,
 	HostSchema,
 	PlatformSchema,
 	StorageVolumeSchema,
