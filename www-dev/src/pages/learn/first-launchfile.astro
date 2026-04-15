@@ -1,0 +1,106 @@
+---
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+import CourseLayout from "@/components/learn/CourseLayout.astro";
+import CodeBuildUp from "@/components/learn/CodeBuildUp.astro";
+import Callout from "@/components/learn/Callout.astro";
+import GlossaryTip from "@/components/learn/GlossaryTip.astro";
+import Quiz from "@/components/learn/Quiz.astro";
+import RealWorldExample from "@/components/learn/RealWorldExample.astro";
+
+const minimalYaml = readFileSync(resolve(process.cwd(), "../spec/examples/minimal.yaml"), "utf-8").replace(/^#.*\n/gm, "").trim();
+const cyberchefYaml = readFileSync(resolve(process.cwd(), "../catalog/apps/cyberchef/Launchfile"), "utf-8").replace(/^#.*\n/gm, "").trim();
+---
+
+<CourseLayout
+  title="Your First Launchfile"
+  subtitle="The simplest valid Launchfile — name, runtime, and a start command."
+  moduleName="Basics"
+  moduleNumber={1}
+  lessonNumber={1}
+  learningGoals={[
+    "What a Launchfile is and where it lives",
+    "The three core fields: name, runtime, commands.start",
+    "How providers use your Launchfile to deploy your app",
+  ]}
+  nextLesson={{ title: "Adding a Database", description: "Declare a Postgres dependency and wire it into your app.", href: "/learn/adding-a-database/" }}
+>
+
+<h2 id="what-is-a-launchfile">What is a Launchfile?</h2>
+
+<p>
+  A <GlossaryTip term="Launchfile" definition="A YAML file called Launchfile (no extension) that describes everything an app needs to run.">Launchfile</GlossaryTip> is a single file that describes how to deploy your application. It lives in your project root and is called <code>Launchfile</code> — no extension, just like a <code>Dockerfile</code> or <code>Makefile</code>.
+</p>
+
+<p>
+  Instead of writing platform-specific configs for every hosting <GlossaryTip term="provider" definition="A platform or tool that reads your Launchfile and provisions infrastructure accordingly.">provider</GlossaryTip>, you describe <em>what your app needs</em> and let the provider figure out <em>how</em> to set it up. One file, any platform.
+</p>
+
+<p>
+  You declare your app's <GlossaryTip term="runtime" definition="The language or environment your app runs in — node, python, ruby, go, etc.">runtime</GlossaryTip>, how to start it, what databases it depends on, what environment variables it expects — and that's it. The provider handles the rest.
+</p>
+
+<h2 id="build-it-up">Build it up</h2>
+
+<CodeBuildUp steps={[
+  {
+    yaml: "name: my-app",
+    note: "Every Launchfile starts with a name. It follows <code>kebab-case</code> convention.",
+  },
+  {
+    yaml: "name: my-app\nruntime: node",
+    note: "The <code>runtime</code> tells providers what language your app uses — <code>node</code>, <code>python</code>, <code>ruby</code>, <code>go</code>, etc.",
+  },
+  {
+    yaml: minimalYaml,
+    note: "Add a start command and you're done. This is a complete, valid Launchfile.",
+  },
+]} />
+
+<h2 id="how-it-works">How it works</h2>
+
+<Callout type="tip" title="The basics">
+  <p>The file is called <code>Launchfile</code> (no extension) and lives in your project root — right next to <code>package.json</code> or <code>requirements.txt</code>.</p>
+  <p>When you deploy, the provider reads this file and provisions everything: the runtime, the start command, any databases or services you declared. You don't write shell scripts or Dockerfiles — the Launchfile is the contract.</p>
+  <p>The <code>version: launch/v1</code> line is optional. When absent, providers default to <code>launch/v1</code>. It's good practice to include it, but your Launchfile works without it.</p>
+</Callout>
+
+<h2 id="in-the-wild">In the wild</h2>
+
+<p>Here's a real Launchfile from the catalog. CyberChef is a simple web app — no database, no secrets, just an image and a port.</p>
+
+<RealWorldExample
+  appName="cyberchef"
+  yaml={cyberchefYaml}
+  annotations={[
+    { line: "image:", text: "Instead of building from source, CyberChef uses a prebuilt Docker image." },
+    { line: "provides:", text: "Declares an HTTP endpoint on port 8000, exposed to the internet." },
+    { line: "restart: always", text: "Tells the provider to restart the app if it crashes." },
+  ]}
+  catalogUrl="https://launchfile.io/apps/cyberchef/"
+/>
+
+<h2 id="check-your-understanding">Check your understanding</h2>
+
+<Quiz
+  question="What is the minimum you need in a Launchfile for a source-based app?"
+  options={[
+    { text: "Just a name", correct: false, explanation: "A name alone doesn't tell the provider how to run your app. You also need a runtime and a start command." },
+    { text: "name, runtime, and a start command", correct: true, explanation: "Correct! These three fields are all a provider needs to build and run your application." },
+    { text: "A Dockerfile", correct: false, explanation: "Launchfile replaces the need for a Dockerfile. You declare what you need, and the provider handles containerization." },
+    { text: "name and an image", correct: false, explanation: "That works for prebuilt images, but source-based apps need a runtime and start command instead." },
+  ]}
+/>
+
+<div class="takeaways">
+  <div class="takeaways-title">Key takeaways</div>
+  <ul>
+    <li>A Launchfile is a YAML file called <code>Launchfile</code> in your project root.</li>
+    <li>The three core fields for source-based apps are <code>name</code>, <code>runtime</code>, and <code>commands.start</code>.</li>
+    <li>Providers read your Launchfile and handle all the infrastructure — you describe the <em>what</em>, they handle the <em>how</em>.</li>
+    <li>Prebuilt apps can use <code>image</code> instead of <code>runtime</code> + <code>commands</code>.</li>
+  </ul>
+</div>
+
+</CourseLayout>

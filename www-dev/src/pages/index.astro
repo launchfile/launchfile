@@ -6,6 +6,12 @@ import "@/styles/global.css";
 
 const quickLinks = [
   {
+    title: "Learn Launchfile",
+    desc: "Step-by-step course — from a 3-line file to multi-component apps with databases and secrets.",
+    href: "/learn/",
+    icon: "learn",
+  },
+  {
     title: "Specification",
     desc: "The complete format reference — fields, types, expressions, and shorthand patterns.",
     href: "https://launchfile.org/spec/",
@@ -50,12 +56,12 @@ const quickLinks = [
             Platform-agnostic. Human-writable. Machine-parseable.
           </p>
           <div class="dev-hero-actions">
-            <a href="/quick-start/" class="dev-hero-btn-primary">
-              Get Started
+            <a href="/learn/" class="dev-hero-btn-primary">
+              Learn the format
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 3l5 5-5 5" /></svg>
             </a>
-            <a href="https://github.com/launchfile/launchfile" class="dev-hero-btn-secondary" target="_blank" rel="noopener">
-              View on GitHub
+            <a href="/quick-start/" class="dev-hero-btn-secondary">
+              Quick Start
             </a>
           </div>
         </div>
@@ -88,6 +94,9 @@ const quickLinks = [
         {quickLinks.map((link) => (
           <a href={link.href} class="dev-quicklink" target={link.href.startsWith("http") ? "_blank" : undefined} rel={link.href.startsWith("http") ? "noopener" : undefined}>
             <div class="dev-quicklink-icon" data-icon={link.icon}>
+              {link.icon === "learn" && (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 14l9-5-9-5-9 5 9 5z"/><path d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z"/></svg>
+              )}
               {link.icon === "book" && (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
               )}

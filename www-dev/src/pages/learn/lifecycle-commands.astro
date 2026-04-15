@@ -1,0 +1,150 @@
+---
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+import CourseLayout from "@/components/learn/CourseLayout.astro";
+import CodeBuildUp from "@/components/learn/CodeBuildUp.astro";
+import Callout from "@/components/learn/Callout.astro";
+import BeforeAfter from "@/components/learn/BeforeAfter.astro";
+import GlossaryTip from "@/components/learn/GlossaryTip.astro";
+import Quiz from "@/components/learn/Quiz.astro";
+import RealWorldExample from "@/components/learn/RealWorldExample.astro";
+
+const captureYaml = readFileSync(resolve(process.cwd(), "../spec/examples/post-start-capture.yaml"), "utf-8").replace(/^#.*\n/gm, "").trim();
+---
+
+<CourseLayout
+  title="Lifecycle Commands"
+  subtitle="Build, release, start, seed — the full app lifecycle."
+  moduleName="Production-Ready"
+  moduleNumber={2}
+  lessonNumber={5}
+  learningGoals={[
+    "The six command types: build, release, start, seed, test, bootstrap",
+    "When each command runs in the deployment lifecycle",
+    "Command capture for post-start output",
+    "The build block for Dockerfile-based builds",
+  ]}
+  nextLesson={{ title: "Multi-Component Apps", description: "Wire a frontend and backend together with dependency ordering.", href: "/learn/multi-component/" }}
+>
+
+<h2 id="the-lifecycle">The deployment lifecycle</h2>
+
+<p>
+  Every deployment follows the same arc: compile the code, prepare the environment, then run the app. Launchfile gives you a hook for each stage via the <code>commands</code> block.
+</p>
+
+<p>Here's the order, and when each command fires:</p>
+
+<ol>
+  <li><strong><code>build</code></strong> — Compile source, install dependencies, generate assets. Runs at build time.</li>
+  <li><strong><code><GlossaryTip term="release" definition="A command that runs once per deployment before start — typically database migrations or asset uploads. If it fails, the deploy is rolled back.">release</GlossaryTip></code></strong> — Runs once per deployment, before start. Migrations, asset uploads, cache warming. If it fails, the deploy stops.</li>
+  <li><strong><code>start</code></strong> — The long-running process. This is your app.</li>
+  <li><strong><code>seed</code></strong> — Populate the database with sample or default data. Typically run on demand, not on every deploy.</li>
+  <li><strong><code>test</code></strong> — Run the test suite. Used by CI and by providers that validate before promoting a deploy.</li>
+  <li><strong><code><GlossaryTip term="bootstrap" definition="A command that runs once ever — like creating the initial admin user or generating a one-time invite link. Re-runnable but only needed on first setup.">bootstrap</GlossaryTip></code></strong> — First-time setup. Create the admin user, generate invite links, initialize config. Runs on user request, not automatically.</li>
+</ol>
+
+<Callout type="tip" title="release vs. bootstrap">
+  <p>
+    Think of <code>release</code> as "every deploy" (migrations) and <code>bootstrap</code> as "first deploy ever" (admin setup). Both run against a live app, but release gates the deploy while bootstrap is fire-and-forget.
+  </p>
+</Callout>
+
+<h2 id="build-it-up">Build it up</h2>
+
+<CodeBuildUp steps={[
+  {
+    yaml: `commands:
+  start: "node server.js"`,
+    note: "The minimum: a <code>start</code> command. The provider runs this to launch your app.",
+  },
+  {
+    yaml: `commands:
+  build: "npm install && npm run build"
+  release: "npx prisma migrate deploy"
+  start: "node dist/server.js"`,
+    note: "Add <strong>build</strong> to compile and <strong>release</strong> to run migrations before every deploy.",
+  },
+  {
+    yaml: `commands:
+  build: "npm install && npm run build"
+  release: "npx prisma migrate deploy"
+  start: "node dist/server.js"
+  seed: "node scripts/seed.js"
+  test: "npm test"`,
+    note: "Add <strong>seed</strong> for sample data and <strong>test</strong> for the test suite.",
+  },
+  {
+    yaml: `commands:
+  start:
+    run: "my-app serve"
+    capture:
+      ADMIN_TOKEN: "Admin token: (.+)"`,
+    note: "The <strong>capture</strong> pattern extracts values from stdout via regex. Useful for apps that print a generated token or URL on first start.",
+  },
+]} />
+
+<h2 id="the-build-block">The <code>build</code> block</h2>
+
+<p>
+  There's a subtle but important distinction: <code>commands.build</code> runs shell commands (like <code>npm run build</code>), while a top-level <code>build:</code> block configures a Dockerfile-based container build. They serve different purposes.
+</p>
+
+<BeforeAfter
+  before={{ title: "commands.build (shell)", yaml: `commands:
+  build: "npm install && npm run build"
+  start: "node dist/server.js"` }}
+  after={{ title: "build: (Dockerfile)", yaml: `build:
+  dockerfile: ./Dockerfile
+
+commands:
+  start: "node server.js"` }}
+/>
+
+<Callout type="warning" title="Don't confuse the two">
+  <p>
+    <code>commands.build</code> runs <em>inside</em> an already-built container (or on the host). The top-level <code>build:</code> block tells the provider <em>how to build the container image itself</em> from a Dockerfile. If you're using a prebuilt image (like <code>image: node:20</code>), you only need <code>commands.build</code>. If you have a Dockerfile, use the top-level <code>build:</code> block.
+  </p>
+</Callout>
+
+<h2 id="in-the-wild">In the wild</h2>
+
+<p>
+  This spec example shows a real-world pattern: a post-start bootstrap command that creates an admin user and captures the one-time invite link from stdout.
+</p>
+
+<RealWorldExample
+  appName="my-app"
+  yaml={captureYaml}
+  annotations={[
+    { line: "build:", text: "Top-level build block — this app uses a Dockerfile, not a prebuilt image." },
+    { line: "commands:", text: "The commands block defines start and bootstrap. No release or build command needed since the Dockerfile handles compilation." },
+    { line: "bootstrap:", text: "Runs on user request after the app is up. Creates an admin invite and captures the URL from stdout." },
+    { line: "capture:", text: "Extracts the invite link via regex. The provider stores it and shows it to the user." },
+  ]}
+/>
+
+<h2 id="check-your-understanding">Check your understanding</h2>
+
+<Quiz
+  question="When does the release command run?"
+  options={[
+    { text: "Once when the app is first deployed", correct: false, explanation: "That's bootstrap. Release runs on every deployment, not just the first." },
+    { text: "Every time the app starts", correct: false, explanation: "That's start. Release runs once per deployment, before start — not on every restart." },
+    { text: "Once per deployment, before start", correct: true, explanation: "Correct! Release runs after the build and before start — the right place for database migrations, asset compilation, or cache warming. If it fails, the deploy is rolled back." },
+    { text: "Only in CI", correct: false, explanation: "Release runs in every deployment, whether triggered by CI or manually. You might be thinking of the test command, which is often CI-only." },
+  ]}
+/>
+
+<div class="takeaways">
+  <div class="takeaways-title">Key takeaways</div>
+  <ul>
+    <li>The <strong>deployment lifecycle</strong> is: build, release, start. Seed, test, and bootstrap are on-demand.</li>
+    <li><strong><code>release</code></strong> runs once per deploy (migrations). <strong><code>bootstrap</code></strong> runs once ever (initial setup).</li>
+    <li>Commands can use the <strong>capture</strong> pattern to extract values from stdout via regex.</li>
+    <li>Top-level <strong><code>build:</code></strong> configures Docker image builds. <strong><code>commands.build</code></strong> runs shell commands inside a container.</li>
+  </ul>
+</div>
+
+</CourseLayout>

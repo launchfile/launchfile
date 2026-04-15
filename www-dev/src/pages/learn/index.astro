@@ -1,0 +1,111 @@
+---
+import Base from "@shared/layouts/Base.astro";
+import DocsHeader from "@shared/components/DocsHeader.astro";
+import Sidebar from "@shared/components/Sidebar.astro";
+import SidebarNav from "@shared/components/SidebarNav.astro";
+import SearchDialog from "@shared/components/SearchDialog.astro";
+import "@/styles/global.css";
+import "@/styles/learn.css";
+
+const currentPath = "/learn/";
+
+const modules = [
+  {
+    number: 1,
+    title: "Basics",
+    description: "Start from zero. By the end you'll write Launchfiles with databases, environment variables, and secrets.",
+    lessons: [
+      { num: 1, title: "Your First Launchfile", desc: "Three fields and a start command — the simplest valid Launchfile.", href: "/learn/first-launchfile/" },
+      { num: 2, title: "Adding a Database", desc: "Declare a Postgres dependency and wire it into your app.", href: "/learn/adding-a-database/" },
+      { num: 3, title: "Env Vars & Secrets", desc: "Configure your app with defaults, required values, and generated secrets.", href: "/learn/env-and-secrets/" },
+    ],
+  },
+  {
+    number: 2,
+    title: "Production-Ready",
+    description: "Everything you need for a production deployment: ports, storage, health checks, and lifecycle commands.",
+    lessons: [
+      { num: 4, title: "Ports, Storage & Health", desc: "Expose endpoints, persist data, and tell providers how to check your app.", href: "/learn/ports-storage-health/" },
+      { num: 5, title: "Lifecycle Commands", desc: "Build, release, start, seed — the full app lifecycle.", href: "/learn/lifecycle-commands/" },
+    ],
+  },
+  {
+    number: 3,
+    title: "Advanced",
+    description: "Multi-component apps, cron jobs, prebuilt images, and host access patterns.",
+    lessons: [
+      { num: 6, title: "Multi-Component Apps", desc: "Wire a frontend and backend together with dependency ordering.", href: "/learn/multi-component/" },
+      { num: 7, title: "Specialized Patterns", desc: "Cron jobs, prebuilt images, host access, and optional dependencies.", href: "/learn/specialized-patterns/" },
+    ],
+  },
+];
+---
+
+<Base title="Learn Launchfile — Step-by-Step Course" description="Learn to write Launchfiles from scratch. 7 lessons from minimal to multi-component." site="dev">
+  <DocsHeader slot="nav">
+    <SidebarNav slot="drawer-nav" currentPath={currentPath} />
+  </DocsHeader>
+  <div class="docs-layout">
+    <Sidebar currentPath={currentPath} />
+    <div class="docs-content" style="padding-top: 0;">
+      <!-- Hero -->
+      <div class="course-hero">
+        <div class="course-hero-grid"></div>
+        <div class="course-hero-inner">
+          <h1 class="course-hero-title">Learn Launchfile</h1>
+          <p class="course-hero-desc">
+            A step-by-step course that takes you from a 3-line Launchfile to deploying multi-component apps with databases, secrets, and health checks.
+          </p>
+          <div class="course-hero-stats">
+            <span>3 modules</span>
+            <span class="dot">&middot;</span>
+            <span>7 lessons</span>
+            <span class="dot">&middot;</span>
+            <span>~30 min read</span>
+          </div>
+          <a href="/learn/first-launchfile/" class="course-hero-cta">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+            </svg>
+            Start the course
+          </a>
+        </div>
+      </div>
+
+      <!-- Modules -->
+      <div class="course-modules">
+        {modules.map((mod) => (
+          <div class="course-module">
+            <div class="course-module-label">Part {mod.number}</div>
+            <h2 class="course-module-title">{mod.title}</h2>
+            <p class="course-module-desc">{mod.description}</p>
+            <div class="course-lesson-list">
+              {mod.lessons.map((lesson) => (
+                <a href={lesson.href} class="course-lesson-card">
+                  <span class="course-lesson-num">{lesson.num}</span>
+                  <div class="course-lesson-info">
+                    <div class="course-lesson-title">{lesson.title}</div>
+                    <div class="course-lesson-desc">{lesson.desc}</div>
+                  </div>
+                  <svg class="course-lesson-chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                    <path d="M6 3l5 5-5 5" />
+                  </svg>
+                </a>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <footer class="docs-small-print">
+        <p>&copy; {new Date().getFullYear()} Launchfile. MIT License.</p>
+        <div class="docs-small-print-links">
+          <a href="https://github.com/launchfile/launchfile">GitHub</a>
+          <a href="https://launchfile.org">Spec</a>
+          <a href="https://launchfile.io">Catalog</a>
+        </div>
+      </footer>
+    </div>
+  </div>
+  <SearchDialog />
+</Base>

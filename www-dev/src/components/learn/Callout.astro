@@ -1,0 +1,30 @@
+---
+interface Props {
+  type?: "tip" | "warning" | "info";
+  title?: string;
+}
+
+const { type = "tip", title } = Astro.props;
+
+const icons: Record<string, string> = {
+  tip: "M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z",
+  warning: "M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z",
+  info: "M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z",
+};
+
+const defaultTitles: Record<string, string> = {
+  tip: "Tip",
+  warning: "Watch out",
+  info: "Note",
+};
+---
+
+<div class={`callout callout-${type}`}>
+  <div class="callout-title">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d={icons[type]} />
+    </svg>
+    {title ?? defaultTitles[type]}
+  </div>
+  <slot />
+</div>

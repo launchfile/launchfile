@@ -1,0 +1,52 @@
+---
+import { Code } from "astro:components";
+
+interface Annotation {
+  line: string;
+  text: string;
+}
+
+interface Props {
+  appName: string;
+  yaml: string;
+  annotations?: Annotation[];
+  catalogUrl?: string;
+}
+
+const { appName, yaml, annotations = [], catalogUrl } = Astro.props;
+const githubUrl = `https://github.com/launchfile/launchfile/blob/main/catalog/apps/${appName}/Launchfile`;
+---
+
+<div class="real-world">
+  <div class="real-world-header">
+    <span class="real-world-filename">{appName}/Launchfile</span>
+    <a href={githubUrl} class="real-world-link" target="_blank" rel="noopener">
+      View on GitHub
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3.5 3.5h5v5M8.5 3.5L3.5 8.5" /></svg>
+    </a>
+  </div>
+  <Code code={yaml} lang="yaml" theme="github-dark" />
+
+  {annotations.length > 0 && (
+    <div class="real-world-annotations">
+      <dl>
+        {annotations.map((a) => (
+          <>
+            <dt><code>{a.line}</code></dt>
+            <dd>{a.text}</dd>
+          </>
+        ))}
+      </dl>
+    </div>
+  )}
+
+  {catalogUrl && (
+    <div style="margin-top: 0.75rem; padding: 0.75rem 1rem; border-radius: 0.5rem; border: 1px solid var(--lf-purple-100); background: var(--lf-purple-50);">
+      <p style="margin: 0; font-size: 0.8125rem; color: var(--lf-charcoal);">
+        <strong>Try it:</strong>{" "}
+        <code>npx launchfile up {appName}</code> to launch this app locally.
+        <a href={catalogUrl} style="color: var(--lf-primary);">View in catalog</a>
+      </p>
+    </div>
+  )}
+</div>
