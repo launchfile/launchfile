@@ -125,7 +125,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 			for (const img of result.images) {
 				const t0 = Date.now();
 				process.stdout.write(`  \u2193 Pulling ${img} image...`);
-				await shell(`docker compose -p ${project} -f "${composeFile}" pull --quiet`, {
+				await shell("docker", ["compose", "-p", project, "-f", composeFile, "pull", "--quiet"], {
 					timeout: 300_000,
 					silent: true,
 				});
@@ -151,7 +151,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// Start services
 		await withSpan("up:start", { project }, async () => {
 			process.stdout.write(`  \u2193 Starting services...`);
-			await shell(`docker compose -p ${project} -f "${composeFile}" up -d`, { silent: true });
+			await shell("docker", ["compose", "-p", project, "-f", composeFile, "up", "-d"], { silent: true });
 			console.log("");
 		});
 
@@ -191,7 +191,7 @@ export async function dockerDown(opts: { destroy?: boolean; slug?: string } = {}
 
 		if (opts.destroy) {
 			console.log(`Destroying ${state.appName}...`);
-			await shell(`docker compose -p ${project} -f "${composeFile}" down -v --remove-orphans`, {
+			await shell("docker", ["compose", "-p", project, "-f", composeFile, "down", "-v", "--remove-orphans"], {
 				allowFailure: true,
 			});
 			// Clean up state directory
@@ -200,7 +200,7 @@ export async function dockerDown(opts: { destroy?: boolean; slug?: string } = {}
 			console.log("  Removed all containers, volumes, and state.");
 		} else {
 			console.log(`Stopping ${state.appName}...`);
-			await shell(`docker compose -p ${project} -f "${composeFile}" down`, {
+			await shell("docker", ["compose", "-p", project, "-f", composeFile, "down"], {
 				allowFailure: true,
 			});
 			console.log("  Containers stopped. Data volumes preserved.");
@@ -229,7 +229,7 @@ export async function dockerStatus(slug?: string): Promise<void> {
 		console.log(`App: ${state.appName} (${resolved})`);
 		console.log(`Created: ${state.createdAt}`);
 
-		await shell(`docker compose -p ${project} -f "${composeFile}" ps`, { allowFailure: true });
+		await shell("docker", ["compose", "-p", project, "-f", composeFile, "ps"], { allowFailure: true });
 
 		if (Object.keys(state.ports).length > 0) {
 			console.log("\nAccess URLs:");
@@ -255,9 +255,9 @@ export async function dockerLogs(opts: { follow?: boolean; slug?: string } = {})
 
 	const project = composeProject(slug);
 	const composeFile = composePath(slug);
-	const followFlag = opts.follow ? " --follow" : "";
+	const followArgs = opts.follow ? ["--follow"] : [];
 
-	await shell(`docker compose -p ${project} -f "${composeFile}" logs${followFlag}`, {
+	await shell("docker", ["compose", "-p", project, "-f", composeFile, "logs", ...followArgs], {
 		timeout: opts.follow ? 0 : 30_000,
 	});
 }
@@ -303,7 +303,7 @@ async function waitForHealth(project: string, composeFile: string): Promise<bool
 		log.trace({ elapsed, project }, "health poll");
 
 		const result = await shell(
-			`docker compose -p ${project} -f "${composeFile}" ps --format json`,
+			"docker", ["compose", "-p", project, "-f", composeFile, "ps", "--format", "json"],
 			{ allowFailure: true, silent: true },
 		);
 
