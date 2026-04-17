@@ -5,6 +5,7 @@ import cyberchefYamlRaw from "../../../../catalog/apps/cyberchef/Launchfile?raw"
 import CourseLayout from "@/components/learn/CourseLayout.astro";
 import CodeBuildUp from "@/components/learn/CodeBuildUp.astro";
 import Callout from "@/components/learn/Callout.astro";
+import BeforeAfter from "@/components/learn/BeforeAfter.astro";
 import GlossaryTip from "@/components/learn/GlossaryTip.astro";
 import Quiz from "@/components/learn/Quiz.astro";
 import RealWorldExample from "@/components/learn/RealWorldExample.astro";
@@ -16,13 +17,14 @@ const cyberchefYaml = stripComments(cyberchefYamlRaw);
 
 <CourseLayout
   title="Your First Launchfile"
-  subtitle="The simplest valid Launchfile — name, runtime, and a start command."
+  subtitle="The simplest valid Launchfile — a name and a way to run your code."
   moduleName="Basics"
   moduleNumber={1}
   lessonNumber={1}
   learningGoals={[
     "What a Launchfile is and where it lives",
-    "The three core fields: name, runtime, commands.start",
+    "The minimum: a name plus a way to run your code",
+    "Two paths: build from source (runtime) or pull a prebuilt image",
     "How providers use your Launchfile to deploy your app",
   ]}
   nextLesson={{ title: "Adding a Database", description: "Declare a Postgres dependency and wire it into your app.", href: "/learn/adding-a-database/" }}
@@ -44,6 +46,8 @@ const cyberchefYaml = stripComments(cyberchefYamlRaw);
 
 <h2 id="build-it-up">Build it up</h2>
 
+<p>Let's build the smallest source-based Launchfile, one line at a time.</p>
+
 <CodeBuildUp steps={[
   {
     yaml: "name: my-app",
@@ -59,6 +63,31 @@ const cyberchefYaml = stripComments(cyberchefYamlRaw);
   },
 ]} />
 
+<h2 id="prebuilt-alternative">Or pull a prebuilt image</h2>
+
+<p>
+  There's a second path. When you don't have source code to build — you're deploying a third-party app, or something you've already published to a registry — swap the <code>runtime</code> and <code>commands</code> pair for a single <code>image</code> field.
+</p>
+
+<BeforeAfter
+  before={{
+    title: "Source-based",
+    yaml: `name: my-app
+runtime: node
+commands:
+  start: "node server.js"`,
+  }}
+  after={{
+    title: "Prebuilt image",
+    yaml: `name: my-app
+image: ghcr.io/org/my-app:latest`,
+  }}
+/>
+
+<p>
+  Everything else — env vars, ports, databases, health checks — works the same either way. The only difference is how your code gets into the container. Lesson 7 covers the prebuilt path in more depth.
+</p>
+
 <h2 id="how-it-works">How it works</h2>
 
 <Callout type="tip" title="The basics">
@@ -69,7 +98,7 @@ const cyberchefYaml = stripComments(cyberchefYamlRaw);
 
 <h2 id="in-the-wild">In the wild</h2>
 
-<p>Here's a real Launchfile from the catalog. CyberChef is a simple web app — no database, no secrets, just an image and a port.</p>
+<p>Most catalog apps take the prebuilt path — they're third-party projects distributed as Docker images, not your own source code. CyberChef is a simple example: just an image, a port, and a restart policy.</p>
 
 <RealWorldExample
   appName="cyberchef"
@@ -85,12 +114,12 @@ const cyberchefYaml = stripComments(cyberchefYamlRaw);
 <h2 id="check-your-understanding">Check your understanding</h2>
 
 <Quiz
-  question="What is the minimum you need in a Launchfile for a source-based app?"
+  question="What must every Launchfile have at a minimum?"
   options={[
-    { text: "Just a name", correct: false, explanation: "A name alone doesn't tell the provider how to run your app. You also need a runtime and a start command." },
-    { text: "name, runtime, and a start command", correct: true, explanation: "Correct! These three fields are all a provider needs to build and run your application." },
-    { text: "A Dockerfile", correct: false, explanation: "Launchfile replaces the need for a Dockerfile. You declare what you need, and the provider handles containerization." },
-    { text: "name and an image", correct: false, explanation: "That works for prebuilt images, but source-based apps need a runtime and start command instead." },
+    { text: "A name, plus a way to run the code — either a runtime with a start command, or a prebuilt image", correct: true, explanation: "Correct! Every Launchfile needs a name and some way to actually run the code. Pick one of two paths: runtime + commands.start to build from source, or image to pull a prebuilt container." },
+    { text: "name, runtime, and a start command", correct: false, explanation: "That's one valid minimum — the source-based path — but not the only one. A Launchfile with just name + image is equally valid for prebuilt apps." },
+    { text: "A name and a Dockerfile", correct: false, explanation: "Launchfile doesn't require a Dockerfile. The top-level build block can configure one when you want Dockerfile-based builds, but it's optional." },
+    { text: "name, port, and a start command", correct: false, explanation: "Ports are only needed when your app exposes a network endpoint. Background workers and cron jobs don't declare any." },
   ]}
 />
 
@@ -98,9 +127,9 @@ const cyberchefYaml = stripComments(cyberchefYamlRaw);
   <div class="takeaways-title">Key takeaways</div>
   <ul>
     <li>A Launchfile is a YAML file called <code>Launchfile</code> in your project root.</li>
-    <li>The three core fields for source-based apps are <code>name</code>, <code>runtime</code>, and <code>commands.start</code>.</li>
-    <li>Providers read your Launchfile and handle all the infrastructure — you describe the <em>what</em>, they handle the <em>how</em>.</li>
-    <li>Prebuilt apps can use <code>image</code> instead of <code>runtime</code> + <code>commands</code>.</li>
+    <li>The minimum is a <code>name</code> plus a way to run your code.</li>
+    <li>Source-based apps use <code>runtime</code> + <code>commands.start</code>. Prebuilt apps use <code>image</code>.</li>
+    <li>Providers read your Launchfile and handle the infrastructure — you describe the <em>what</em>, they handle the <em>how</em>.</li>
   </ul>
 </div>
 
