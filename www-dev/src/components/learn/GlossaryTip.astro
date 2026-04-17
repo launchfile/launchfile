@@ -7,19 +7,25 @@ interface Props {
 const { term, definition } = Astro.props;
 ---
 
-<span class="glossary-term" data-glossary-term={term} data-glossary-def={definition}>
+<span class="glossary-term" data-glossary-term={term} data-glossary-def={definition} tabindex="0" role="button" aria-haspopup="true">
   <slot />
 </span>
 
 <script>
   document.addEventListener('astro:page-load', () => {
     let activeTooltip: HTMLElement | null = null;
+    let activeAnchor: Element | null = null;
 
     function hideTooltip() {
       if (activeTooltip) {
         activeTooltip.classList.remove("visible");
-        setTimeout(() => activeTooltip?.remove(), 150);
+        const tip = activeTooltip;
+        setTimeout(() => tip.remove(), 150);
         activeTooltip = null;
+      }
+      if (activeAnchor) {
+        activeAnchor.removeAttribute("aria-describedby");
+        activeAnchor = null;
       }
     }
 
@@ -31,6 +37,9 @@ const { term, definition } = Astro.props;
 
       const tip = document.createElement("div");
       tip.className = "glossary-tooltip";
+      const tipId = `glossary-tip-${Math.random().toString(36).slice(2, 8)}`;
+      tip.id = tipId;
+      tip.setAttribute("role", "tooltip");
 
       const termEl = document.createElement("div");
       termEl.className = "glossary-tooltip-term";
@@ -65,14 +74,29 @@ const { term, definition } = Astro.props;
 
       requestAnimationFrame(() => tip.classList.add("visible"));
       activeTooltip = tip;
+      activeAnchor = el;
+      el.setAttribute("aria-describedby", tipId);
     }
 
     document.querySelectorAll(".glossary-term").forEach((el) => {
       el.addEventListener("mouseenter", () => showTooltip(el));
       el.addEventListener("mouseleave", hideTooltip);
+      el.addEventListener("focus", () => showTooltip(el));
+      el.addEventListener("blur", hideTooltip);
+      el.addEventListener("keydown", (event) => {
+        const e = event as KeyboardEvent;
+        if (e.key === "Escape" && activeTooltip) {
+          hideTooltip();
+          (el as HTMLElement).blur();
+        } else if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          if (activeAnchor === el) hideTooltip();
+          else showTooltip(el);
+        }
+      });
       el.addEventListener("touchstart", (e) => {
         e.preventDefault();
-        if (activeTooltip) hideTooltip();
+        if (activeAnchor === el) hideTooltip();
         else showTooltip(el);
       }, { passive: false });
     });

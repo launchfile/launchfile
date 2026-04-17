@@ -63,7 +63,7 @@ const cyberchefYaml = readFileSync(resolve(process.cwd(), "../catalog/apps/cyber
 <Callout type="tip" title="The basics">
   <p>The file is called <code>Launchfile</code> (no extension) and lives in your project root — right next to <code>package.json</code> or <code>requirements.txt</code>.</p>
   <p>When you deploy, the provider reads this file and provisions everything: the runtime, the start command, any databases or services you declared. You don't write shell scripts or Dockerfiles — the Launchfile is the contract.</p>
-  <p>The <code>version: launch/v1</code> line is optional. When absent, providers default to <code>launch/v1</code>. It's good practice to include it, but your Launchfile works without it.</p>
+  <p>The <code>version: launch/v1</code> line is optional. Your Launchfile works without it, but including it pins the schema version you wrote against — good practice as the spec evolves.</p>
 </Callout>
 
 <h2 id="in-the-wild">In the wild</h2>

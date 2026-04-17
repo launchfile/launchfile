@@ -108,6 +108,10 @@ image: ghcr.io/org/my-app:latest`,
   There are three host access types: <code>host.docker</code> for Docker daemon access, <code>host.network</code> for sharing the host network stack, and <code>host.filesystem</code> for reading or writing host paths.
 </p>
 
+<p>
+  Add <code>host.privileged: true</code> when the app needs elevated privileges — e.g. device access for monitoring agents or kernel-level tools. Providers treat this as the most sensitive host flag and may refuse it in managed environments.
+</p>
+
 <Callout type="warning" title="Security-sensitive">
   <p>Host access breaks the container isolation boundary. Providers may restrict or refuse apps that request it. Always document <em>why</em> your app needs host access in the Launchfile's <code>description</code>.</p>
 </Callout>

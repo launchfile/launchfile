@@ -114,7 +114,7 @@ health: /health`,
   appName="miniflux"
   yaml={minifluxYaml}
   annotations={[
-    { line: "requires:", text: "Declares a Postgres dependency — the provider creates a managed database instance." },
+    { line: "requires:", text: "Declares a Postgres dependency — the provider provisions Postgres however its platform chooses." },
     { line: "set_env:", text: "Injects the connection URL into the DATABASE_URL environment variable." },
     { line: "generator: secret", text: "Auto-generates a secure admin password at deploy time — no manual setup needed." },
     { line: "health: /healthcheck", text: "The provider pings this endpoint to verify the app is alive." },
@@ -127,8 +127,8 @@ health: /health`,
 <Quiz
   question="What does requires: [postgres] tell the provider?"
   options={[
-    { text: "Install Postgres on the server", correct: false, explanation: "Not quite — the provider provisions a managed database instance, not a local installation. The 'how' is up to the provider." },
-    { text: "The app requires Postgres — provision it and inject connection details", correct: true, explanation: "Exactly. The provider creates the database and makes connection details available via set_env expressions." },
+    { text: "Install Postgres on the server", correct: false, explanation: "That's one way a provider might satisfy the requirement. The Launchfile just declares intent — the provider decides how, which could be a managed cloud database, a Docker container, or a shared cluster." },
+    { text: "The app requires Postgres — provision it and inject connection details", correct: true, explanation: "Exactly. The provider decides how to satisfy the requirement and makes the connection details available via set_env expressions." },
     { text: "Download the Postgres Docker image", correct: false, explanation: "That's an implementation detail. The provider decides how to provision the database — it might use Docker, a managed cloud service, or something else entirely." },
     { text: "Nothing — it's just documentation", correct: false, explanation: "requires is not a comment. It's a declaration that the provider acts on — creating real infrastructure for your app." },
   ]}
