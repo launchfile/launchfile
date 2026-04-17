@@ -27,7 +27,7 @@ const uptimeKumaYaml = stripComments(uptimeKumaYamlRaw);
   lessonNumber={7}
   learningGoals={[
     "Scheduled tasks with schedule and restart: no",
-    "Deploying prebuilt Docker images with the image field",
+    "How runtime, build, and image interact — and platform pinning",
     "Host access for CI runners and orchestrators",
     "Optional dependencies with supports",
   ]}
@@ -59,47 +59,50 @@ commands:
   <p>Cron jobs don't have <code>provides:</code> — they're not servers, they don't listen on ports, and nothing connects to them. They just run, do their work, and exit.</p>
 </Callout>
 
-<h2 id="prebuilt-images">Prebuilt images</h2>
+<h2 id="images-builds-runtimes">Images, builds, and runtimes</h2>
 
 <p>
-  When you don't want to build from source, use the <GlossaryTip term="image" definition="A Docker image reference (like ghcr.io/org/app:tag) that the provider pulls and runs directly, instead of building from source.">image</GlossaryTip> field instead of <code>runtime</code>. This is common for third-party apps, production containers, or anything already published to a registry.
+  Lesson 1 introduced two paths: <code>runtime</code> + <code>commands.start</code> for building from source, or <GlossaryTip term="image" definition="A Docker image reference (like ghcr.io/org/app:tag) that the provider pulls and runs directly, instead of building from source."><code>image</code></GlossaryTip> for pulling a prebuilt container. There's a third field, <code>build</code>, for Dockerfile-based builds — and these three can coexist.
 </p>
 
-<CodeBuildUp steps={[
-  {
-    yaml: `name: my-app
-image: ghcr.io/org/my-app:latest
-provides:
-  - protocol: http
-    port: 8080
-    exposed: true`,
-    note: "The simplest prebuilt deployment. No <code>runtime</code>, no <code>commands.build</code> — the provider just pulls the image and starts it.",
-  },
-  {
-    yaml: prebuiltImageYaml,
-    note: "A full prebuilt example with health checks, database requirements, and platform pinning. Same fields as source-based apps, minus the build step.",
-  },
-]} />
+<p>Each answers a different question:</p>
 
-<BeforeAfter
-  before={{
-    title: "Source-based (build from code)",
-    yaml: `name: my-app
-runtime: node
-commands:
-  build: "npm run build"
-  start: "node dist/server.js"`,
-  }}
-  after={{
-    title: "Prebuilt (pull and run)",
-    yaml: `name: my-app
-image: ghcr.io/org/my-app:latest`,
-  }}
+<ul>
+  <li><strong><code>runtime:</code></strong> — what language is this? Metadata only; tooling and buildpack-style providers use it.</li>
+  <li><strong><code>build:</code></strong> — how do I build from source? Dockerfile path, context, build args, and build-time secrets.</li>
+  <li><strong><code>image:</code></strong> — what's the image called? Either the image you pull, or the tag of what <code>build</code> produces.</li>
+</ul>
+
+<Callout type="tip" title="Docker Compose semantics">
+  <p>The <code>build</code> and <code>image</code> fields mirror Docker Compose:</p>
+  <ul>
+    <li><code>image</code> alone → pull the image from a registry.</li>
+    <li><code>build</code> alone → build from a Dockerfile; the provider names the artifact.</li>
+    <li><code>build</code> + <code>image</code> → build from source and tag the result as <code>image</code> (useful when you want to push to a registry).</li>
+    <li><code>runtime</code> + anything → <code>runtime</code> is metadata; it doesn't change how the container is made.</li>
+  </ul>
+</Callout>
+
+<p>
+  Lesson 5 distinguished <code>commands.build</code> (shell commands inside an already-built container) from the top-level <code>build:</code> block (Dockerfile-based image builds). They're different layers: <code>commands.build</code> runs <em>inside</em> the container, <code>build:</code> creates the container.
+</p>
+
+<h3 id="platform-pinning">Platform pinning</h3>
+
+<p>
+  Many third-party images only ship for <code>linux/amd64</code>. The <code>platform</code> field tells the provider which OCI architecture to pull — important on ARM hosts (Apple Silicon dev machines, Graviton, Raspberry Pi) so the right variant is fetched or emulation is arranged.
+</p>
+
+<RealWorldExample
+  appName="hedgedoc-backend"
+  yaml={prebuiltImageYaml}
+  annotations={[
+    { line: "image:", text: "A specific version tag, not :latest — prebuilt deploys should be reproducible." },
+    { line: "platform:", text: "Declares the target architecture. This image only ships amd64; providers on ARM hosts need to know so they can emulate or refuse." },
+    { line: "requires:", text: "Prebuilt images declare dependencies the same way as source-based apps — the provider injects env vars before starting the container." },
+    { line: "health:", text: "Health checks apply to prebuilt images too. start_period gives the container time to initialize before checks begin." },
+  ]}
 />
-
-<p>
-  Everything else — <code>provides</code>, <code>requires</code>, <code>env</code>, <code>health</code> — works the same whether you build from source or pull an image. The only difference is how the app gets onto the server.
-</p>
 
 <h2 id="host-access">Host access</h2>
 
@@ -194,7 +197,7 @@ image: ghcr.io/org/my-app:latest`,
   <div class="takeaways-title">Key takeaways</div>
   <ul>
     <li>Cron jobs use <code>schedule</code> + <code>restart: no</code> — no <code>provides</code> needed.</li>
-    <li>Prebuilt images use <code>image:</code> instead of <code>runtime:</code> — everything else works the same.</li>
+    <li><code>runtime</code>, <code>build</code>, and <code>image</code> describe three different things and can coexist: <code>runtime</code> is metadata, <code>build</code> creates the image, <code>image</code> names it. Use <code>platform:</code> to pin OCI architecture.</li>
     <li>Host access (<code>host.docker</code>, <code>host.network</code>, <code>host.filesystem</code>) is security-sensitive — declare it explicitly.</li>
     <li><code>supports:</code> is like <code>requires:</code> but optional — the app gracefully degrades without it.</li>
   </ul>
