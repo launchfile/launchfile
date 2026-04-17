@@ -3,6 +3,7 @@
  */
 
 import { exec as cpExec, type ExecOptions } from "node:child_process";
+import { getLogger } from "./logger.js";
 
 export interface ShellResult {
 	exitCode: number;
@@ -25,6 +26,10 @@ export async function shell(
 		console.log(`  $ ${command}`);
 	}
 
+	const log = getLogger();
+	log.debug({ command, cwd: opts.cwd }, "shell exec");
+	const t0 = performance.now();
+
 	const execOpts: ExecOptions = {
 		cwd: opts.cwd,
 		env: opts.env ? { ...process.env, ...opts.env } : undefined,
@@ -43,6 +48,9 @@ export async function shell(
 			if (error && result.exitCode === 0) {
 				result.exitCode = 1;
 			}
+
+			const durationMs = Math.round(performance.now() - t0);
+			log.debug({ command, exitCode: result.exitCode, durationMs }, "shell complete");
 
 			if (error && !opts.allowFailure) {
 				reject(
