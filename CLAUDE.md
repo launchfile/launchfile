@@ -43,6 +43,14 @@ This monorepo is designed for future splitting via `git subtree split`. To keep 
 - **Cross-cutting changes** become multiple commits (e.g., a spec change + SDK update = 2 commits).
 - **Commit bodies** explain *why*, not just *what*.
 
+## Logging & Observability
+
+- **Library**: pino (structured JSON) for CLI and providers. SDK does NOT log — it throws/returns errors
+- **CLI UI output bypasses pino**: user-facing progress goes to stdout via `console.log` / `process.stdout.write`. Structured logs go to stderr via pino. The two streams never mix
+- **Shell commands**: `shell.ts` logs every command with args, exit code, duration via pino at debug level. User-facing `$ command` output stays separate
+- **Env vars**: `LAUNCHFILE_LOG_LEVEL` (default: info), `LAUNCHFILE_LOG_DIR` (optional, for NDJSON file output)
+- **Provider pattern**: Each provider operation (up/down/status) wraps in a span via `withSpan()`
+
 ## Key Naming
 
 - The file is called `Launchfile` (no extension). It contains YAML.
