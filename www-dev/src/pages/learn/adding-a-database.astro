@@ -1,6 +1,5 @@
 ---
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import minifluxYamlRaw from "../../../../catalog/apps/miniflux/Launchfile?raw";
 
 import CourseLayout from "@/components/learn/CourseLayout.astro";
 import CodeBuildUp from "@/components/learn/CodeBuildUp.astro";
@@ -10,7 +9,7 @@ import GlossaryTip from "@/components/learn/GlossaryTip.astro";
 import Quiz from "@/components/learn/Quiz.astro";
 import RealWorldExample from "@/components/learn/RealWorldExample.astro";
 
-const minifluxYaml = readFileSync(resolve(process.cwd(), "../catalog/apps/miniflux/Launchfile"), "utf-8").replace(/^#.*\n/gm, "").trim();
+const minifluxYaml = minifluxYamlRaw.replace(/^#.*\n/gm, "").trim();
 ---
 
 <CourseLayout

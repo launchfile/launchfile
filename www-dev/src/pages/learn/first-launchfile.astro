@@ -1,6 +1,6 @@
 ---
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import minimalYamlRaw from "../../../../spec/examples/minimal.yaml?raw";
+import cyberchefYamlRaw from "../../../../catalog/apps/cyberchef/Launchfile?raw";
 
 import CourseLayout from "@/components/learn/CourseLayout.astro";
 import CodeBuildUp from "@/components/learn/CodeBuildUp.astro";
@@ -9,8 +9,9 @@ import GlossaryTip from "@/components/learn/GlossaryTip.astro";
 import Quiz from "@/components/learn/Quiz.astro";
 import RealWorldExample from "@/components/learn/RealWorldExample.astro";
 
-const minimalYaml = readFileSync(resolve(process.cwd(), "../spec/examples/minimal.yaml"), "utf-8").replace(/^#.*\n/gm, "").trim();
-const cyberchefYaml = readFileSync(resolve(process.cwd(), "../catalog/apps/cyberchef/Launchfile"), "utf-8").replace(/^#.*\n/gm, "").trim();
+const stripComments = (s: string) => s.replace(/^#.*\n/gm, "").trim();
+const minimalYaml = stripComments(minimalYamlRaw);
+const cyberchefYaml = stripComments(cyberchefYamlRaw);
 ---
 
 <CourseLayout

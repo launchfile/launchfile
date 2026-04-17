@@ -1,6 +1,5 @@
 ---
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import captureYamlRaw from "../../../../spec/examples/post-start-capture.yaml?raw";
 
 import CourseLayout from "@/components/learn/CourseLayout.astro";
 import CodeBuildUp from "@/components/learn/CodeBuildUp.astro";
@@ -10,7 +9,7 @@ import GlossaryTip from "@/components/learn/GlossaryTip.astro";
 import Quiz from "@/components/learn/Quiz.astro";
 import RealWorldExample from "@/components/learn/RealWorldExample.astro";
 
-const captureYaml = readFileSync(resolve(process.cwd(), "../spec/examples/post-start-capture.yaml"), "utf-8").replace(/^#.*\n/gm, "").trim();
+const captureYaml = captureYamlRaw.replace(/^#.*\n/gm, "").trim();
 ---
 
 <CourseLayout

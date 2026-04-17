@@ -1,6 +1,8 @@
 ---
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import cronJobYamlRaw from "../../../../spec/examples/cron-job.yaml?raw";
+import prebuiltImageYamlRaw from "../../../../spec/examples/prebuilt-image.yaml?raw";
+import hostOrchestratorYamlRaw from "../../../../spec/examples/host-orchestrator.yaml?raw";
+import uptimeKumaYamlRaw from "../../../../catalog/apps/uptime-kuma/Launchfile?raw";
 
 import CourseLayout from "@/components/learn/CourseLayout.astro";
 import CodeBuildUp from "@/components/learn/CodeBuildUp.astro";
@@ -10,10 +12,11 @@ import GlossaryTip from "@/components/learn/GlossaryTip.astro";
 import Quiz from "@/components/learn/Quiz.astro";
 import RealWorldExample from "@/components/learn/RealWorldExample.astro";
 
-const cronJobYaml = readFileSync(resolve(process.cwd(), "../spec/examples/cron-job.yaml"), "utf-8").replace(/^#.*\n/gm, "").trim();
-const prebuiltImageYaml = readFileSync(resolve(process.cwd(), "../spec/examples/prebuilt-image.yaml"), "utf-8").replace(/^#.*\n/gm, "").trim();
-const hostOrchestratorYaml = readFileSync(resolve(process.cwd(), "../spec/examples/host-orchestrator.yaml"), "utf-8").replace(/^#.*\n/gm, "").trim();
-const uptimeKumaYaml = readFileSync(resolve(process.cwd(), "../catalog/apps/uptime-kuma/Launchfile"), "utf-8").replace(/^#.*\n/gm, "").trim();
+const stripComments = (s: string) => s.replace(/^#.*\n/gm, "").trim();
+const cronJobYaml = stripComments(cronJobYamlRaw);
+const prebuiltImageYaml = stripComments(prebuiltImageYamlRaw);
+const hostOrchestratorYaml = stripComments(hostOrchestratorYamlRaw);
+const uptimeKumaYaml = stripComments(uptimeKumaYamlRaw);
 ---
 
 <CourseLayout

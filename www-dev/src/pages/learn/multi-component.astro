@@ -1,6 +1,5 @@
 ---
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import multiComponentYamlRaw from "../../../../spec/examples/multi-component.yaml?raw";
 
 import CourseLayout from "@/components/learn/CourseLayout.astro";
 import CodeBuildUp from "@/components/learn/CodeBuildUp.astro";
@@ -9,7 +8,7 @@ import GlossaryTip from "@/components/learn/GlossaryTip.astro";
 import Quiz from "@/components/learn/Quiz.astro";
 import RealWorldExample from "@/components/learn/RealWorldExample.astro";
 
-const multiComponentYaml = readFileSync(resolve(process.cwd(), "../spec/examples/multi-component.yaml"), "utf-8").replace(/^#.*\n/gm, "").trim();
+const multiComponentYaml = multiComponentYamlRaw.replace(/^#.*\n/gm, "").trim();
 ---
 
 <CourseLayout
