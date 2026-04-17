@@ -1,0 +1,216 @@
+---
+import cronJobYamlRaw from "../../../../spec/examples/cron-job.yaml?raw";
+import prebuiltImageYamlRaw from "../../../../spec/examples/prebuilt-image.yaml?raw";
+import hostOrchestratorYamlRaw from "../../../../spec/examples/host-orchestrator.yaml?raw";
+import uptimeKumaYamlRaw from "../../../../catalog/apps/uptime-kuma/Launchfile?raw";
+
+import CourseLayout from "@/components/learn/CourseLayout.astro";
+import CodeBuildUp from "@/components/learn/CodeBuildUp.astro";
+import Callout from "@/components/learn/Callout.astro";
+import BeforeAfter from "@/components/learn/BeforeAfter.astro";
+import GlossaryTip from "@/components/learn/GlossaryTip.astro";
+import Quiz from "@/components/learn/Quiz.astro";
+import RealWorldExample from "@/components/learn/RealWorldExample.astro";
+
+const stripComments = (s: string) => s.replace(/^#.*\n/gm, "").trim();
+const cronJobYaml = stripComments(cronJobYamlRaw);
+const prebuiltImageYaml = stripComments(prebuiltImageYamlRaw);
+const hostOrchestratorYaml = stripComments(hostOrchestratorYamlRaw);
+const uptimeKumaYaml = stripComments(uptimeKumaYamlRaw);
+---
+
+<CourseLayout
+  title="Specialized Patterns"
+  subtitle="Cron jobs, prebuilt images, host access, and optional dependencies."
+  moduleName="Advanced"
+  moduleNumber={3}
+  lessonNumber={7}
+  learningGoals={[
+    "Scheduled tasks with schedule and restart: no",
+    "How runtime, build, and image interact — and platform pinning",
+    "Host access for CI runners and orchestrators",
+    "Optional dependencies with supports",
+  ]}
+>
+
+<h2 id="cron-jobs">Cron jobs</h2>
+
+<p>
+  Not every process is a long-running server. Sometimes you need a task that runs on a <GlossaryTip term="schedule" definition="A cron expression (like &quot;0 0 * * *&quot;) that tells the provider when to run a task. Used with restart: no for one-shot jobs.">schedule</GlossaryTip> — a nightly database sync, a weekly report, a cleanup job. Launchfile handles this with two fields: <code>schedule</code> and <code>restart: no</code>.
+</p>
+
+<CodeBuildUp steps={[
+  {
+    yaml: `name: daily-sync
+runtime: node
+schedule: "0 0 * * *"
+restart: "no"
+commands:
+  start: "node scripts/sync.js"`,
+    note: "A minimal cron job. The <code>schedule</code> is a standard cron expression (midnight daily). <code>restart: no</code> tells the provider this is a one-shot task, not a daemon.",
+  },
+  {
+    yaml: cronJobYaml,
+    note: "The full example adds a Postgres dependency. The provider spins up the task on schedule, injects the database URL, runs the script, and shuts it down.",
+  },
+]} />
+
+<Callout type="tip" title="No provides needed">
+  <p>Cron jobs don't have <code>provides:</code> — they're not servers, they don't listen on ports, and nothing connects to them. They just run, do their work, and exit.</p>
+</Callout>
+
+<h2 id="images-builds-runtimes">Images, builds, and runtimes</h2>
+
+<p>
+  Lesson 1 introduced two paths: <code>runtime</code> + <code>commands.start</code> for building from source, or <GlossaryTip term="image" definition="A Docker image reference (like ghcr.io/org/app:tag) that the provider pulls and runs directly, instead of building from source."><code>image</code></GlossaryTip> for pulling a prebuilt container. There's a third field, <code>build</code>, for Dockerfile-based builds — and these three can coexist.
+</p>
+
+<p>Each answers a different question:</p>
+
+<ul>
+  <li><strong><code>runtime:</code></strong> — what language is this? Metadata only; tooling and buildpack-style providers use it.</li>
+  <li><strong><code>build:</code></strong> — how do I build from source? Dockerfile path, context, build args, and build-time secrets.</li>
+  <li><strong><code>image:</code></strong> — what's the image called? Either the image you pull, or the tag of what <code>build</code> produces.</li>
+</ul>
+
+<Callout type="tip" title="Docker Compose semantics">
+  <p>The <code>build</code> and <code>image</code> fields mirror Docker Compose:</p>
+  <ul>
+    <li><code>image</code> alone → pull the image from a registry.</li>
+    <li><code>build</code> alone → build from a Dockerfile; the provider names the artifact.</li>
+    <li><code>build</code> + <code>image</code> → build from source and tag the result as <code>image</code> (useful when you want to push to a registry).</li>
+    <li><code>runtime</code> + anything → <code>runtime</code> is metadata; it doesn't change how the container is made.</li>
+  </ul>
+</Callout>
+
+<p>
+  Lesson 5 distinguished <code>commands.build</code> (shell commands inside an already-built container) from the top-level <code>build:</code> block (Dockerfile-based image builds). They're different layers: <code>commands.build</code> runs <em>inside</em> the container, <code>build:</code> creates the container.
+</p>
+
+<h3 id="platform-pinning">Platform pinning</h3>
+
+<p>
+  Many third-party images only ship for <code>linux/amd64</code>. The <code>platform</code> field tells the provider which OCI architecture to pull — important on ARM hosts (Apple Silicon dev machines, Graviton, Raspberry Pi) so the right variant is fetched or emulation is arranged.
+</p>
+
+<RealWorldExample
+  appName="hedgedoc-backend"
+  yaml={prebuiltImageYaml}
+  annotations={[
+    { line: "image:", text: "A specific version tag, not :latest — prebuilt deploys should be reproducible." },
+    { line: "platform:", text: "Declares the target architecture. This image only ships amd64; providers on ARM hosts need to know so they can emulate or refuse." },
+    { line: "requires:", text: "Prebuilt images declare dependencies the same way as source-based apps — the provider injects env vars before starting the container." },
+    { line: "health:", text: "Health checks apply to prebuilt images too. start_period gives the container time to initialize before checks begin." },
+  ]}
+/>
+
+<h2 id="host-access">Host access</h2>
+
+<p>
+  Some apps need direct access to the host machine — CI runners that manage Docker containers, deployment tools that need the Docker socket, monitoring agents that read host metrics. The <code>host</code> field declares these requirements explicitly.
+</p>
+
+<p>
+  There are three host access types: <code>host.docker</code> for Docker daemon access, <code>host.network</code> for sharing the host network stack, and <code>host.filesystem</code> for reading or writing host paths.
+</p>
+
+<p>
+  Add <code>host.privileged: true</code> when the app needs elevated privileges — e.g. device access for monitoring agents or kernel-level tools. Providers treat this as the most sensitive host flag and may refuse it in managed environments.
+</p>
+
+<Callout type="warning" title="Security-sensitive">
+  <p>Host access breaks the container isolation boundary. Providers may restrict or refuse apps that request it. Always document <em>why</em> your app needs host access in the Launchfile's <code>description</code>.</p>
+</Callout>
+
+<p>Here's a deployment tool that needs all three:</p>
+
+<RealWorldExample
+  appName="launchpad"
+  yaml={hostOrchestratorYaml}
+  annotations={[
+    { line: "host:", text: "Declares exactly what host-level access this app requires." },
+    { line: "docker: required", text: "Needs the real Docker daemon — Docker-in-Docker won't work." },
+    { line: "network: host", text: "Shares the host network to manage container ports directly." },
+    { line: "filesystem: read-write", text: "Persistent state stored on the host filesystem." },
+  ]}
+/>
+
+<h2 id="optional-dependencies">Optional dependencies</h2>
+
+<p>
+  You've been using <code>requires:</code> for dependencies your app can't run without. But some dependencies are optional — a Redis cache that improves performance but isn't mandatory, or an S3 bucket for file uploads that falls back to local storage.
+</p>
+
+<p>
+  Use <code>supports:</code> for these. The provider provisions them if available, but the app still starts without them.
+</p>
+
+<BeforeAfter
+  before={{
+    title: "Required (app won't start without it)",
+    yaml: `requires:
+  - type: postgres
+    set_env:
+      DATABASE_URL: $url`,
+  }}
+  after={{
+    title: "Optional (app works without it)",
+    yaml: `supports:
+  - type: redis
+    set_env:
+      REDIS_URL: $url`,
+  }}
+/>
+
+<p>
+  Your app should check whether the environment variable is set and gracefully degrade when it isn't. The Launchfile just declares the intent — your code handles the fallback.
+</p>
+
+<h2 id="in-the-wild">In the wild</h2>
+
+<p>Uptime Kuma is a self-hosted monitoring tool. It's one of the simplest prebuilt-image patterns in the catalog — just an image, a port, persistent storage, and a health check.</p>
+
+<RealWorldExample
+  appName="uptime-kuma"
+  yaml={uptimeKumaYaml}
+  annotations={[
+    { line: "image:", text: "Pulls the official image from Docker Hub — no source build needed." },
+    { line: "storage:", text: "Persistent storage for monitoring data. Survives container restarts." },
+    { line: "restart: always", text: "Monitoring tools should always be running — restart on crash." },
+  ]}
+  catalogUrl="https://launchfile.io/apps/uptime-kuma/"
+/>
+
+<h2 id="check-your-understanding">Check your understanding</h2>
+
+<Quiz
+  question="What's the difference between `requires` and `supports`?"
+  options={[
+    { text: "requires is for databases, supports is for caching", correct: false, explanation: "The difference is about necessity, not type. You can require a Redis cache or support a Postgres read replica — it depends on whether the app needs it to start." },
+    { text: "requires means the app won't start without it, supports means it's optional", correct: true, explanation: "Correct! Required dependencies must be provisioned or the app fails. Supported dependencies are nice-to-have — the app starts either way." },
+    { text: "They're interchangeable", correct: false, explanation: "They have different semantics. A provider must provision required dependencies. Supported ones are optional and may not be provisioned." },
+    { text: "supports is for development only", correct: false, explanation: "supports works in all environments. It means the dependency is optional, not that it's dev-only." },
+  ]}
+/>
+
+<div class="takeaways">
+  <div class="takeaways-title">Key takeaways</div>
+  <ul>
+    <li>Cron jobs use <code>schedule</code> + <code>restart: no</code> — no <code>provides</code> needed.</li>
+    <li><code>runtime</code>, <code>build</code>, and <code>image</code> describe three different things and can coexist: <code>runtime</code> is metadata, <code>build</code> creates the image, <code>image</code> names it. Use <code>platform:</code> to pin OCI architecture.</li>
+    <li>Host access (<code>host.docker</code>, <code>host.network</code>, <code>host.filesystem</code>) is security-sensitive — declare it explicitly.</li>
+    <li><code>supports:</code> is like <code>requires:</code> but optional — the app gracefully degrades without it.</li>
+  </ul>
+</div>
+
+<div style="margin-top: 2rem; padding: 1.5rem; border-radius: 0.75rem; background: var(--lf-purple-50); border: 1px solid var(--lf-purple-100); text-align: center;">
+  <p style="font-size: 1.0625rem; font-weight: 600; color: var(--lf-ink); margin: 0 0 0.5rem;">Course complete!</p>
+  <p style="font-size: 0.9375rem; color: var(--lf-slate); margin: 0 0 1rem;">You're ready to write Launchfiles for any application.</p>
+  <div style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
+    <a href="https://launchfile.org/spec/" style="display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.5rem 1rem; border-radius: 9999px; font-size: 0.875rem; font-weight: 600; color: white; background: var(--lf-primary); text-decoration: none;">Read the full spec</a>
+    <a href="/examples/" style="display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.5rem 1rem; border-radius: 9999px; font-size: 0.875rem; font-weight: 600; color: var(--lf-primary); border: 1px solid var(--lf-purple-200); text-decoration: none;">Browse examples</a>
+    <a href="https://launchfile.io/apps/" style="display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.5rem 1rem; border-radius: 9999px; font-size: 0.875rem; font-weight: 600; color: var(--lf-primary); border: 1px solid var(--lf-purple-200); text-decoration: none;">Explore the catalog</a>
+  </div>
+</div>
+
+</CourseLayout>

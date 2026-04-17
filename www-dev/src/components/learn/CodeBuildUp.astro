@@ -1,0 +1,29 @@
+---
+import { Code } from "astro:components";
+
+interface Step {
+  yaml: string;
+  note: string;
+}
+
+interface Props {
+  steps: Step[];
+}
+
+const { steps } = Astro.props;
+---
+
+<div class="code-buildup">
+  {steps.map((step, i) => (
+    <div class="code-buildup-step">
+      <div class="code-buildup-gutter">
+        <div class="code-buildup-number">{i + 1}</div>
+        {i < steps.length - 1 && <div class="code-buildup-line" />}
+      </div>
+      <div class="code-buildup-body">
+        <div class="code-buildup-note" set:html={step.note} />
+        <Code code={step.yaml} lang="yaml" theme="github-dark" />
+      </div>
+    </div>
+  ))}
+</div>

@@ -1,0 +1,169 @@
+---
+import ghostYamlRaw from "../../../../catalog/apps/ghost/Launchfile?raw";
+
+import CourseLayout from "@/components/learn/CourseLayout.astro";
+import CodeBuildUp from "@/components/learn/CodeBuildUp.astro";
+import Callout from "@/components/learn/Callout.astro";
+import BeforeAfter from "@/components/learn/BeforeAfter.astro";
+import GlossaryTip from "@/components/learn/GlossaryTip.astro";
+import Quiz from "@/components/learn/Quiz.astro";
+import RealWorldExample from "@/components/learn/RealWorldExample.astro";
+
+const ghostYaml = ghostYamlRaw.replace(/^#.*\n/gm, "").trim();
+---
+
+<CourseLayout
+  title="Ports, Storage & Health"
+  subtitle="Expose endpoints, persist data, and tell providers how to check your app."
+  moduleName="Production-Ready"
+  moduleNumber={2}
+  lessonNumber={4}
+  learningGoals={[
+    "How provides declares ports and protocols your app exposes",
+    "Using storage for persistent volumes",
+    "Health checks — shorthand and expanded forms",
+    "The exposed flag for public-facing ports",
+  ]}
+  nextLesson={{ title: "Lifecycle Commands", description: "Build, release, start, seed — the full app lifecycle.", href: "/learn/lifecycle-commands/" }}
+>
+
+<h2 id="provides">The <code>provides</code> field</h2>
+
+<p>
+  Your app listens on a port. But the world outside your container doesn't know which one, what protocol it speaks, or whether it should be reachable from the internet. The <GlossaryTip term="provides" definition="A list of network endpoints your app exposes. Each entry declares a protocol, port, and visibility."><code>provides</code></GlossaryTip> field makes all of that explicit.
+</p>
+
+<p>
+  Each entry in <code>provides</code> declares a single endpoint. The key properties are:
+</p>
+
+<ul>
+  <li><strong><code>protocol</code></strong> — What the endpoint speaks: <code>http</code>, <code>https</code>, <code>tcp</code>, or <code>grpc</code>.</li>
+  <li><strong><code>port</code></strong> — The port number your app listens on inside the container.</li>
+  <li><strong><code>bind</code></strong> — Optional. The address to bind to (defaults to <code>0.0.0.0</code>).</li>
+  <li><strong><code>exposed</code></strong> — When <code>true</code>, the provider should make this port <GlossaryTip term="exposed" definition="An exposed port is publicly accessible from the internet, not just from other services in the same deployment.">publicly accessible</GlossaryTip> from the internet. When <code>false</code> (the default), it's only reachable by other components in the same deployment.</li>
+</ul>
+
+<h2 id="build-it-up">Build it up</h2>
+
+<CodeBuildUp steps={[
+  {
+    yaml: `provides:
+  - protocol: http
+    port: 3000
+    exposed: true`,
+    note: "Start with a single HTTP endpoint on port 3000, publicly accessible.",
+  },
+  {
+    yaml: `provides:
+  - protocol: http
+    port: 3000
+    exposed: true
+
+storage:
+  data:
+    path: /var/lib/app/data
+    persistent: true`,
+    note: "Add <strong>persistent storage</strong>. The <code>data</code> volume mounts at the given path and survives container restarts.",
+  },
+  {
+    yaml: `provides:
+  - protocol: http
+    port: 3000
+    exposed: true
+
+storage:
+  data:
+    path: /var/lib/app/data
+    persistent: true
+
+health: /health`,
+    note: "Add a <strong>health check</strong> using shorthand. The provider will GET this path and expect a 2xx response.",
+  },
+  {
+    yaml: `provides:
+  - protocol: http
+    port: 3000
+    exposed: true
+
+storage:
+  data:
+    path: /var/lib/app/data
+    persistent: true
+
+health:
+  path: /api/health
+  interval: 30s
+  timeout: 5s
+  retries: 3
+  start_period: 60s`,
+    note: "Switch to the <strong>expanded health check</strong> form for full control over timing, retries, and startup grace period.",
+  },
+]} />
+
+<h2 id="health-checks">Health check deep dive</h2>
+
+<p>
+  The shorthand form covers most cases: give it a path and the provider does the rest. When you need more control, expand it into an object.
+</p>
+
+<BeforeAfter
+  before={{ title: "Shorthand", yaml: "health: /health" }}
+  after={{ title: "Expanded", yaml: `health:
+  path: /api/health
+  interval: 30s
+  timeout: 5s
+  retries: 3
+  start_period: 60s` }}
+/>
+
+<Callout type="info" title="Slow starters">
+  <p>
+    The <code>start_period</code> field gives your app time to boot before the provider starts counting failures. A Java app loading Spring context or a Rails app compiling assets might need 60&ndash;120 seconds. During the start period, failed health checks don't count toward the retry limit.
+  </p>
+</Callout>
+
+<p>
+  If your app has no HTTP endpoint (say, a background worker), you can omit <code>health</code> entirely. The provider will fall back to checking whether the process is running.
+</p>
+
+<h2 id="in-the-wild">In the wild</h2>
+
+<p>
+  Ghost is a professional publishing platform. Its Launchfile declares an HTTP endpoint, persistent storage for uploaded content, and a health check hitting the admin API.
+</p>
+
+<RealWorldExample
+  appName="ghost"
+  yaml={ghostYaml}
+  annotations={[
+    { line: "provides:", text: "Declares an HTTP endpoint on port 2368, publicly exposed so readers can reach the blog." },
+    { line: "storage:", text: "The content volume at /var/lib/ghost/content holds themes, images, and uploads. Persistent means it survives redeploys." },
+    { line: "health:", text: "Hits the Ghost admin site endpoint. A 2xx means the app is ready to serve traffic." },
+  ]}
+  catalogUrl="https://launchfile.io/apps/ghost"
+/>
+
+<h2 id="check-your-understanding">Check your understanding</h2>
+
+<Quiz
+  question="What does exposed: true mean on a provides entry?"
+  options={[
+    { text: "The port is publicly accessible from the internet", correct: true, explanation: "Correct! An exposed port is reachable from outside the deployment — the provider configures routing, load balancing, and TLS accordingly." },
+    { text: "The port is logged for debugging", correct: false, explanation: "Not quite. Exposed controls network visibility, not logging." },
+    { text: "The container port is mapped to the host", correct: false, explanation: "That's an implementation detail of how a specific provider works. Exposed is a higher-level declaration about intent — should the internet be able to reach this port?" },
+    { text: "The health check is enabled", correct: false, explanation: "Health checks are configured separately via the health field. Exposed is about network access." },
+  ]}
+/>
+
+<div class="takeaways">
+  <div class="takeaways-title">Key takeaways</div>
+  <ul>
+    <li><strong><code>provides</code></strong> declares every network endpoint your app exposes, with protocol, port, and visibility.</li>
+    <li><strong><code>storage</code></strong> declares named volumes. Set <code>persistent: true</code> for data that must survive restarts.</li>
+    <li><strong><code>health</code></strong> tells the provider how to check your app. Use the string shorthand for simple cases, the object form for tuning.</li>
+    <li><strong><code>exposed: true</code></strong> means "the internet should reach this." Default is <code>false</code> (internal only).</li>
+  </ul>
+</div>
+
+</CourseLayout>

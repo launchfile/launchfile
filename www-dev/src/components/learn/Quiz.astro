@@ -1,0 +1,89 @@
+---
+interface Option {
+  text: string;
+  correct: boolean;
+  explanation: string;
+}
+
+interface Props {
+  question: string;
+  options: Option[];
+}
+
+const { question, options } = Astro.props;
+const quizId = `quiz-${Math.random().toString(36).slice(2, 8)}`;
+const questionId = `${quizId}-q`;
+---
+
+<div class="quiz" id={quizId} data-options={JSON.stringify(options)}>
+  <div class="quiz-question" id={questionId}>{question}</div>
+  <div class="quiz-options" role="radiogroup" aria-labelledby={questionId}>
+    {options.map((opt, i) => (
+      <button class="quiz-option" data-index={i} type="button" role="radio" aria-checked="false">
+        <span class="quiz-radio" aria-hidden="true" />
+        {opt.text}
+      </button>
+    ))}
+  </div>
+  <div class="quiz-actions">
+    <button class="quiz-btn quiz-btn-check" disabled type="button">Check answer</button>
+    <button class="quiz-btn quiz-btn-retry" style="display: none;" type="button">Try again</button>
+  </div>
+  <div class="quiz-feedback" style="display: none;" role="status" aria-live="polite"></div>
+</div>
+
+<script>
+  document.addEventListener('astro:page-load', () => {
+    document.querySelectorAll(".quiz").forEach((quiz) => {
+      const options = JSON.parse(quiz.getAttribute("data-options") ?? "[]") as { text: string; correct: boolean; explanation: string }[];
+      const buttons = quiz.querySelectorAll<HTMLButtonElement>(".quiz-option");
+      const checkBtn = quiz.querySelector<HTMLButtonElement>(".quiz-btn-check")!;
+      const retryBtn = quiz.querySelector<HTMLButtonElement>(".quiz-btn-retry")!;
+      const feedback = quiz.querySelector<HTMLElement>(".quiz-feedback")!;
+      let selected = -1;
+
+      buttons.forEach((btn, i) => {
+        btn.addEventListener("click", () => {
+          if (btn.disabled) return;
+          selected = i;
+          buttons.forEach((b) => {
+            b.classList.remove("selected");
+            b.setAttribute("aria-checked", "false");
+          });
+          btn.classList.add("selected");
+          btn.setAttribute("aria-checked", "true");
+          checkBtn.disabled = false;
+        });
+      });
+
+      checkBtn.addEventListener("click", () => {
+        if (selected < 0) return;
+        const opt = options[selected];
+        buttons.forEach((btn, i) => {
+          btn.disabled = true;
+          if (i === selected) btn.classList.add(opt.correct ? "correct" : "incorrect");
+          if (options[i].correct) btn.classList.add("correct");
+        });
+        checkBtn.style.display = "none";
+        retryBtn.style.display = "";
+        feedback.style.display = "";
+        feedback.className = `quiz-feedback ${opt.correct ? "quiz-feedback-correct" : "quiz-feedback-incorrect"}`;
+        feedback.textContent = opt.explanation;
+      });
+
+      retryBtn.addEventListener("click", () => {
+        selected = -1;
+        buttons.forEach((btn) => {
+          btn.disabled = false;
+          btn.classList.remove("selected", "correct", "incorrect");
+          btn.setAttribute("aria-checked", "false");
+        });
+        checkBtn.style.display = "";
+        checkBtn.disabled = true;
+        retryBtn.style.display = "none";
+        feedback.style.display = "none";
+        feedback.textContent = "";
+      });
+    });
+  });
+</script>

@@ -1,0 +1,110 @@
+---
+interface Props {
+  term: string;
+  definition: string;
+}
+
+const { term, definition } = Astro.props;
+---
+
+<span class="glossary-term" data-glossary-term={term} data-glossary-def={definition} tabindex="0" role="button" aria-haspopup="true">
+  <slot />
+</span>
+
+<script>
+  document.addEventListener('astro:page-load', () => {
+    let activeTooltip: HTMLElement | null = null;
+    let activeAnchor: Element | null = null;
+
+    function hideTooltip() {
+      if (activeTooltip) {
+        activeTooltip.classList.remove("visible");
+        const tip = activeTooltip;
+        setTimeout(() => tip.remove(), 150);
+        activeTooltip = null;
+      }
+      if (activeAnchor) {
+        activeAnchor.removeAttribute("aria-describedby");
+        activeAnchor = null;
+      }
+    }
+
+    function showTooltip(el: Element) {
+      hideTooltip();
+
+      const term = el.getAttribute("data-glossary-term") ?? "";
+      const def = el.getAttribute("data-glossary-def") ?? "";
+
+      const tip = document.createElement("div");
+      tip.className = "glossary-tooltip";
+      const tipId = `glossary-tip-${Math.random().toString(36).slice(2, 8)}`;
+      tip.id = tipId;
+      tip.setAttribute("role", "tooltip");
+
+      const termEl = document.createElement("div");
+      termEl.className = "glossary-tooltip-term";
+      termEl.textContent = term;
+      tip.appendChild(termEl);
+
+      const defEl = document.createElement("span");
+      defEl.textContent = def;
+      tip.appendChild(defEl);
+
+      document.body.appendChild(tip);
+
+      const rect = el.getBoundingClientRect();
+      const tipRect = tip.getBoundingClientRect();
+
+      let top: number;
+      if (rect.top - tipRect.height - 10 > 0) {
+        top = rect.top - tipRect.height - 10;
+        tip.classList.add("above");
+      } else {
+        top = rect.bottom + 10;
+        tip.classList.add("below");
+      }
+
+      const left = Math.max(8, Math.min(
+        rect.left + rect.width / 2 - tipRect.width / 2,
+        window.innerWidth - tipRect.width - 8
+      ));
+
+      tip.style.top = `${top}px`;
+      tip.style.left = `${left}px`;
+
+      requestAnimationFrame(() => tip.classList.add("visible"));
+      activeTooltip = tip;
+      activeAnchor = el;
+      el.setAttribute("aria-describedby", tipId);
+    }
+
+    document.querySelectorAll(".glossary-term").forEach((el) => {
+      el.addEventListener("mouseenter", () => showTooltip(el));
+      el.addEventListener("mouseleave", hideTooltip);
+      el.addEventListener("focus", () => showTooltip(el));
+      el.addEventListener("blur", hideTooltip);
+      el.addEventListener("keydown", (event) => {
+        const e = event as KeyboardEvent;
+        if (e.key === "Escape" && activeTooltip) {
+          hideTooltip();
+          (el as HTMLElement).blur();
+        } else if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          if (activeAnchor === el) hideTooltip();
+          else showTooltip(el);
+        }
+      });
+      el.addEventListener("touchstart", (e) => {
+        e.preventDefault();
+        if (activeAnchor === el) hideTooltip();
+        else showTooltip(el);
+      }, { passive: false });
+    });
+
+    document.addEventListener("click", (e) => {
+      if (activeTooltip && !(e.target as Element)?.closest(".glossary-term")) {
+        hideTooltip();
+      }
+    });
+  });
+</script>

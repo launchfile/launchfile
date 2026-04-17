@@ -1,0 +1,186 @@
+---
+import multiComponentYamlRaw from "../../../../spec/examples/multi-component.yaml?raw";
+
+import CourseLayout from "@/components/learn/CourseLayout.astro";
+import CodeBuildUp from "@/components/learn/CodeBuildUp.astro";
+import Callout from "@/components/learn/Callout.astro";
+import GlossaryTip from "@/components/learn/GlossaryTip.astro";
+import Quiz from "@/components/learn/Quiz.astro";
+import RealWorldExample from "@/components/learn/RealWorldExample.astro";
+
+const multiComponentYaml = multiComponentYamlRaw.replace(/^#.*\n/gm, "").trim();
+---
+
+<CourseLayout
+  title="Multi-Component Apps"
+  subtitle="Wire a frontend and backend together with dependency ordering."
+  moduleName="Advanced"
+  moduleNumber={3}
+  lessonNumber={6}
+  learningGoals={[
+    "Using the components map for multi-service apps",
+    "Inter-component dependency ordering with depends_on",
+    "Cross-component expressions like $components.backend.url",
+    "The exposed flag — only frontends need it",
+  ]}
+  nextLesson={{ title: "Specialized Patterns", description: "Cron jobs, prebuilt images, host access, and optional dependencies.", href: "/learn/specialized-patterns/" }}
+>
+
+<h2 id="when-to-go-multi">When to go multi-component</h2>
+
+<p>
+  Everything we've built so far has been a single-component app — one runtime, one start command, one process. That covers most applications. But when your project has a separate frontend and backend (or background workers, or a websocket server), you need the <GlossaryTip term="components" definition="A map of named services within a single Launchfile. Each component has its own runtime, commands, ports, and dependencies.">components</GlossaryTip> map.
+</p>
+
+<p>
+  Instead of a flat Launchfile, you nest each service under a key in <code>components:</code>. Each component gets its own runtime, commands, ports, and health checks. The provider launches them together and wires them up.
+</p>
+
+<p>
+  Components can depend on each other using <GlossaryTip term="depends_on" definition="Declares that one component must be healthy before another starts. Ensures correct startup ordering.">depends_on</GlossaryTip> — the provider ensures the backend is healthy before starting the frontend.
+</p>
+
+<h2 id="build-it-up">Build it up</h2>
+
+<p>Let's build HedgeDoc — a collaborative markdown editor with a Node backend and a separate frontend — step by step.</p>
+
+<CodeBuildUp steps={[
+  {
+    yaml: `name: hedgedoc
+
+components:
+  backend:
+    runtime: node
+    commands:
+      start: "node dist/main.js"`,
+    note: "Start with a single backend component. Everything from flat Launchfiles works inside <code>components:</code> — it's the same fields, just nested.",
+  },
+  {
+    yaml: `name: hedgedoc
+
+components:
+  backend:
+    runtime: node
+    provides:
+      - name: api
+        protocol: http
+        port: 3000
+    requires:
+      - type: postgres
+        set_env:
+          HD_DATABASE_URL: $url
+    commands:
+      start: "node dist/main.js"`,
+    note: "Add <code>provides</code> to expose the API on port 3000, and <code>requires</code> to declare the Postgres dependency. Same fields you already know.",
+  },
+  {
+    yaml: `name: hedgedoc
+
+components:
+  backend:
+    runtime: node
+    provides:
+      - name: api
+        protocol: http
+        port: 3000
+    requires:
+      - type: postgres
+        set_env:
+          HD_DATABASE_URL: $url
+    commands:
+      start: "node dist/main.js"
+      release: "node dist/migrations.js"
+    health:
+      path: /api/private/config
+      start_period: 30s`,
+    note: "Add a health check so the provider knows when the backend is ready. The <code>release</code> command runs migrations before each deploy.",
+  },
+  {
+    yaml: `name: hedgedoc
+
+components:
+  backend:
+    runtime: node
+    provides:
+      - name: api
+        protocol: http
+        port: 3000
+    requires:
+      - type: postgres
+        set_env:
+          HD_DATABASE_URL: $url
+    commands:
+      start: "node dist/main.js"
+      release: "node dist/migrations.js"
+    health:
+      path: /api/private/config
+      start_period: 30s
+
+  frontend:
+    runtime: node
+    depends_on:
+      - component: backend
+        condition: healthy
+    provides:
+      - protocol: http
+        port: 3001
+        exposed: true
+    env:
+      HD_BASE_URL:
+        default: $components.backend.url`,
+    note: "Add the frontend. It <code>depends_on</code> the backend (waits until healthy), exposes port 3001 to the internet, and uses <code>$components.backend.url</code> to discover the backend's address.",
+  },
+  {
+    yaml: multiComponentYaml,
+    note: "The complete HedgeDoc Launchfile with build steps, environment variables, and full wiring between components.",
+  },
+]} />
+
+<h2 id="cross-component-wiring">Cross-component wiring</h2>
+
+<Callout type="info" title="How components talk to each other">
+  <p>The <GlossaryTip term="expression" definition="A $-prefixed reference that the provider resolves at deploy time — like $url for database URLs or $components.backend.url for cross-component references.">expression</GlossaryTip> <code>$components.backend.url</code> resolves to the backend's internal URL at deploy time. No hardcoded ports, no guessing — the provider handles the wiring.</p>
+  <p>Notice that only the frontend has <code>exposed: true</code>. That's because the frontend is the public-facing entry point — users hit the frontend, which talks to the backend internally. The backend stays on the private network, inaccessible from the outside.</p>
+</Callout>
+
+<p>
+  This pattern scales to any number of components. A backend, a frontend, a websocket server, a background worker — each gets a key in <code>components:</code>, declares its own ports and dependencies, and uses expressions to discover the others.
+</p>
+
+<h2 id="in-the-wild">In the wild</h2>
+
+<p>Here's the full HedgeDoc Launchfile from the spec examples. This is the same file we built step by step — now with all the production details.</p>
+
+<RealWorldExample
+  appName="hedgedoc"
+  yaml={multiComponentYaml}
+  annotations={[
+    { line: "depends_on:", text: "The frontend waits for the backend to pass its health check before starting." },
+    { line: "$components.backend.url", text: "The provider resolves this to the backend's internal URL — no hardcoded addresses." },
+    { line: "exposed: true", text: "Only the frontend is public-facing. The backend stays on the internal network." },
+  ]}
+/>
+
+<h2 id="check-your-understanding">Check your understanding</h2>
+
+<Quiz
+  question="Why does only the frontend have `exposed: true`?"
+  options={[
+    { text: "Backends can't expose ports", correct: false, explanation: "Backends can have exposed: true — but they shouldn't unless they need to be public. It's a design choice, not a syntax rule." },
+    { text: "The frontend is the public entry point — the backend is internal", correct: true, explanation: "Correct! Users access the frontend, which talks to the backend over the internal network. Keeping the backend unexposed is both simpler and more secure." },
+    { text: "It's a syntax requirement", correct: false, explanation: "There's no syntax rule about which component gets exposed. Any component can set exposed: true — it's an architectural decision." },
+    { text: "The backend uses a different protocol", correct: false, explanation: "Both the frontend and backend use HTTP. The exposed flag is about public visibility, not protocol." },
+  ]}
+/>
+
+<div class="takeaways">
+  <div class="takeaways-title">Key takeaways</div>
+  <ul>
+    <li>Use <code>components:</code> when your app has multiple services (frontend, backend, workers).</li>
+    <li><code>depends_on</code> controls startup order — a component waits until its dependency is healthy.</li>
+    <li><code>$components.&lt;name&gt;.url</code> lets components discover each other without hardcoded addresses.</li>
+    <li>Only public-facing components need <code>exposed: true</code> — keep backends internal.</li>
+  </ul>
+</div>
+
+</CourseLayout>

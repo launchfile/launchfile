@@ -1,0 +1,146 @@
+---
+import minifluxYamlRaw from "../../../../catalog/apps/miniflux/Launchfile?raw";
+
+import CourseLayout from "@/components/learn/CourseLayout.astro";
+import CodeBuildUp from "@/components/learn/CodeBuildUp.astro";
+import Callout from "@/components/learn/Callout.astro";
+import BeforeAfter from "@/components/learn/BeforeAfter.astro";
+import GlossaryTip from "@/components/learn/GlossaryTip.astro";
+import Quiz from "@/components/learn/Quiz.astro";
+import RealWorldExample from "@/components/learn/RealWorldExample.astro";
+
+const minifluxYaml = minifluxYamlRaw.replace(/^#.*\n/gm, "").trim();
+---
+
+<CourseLayout
+  title="Adding a Database"
+  subtitle="Declare a Postgres dependency and wire it into your app."
+  moduleName="Basics"
+  moduleNumber={1}
+  lessonNumber={2}
+  learningGoals={[
+    "How requires declares resource dependencies",
+    "Shorthand vs expanded syntax for requires",
+    "How providers auto-provision and wire databases",
+    "Adding a health check endpoint",
+  ]}
+  nextLesson={{ title: "Env Vars & Secrets", description: "Configure your app with defaults, required values, and generated secrets.", href: "/learn/env-and-secrets/" }}
+>
+
+<h2 id="the-requires-field">The requires field</h2>
+
+<p>
+  Most real apps need a database. Traditionally, you'd provision one manually, copy the connection string into an env var, and hope nobody forgets a step. With a Launchfile, you <em>declare</em> what you need and the provider creates it for you.
+</p>
+
+<p>
+  The <GlossaryTip term="requires" definition="A field that declares external resources your app depends on — databases, caches, queues, etc.">requires</GlossaryTip> field tells the provider: "My app needs this resource. Provision it and give me connection details." The provider handles the actual database creation, user setup, and credential injection.
+</p>
+
+<h2 id="build-it-up">Build it up</h2>
+
+<CodeBuildUp steps={[
+  {
+    yaml: `version: launch/v1
+name: my-app
+runtime: node
+commands:
+  start: "node server.js"
+requires: [postgres]`,
+    note: "Start from where we left off in Lesson 1. Add <code>requires: [postgres]</code> — the shorthand syntax for declaring a database dependency.",
+  },
+  {
+    yaml: `requires: [postgres]
+
+# is equivalent to:
+
+requires:
+  - type: postgres`,
+    note: "The shorthand is convenient, but expands to the full form behind the scenes. Both are valid.",
+  },
+  {
+    yaml: `version: launch/v1
+name: my-app
+runtime: node
+commands:
+  start: "node server.js"
+requires:
+  - type: postgres
+    set_env:
+      DATABASE_URL: $url`,
+    note: "Use <code>set_env</code> to wire the database connection into your app. The provider fills in <code>$url</code> with the actual connection string at deploy time.",
+  },
+  {
+    yaml: `version: launch/v1
+name: my-app
+runtime: node
+commands:
+  start: "node server.js"
+requires:
+  - type: postgres
+    set_env:
+      DATABASE_URL: $url
+health: /health`,
+    note: "Add a health check endpoint so the provider knows your app is running correctly. It will hit <code>GET /health</code> periodically.",
+  },
+]} />
+
+<BeforeAfter
+  before={{ title: "Shorthand", yaml: "requires: [postgres]" }}
+  after={{ title: "Expanded", yaml: "requires:\n  - type: postgres" }}
+/>
+
+<h2 id="expressions">How expressions work</h2>
+
+<Callout type="info" title="Resource expressions">
+  <p>Inside <code>set_env</code>, you can reference properties of the provisioned resource using <code>$</code> expressions:</p>
+  <ul>
+    <li><code>$url</code> — Full connection URL (e.g. <code>postgres://user:pass@host:5432/dbname</code>)</li>
+    <li><code>$host</code> — Database hostname</li>
+    <li><code>$port</code> — Port number</li>
+    <li><code>$user</code> — Username</li>
+    <li><code>$password</code> — Password</li>
+    <li><code>$name</code> — Database name</li>
+  </ul>
+  <p>These are <GlossaryTip term="expression" definition="A $-prefixed placeholder that the provider resolves to a real value at deploy time.">expressions</GlossaryTip> that the provider resolves at deploy time. Use <code>$url</code> when your framework expects a single connection string, or individual fields when it expects them separately.</p>
+</Callout>
+
+<h2 id="in-the-wild">In the wild</h2>
+
+<p>Miniflux is a minimalist feed reader that needs Postgres. Notice how it uses <code>set_env</code> to wire the database, declares env vars with defaults, and even generates a secret for the admin password.</p>
+
+<RealWorldExample
+  appName="miniflux"
+  yaml={minifluxYaml}
+  annotations={[
+    { line: "requires:", text: "Declares a Postgres dependency — the provider provisions Postgres however its platform chooses." },
+    { line: "set_env:", text: "Injects the connection URL into the DATABASE_URL environment variable." },
+    { line: "generator: secret", text: "Auto-generates a secure admin password at deploy time — no manual setup needed." },
+    { line: "health: /healthcheck", text: "The provider pings this endpoint to verify the app is alive." },
+  ]}
+  catalogUrl="https://launchfile.io/apps/miniflux/"
+/>
+
+<h2 id="check-your-understanding">Check your understanding</h2>
+
+<Quiz
+  question="What does requires: [postgres] tell the provider?"
+  options={[
+    { text: "Install Postgres on the server", correct: false, explanation: "That's one way a provider might satisfy the requirement. The Launchfile just declares intent — the provider decides how, which could be a managed cloud database, a Docker container, or a shared cluster." },
+    { text: "The app requires Postgres — provision it and inject connection details", correct: true, explanation: "Exactly. The provider decides how to satisfy the requirement and makes the connection details available via set_env expressions." },
+    { text: "Download the Postgres Docker image", correct: false, explanation: "That's an implementation detail. The provider decides how to provision the database — it might use Docker, a managed cloud service, or something else entirely." },
+    { text: "Nothing — it's just documentation", correct: false, explanation: "requires is not a comment. It's a declaration that the provider acts on — creating real infrastructure for your app." },
+  ]}
+/>
+
+<div class="takeaways">
+  <div class="takeaways-title">Key takeaways</div>
+  <ul>
+    <li><code>requires</code> declares resource dependencies — the provider provisions them automatically.</li>
+    <li>Use <code>set_env</code> with <code>$url</code>, <code>$host</code>, <code>$port</code>, etc. to wire connection details into your app.</li>
+    <li>Shorthand (<code>[postgres]</code>) and expanded syntax (<code>- type: postgres</code>) are equivalent.</li>
+    <li>Add <code>health</code> so the provider can verify your app is running correctly after deployment.</li>
+  </ul>
+</div>
+
+</CourseLayout>

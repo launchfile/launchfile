@@ -1,0 +1,26 @@
+---
+import { Code } from "astro:components";
+
+interface Pane {
+  title: string;
+  yaml: string;
+}
+
+interface Props {
+  before: Pane;
+  after: Pane;
+}
+
+const { before, after } = Astro.props;
+---
+
+<div class="before-after">
+  <div class="before-after-pane">
+    <div class="before-after-label">{before.title}</div>
+    <Code code={before.yaml} lang="yaml" theme="github-dark" />
+  </div>
+  <div class="before-after-pane">
+    <div class="before-after-label">{after.title}</div>
+    <Code code={after.yaml} lang="yaml" theme="github-dark" />
+  </div>
+</div>
