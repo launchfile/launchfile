@@ -21,7 +21,8 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
+import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import pino from "pino";
 
@@ -51,7 +52,23 @@ export type SpanOutcome = "ok" | "error";
 // ---------------------------------------------------------------------------
 
 const level = process.env.LAUNCHFILE_LOG_LEVEL ?? "info";
-const logDir = process.env.LAUNCHFILE_LOG_DIR;
+
+const SENSITIVE_ROOTS = ["/", "/etc", "/var", "/var/log", "/usr", "/bin", "/sbin"];
+
+function validateLogDir(dir: string): void {
+	if (!isAbsolute(dir)) {
+		throw new Error(`LAUNCHFILE_LOG_DIR must be an absolute path, got: ${dir}`);
+	}
+	const sshDir = join(homedir(), ".ssh");
+	const blocked = [...SENSITIVE_ROOTS, sshDir];
+	if (blocked.some((s) => dir === s || dir.startsWith(s + "/"))) {
+		throw new Error(`LAUNCHFILE_LOG_DIR points to a sensitive path: ${dir}`);
+	}
+}
+
+const rawLogDir = process.env.LAUNCHFILE_LOG_DIR;
+if (rawLogDir !== undefined) validateLogDir(rawLogDir);
+const logDir = rawLogDir;
 
 /**
  * Build pino's transport config. Uses the pino worker-thread transport API
@@ -77,6 +94,7 @@ function buildTransport(): pino.TransportMultiOptions | pino.TransportSingleOpti
 					options: {
 						destination: join(logDir, "launchfile-docker.log"),
 						mkdir: true,
+						mode: 0o600,
 					},
 					level: "trace" as pino.Level,
 				},
@@ -86,6 +104,41 @@ function buildTransport(): pino.TransportMultiOptions | pino.TransportSingleOpti
 
 	return prettyTarget;
 }
+
+// ---------------------------------------------------------------------------
+// Redaction config
+// ---------------------------------------------------------------------------
+
+// pino uses fast-redact, which supports `*` as a single-level wildcard but
+// has no arbitrary-depth wildcard. `**.field` is treated as a literal key
+// named "**", not a deep match — see fast-redact docs. If we ever need to
+// redact secrets nested more than one level deep, enumerate the concrete
+// paths (e.g., "config.db.password") or add a custom censor function.
+export const REDACT_PATHS: readonly string[] = [
+	// One level deep (matches foo.password, config.password, etc.)
+	"*.password",
+	"*.secret",
+	"*.token",
+	"*.apiKey",
+	"*.api_key",
+	"*.authorization",
+	"*.Authorization",
+	"*.cookie",
+	"*.Cookie",
+	// Top level
+	"password",
+	"secret",
+	"token",
+	"apiKey",
+	"api_key",
+	"authorization",
+	"Authorization",
+];
+
+export const REDACT_CONFIG = {
+	paths: [...REDACT_PATHS],
+	censor: "[REDACTED]",
+} as const;
 
 // ---------------------------------------------------------------------------
 // Root logger
@@ -99,27 +152,8 @@ export const logger: pino.Logger = pino({
 	base: { service: "launchfile-docker" },
 	timestamp: pino.stdTimeFunctions.isoTime,
 	redact: {
-		paths: [
-			// Common secret/credential field names (nested one level deep)
-			"*.password",
-			"*.secret",
-			"*.token",
-			"*.apiKey",
-			"*.api_key",
-			"*.authorization",
-			"*.Authorization",
-			"*.cookie",
-			"*.Cookie",
-			// Same patterns at the top level
-			"password",
-			"secret",
-			"token",
-			"apiKey",
-			"api_key",
-			"authorization",
-			"Authorization",
-		],
-		censor: "[REDACTED]",
+		paths: [...REDACT_PATHS],
+		censor: REDACT_CONFIG.censor,
 	},
 });
 

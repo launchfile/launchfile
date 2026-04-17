@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { Writable } from "node:stream";
 import pino from "pino";
+import { REDACT_CONFIG } from "../logger.js";
 
 /**
  * Build an in-memory pino logger for testing JSON output and redaction.
@@ -68,28 +69,10 @@ describe("logger JSON output", () => {
 });
 
 describe("logger redaction", () => {
+	// Use the real production redact config so regressions can't slip by with
+	// a local test-only config. If this drifts from logger.ts, tests break.
 	const redactOptions = {
-		redact: {
-			paths: [
-				"*.password",
-				"*.secret",
-				"*.token",
-				"*.apiKey",
-				"*.api_key",
-				"*.authorization",
-				"*.Authorization",
-				"*.cookie",
-				"*.Cookie",
-				"password",
-				"secret",
-				"token",
-				"apiKey",
-				"api_key",
-				"authorization",
-				"Authorization",
-			],
-			censor: "[REDACTED]",
-		},
+		redact: { paths: [...REDACT_CONFIG.paths], censor: REDACT_CONFIG.censor },
 	};
 
 	it("redacts password at the top level", () => {
@@ -133,6 +116,29 @@ describe("logger redaction", () => {
 		const [entry] = getLogs();
 		expect(entry).toHaveProperty("username", "alice");
 		expect(entry).toHaveProperty("password", "[REDACTED]");
+	});
+
+	// Explicitly assert what the wildcard does and doesn't cover. This is
+	// the test that would have caught `**.password` being treated as a
+	// literal key by fast-redact. If someone tries to "widen" the pattern
+	// again, at least one of these assertions will fail loudly.
+	it("covers exactly top-level and one-level-deep (documented limit)", () => {
+		const { logger, getLogs } = createTestLogger(redactOptions);
+		logger.info(
+			{
+				password: "top",
+				one: { password: "one-deep" },
+				two: { inner: { password: "two-deep" } },
+			},
+			"depth check",
+		);
+		const [entry] = getLogs();
+		expect(entry!.password).toBe("[REDACTED]");
+		expect((entry!.one as Record<string, unknown>).password).toBe("[REDACTED]");
+		// fast-redact has no arbitrary-depth wildcard; two-deep is NOT redacted.
+		// If this becomes a requirement, enumerate concrete paths.
+		const two = entry!.two as Record<string, Record<string, unknown>>;
+		expect(two.inner!.password).toBe("two-deep");
 	});
 });
 

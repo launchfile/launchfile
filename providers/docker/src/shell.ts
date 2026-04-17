@@ -56,7 +56,7 @@ export async function shell(
 
 			if (error && !opts.allowFailure) {
 				reject(
-					Object.assign(new Error(`Command failed: ${display}\n${result.stderr}`), {
+					Object.assign(new Error(`Command failed: ${display}`), {
 						result,
 					}),
 				);
