@@ -16,7 +16,7 @@
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.2.2",
     "astro": "6.1.4",
-    "marked": "^17.0.6",
+    "marked": "^18.0.2",
     "shiki": "^4.0.2",
     "tailwindcss": "^4.2.2"
   },
