@@ -12,7 +12,7 @@
     "publish": "bun run build && bunx wrangler pages deploy dist/client --project-name launchfile-dev"
   },
   "dependencies": {
-    "@astrojs/cloudflare": "13.1.7",
+    "@astrojs/cloudflare": "13.1.10",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.2.2",
     "astro": "6.1.4",
