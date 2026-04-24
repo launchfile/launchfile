@@ -16,7 +16,28 @@ function slugify(text: string): string {
     .trim();
 }
 
-/** Map of slug → href for cross-reference rewriting */
+/**
+ * Override the auto-generated slug (from the H2 heading) for selected sections.
+ * Key = default slug produced by `slugify(heading)`. Value = final URL slug.
+ *
+ * Use this when the H2 heading reads better in prose than as a URL path — e.g.
+ * "## Environment Variables" stays as a heading but routes to `/spec/env/` so
+ * the URL matches the YAML key (`env`). The completeness checker reads this
+ * same map so schema field → page matching stays consistent.
+ */
+export const SLUG_OVERRIDES: Record<string, string> = {
+  "environment-variables": "env",
+};
+
+/**
+ * Resolve the final URL slug for a section title, applying SLUG_OVERRIDES.
+ */
+export function resolveSlug(title: string): string {
+  const defaultSlug = slugify(title);
+  return SLUG_OVERRIDES[defaultSlug] ?? defaultSlug;
+}
+
+/** Map of anchor → href for cross-reference rewriting */
 const sectionSlugs = new Map<string, string>();
 
 function rewriteInternalLinks(markdown: string): string {
@@ -86,13 +107,20 @@ export async function getSpecSections(): Promise<SpecSection[]> {
   // Split by ## headings
   const parts = withoutH1.split(/(?=^## )/m).filter((s: string) => s.trim());
 
-  // First pass: build slug map
+  // First pass: build slug map. Register both the default (heading-derived)
+  // anchor and the final URL slug so `[text](#environment-variables)` and
+  // `[text](#env)` both resolve to the same page.
   for (const part of parts) {
     const titleMatch = part.match(/^## (.+)$/m);
     if (titleMatch) {
       const title = titleMatch[1];
-      const slug = slugify(title);
-      sectionSlugs.set(slug, `/spec/${slug}/`);
+      const defaultSlug = slugify(title);
+      const finalSlug = SLUG_OVERRIDES[defaultSlug] ?? defaultSlug;
+      const href = `/spec/${finalSlug}/`;
+      sectionSlugs.set(defaultSlug, href);
+      if (finalSlug !== defaultSlug) {
+        sectionSlugs.set(finalSlug, href);
+      }
     }
   }
 
@@ -101,7 +129,7 @@ export async function getSpecSections(): Promise<SpecSection[]> {
   for (const part of parts) {
     const titleMatch = part.match(/^## (.+)$/m);
     const title = titleMatch?.[1] ?? "Untitled";
-    const slug = slugify(title);
+    const slug = resolveSlug(title);
 
     // Remove the ## heading from body (we render it ourselves)
     const body = part.replace(/^## .+\n/, "").trim();

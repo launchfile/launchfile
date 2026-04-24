@@ -1,0 +1,8 @@
+# Cloudflare Pages redirects for renamed spec pages.
+# Both trailing-slash and non-trailing-slash forms are listed so cached external
+# links (bookmarks, search results, READMEs) resolve regardless of trailing slash.
+
+/spec/environment-variables      /spec/env/ 301
+/spec/environment-variables/     /spec/env/ 301
+/spec/runtime-image-and-build    /spec/runtime/ 301
+/spec/runtime-image-and-build/   /spec/runtime/ 301
