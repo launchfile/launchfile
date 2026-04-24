@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=../schema/launchfile.schema.json
+#
+# Minimal local-dev Launchfile — no container, no provisioning.
+# `launchfile up .` runs commands.build then commands.start.
+#
+# Swap the commands for any runtime:
+#   runtime: node   with "npm install" / "npm run dev"
+#   runtime: python with "pip install -r requirements.txt" / "python manage.py runserver"
+#   runtime: ruby   with "bundle install" / "bundle exec rails server"
+
+name: my-app
+runtime: bun
+commands:
+  build: "bun install"
+  start: "bun run dev"
