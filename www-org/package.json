@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "astro dev",
     "dev:search": "astro build && pagefind --site dist/client && cp -r dist/client/pagefind public/pagefind && astro dev",
+    "check:spec": "bun run scripts/check-spec-coverage.ts",
+    "prebuild": "bun run check:spec",
     "build": "astro build && pagefind --site dist/client",
     "preview": "astro preview",
     "typecheck": "astro check",
