@@ -218,7 +218,10 @@ export async function launchBootstrap(
 	for (const [name, component] of Object.entries(launch.components)) {
 		if (opts.component && name !== opts.component) continue;
 
-		const bootstrap = component.commands?.bootstrap;
+		// Dev-mode variant preferred (D-35): this provider runs the source
+		// tree, where the artifact's CLI may not be on PATH or may need
+		// project-local paths (e.g. a .launchfile/ data dir).
+		const bootstrap = component.commands?.["dev:bootstrap"] ?? component.commands?.bootstrap;
 		if (!bootstrap) continue;
 
 		// Resolve $-expressions in the command string (e.g. $app.url) at

@@ -25,6 +25,7 @@ import { detectPackageManager } from "./lockfile-detect.js";
 import { provisionStorage } from "./storage.js";
 import { ProcessManager } from "./process-manager.js";
 import { shell } from "./shell.js";
+import { parseDuration } from "./bootstrap.js";
 
 export interface LaunchUpOpts {
 	withOptional?: boolean;
@@ -212,39 +213,43 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		return;
 	}
 
-	// 14. Run build commands
+	// 14. Run build commands \u2014 dev-mode variant preferred (D-35)
 	if (!opts.noBuild) {
 		for (const [name, component] of Object.entries(launch.components)) {
-			const buildCmd = component.commands?.build?.command;
-			const cmd = buildCmd ?? pm?.installCommand;
+			const build = component.commands?.["dev:build"] ?? component.commands?.build;
+			const cmd = build?.command ?? pm?.installCommand;
 			if (cmd) {
 				console.log(`  \u2193 Building${componentNames.length > 1 ? ` [${name}]` : ""}...`);
 				await shell(cmd, {
 					cwd: projectDir,
 					env: allEnvs[name],
+					// Builds (installs + compiles) routinely exceed the 2-minute
+					// shell default; honor a declared timeout, else allow 10 minutes.
+					timeout: build?.timeout ? parseDuration(build.timeout) : 600_000,
 				});
 			}
 		}
 	}
 
-	// 15. Run release commands (migrations)
+	// 15. Run release commands (migrations) \u2014 dev-mode variant preferred (D-35)
 	for (const [name, component] of Object.entries(launch.components)) {
-		const releaseCmd = component.commands?.release?.command;
-		if (releaseCmd) {
+		const release = component.commands?.["dev:release"] ?? component.commands?.release;
+		if (release?.command) {
 			console.log(`  \u2193 Running release${componentNames.length > 1 ? ` [${name}]` : ""}...`);
-			await shell(releaseCmd, {
+			await shell(release.command, {
 				cwd: projectDir,
 				env: allEnvs[name],
+				timeout: release.timeout ? parseDuration(release.timeout) : undefined,
 			});
 		}
 	}
 
-	// 16. Start all components
+	// 16. Start all components \u2014 `dev` preferred over `start` (D-35)
 	process.stdout.write(`  \u2193 Starting services...`);
 	const pm2 = new ProcessManager(projectDir);
 
 	for (const [name, component] of Object.entries(launch.components)) {
-		const startCmd = component.commands?.start?.command;
+		const startCmd = component.commands?.dev?.command ?? component.commands?.start?.command;
 		if (!startCmd) {
 			console.warn(`\n  ! [${name}] No start command — skipping`);
 			continue;
