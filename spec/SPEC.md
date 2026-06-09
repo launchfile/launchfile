@@ -47,10 +47,10 @@ name: my-app
 runtime: bun
 commands:
   build: "bun install"
-  start: "bun run dev"
+  dev: "bun run dev"
 ```
 
-`launchfile up .` runs `build` then `start`. Swap the commands for any runtime — `runtime: node` with `npm install` / `npm run dev`, `runtime: python` with `pip install -r requirements.txt` / `python manage.py runserver`, etc. See [`spec/examples/local-dev.yaml`](examples/local-dev.yaml).
+`launchfile up .` runs `build` then `dev` ([the dev-mode start command](#dev-mode-commands); plain `start` also works here). Swap the commands for any runtime — `runtime: node` with `npm install` / `npm run dev`, `runtime: python` with `pip install -r requirements.txt` / `python manage.py runserver`, etc. See [`spec/examples/local-dev.yaml`](examples/local-dev.yaml).
 
 **Single component** with a database and health check:
 
@@ -377,6 +377,7 @@ Platforms execute well-known commands in this order: **build → release → sta
 | `build` | Install dependencies, compile | Every deploy |
 | `release` | Migrations, cache clear, asset compilation | Every deploy, after build |
 | `start` | Start the application | Every deploy, after release |
+| `dev` | Start the application in dev mode, from source | Dev-mode launches only. Preferred over `start` by dev-mode providers; ignored by production providers. See [Dev-mode commands](#dev-mode-commands) below. |
 | `bootstrap` | Post-start setup that must run against a *running* component: create the first admin user, generate an initial invite link, write runtime config that depends on the deploy URL | On demand after `start` (user-invoked, re-runnable, non-deploy-failing). See [Bootstrap stage](#bootstrap-stage) below. |
 | `seed` | Seed the database with initial data | On demand (first deploy or explicit trigger) |
 | `test` | Run the test suite | On demand (CI or explicit trigger) |
@@ -399,6 +400,42 @@ commands:
     command: "npx prisma migrate deploy"
     timeout: "5m"
 ```
+
+### Dev-mode commands
+
+Lifecycle commands run **in the context of the built artifact** — `start` is the command the production image runs, `bootstrap` executes inside the running container. But a dev-mode launch (running the app from source on a developer machine) is a different execution context: the artifact's entrypoint may be a compiled binary that doesn't exist in the source tree, and the source tree has dev affordances (hot reload, unbundled assets) the artifact doesn't.
+
+The `dev` command and the `dev:<stage>` prefix declare **dev-mode variants** of lifecycle stages:
+
+| Key | Dev-mode variant of | Example |
+|---|---|---|
+| `dev` | `start` | `"bun run dev"` |
+| `dev:build` | `build` | `"bun install && bun run codegen"` |
+| `dev:release` | `release` | `"bun run db:migrate"` |
+| `dev:bootstrap` | `bootstrap` | `"bin/app-cli create-admin --url $app.url"` |
+| `dev:seed` | `seed` | `"bun run seed:fixtures"` |
+| `dev:test` | `test` | `"bun test --watch"` |
+
+Resolution rule for dev-mode providers: for each stage, prefer the dev-mode variant and fall back to the artifact command — `dev` over `start`, `dev:build` over `build`, and so on. Production providers (and any provider executing the built artifact) **MUST ignore** `dev` and all `dev:*` keys.
+
+Bare `dev` is the canonical dev-mode start key; `dev:start` is **not** a recognized key (exactly one obvious way), and validators SHOULD warn on it. `dev` is the only mode prefix this spec defines — providers MUST NOT define additional mode prefixes, and environment names (`staging:`, `prod:`) are explicitly not valid keys under this convention; per-environment configuration remains an orchestrator concern (see DESIGN.md L-3). Validators SHOULD also emit a non-fatal warning when a `dev:<suffix>` key's suffix matches neither a well-known stage other than `start` (`build`, `release`, `bootstrap`, `seed`, `test`) nor a sibling key in the same `commands:` map — a `dev:bulid` typo would otherwise be silently ignored at launch time. Custom stages remain first-class: `dev:migrate-sandbox` alongside a `migrate-sandbox` key must not warn.
+
+`dev` and `dev:*` values are ordinary command values — string shorthand or the expanded form with `timeout` and [`capture`](#command-capture) — so a `dev:bootstrap` capture works identically to `bootstrap`'s.
+
+A Launchfile that declares both is launchable in either mode from the same file:
+
+```yaml
+commands:
+  # Artifact context: image ENTRYPOINT starts the app; CLI is on the image PATH
+  bootstrap:
+    command: "my-app-cli create-invite --url $app.url"
+  # Source context: run from the repo with dev tooling
+  dev: "bun run dev"
+  dev:build: "bun install && bun run gen-assets"
+  dev:bootstrap: "bin/my-app-cli create-invite --url $app.url --data-dir .launchfile/data"
+```
+
+Dev-mode variants are a deliberately narrow carve-out for the run-from-source case. They are **not** a general environment-override mechanism (staging vs. production config remains an orchestrator concern — see DESIGN.md L-3); they only express that the *same lifecycle intent* requires a different command line when executed from source instead of from the artifact.
 
 ### Bootstrap stage
 
@@ -898,6 +935,23 @@ The `config` field in `requires`/`supports` entries accepts arbitrary key-value 
 ### Commands and health checks are executable
 
 `commands.start`, `commands.build`, `commands.release`, and `health.command` contain shell commands that the provider executes. This is by design — the user chose to run this Launchfile. Providers that fetch Launchfiles from remote sources (catalogs, URLs) should display what will be executed and prompt for confirmation before running.
+
+### Execution modes and source trust
+
+A Launchfile can be executed in four modes, with different trust requirements. Where the app's code runs determines how much the user must trust the source:
+
+| Mode | What executes where | Appropriate for |
+|---|---|---|
+| **Dev launch from source** | `dev` / `dev:*` commands run natively on the host, in the project directory | Repos the user owns or has reviewed — the commands have full user-level access to the machine |
+| **Containerized build + run** | `build:` runs inside `docker build`; the app runs inside a container | Unknown or third-party repos — neither the build nor the app touches the host beyond declared ports and volumes |
+| **Image run** | A pre-built `image:` is pulled and run in a container | Catalog apps; trust shifts to the image publisher |
+| **Cloud build + deploy** | Build and run both happen on remote infrastructure | Production; the platform's isolation applies |
+
+Guidance for providers:
+
+- **Native (dev-mode) providers SHOULD only run local sources.** Running `dev:*` commands from a freshly fetched URL or catalog entry executes unreviewed code with user privileges. If a native provider supports remote sources at all, it MUST show the commands and prompt.
+- **Container-based providers are the sandboxed path for untrusted sources.** A `build:` config keeps the entire build inside `docker build` — dependency install scripts, codegen, and compilers never execute on the host. Remote build contexts (git URLs) extend this: the provider never even clones the repo onto the host itself.
+- **The confirmation prompt is per-source, not per-field.** Before executing a remote Launchfile, show the user what will run: images to pull, components built from source, resources provisioned, and host capabilities requested.
 
 ### Host capabilities require user consent
 

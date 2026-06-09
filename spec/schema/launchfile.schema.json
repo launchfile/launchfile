@@ -313,6 +313,10 @@
         "build": { "$ref": "#/$defs/commandOrString" },
         "release": { "$ref": "#/$defs/commandOrString" },
         "start": { "$ref": "#/$defs/commandOrString" },
+        "dev": {
+          "$ref": "#/$defs/commandOrString",
+          "description": "Dev-mode variant of start — run the app from source (D-35). Preferred over start by dev-mode providers; ignored by providers that execute the built artifact. Other stages take dev-mode variants via dev:<stage> keys (dev:build, dev:release, dev:bootstrap, dev:seed, dev:test)."
+        },
         "seed": { "$ref": "#/$defs/commandOrString" },
         "test": { "$ref": "#/$defs/commandOrString" }
       },
