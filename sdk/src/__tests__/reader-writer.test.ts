@@ -579,3 +579,30 @@ commands:
 		).toThrow();
 	});
 });
+
+describe("dev-mode commands (D-35)", () => {
+	it("normalizes dev and dev:<stage> command keys", () => {
+		const launch = readLaunch(`
+name: devapp
+commands:
+  start: "node server.js"
+  dev: "bun run dev"
+  "dev:build":
+    command: "bun install && bun run codegen"
+    timeout: "15m"
+  "dev:bootstrap":
+    command: "bin/cli create-admin --url $app.url"
+    capture:
+      invite_link:
+        pattern: "(https?://\\\\S+)"
+        sensitive: true
+`);
+		const commands = launch.components.default!.commands!;
+		expect(commands.dev).toEqual({ command: "bun run dev" });
+		expect(commands["dev:build"]).toMatchObject({
+			command: "bun install && bun run codegen",
+			timeout: "15m",
+		});
+		expect(commands["dev:bootstrap"]!.capture!.invite_link!.sensitive).toBe(true);
+	});
+});

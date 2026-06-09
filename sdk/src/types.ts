@@ -168,11 +168,18 @@ export interface Commands {
 	release?: string | CommandDetail;
 	/** Run stage — start the application */
 	start?: string | CommandDetail;
+	/**
+	 * Dev-mode variant of start — run the app from source (D-35).
+	 * Preferred over `start` by dev-mode providers; ignored by providers
+	 * that execute the built artifact. Other stages take dev-mode variants
+	 * via `dev:<stage>` keys (dev:build, dev:release, dev:bootstrap, dev:seed, dev:test).
+	 */
+	dev?: string | CommandDetail;
 	/** Seed the database with initial data */
 	seed?: string | CommandDetail;
 	/** Run the test suite */
 	test?: string | CommandDetail;
-	/** Additional named commands */
+	/** Additional named commands, including dev-mode variants (`dev:<stage>`) */
 	[key: string]: string | CommandDetail | undefined;
 }
 
