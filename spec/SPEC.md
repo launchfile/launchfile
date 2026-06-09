@@ -15,10 +15,9 @@ graph LR
 
 ## Quick Start
 
-**Minimal** -- three fields plus a start command:
+**Bare minimum** — the schema requires only `name`. In practice you also need a runtime and a start command for the platform to actually run your app:
 
 ```yaml
-version: launch/v1
 name: my-api
 runtime: node
 commands:
@@ -31,7 +30,27 @@ Save this as a file named `Launchfile` in your project root. Validate it with th
 npx launchfile validate
 ```
 
-Three fields and a start command — that's a complete app descriptor.
+**Recommended minimal** — declare the spec version explicitly so tooling knows which schema to validate against. `version` defaults to `launch/v1` when absent, but stating it is best practice:
+
+```yaml
+version: launch/v1
+name: my-api
+runtime: node
+commands:
+  start: "node server.js"
+```
+
+**Local development** — no container, no provisioning. Install deps and start a dev server:
+
+```yaml
+name: my-app
+runtime: bun
+commands:
+  build: "bun install"
+  start: "bun run dev"
+```
+
+`launchfile up .` runs `build` then `start`. Swap the commands for any runtime — `runtime: node` with `npm install` / `npm run dev`, `runtime: python` with `pip install -r requirements.txt` / `python manage.py runserver`, etc. See [`spec/examples/local-dev.yaml`](examples/local-dev.yaml).
 
 **Single component** with a database and health check:
 
@@ -100,8 +119,11 @@ The `depends_on` field ensures `frontend` waits for `backend` to become healthy 
 | `keywords` | `string[]` | no | Discovery tags (e.g. `[blog, cms]`) |
 | `secrets` | `map<string, Secret>` | no | App-wide generated secrets |
 | `components` | `map<string, Component>` | no | Named components (multi-component mode) |
+| `runtime` | `enum` | no | Language/platform identifier — see [Runtime](#runtime) |
+| `image` | `string` | no | Pre-built OCI image reference — see [Image](#image) |
+| `build` | `object \| string` | no | Build configuration — see [Build](#build) |
 
-When `components` is absent, all component-level fields (`runtime`, `provides`, `requires`, `env`, `commands`, etc.) are read from the top level as a single implicit component.
+When `components` is absent, all component-level fields ([`runtime`](#runtime), [`image`](#image), [`build`](#build), [`provides`](#provides), [`requires`](#requires), [`env`](#environment-variables), [`commands`](#commands), etc.) are read from the top level as a single implicit component.
 
 When `components` is present, top-level component fields serve as **defaults** inherited by each component. Inheritance is shallow and field-level: if a component defines a field, its value replaces the top-level value entirely. Arrays and objects are never deep-merged — a component's `requires` replaces the top-level `requires`, it does not append to it.
 
@@ -113,7 +135,7 @@ When `components` is present, top-level component fields serve as **defaults** i
 
 **Multi-component mode:** use the `components` map where each key is a component name (see Quick Start multi-component example).
 
-Each component supports: `runtime`, `image`, `build`, `provides`, `requires`, `supports`, `env`, `commands`, `health`, `depends_on`, `storage`, `restart`, `schedule`, `singleton`, `platform`, `host`. Named outputs captured from a command's stdout are declared via the `capture:` field inside an expanded command form — see [Command Capture](#command-capture).
+Each component supports: [`runtime`](#runtime), [`image`](#image), [`build`](#build), [`provides`](#provides), [`requires`](#requires), [`supports`](#supports), [`env`](#environment-variables), [`commands`](#commands), [`health`](#health), [`depends_on`](#depends-on), [`storage`](#storage), [`restart`](#other-fields), [`schedule`](#other-fields), [`singleton`](#other-fields), [`platform`](#other-fields), [`host`](#host). Named outputs captured from a command's stdout are declared via the `capture:` field inside an expanded command form — see [Command Capture](#command-capture).
 
 ```mermaid
 graph TD
@@ -553,11 +575,7 @@ host:
 
 When `host.docker` is `required`, the deployer must ensure the app runs with access to the Docker daemon socket (e.g. `/var/run/docker.sock`). If the deployer's execution strategy is container-based, it should either refuse or warn that Docker-in-Docker is unreliable.
 
-## Runtime, Image, and Build
-
-These three fields describe what the app needs to run and how to package it. They serve different purposes and can coexist.
-
-### `runtime`
+## Runtime
 
 Runtime identifier declaring what language or platform the app needs. Platforms MAY use this to select a base image or buildpack.
 
@@ -569,17 +587,29 @@ runtime: node
 
 The `runtime` field is metadata — it describes the app, not the infrastructure. Changing the deployment target (Docker → Kubernetes → bare metal) does not change the runtime value.
 
-The `runtime` field does not include a version. Platforms and AI analyzers should discover the version from ecosystem-standard files already in the repo: `.nvmrc`, `.node-version`, `.tool-versions`, `package.json` `engines`, `.python-version`, `.ruby-version`, `Gemfile`, `go.mod`, etc. This avoids duplicating version information that already has a canonical source.
+### Version is not part of `runtime`
 
-### `image`
+The `runtime` field does not include a version. Platforms and AI analyzers should discover the version from ecosystem-standard files already in the repo:
 
-A pre-built OCI container image reference. When `image` is present, the platform pulls this image instead of building from source.
+| Runtime | Version source |
+|---|---|
+| `node` | `.nvmrc`, `.node-version`, `.tool-versions`, `package.json` `engines.node` |
+| `bun` | `.bun-version`, `.tool-versions`, `package.json` `engines.bun` |
+| `python` | `.python-version`, `.tool-versions`, `pyproject.toml`, `Pipfile` |
+| `ruby` | `.ruby-version`, `.tool-versions`, `Gemfile` |
+| `go` | `go.mod` (first `go` directive) |
+| `java` | `.java-version`, `.tool-versions` |
 
-```yaml
-image: ghcr.io/hedgedoc/hedgedoc:1.9.9
+This avoids duplicating version information that already has a canonical source. If you need bun 3.1.13 or greater, declare it in `.tool-versions` or `package.json`:
+
+```
+# .tool-versions
+bun 3.1.13
 ```
 
-### Relationship between the three
+### Relationship to `image` and `build`
+
+`runtime`, [`image`](#image), and [`build`](#build) serve different purposes and can coexist:
 
 | Combination | Meaning |
 |---|---|
@@ -589,9 +619,19 @@ image: ghcr.io/hedgedoc/hedgedoc:1.9.9
 | `runtime` + `build` | Build from source; `runtime` is metadata |
 | `runtime` + `image` | Use pre-built image; `runtime` is metadata |
 | `build` + `image` | Build from source; `image` is the name/tag for the resulting artifact |
+| All three | Build from source, tag as `image`, `runtime` is metadata |
 
 Think of it like Docker Compose: `build` is how you create the image, `image` is the name/tag of the resulting artifact. When only `image` is provided, there's nothing to build — the platform pulls it directly.
-| All three | Build from source, tag as `image`, `runtime` is metadata |
+
+## Image
+
+A pre-built OCI container image reference. When `image` is present, the platform pulls this image instead of building from source.
+
+```yaml
+image: ghcr.io/hedgedoc/hedgedoc:1.9.9
+```
+
+See [Relationship to `image` and `build`](#runtime) for how `image` interacts with `runtime` and `build`.
 
 ## Other Fields
 

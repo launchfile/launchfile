@@ -2,12 +2,12 @@ category: AI/Automation
 tagline: Open-source orchestration for zero-human companies
 homepage: https://paperclip.ing
 test_results:
-  last_tested: 2026-04-08
+  last_tested: 2026-06-09
   pull_time_seconds: 3
   startup_time_seconds: 11
   total_disk_mb: 2098
   health_check_passed: true
-  notes: ""
+  notes: "bootstrap command validated end-to-end on published image: fresh-install invite generation, re-run invite refresh, and invite registration page in browser"
 images:
   - name: ghcr.io/paperclipai/paperclip:latest
     size_mb: 1839
