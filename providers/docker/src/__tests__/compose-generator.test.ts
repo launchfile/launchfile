@@ -284,3 +284,88 @@ secrets:
 		);
 	});
 });
+
+describe("compose-generator build support", () => {
+	it("emits a build config for components with build:, resolved against projectDir", () => {
+		const launch = readLaunch(`
+name: srcapp
+build:
+  dockerfile: Dockerfile
+provides:
+  - protocol: http
+    port: 9999
+    exposed: true
+`);
+		const result = launchToCompose(launch, { projectDir: "/repos/srcapp" });
+
+		expect(result.warnings).toHaveLength(0);
+		expect(result.builds).toEqual(["srcapp"]);
+		expect(result.images).toHaveLength(0); // nothing to pull
+		expect(result.yaml).toContain("context: /repos/srcapp");
+		expect(result.yaml).toContain("dockerfile: Dockerfile");
+	});
+
+	it("uses image: as the tag for the built artifact when both are present", () => {
+		const launch = readLaunch(`
+name: srcapp
+build: "."
+image: srcapp:dev
+`);
+		const result = launchToCompose(launch, { projectDir: "/repos/srcapp" });
+
+		expect(result.builds).toEqual(["srcapp"]);
+		// The image is a tag for the build output, not something to pull
+		expect(result.images).toHaveLength(0);
+		expect(result.yaml).toContain("image: srcapp:dev");
+	});
+
+	it("passes remote git contexts through untouched", () => {
+		const launch = readLaunch(`
+name: remoteapp
+build:
+  context: https://github.com/example/app.git
+`);
+		const result = launchToCompose(launch);
+
+		expect(result.builds).toEqual(["remoteapp"]);
+		expect(result.yaml).toContain("context: https://github.com/example/app.git");
+	});
+
+	it("skips relative build contexts when the source is not local", () => {
+		const launch = readLaunch(`
+name: srcapp
+build: "."
+`);
+		const result = launchToCompose(launch); // no projectDir
+
+		expect(result.builds).toHaveLength(0);
+		expect(result.warnings.some((w) => w.includes("not local"))).toBe(true);
+	});
+
+	it("warns that build secrets are not supported", () => {
+		const launch = readLaunch(`
+name: srcapp
+build:
+  context: "."
+  secrets: [npm-token]
+`);
+		const result = launchToCompose(launch, { projectDir: "/repos/srcapp" });
+
+		expect(result.warnings.some((w) => w.includes("build secrets"))).toBe(true);
+	});
+
+	it("resolves build args and target", () => {
+		const launch = readLaunch(`
+name: srcapp
+build:
+  context: "."
+  target: runtime
+  args:
+    NODE_ENV: production
+`);
+		const result = launchToCompose(launch, { projectDir: "/repos/srcapp" });
+
+		expect(result.yaml).toContain("target: runtime");
+		expect(result.yaml).toContain("NODE_ENV: production");
+	});
+});
