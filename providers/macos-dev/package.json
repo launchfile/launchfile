@@ -2,6 +2,9 @@
   "name": "@launchfile/macos-dev",
   "version": "0.2.0",
   "description": "macOS dev provider for Launchfile — run apps locally via brew services and native runtimes",
+  "os": [
+    "darwin"
+  ],
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
