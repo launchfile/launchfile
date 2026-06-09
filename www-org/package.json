@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "astro dev",
     "dev:search": "astro build && pagefind --site dist/client && cp -r dist/client/pagefind public/pagefind && astro dev",
+    "check:spec": "bun run scripts/check-spec-coverage.ts",
+    "prebuild": "bun run check:spec",
     "build": "astro build && pagefind --site dist/client",
     "preview": "astro preview",
     "typecheck": "astro check",
@@ -15,7 +17,7 @@
     "@astrojs/cloudflare": "13.1.7",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.2.2",
-    "astro": "6.1.4",
+    "astro": "6.1.10",
     "marked": "^17.0.6",
     "remark-breaks": "^4.0.0",
     "shiki": "^4.0.2",
