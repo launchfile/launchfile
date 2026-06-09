@@ -112,6 +112,10 @@ export class ProcessManager {
 			env: { ...process.env, ...proc.env },
 			cwd: proc.cwd,
 			stdio: ["ignore", "pipe", "pipe"],
+			// Own process group, so shutdown can signal the whole tree. Without
+			// this, SIGTERM hits the `sh -c` wrapper and the actual app process
+			// survives as an orphan.
+			detached: true,
 		});
 
 		// Pipe stdout with prefix
@@ -171,8 +175,20 @@ export class ProcessManager {
 				return;
 			}
 
+			// Signal the process group (negative pid) so the `sh -c` wrapper's
+			// children die too; fall back to the direct pid if the group is gone.
+			const signalTree = (signal: NodeJS.Signals) => {
+				const pid = proc.process?.pid;
+				if (!pid) return;
+				try {
+					process.kill(-pid, signal);
+				} catch {
+					proc.process?.kill(signal);
+				}
+			};
+
 			const timeout = setTimeout(() => {
-				proc.process?.kill("SIGKILL");
+				signalTree("SIGKILL");
 			}, 10_000);
 
 			proc.process.once("exit", () => {
@@ -181,7 +197,7 @@ export class ProcessManager {
 				resolve();
 			});
 
-			proc.process.kill("SIGTERM");
+			signalTree("SIGTERM");
 		});
 	}
 
