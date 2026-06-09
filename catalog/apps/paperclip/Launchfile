@@ -42,14 +42,23 @@ restart: always
 
 commands:
   # Post-start setup: provision the first admin (CEO) and capture the
-  # one-time invite link. Re-runnable; failures are reported rather than
-  # deploy-failing. A full Paperclip bootstrap also writes a config.json
-  # and restarts the server, but those steps are held for Proposal B
-  # (templated file-placement primitive) pending the incubation-mechanism
-  # decision on issue #16. For now this captures the invite step, which
-  # is the user-facing piece.
+  # one-time invite link. Re-runnable — each run issues a fresh invite,
+  # which is also the recovery path when a previous invite expires.
+  #
+  # The first run must create the CLI's config.json before it can issue
+  # invites: `onboard --yes` writes it but then starts an embedded
+  # quickstart server that never exits (hence the timeout), and it
+  # hardcodes deploymentMode=local_trusted while this deployment runs
+  # authenticated (hence the sed). When the templated file-placement
+  # primitive lands (held proposal, see issue #16), those two steps
+  # collapse into a declarative file write.
   bootstrap:
-    command: "bootstrap-ceo invite --admin"
+    command: >-
+      CFG="$PAPERCLIP_HOME/instances/default/config.json";
+      test -f "$CFG" || {
+      timeout 30 pnpm paperclipai onboard --yes >/dev/null 2>&1;
+      sed -i "s/\"deploymentMode\": \"local_trusted\"/\"deploymentMode\": \"authenticated\"/" "$CFG"; };
+      pnpm paperclipai auth bootstrap-ceo --base-url "$BETTER_AUTH_URL"
     capture:
       invite_link:
         pattern: "https?://\\S+invite\\S*"
