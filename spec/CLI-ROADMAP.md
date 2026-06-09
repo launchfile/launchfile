@@ -123,6 +123,33 @@ Resolution order: ID → name → app slug → pwd.
 4. macOS without Docker → macOS native
 5. Otherwise → error with guidance
 
+## Phase 2 Design Sketch: Cloud Build & Deploy
+
+`launchfile deploy` extends the same Launchfile to remote infrastructure. The local providers established the translation pattern; a cloud provider adds two concerns the local ones don't have — **artifact publishing** and **managed resources**.
+
+### Pipeline
+
+```
+validate → build → publish → provision → release → start → (bootstrap)
+```
+
+| Step | Local provider today | Cloud provider |
+|------|---------------------|----------------|
+| build | `docker compose build` (from `build:`) | Remote builder (platform builder, BuildKit, buildpack from `runtime:`) |
+| publish | — (image stays in local daemon) | Push to the platform registry; tag from `image:` or platform-assigned |
+| provision | Container / brew service per `requires:` | Managed service (RDS, Cloud SQL, Upstash) — same property vocabulary (`$url`, `$host`, `$password`) wired via `set_env` |
+| release | `commands.release` in ephemeral container | Same, in a release run on the platform |
+| start | compose `up` / process manager | Platform deploy primitive (Fly machine, K8s Deployment, ECS service) |
+| `$app.*` | `http://localhost:<port>` | Platform routing (assigned domain → `$app.url`, `$app.host`) |
+| bootstrap | `docker compose exec` / local spawn | Platform exec (`fly ssh console -C`, `kubectl exec`) with the same capture semantics |
+
+Key properties to preserve:
+
+- **The Launchfile does not change between local and cloud.** Everything provider-specific (region, instance size, registry) lives in provider config (`--provider`, `--target`, `~/.launchfile/config.yaml`), never in the Launchfile (P-1, P-5).
+- **`dev` / `dev:*` commands are ignored entirely** — cloud providers execute the artifact (D-35).
+- **Secrets**: `generator:` secrets are created in the platform's secret store on first deploy and persist across deploys, mirroring how local providers persist them in state.
+- **Builds are remote by default.** The user's machine never needs the toolchain; this is the same trust posture as the containerized local build, lifted to the platform.
+
 ## Relationship to Launchpad
 
 | launchfile (open source) | launchpad (commercial) |
