@@ -756,6 +756,9 @@ The `$app.*` namespace exposes platform-injected properties of the deployed app 
 | `$app.host` | The app's public hostname (e.g. `myapp.example.com`) |
 | `$app.port` | The app's allocated public port number |
 | `$app.name` | The app name as deployed |
+| `$app.authority` | The app's public host **and** port, port omitted when it's the default for the scheme (e.g. `myapp.example.com` or `myapp.lvh.me:10001`) |
+| `$app.scheme` | The public URL's scheme — `http` or `https` |
+| `$app.tls` | Whether the public URL is HTTPS — the string `true` or `false` |
 
 The values are determined by the provider's routing strategy at deploy time. A Cloudflare Tunnel deployment might resolve `$app.url` to `https://myapp.example.com`; a local development provider might resolve it to `http://myapp.lvh.me:10001`; a Kubernetes deployment behind an Ingress might resolve it to `https://myapp.k8s.internal`. The Launchfile stays the same.
 
@@ -765,6 +768,8 @@ The standard set above is the portable vocabulary every provider must support. P
 
 Similarly, `$app.port` is the allocated *external* port that the platform exposes; `provides[].port` is the *container* port the component binds inside its sandbox. They can differ — a component might bind `3000` while the platform exposes `10001`.
 
+`$app.authority`, `$app.scheme`, and `$app.tls` are derived directly from `$app.url`, so a provider that can resolve the URL can resolve all three. `$app.authority` is the [WHATWG URL `host`](https://url.spec.whatwg.org/#dom-url-host) — the hostname plus the port, with the port omitted when it is the default for the scheme (`:443` under `https`, `:80` under `http`). `$app.scheme` is the URL scheme (`http` or `https`); `$app.tls` is the boolean form of that scheme (`true` when `https`, else `false`), provided for apps whose config expects a literal SSL on/off flag rather than a scheme string. Prefer `$app.url` for the single-string case; reach for these three only when an app needs the public address split into its component fields.
+
 Example use:
 
 ```yaml
@@ -773,6 +778,11 @@ env:
   BETTER_AUTH_URL: $app.url           # better-auth callback base
   OAUTH_REDIRECT_URI: "${app.url}/oauth/callback"
   WEBHOOK_URL: "${app.url}/webhooks/incoming"
+
+  # Apps that need the public address split into separate fields (HedgeDoc):
+  CMD_DOMAIN: $app.authority          # public host[:port] HedgeDoc serves from
+  CMD_PROTOCOL_USESSL: $app.tls       # whether the public URL is HTTPS
+  CMD_URL_ADDPORT: "false"            # authority already carries the public port
 ```
 
 ## Resource Property Vocabulary
