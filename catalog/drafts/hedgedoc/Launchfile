@@ -2,52 +2,43 @@
 version: launch/v1
 name: hedgedoc
 description: "Collaborative markdown editor"
+repository: https://github.com/hedgedoc/hedgedoc
 
 components:
-  backend:
-    runtime: node
-    build:
-      dockerfile: ./docker/Dockerfile.backend
-    provides:
-      - name: api
-        protocol: http
-        port: 3000
-        bind: "0.0.0.0"
-        spec:
-          openapi: file:docs/openapi.yaml
-    requires:
-      - type: postgres
-        version: ">=15"
-        set_env:
-          HD_DATABASE_URL: $url
-          HD_DATABASE_USERNAME: $user
-          HD_DATABASE_PASSWORD: $password
-          HD_DATABASE_NAME: $name
-    env:
-      HD_AUTH_SESSION_SECRET:
-        generator: secret
-        sensitive: true
-      HD_BACKEND_BIND_IP:
-        default: "0.0.0.0"
-    commands:
-      start: "node dist/main.js"
-      release: "node dist/migrations.js"
-    health:
-      path: /api/private/config
-      start_period: 30s
-
-  frontend:
-    runtime: node
-    build:
-      dockerfile: ./docker/Dockerfile.frontend
-    depends_on:
-      - component: backend
-        condition: healthy
+  default:
+    image: quay.io/hedgedoc/hedgedoc:1.10.8
     provides:
       - protocol: http
-        port: 3001
+        port: 3000
         exposed: true
+    requires:
+      - type: postgres
+        version: ">=9.6"
+        set_env:
+          CMD_DB_URL: $url
     env:
-      HD_BASE_URL:
-        default: $components.backend.url
-        description: "Backend URL for SSR API calls"
+      # HedgeDoc builds absolute URLs for assets, scripts, CSP, and the
+      # collaboration websocket from its configured domain. It must match the
+      # address the browser actually used, or every asset 404s / is CSP-blocked
+      # and the editor websocket fails. $app.authority is host[:port] of the
+      # deployment's public URL; with CMD_URL_ADDPORT=false HedgeDoc uses it
+      # verbatim. CMD_PROTOCOL_USESSL tracks the deployment scheme via $app.tls.
+      CMD_DOMAIN:
+        default: $app.authority
+        description: "Public host[:port] HedgeDoc is served from"
+      CMD_PROTOCOL_USESSL:
+        default: $app.tls
+        description: "Whether the public URL is HTTPS"
+      CMD_URL_ADDPORT:
+        default: "false"
+        description: "Don't append the internal port — the authority already carries the public one"
+      CMD_ALLOW_ANONYMOUS:
+        default: "true"
+        description: "Allow anonymous note creation/editing"
+    storage:
+      uploads:
+        path: /hedgedoc/public/uploads
+        persistent: true
+    health:
+      path: /_health
+      start_period: 20s
