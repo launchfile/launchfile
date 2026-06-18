@@ -36,7 +36,9 @@ updates:
         patterns: ["*"]
 
   # www-dev (launchfile.dev)
-  - package-ecosystem: npm
+  # bun ecosystem so dependabot regenerates bun.lock — npm-ecosystem PRs only
+  # bumped package.json, which fails CI's frozen-lockfile install
+  - package-ecosystem: bun
     directory: /www-dev
     schedule:
       interval: weekly
@@ -52,7 +54,7 @@ updates:
         exclude-patterns: ["astro", "@astrojs/*", "tailwindcss", "@tailwindcss/*"]
 
   # www-org (launchfile.org)
-  - package-ecosystem: npm
+  - package-ecosystem: bun
     directory: /www-org
     schedule:
       interval: weekly
