@@ -19,6 +19,29 @@ export interface ResourceState {
 	password?: string;
 }
 
+/**
+ * Records a spawned app component process so `launch down` can stop it
+ * from a different shell or after the foreground `launch up` session ends.
+ *
+ * Identity is captured at spawn time so `down` can re-verify the recorded
+ * pid still belongs to the process we started before signaling it — guarding
+ * against pid-reuse (a recycled pid belonging to an unrelated process).
+ */
+export interface ProcessState {
+	/** Leader pid of the spawned shell (`sh -c <command>`). */
+	pid: number;
+	/**
+	 * Process group id. Because we spawn detached, the child is its own group
+	 * leader, so pgid === pid. We persist it explicitly so `down` can signal the
+	 * whole group (negative pid) and take down child processes too.
+	 */
+	pgid: number;
+	/** ISO timestamp captured immediately after spawn — part of the identity check. */
+	startedAt: string;
+	/** The shell command string we launched — used as a best-effort identity cross-check. */
+	command: string;
+}
+
 export interface LaunchState {
 	version: 1;
 	appName: string;
@@ -28,6 +51,12 @@ export interface LaunchState {
 	resources: Record<string, ResourceState>;
 	secrets: Record<string, string>;
 	ports: Record<string, number>;
+	/**
+	 * App component processes recorded at spawn time, keyed by component name.
+	 * Optional for backward compatibility: state files written before pid
+	 * persistence existed simply omit this, and `down` tolerates its absence.
+	 */
+	processes?: Record<string, ProcessState>;
 }
 
 const STATE_DIR = ".launchfile";
