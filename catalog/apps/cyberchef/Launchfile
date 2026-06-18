@@ -10,4 +10,5 @@ provides:
   - protocol: http
     port: 8000
     exposed: true
+health: /
 restart: always

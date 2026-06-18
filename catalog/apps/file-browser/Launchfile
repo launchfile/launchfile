@@ -17,4 +17,5 @@ storage:
   config:
     path: /database
     persistent: true
+health: /health
 restart: always

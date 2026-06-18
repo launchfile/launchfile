@@ -10,4 +10,5 @@ provides:
   - protocol: http
     port: 3000
     exposed: true
+health: /
 restart: always

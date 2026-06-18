@@ -11,7 +11,7 @@ provides:
     port: 80
     exposed: true
 requires:
-  - type: mariadb
+  - type: mysql
     set_env:
       DB_HOST: $host
       DB_PORT: $port
@@ -29,4 +29,5 @@ storage:
   data:
     path: /var/www/html/storage
     persistent: true
+health: /
 restart: always

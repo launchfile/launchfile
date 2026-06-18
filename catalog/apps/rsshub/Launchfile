@@ -10,4 +10,5 @@ provides:
   - protocol: http
     port: 1200
     exposed: true
+health: /healthz
 restart: always

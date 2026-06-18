@@ -57,7 +57,7 @@ commands:
   # the app is up, open the captured invite link, and register your passkey.
   # Invites expire after 30 minutes; the command is re-runnable if needed.
   bootstrap:
-    command: "concentrator-cli create-invite --name admin --url $app.url"
+    command: "broker-cli create-invite --name admin --url $app.url"
     capture:
       invite_link:
         pattern: "https?://\\S+"
