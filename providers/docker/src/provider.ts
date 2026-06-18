@@ -30,7 +30,22 @@ export interface DockerUpOpts {
 	yes?: boolean;
 }
 
-export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise<void> {
+/**
+ * Identity + source information for a docker deployment, returned to the
+ * caller so the unified CLI keys its deployment index by the SAME slug the
+ * docker provider uses (#48), and can re-locate the Launchfile later (#25).
+ */
+export interface DockerUpResult {
+	slug: string;
+	appName: string;
+	sourceType: "local" | "catalog" | "url";
+	/** Absolute Launchfile path for local sources; undefined otherwise. */
+	sourcePath?: string;
+	/** Original URL for url sources; undefined otherwise. */
+	sourceUrl?: string;
+}
+
+export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise<DockerUpResult> {
 	// Resolve source before the span so we have the slug for span context
 	const resolved = await resolveSource(source);
 
@@ -78,10 +93,24 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 			}
 		}
 
+		// Persisted source info (#25): records where the Launchfile came from
+		// so bootstrap/inspect can re-read it independent of the caller's cwd.
+		const sourceInfo = {
+			sourceType: resolved.source,
+			sourcePath: resolved.source === "local" ? resolved.path : undefined,
+			sourceUrl: resolved.source === "url" ? resolved.url : undefined,
+		};
+
 		// Load or init state
 		let state = await loadState(resolved.slug);
 		if (!state) {
-			state = initState(resolved.slug, launch.name, resolved.yaml);
+			state = initState(resolved.slug, launch.name, resolved.yaml, sourceInfo);
+		} else {
+			// Backfill/refresh source info on existing state (older state files
+			// predate these fields; a re-`up` from a new location updates them).
+			state.sourceType = sourceInfo.sourceType;
+			state.sourcePath = sourceInfo.sourcePath;
+			state.sourceUrl = sourceInfo.sourceUrl;
 		}
 		await ensureStateDir(resolved.slug);
 
@@ -105,11 +134,19 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		state.secrets = result.secrets;
 		state.ports = result.ports;
 
+		const upResult: DockerUpResult = {
+			slug: resolved.slug,
+			appName: launch.name,
+			sourceType: sourceInfo.sourceType,
+			sourcePath: sourceInfo.sourcePath,
+			sourceUrl: sourceInfo.sourceUrl,
+		};
+
 		if (opts.dryRun) {
 			console.log("\n--- docker-compose.yml ---\n");
 			console.log(result.yaml);
 			printSummary(launch.name, result.ports);
-			return;
+			return upResult;
 		}
 
 		// Write compose file
@@ -197,6 +234,8 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 
 		// Print summary
 		printSummary(launch.name, result.ports);
+
+		return upResult;
 	});
 }
 

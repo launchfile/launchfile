@@ -10,9 +10,10 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { dockerBootstrap } from "@launchfile/docker";
+import { dockerBootstrap, loadDockerSource } from "@launchfile/docker";
 import { readLaunch } from "@launchfile/sdk";
 import { resolveDeploymentTarget } from "../resolve-target.js";
+import { dockerSlugFor, type DeploymentEntry } from "../state/index.js";
 
 export interface BootstrapFlags {
 	component?: string;
@@ -25,15 +26,13 @@ export async function handleBootstrap(
 	const deployment = await resolveDeploymentTarget(target);
 
 	if (deployment.entry.provider === "docker") {
-		// Docker state only persists the composeProject, not the source. Read
-		// the Launchfile from the catalog or the deployment's source path,
-		// depending on how it was started.
-		const launchfilePath = deployment.entry.sourceType === "catalog"
-			? // We don't have a reliable way to find the catalog copy from
-			  // here — fall back to re-reading the current working dir's
-			  // Launchfile if the user invoked this from a catalog checkout.
-			  join(process.cwd(), "Launchfile")
-			: join(deployment.entry.source, "Launchfile");
+		// Identity (#48): use the same slug docker keyed its state under.
+		const slug = dockerSlugFor(deployment.entry);
+
+		// Source location (#25): prefer the path the docker provider persisted
+		// at `up` time so we can re-read the Launchfile from anywhere. Fall back
+		// to the legacy cwd/source guesses for state written before this landed.
+		const launchfilePath = await resolveLaunchfilePath(slug, deployment.entry);
 
 		let content: string;
 		try {
@@ -49,10 +48,6 @@ export async function handleBootstrap(
 		}
 
 		const launch = readLaunch(content);
-
-		const slug = deployment.entry.sourceType === "catalog"
-			? deployment.entry.source.replace("catalog:", "")
-			: deployment.entry.appName;
 
 		const results = await dockerBootstrap({
 			launch,
@@ -83,4 +78,27 @@ export async function handleBootstrap(
 
 	console.error(`Unsupported provider: ${deployment.entry.provider}`);
 	process.exit(1);
+}
+
+/**
+ * Locate the Launchfile to re-read for a docker deployment (#25).
+ *
+ * 1. Persisted `sourcePath` from docker state (local sources) — works from
+ *    any cwd. This is the path the provider recorded at `up` time.
+ * 2. Legacy fallbacks for state written before source persistence:
+ *    - local source → `<source>/Launchfile`
+ *    - catalog/url  → `<cwd>/Launchfile` (best effort; the user must be cd'd
+ *      into a checkout, matching the previous behavior).
+ */
+async function resolveLaunchfilePath(
+	slug: string,
+	entry: DeploymentEntry,
+): Promise<string> {
+	const persisted = await loadDockerSource(slug);
+	if (persisted?.sourcePath) return persisted.sourcePath;
+
+	if (entry.sourceType === "local") {
+		return join(entry.source, "Launchfile");
+	}
+	return join(process.cwd(), "Launchfile");
 }

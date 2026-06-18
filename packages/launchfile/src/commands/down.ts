@@ -4,7 +4,7 @@
 
 import { dockerDown } from "@launchfile/docker";
 import { resolveDeploymentTarget } from "../resolve-target.js";
-import { updateDeployment, removeDeployment, deploymentDir } from "../state/index.js";
+import { updateDeployment, removeDeployment, deploymentDir, dockerSlugFor } from "../state/index.js";
 
 export interface DownFlags {
 	destroy?: boolean;
@@ -14,10 +14,10 @@ export async function handleDown(target: string | undefined, flags: DownFlags): 
 	const deployment = await resolveDeploymentTarget(target);
 
 	if (deployment.entry.provider === "docker") {
-		// Extract slug from source (catalog:ghost → ghost, or path → slug)
-		const slug = deployment.entry.sourceType === "catalog"
-			? deployment.entry.source.replace("catalog:", "")
-			: deployment.entry.appName;
+		// Prefer the persisted provider slug (#48) — it matches the key docker
+		// stored its state under. Fall back to the legacy derivation for index
+		// entries written before the slug field existed.
+		const slug = dockerSlugFor(deployment.entry);
 
 		await dockerDown({ destroy: flags.destroy, slug });
 

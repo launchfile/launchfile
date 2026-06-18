@@ -1,9 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdir, rm, readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { describe, it, expect } from "vitest";
 import type { DeploymentIndex, DeploymentEntry } from "../state/types.js";
-import { findDeployment, findBySource } from "../state/index.js";
+import { findDeployment, findBySource, dockerSlugFor } from "../state/index.js";
 
 function makeEntry(overrides: Partial<DeploymentEntry> = {}): DeploymentEntry {
 	return {
@@ -73,6 +70,52 @@ describe("findDeployment", () => {
 
 		const results = findDeployment(index, "nonexistent");
 		expect(results).toHaveLength(0);
+	});
+});
+
+describe("dockerSlugFor (#48 identity)", () => {
+	it("uses the persisted slug when present", () => {
+		// Directory basename "myrepo" but Launchfile name: cool-app → slug
+		// cool-app was persisted at `up` time. Lookups must use that slug, not
+		// the appName, so they match the docker provider's state key.
+		const entry = makeEntry({
+			appName: "cool-app",
+			slug: "cool-app",
+			source: "/Users/test/code/myrepo",
+			sourceType: "local",
+		});
+		expect(dockerSlugFor(entry)).toBe("cool-app");
+	});
+
+	it("the persisted slug matches across up/down/bootstrap lookups", () => {
+		// All three commands derive the docker state key the same way. Given a
+		// single entry, the key is stable regardless of which command reads it.
+		const entry = makeEntry({ appName: "cool-app", slug: "cool-app" });
+		const upKey = entry.slug; // what `up` wrote
+		const downKey = dockerSlugFor(entry); // what `down` reads
+		const bootstrapKey = dockerSlugFor(entry); // what `bootstrap` reads
+		expect(downKey).toBe(upKey);
+		expect(bootstrapKey).toBe(upKey);
+	});
+
+	it("falls back to appName for legacy local entries without a slug", () => {
+		const entry = makeEntry({
+			appName: "myapp",
+			slug: undefined,
+			source: "/Users/test/code/myapp",
+			sourceType: "local",
+		});
+		expect(dockerSlugFor(entry)).toBe("myapp");
+	});
+
+	it("falls back to the catalog: prefix strip for legacy catalog entries", () => {
+		const entry = makeEntry({
+			appName: "ghost",
+			slug: undefined,
+			source: "catalog:ghost",
+			sourceType: "catalog",
+		});
+		expect(dockerSlugFor(entry)).toBe("ghost");
 	});
 });
 

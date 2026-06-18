@@ -56,15 +56,20 @@ export async function handleUp(target: string | undefined, flags: UpFlags): Prom
 			? upTarget.value
 			: upTarget.value;
 
-		await dockerUp(dockerSource, {
+		const result = await dockerUp(dockerSource, {
 			detach: flags.detach,
 			dryRun: flags.dryRun,
 		});
 
 		if (!flags.dryRun) {
-			// Register/update in index
+			// Identity (#48): key the index entry by the SAME slug the docker
+			// provider stores its state under, derived from the Launchfile
+			// `name:`. Using the provider's slug here (instead of the directory
+			// basename via inferAppName) keeps `up` and `bootstrap`/`down` in
+			// agreement when the project dir name != Launchfile `name:`.
 			const entry: DeploymentEntry = {
-				appName: upTarget.type === "catalog" ? upTarget.value : inferAppName(upTarget.value),
+				appName: result.slug,
+				slug: result.slug,
 				provider: "docker",
 				source: sourceKey,
 				sourceType: upTarget.type,
