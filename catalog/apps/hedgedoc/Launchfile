@@ -40,5 +40,11 @@ components:
         path: /hedgedoc/public/uploads
         persistent: true
     health:
-      path: /_health
-      start_period: 20s
+      # The hedgedoc image ships neither wget nor curl, so the default HTTP
+      # probe (wget/curl against health.path) can never run and the container
+      # would never go healthy. It does ship node, so probe /_health with a
+      # tiny node one-liner instead — exit 0 only on HTTP 200.
+      command: 'node -e ''require("http").get("http://localhost:3000/_health",r=>process.exit(r.statusCode===200?0:1)).on("error",()=>process.exit(1))'''
+      # First boot runs all DB migrations before the server listens; keep a
+      # generous start period so early probes don't burn the retry budget.
+      start_period: 90s
