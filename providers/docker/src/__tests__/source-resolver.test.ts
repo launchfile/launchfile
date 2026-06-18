@@ -106,3 +106,35 @@ describe("resolveSource", () => {
 		});
 	});
 });
+
+describe("resolveSource local directories", () => {
+	it("accepts a project directory and finds the Launchfile inside it", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "lf-dir-"));
+		try {
+			writeFileSync(join(dir, "Launchfile"), "name: dirapp\nimage: nginx\n");
+			const result = await resolveSource(dir);
+
+			expect(result.source).toBe("local");
+			expect(result.slug).toBe("dirapp");
+			expect(result.dir).toBe(dir);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("returns the containing directory for a Launchfile path", async () => {
+		const result = await resolveSource(join(CATALOG_DIR, "apps/ghost/Launchfile"));
+		expect(result.dir).toBe(join(CATALOG_DIR, "apps/ghost"));
+	});
+});
+
+describe("resolveSource directory without Launchfile", () => {
+	it("throws a helpful error naming the directory", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "lf-empty-"));
+		try {
+			await expect(resolveSource(dir)).rejects.toThrow(/No Launchfile found in/);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});

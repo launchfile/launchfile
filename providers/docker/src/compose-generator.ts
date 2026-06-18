@@ -6,6 +6,7 @@
  * host port mappings.
  */
 
+import { resolve as resolvePath } from "node:path";
 import { stringify } from "yaml";
 import {
 	resolveExpression,
@@ -388,12 +389,17 @@ export interface ComposeOpts {
 	hostPorts?: Record<string, number>;
 	/** Docker network name */
 	networkName?: string;
+	/** Project directory for local sources — relative `build:` contexts resolve against this */
+	projectDir?: string;
 }
 
 export interface ComposeResult {
 	yaml: string;
 	warnings: string[];
+	/** Images to pull (services without a build config) */
 	images: string[];
+	/** Service names that must be built from a `build:` config before start */
+	builds: string[];
 	/** Secrets generated during composition (save to state) */
 	secrets: Record<string, string>;
 	/** Map of component name → exposed host port */
@@ -406,6 +412,7 @@ export function launchToCompose(
 ): ComposeResult {
 	const warnings: string[] = [];
 	const images: string[] = [];
+	const builds: string[] = [];
 	const services: Record<string, Record<string, unknown>> = {};
 	const volumes: Record<string, Record<string, unknown>> = {};
 	const secrets = opts.secrets ?? {};
@@ -445,11 +452,7 @@ export function launchToCompose(
 		const serviceName =
 			componentName === "default" ? launch.name : `${launch.name}-${componentName}`;
 
-		if (!component.image) {
-			if (component.build) {
-				warnings.push(`${componentName}: uses build — skipped (no image)`);
-				continue;
-			}
+		if (!component.image && !component.build) {
 			warnings.push(`${componentName}: no image or build — skipped`);
 			continue;
 		}
@@ -471,11 +474,41 @@ export function launchToCompose(
 			warnings.push(`${componentName}: has schedule — included but won't cron`);
 		}
 
-		images.push(component.image);
+		const service: Record<string, unknown> = {};
 
-		const service: Record<string, unknown> = {
-			image: component.image,
-		};
+		if (component.build) {
+			// Build from source. Relative contexts resolve against the project
+			// directory (the compose file lives in state, not the project), so
+			// `context: "."` means "the directory containing the Launchfile".
+			// Remote contexts (git URLs) pass through — docker clones and builds
+			// them itself, which keeps the build off the host for untrusted repos.
+			const context = component.build.context ?? ".";
+			const isRemoteContext = /^(https?:\/\/|git@|ssh:\/\/)/.test(context);
+			if (!isRemoteContext && !opts.projectDir) {
+				warnings.push(
+					`${componentName}: build context "${context}" is relative but the source is not local — skipped`,
+				);
+				continue;
+			}
+
+			const build: Record<string, unknown> = {
+				context: isRemoteContext ? context : resolvePath(opts.projectDir!, context),
+			};
+			if (component.build.dockerfile) build.dockerfile = component.build.dockerfile;
+			if (component.build.target) build.target = component.build.target;
+			if (component.build.args) build.args = component.build.args;
+			if (component.build.secrets?.length) {
+				warnings.push(`${componentName}: build secrets are not yet supported by the docker provider — ignored`);
+			}
+			service.build = build;
+			// `image:` alongside `build:` names the built artifact (SPEC.md:
+			// "build + image — image is the name/tag for the resulting artifact").
+			if (component.image) service.image = component.image;
+			builds.push(serviceName);
+		} else {
+			service.image = component.image;
+			images.push(component.image!);
+		}
 
 		// Ports — map to specific host ports
 		if (component.provides?.length) {
@@ -616,6 +649,7 @@ export function launchToCompose(
 		yaml: stringify(compose, { lineWidth: 120 }),
 		warnings,
 		images: [...new Set(images)],
+		builds,
 		secrets,
 		ports,
 	};
