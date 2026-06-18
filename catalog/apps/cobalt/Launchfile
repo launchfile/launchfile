@@ -10,4 +10,5 @@ provides:
   - protocol: http
     port: 9000
     exposed: true
+health: /api/serverInfo
 restart: always

@@ -14,4 +14,5 @@ storage:
   data:
     path: /var/lib/ntfy
     persistent: true
+health: /v1/health
 restart: always

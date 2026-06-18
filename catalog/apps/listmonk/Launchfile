@@ -29,4 +29,5 @@ env:
     generator: secret
     sensitive: true
     description: "Admin password"
+health: /api/health
 restart: always
