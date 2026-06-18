@@ -9,6 +9,7 @@
 import { resolve as resolvePath } from "node:path";
 import { stringify } from "yaml";
 import {
+	deriveAppUrlProperties,
 	resolveExpression,
 	isExpression,
 	type ResolverContext,
@@ -349,15 +350,17 @@ function createBackingServices(
 }
 
 /**
- * Compute the $app.* property set (D-33) for a Launchfile under the docker
+ * Compute the $app.* property set (D-33, D-35) for a Launchfile under the docker
  * provider. The "primary" component is the first one (in declaration order)
  * with at least one `exposed: true` provides entry; its host port becomes
- * `$app.port` and `http://localhost:<hostPort>` becomes `$app.url`.
+ * `$app.port` and `http://localhost:<hostPort>` becomes `$app.url`. The
+ * `authority`/`scheme`/`tls` trio is derived from that URL via the SDK so the
+ * split-field tokens (e.g. HedgeDoc's `CMD_DOMAIN: $app.authority`) resolve.
  *
- * Apps with no exposed component get `port: 0` and `url: ""`. For multi-
- * exposed-component apps that need a specific component's URL, use
- * `$components.<name>.url` instead — `$app.*` always points at the first
- * exposed component to give a single, predictable answer.
+ * Apps with no exposed component get `port: 0` and `url: ""` (and empty
+ * authority/scheme/tls). For multi-exposed-component apps that need a specific
+ * component's URL, use `$components.<name>.url` instead — `$app.*` always points
+ * at the first exposed component to give a single, predictable answer.
  */
 function computeAppProperties(
 	launch: NormalizedLaunch,
@@ -372,11 +375,13 @@ function computeAppProperties(
 		break;
 	}
 
+	const url = primaryPort > 0 ? `http://localhost:${primaryPort}` : "";
 	return {
 		name: launch.name,
 		host: "localhost",
 		port: primaryPort,
-		url: primaryPort > 0 ? `http://localhost:${primaryPort}` : "",
+		url,
+		...deriveAppUrlProperties(url),
 	};
 }
 

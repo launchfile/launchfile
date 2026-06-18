@@ -219,6 +219,39 @@ env:
 		expect(result.yaml).toContain("CALLBACK: http://localhost:10043/oauth/callback");
 	});
 
+	it("resolves $app.authority, $app.scheme, and $app.tls (D-35) — the HedgeDoc shape", () => {
+		const launch = readLaunch(`
+name: hedge-like
+image: nginx
+provides:
+  - port: 3000
+    protocol: http
+    exposed: true
+env:
+  CMD_DOMAIN: $app.authority
+  CMD_PROTOCOL_USESSL: $app.tls
+  SCHEME: $app.scheme
+`);
+		const result = launchToCompose(launch, { hostPorts: { default: 49200 } });
+		// Without these, an empty CMD_DOMAIN makes the app emit an invalid CSP
+		// and the page renders unstyled — the gap this fix closes.
+		expect(result.yaml).toContain("CMD_DOMAIN: localhost:49200");
+		expect(result.yaml).toContain('CMD_PROTOCOL_USESSL: "false"');
+		expect(result.yaml).toContain("SCHEME: http");
+	});
+
+	it("leaves $app.authority/scheme/tls empty for an app with no exposed component", () => {
+		const launch = readLaunch(`
+name: worker
+image: nginx
+env:
+  CMD_DOMAIN: "[\${app.authority}]"
+`);
+		const result = launchToCompose(launch);
+		// No exposed port → empty url → empty authority; resolves to "" not undefined.
+		expect(result.yaml).toContain('CMD_DOMAIN: "[]"');
+	});
+
 	it("falls back to the declared container port when no host port override is given", () => {
 		const launch = readLaunch(`
 name: ghost-like
