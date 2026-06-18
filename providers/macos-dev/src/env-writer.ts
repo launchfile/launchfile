@@ -8,6 +8,7 @@
 import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
+	deriveAppUrlProperties,
 	resolveExpression,
 	isExpression,
 	type NormalizedComponent,
@@ -22,10 +23,13 @@ import { generateValue } from "./secret-generator.js";
 export type { ResolverContext };
 
 /**
- * Compute the $app.* property set for a Launchfile under the macos-dev
- * provider. The app's "primary" port comes from the first component (in
- * declaration order) that has at least one `exposed: true` provides entry.
- * Apps with no exposed component get `port: 0` and `url: ""`.
+ * Compute the $app.* property set (D-33, D-35) for a Launchfile under the
+ * macos-dev provider. The app's "primary" port comes from the first component
+ * (in declaration order) that has at least one `exposed: true` provides entry.
+ * The `authority`/`scheme`/`tls` trio is derived from the resulting URL via the
+ * SDK so split-field tokens (e.g. `CMD_DOMAIN: $app.authority`) resolve.
+ * Apps with no exposed component get `port: 0` and `url: ""` (and empty
+ * authority/scheme/tls).
  *
  * For multi-exposed-component apps that need a specific component's URL,
  * use `$components.<name>.url` instead — `$app.*` always points at the
@@ -44,11 +48,13 @@ export function computeAppProperties(
 		}
 	}
 
+	const url = primaryPort > 0 ? `http://localhost:${primaryPort}` : "";
 	return {
 		name: launch.name,
 		host: "localhost",
 		port: primaryPort,
-		url: primaryPort > 0 ? `http://localhost:${primaryPort}` : "",
+		url,
+		...deriveAppUrlProperties(url),
 	};
 }
 
