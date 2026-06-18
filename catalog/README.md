@@ -23,6 +23,7 @@ These apps have been verified to launch successfully from their Launchfile:
 | [FreshRSS](apps/freshrss/) | RSS | Postgres |
 | [Ghost](apps/ghost/) | CMS | MySQL |
 | [Gitea](apps/gitea/) | Git | Postgres |
+| [HedgeDoc](apps/hedgedoc/) | Documents | Postgres |
 | [IT Tools](apps/it-tools/) | Utilities | — |
 | [LinkDing](apps/linkding/) | Bookmarks | Postgres |
 | [Mealie](apps/mealie/) | Recipes | Postgres |
@@ -63,7 +64,6 @@ Draft Launchfiles in [`drafts/`](drafts/) — not yet verified end-to-end. PRs w
 | [Glance](drafts/glance/) | Dashboard | |
 | [Gokapi](drafts/gokapi/) | Files | |
 | [Gotify](drafts/gotify/) | Notifications | |
-| [HedgeDoc](drafts/hedgedoc/) | Editor | |
 | [Home Assistant](drafts/home-assistant/) | Automation | Gaps: G-9, G-11, G-12 |
 | [Hoppscotch](drafts/hoppscotch/) | API Tools | |
 | [Immich](drafts/immich/) | Photos | Gap: GPU (G-10) |

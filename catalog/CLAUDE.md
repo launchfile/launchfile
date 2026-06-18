@@ -29,6 +29,12 @@ App names are kebab-case, matching the `name:` field inside the Launchfile.
 1. Pick a draft: `catalog/drafts/<app>/Launchfile`
 2. Test it locally (e.g. docker compose, validate against schema)
 3. Once verified: `git mv catalog/drafts/<app> catalog/apps/<app>`
+4. **Update the indexes in the same PR** — the `git mv` alone leaves stale
+   listings:
+   - Move the app's row in `README.md` from **Proposed Apps** to **Tested Apps**
+     (and repoint its link from `drafts/` to `apps/`).
+   - Add it to the matching tier in `test/src/test-all.ts` so it joins the batch
+     regression run; drop any stale "skipped — no image" note.
 
 ## Testing
 
