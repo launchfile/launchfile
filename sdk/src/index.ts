@@ -1,6 +1,7 @@
 export { cmdInspect, cmdSchema, cmdValidate } from "./commands.js";
 export { readLaunch, validateLaunch } from "./reader.js";
 export {
+	deriveAppUrlProperties,
 	isExpression,
 	parseDotPath,
 	parseExpression,
