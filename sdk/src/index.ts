@@ -8,8 +8,20 @@ export {
 	type ResolverContext,
 	resolveExpression,
 } from "./resolver.js";
+export { lintLaunch } from "./lint.js";
 export { LaunchSchema } from "./schema.js";
 export { selectComponents, type SelectionResult } from "./select.js";
+export {
+	type ComponentState,
+	type DeploymentState,
+	diff,
+	type Endpoint,
+	type LaunchEvent,
+	reduce,
+	resolveRef,
+	type ResourceState,
+	type Vantage,
+} from "./state.js";
 export type {
 	ToolchainLanguage,
 	ToolchainSource,
