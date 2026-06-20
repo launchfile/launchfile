@@ -9,6 +9,7 @@ export {
 	resolveExpression,
 } from "./resolver.js";
 export { LaunchSchema } from "./schema.js";
+export { selectComponents, type SelectionResult } from "./select.js";
 export type {
 	ToolchainLanguage,
 	ToolchainSource,
