@@ -4,7 +4,7 @@
 
 import { writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
-import { readLaunch } from "@launchfile/sdk";
+import { readLaunch, selectComponents } from "@launchfile/sdk";
 import { checkPrereqs, composeSupportsIgnoreBuildable } from "./prereqs.js";
 import { resolveSource } from "./source-resolver.js";
 import {
@@ -28,6 +28,17 @@ export interface DockerUpOpts {
 	dryRun?: boolean;
 	/** Skip confirmation prompt for remote Launchfiles */
 	yes?: boolean;
+	/**
+	 * Component selector (#77): if non-empty, only these components are started.
+	 * Their `requires` come along via compose `depends_on`; `depends_on` targets
+	 * are NOT auto-added (satisfy-not-expand). Empty = all components.
+	 */
+	components?: string[];
+}
+
+/** component name → compose service name (mirrors compose-generator). */
+function serviceNameFor(appName: string, componentName: string): string {
+	return componentName === "default" ? appName : `${appName}-${componentName}`;
 }
 
 /**
@@ -65,6 +76,23 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// Parse Launchfile
 		const launch = readLaunch(resolved.yaml);
 		const componentNames = Object.keys(launch.components);
+
+		// Resolve component selector (#77). Empty = all components.
+		const selection = selectComponents(launch, opts.components ?? []);
+		if (selection.unknown.length > 0 || selection.resources.length > 0) {
+			console.error(`\nCannot select: ${[...selection.unknown, ...selection.resources].join(", ")}`);
+			for (const r of selection.resources) {
+				console.error(`  - "${r}" is a backing resource, not a component; select the component that requires it.`);
+			}
+			for (const u of selection.unknown) {
+				console.error(`  - "${u}" matches no component. Available: ${componentNames.join(", ")}`);
+			}
+			process.exit(1);
+		}
+		const selectedServices =
+			opts.components && opts.components.length > 0
+				? selection.selected.map((name) => serviceNameFor(launch.name, name))
+				: [];
 
 		// Security: prompt for confirmation before executing remote Launchfiles.
 		// Remote content can specify arbitrary images, commands, and env vars.
@@ -217,7 +245,13 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// Start services
 		await withSpan("up:start", { project }, async () => {
 			process.stdout.write(`  \u2193 Starting services...`);
-			await shell("docker", ["compose", "-p", project, "-f", composeFile, "up", "-d"], { silent: true });
+			// Selected services start with their compose `depends_on` (resources)
+			// pulled in automatically; non-selected components stay down (#77).
+			await shell(
+				"docker",
+				["compose", "-p", project, "-f", composeFile, "up", "-d", ...selectedServices],
+				{ silent: true },
+			);
 			console.log("");
 		});
 

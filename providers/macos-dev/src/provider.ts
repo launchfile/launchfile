@@ -7,7 +7,7 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { readLaunch, type NormalizedLaunch, type NormalizedComponent } from "@launchfile/sdk";
+import { readLaunch, selectComponents, type NormalizedLaunch, type NormalizedComponent } from "@launchfile/sdk";
 
 /**
  * Source-mode run resolution (D-38, precedence `dev` > `image` > `start`).
@@ -51,6 +51,12 @@ export interface LaunchUpOpts {
 	detach?: boolean;
 	dryRun?: boolean;
 	projectDir?: string;
+	/**
+	 * Component selector (#77): if non-empty, only these components are started
+	 * (and only their `requires` provisioned). `depends_on` is satisfy-not-expand.
+	 * Empty = all components.
+	 */
+	components?: string[];
 }
 
 export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
@@ -75,6 +81,28 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	}
 
 	const launch = readLaunch(launchfileContent);
+	const allComponentNames = Object.keys(launch.components);
+
+	// Resolve component selector (#77). Empty = all components. Narrowing
+	// launch.components here makes every downstream phase loop in launchUp honor
+	// the selection without per-loop edits. down/status/env re-read the file, so
+	// they are unaffected.
+	const selection = selectComponents(launch, opts.components ?? []);
+	if (selection.unknown.length > 0 || selection.resources.length > 0) {
+		console.error(`\nCannot select: ${[...selection.unknown, ...selection.resources].join(", ")}`);
+		for (const r of selection.resources) {
+			console.error(`  - "${r}" is a backing resource, not a component; select the component that requires it.`);
+		}
+		for (const u of selection.unknown) {
+			console.error(`  - "${u}" matches no component. Available: ${allComponentNames.join(", ")}`);
+		}
+		process.exit(1);
+	}
+	if (opts.components && opts.components.length > 0) {
+		launch.components = Object.fromEntries(
+			Object.entries(launch.components).filter(([n]) => selection.selected.includes(n)),
+		);
+	}
 	const componentNames = Object.keys(launch.components);
 
 	// 2b. Source-mode guard (D-38) — fail fast before provisioning anything.
