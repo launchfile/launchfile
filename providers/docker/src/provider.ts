@@ -89,10 +89,14 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 			}
 			process.exit(1);
 		}
-		const selectedServices =
-			opts.components && opts.components.length > 0
-				? selection.selected.map((name) => serviceNameFor(launch.name, name))
-				: [];
+		const selectorActive = (opts.components?.length ?? 0) > 0;
+		const selectedServices = selectorActive
+			? selection.selected.map((name) => serviceNameFor(launch.name, name))
+			: [];
+		// When a selector is active, the post-up summary must report only the
+		// components actually started this invocation (#77) — not every component
+		// in the Launchfile. Undefined means "report all".
+		const summaryOnly = selectorActive ? new Set(selection.selected) : undefined;
 
 		// Security: prompt for confirmation before executing remote Launchfiles.
 		// Remote content can specify arbitrary images, commands, and env vars.
@@ -173,7 +177,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		if (opts.dryRun) {
 			console.log("\n--- docker-compose.yml ---\n");
 			console.log(result.yaml);
-			printSummary(launch.name, result.ports);
+			printSummary(launch.name, result.ports, summaryOnly);
 			return upResult;
 		}
 
@@ -267,7 +271,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		});
 
 		// Print summary
-		printSummary(launch.name, result.ports);
+		printSummary(launch.name, result.ports, summaryOnly);
 
 		return upResult;
 	});
@@ -446,11 +450,37 @@ async function waitForHealth(project: string, composeFile: string): Promise<bool
 	return false;
 }
 
-function printSummary(appName: string, ports: Record<string, number>): void {
-	console.log("");
+/**
+ * Build the "<component> is running at …" summary lines, one per exposed port.
+ *
+ * `only`, when provided, restricts the summary to that set of component names —
+ * used by the component selector (#77) so a partial `up` doesn't claim that
+ * components it never started are running. An undefined `only` means "report
+ * everything" (the all-components default). Pure and side-effect-free so it can
+ * be unit-tested without spinning Docker.
+ */
+export function summaryLines(
+	appName: string,
+	ports: Record<string, number>,
+	only?: ReadonlySet<string>,
+): string[] {
+	const lines: string[] = [];
 	for (const [name, port] of Object.entries(ports)) {
+		if (only && !only.has(name)) continue;
 		const label = name === "default" ? appName : name;
-		console.log(`  ${label} is running at http://localhost:${port}`);
+		lines.push(`  ${label} is running at http://localhost:${port}`);
+	}
+	return lines;
+}
+
+function printSummary(
+	appName: string,
+	ports: Record<string, number>,
+	only?: ReadonlySet<string>,
+): void {
+	console.log("");
+	for (const line of summaryLines(appName, ports, only)) {
+		console.log(line);
 	}
 }
 
