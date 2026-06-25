@@ -218,10 +218,10 @@ export async function launchBootstrap(
 	for (const [name, component] of Object.entries(launch.components)) {
 		if (opts.component && name !== opts.component) continue;
 
-		// Dev-mode variant preferred (D-35): this provider runs the source
-		// tree, where the artifact's CLI may not be on PATH or may need
-		// project-local paths (e.g. a .launchfile/ data dir).
-		const bootstrap = component.commands?.["dev:bootstrap"] ?? component.commands?.bootstrap;
+		// `bootstrap` is mode-invariant (D-36): the same command runs from
+		// source or artifact. A path or binary that differs by mode belongs in
+		// storage:/env/PATH, not a separate command.
+		const bootstrap = component.commands?.bootstrap;
 		if (!bootstrap) continue;
 
 		// Resolve $-expressions in the command string (e.g. $app.url) at

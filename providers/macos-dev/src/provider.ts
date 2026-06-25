@@ -214,38 +214,38 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		return;
 	}
 
-	// 14. Run build commands \u2014 dev-mode variant preferred (D-35)
+	// 14. Run source-mode prepare \u2014 `install ?? build` (D-36), on demand
 	if (!opts.noBuild) {
 		for (const [name, component] of Object.entries(launch.components)) {
-			const build = component.commands?.["dev:build"] ?? component.commands?.build;
-			const cmd = build?.command ?? pm?.installCommand;
+			const prepare = component.commands?.install ?? component.commands?.build;
+			const cmd = prepare?.command ?? pm?.installCommand;
 			if (cmd) {
-				console.log(`  \u2193 Building${componentNames.length > 1 ? ` [${name}]` : ""}...`);
+				console.log(`  \u2193 Preparing${componentNames.length > 1 ? ` [${name}]` : ""}...`);
 				await shell(cmd, {
-					cwd: projectDir,
+					cwd: join(projectDir, component.source ?? component.build?.context ?? "."),
 					env: allEnvs[name],
-					// Builds (installs + compiles) routinely exceed the 2-minute
-					// shell default; honor a declared timeout, else allow 10 minutes.
-					timeout: build?.timeout ? parseDuration(build.timeout) : 600_000,
+					// Installs/compiles routinely exceed the 2-minute shell default;
+					// honor a declared timeout, else allow 10 minutes.
+					timeout: prepare?.timeout ? parseDuration(prepare.timeout) : 600_000,
 				});
 			}
 		}
 	}
 
-	// 15. Run release commands (migrations) \u2014 dev-mode variant preferred (D-35)
+	// 15. Run release commands (migrations) \u2014 mode-invariant (D-36)
 	for (const [name, component] of Object.entries(launch.components)) {
-		const release = component.commands?.["dev:release"] ?? component.commands?.release;
+		const release = component.commands?.release;
 		if (release?.command) {
 			console.log(`  \u2193 Running release${componentNames.length > 1 ? ` [${name}]` : ""}...`);
 			await shell(release.command, {
-				cwd: projectDir,
+				cwd: join(projectDir, component.source ?? component.build?.context ?? "."),
 				env: allEnvs[name],
 				timeout: release.timeout ? parseDuration(release.timeout) : undefined,
 			});
 		}
 	}
 
-	// 16. Start all components \u2014 `dev` preferred over `start` (D-35)
+	// 16. Run components from source \u2014 `dev` over `start` (D-36; this provider ignores `image`)
 	process.stdout.write(`  \u2193 Starting services...`);
 	const pm2 = new ProcessManager(projectDir);
 
@@ -259,7 +259,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		pm2.register(name, {
 			command: startCmd,
 			env: { ...process.env as Record<string, string>, ...allEnvs[name] },
-			cwd: projectDir,
+			cwd: join(projectDir, component.source ?? component.build?.context ?? "."),
 			dependsOn: component.depends_on,
 			health: component.health,
 			port: componentPorts[name],
