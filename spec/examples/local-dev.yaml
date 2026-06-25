@@ -1,8 +1,8 @@
 # yaml-language-server: $schema=../schema/launchfile.schema.json
 #
-# Minimal local-dev Launchfile — no container, no provisioning.
-# `launchfile up .` runs commands.build then commands.dev (the dev-mode
-# start command — see SPEC.md § Dev-mode commands).
+# Minimal source-mode Launchfile — no container, no provisioning.
+# `launchfile dev .` runs commands.install (on demand) then commands.dev.
+# (A file with only `build` + `start` works too — see SPEC.md § Source-mode commands.)
 #
 # Swap the commands for any runtime:
 #   runtime: node   with "npm install" / "npm run dev"
@@ -12,5 +12,5 @@
 name: my-app
 runtime: bun
 commands:
-  build: "bun install"
+  install: "bun install"
   dev: "bun run dev"

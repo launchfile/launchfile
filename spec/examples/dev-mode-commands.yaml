@@ -1,30 +1,34 @@
 # yaml-language-server: $schema=../schema/launchfile.schema.json
 #
-# Example: dev-mode command variants.
+# Example: source-mode commands (install / dev).
 #
-# Lifecycle commands run in the context of the built artifact — but a
-# dev-mode launch (running the app from source on a developer machine) is a
-# different execution context: the artifact's entrypoint may be a compiled
-# binary that doesn't exist in the source tree, and the source tree has dev
-# affordances (hot reload, repo-local CLIs, project-local state) the
-# artifact doesn't.
+# Lifecycle commands run in the context of the built artifact — but running
+# the app from source on a developer machine is a different execution
+# context: the artifact's entrypoint may be a compiled binary that doesn't
+# exist in the source tree, and the source tree has dev affordances (hot
+# reload, repo-local CLIs) the artifact doesn't.
 #
-# `dev` declares the dev-mode start command; `dev:<stage>` keys declare
-# dev-mode variants of the other stages. Dev-mode providers resolve each
-# stage as `dev:<stage> ?? <stage>`; artifact providers ignore `dev` and
-# all `dev:*` keys. A file declaring only `start` still works in dev mode —
-# apps pay nothing until their commands actually diverge.
+# Only prepare and run are mode-aware: `install` is the source-mode pair of
+# `build`, and `dev` is the source-mode pair of `start`. `release`,
+# `bootstrap`, `seed`, and `test` are mode-invariant — the same command runs
+# in both modes. `launchfile up` runs the artifact (build/image + start);
+# `launchfile dev` runs from source (install ?? build, then dev), ignoring
+# the image. Artifact providers ignore `install` and `dev`.
 #
-# See also: spec/SPEC.md § Dev-mode commands, spec/DESIGN.md D-35.
+# See also: spec/SPEC.md § Source-mode commands, spec/DESIGN.md D-36.
 
 version: launch/v1
 name: my-app
 
 runtime: bun
 
-# Artifact: multi-stage image build compiles the server binary + web assets
+# Artifact: multi-stage image build compiles the server binary + web assets.
 build:
   dockerfile: ./Dockerfile
+
+# Working directory for source-mode commands (install/dev). Defaults to
+# build.context, then the repo root.
+source: .
 
 provides:
   - protocol: http
@@ -43,22 +47,18 @@ env:
 health: /health
 
 commands:
-  # --- Artifact context (image) -------------------------------------------
-  # No `start`: the image ENTRYPOINT starts the app. The admin CLI is on the
-  # image PATH and uses the container's data volume.
-  bootstrap:
-    command: "my-app-cli create-admin --url $app.url --data-dir /data"
-    capture:
-      invite_link:
-        pattern: "(https?://\\S+/invite/\\S+)"
-        description: "One-time admin invite link"
-        sensitive: true
+  # --- Mode-aware: prepare + run ------------------------------------------
+  install: "bun install"      # source prepare (pairs with build)
+  # No `start`: the artifact image ENTRYPOINT starts the app.
+  dev: "bun run dev"          # source run (pairs with start)
 
-  # --- Dev mode (run from source) -----------------------------------------
-  dev: "bun run dev"
-  dev:build: "bun install && bun run codegen"
-  dev:bootstrap:
-    command: "bin/my-app-cli create-admin --url $app.url --data-dir .launchfile/data"
+  # --- Mode-invariant ------------------------------------------------------
+  # The same command runs from source or artifact. The CLI resolves on the
+  # provider's PATH (a repo-local bin from source, the image PATH from the
+  # artifact); a data dir that differs by mode belongs in storage:/env, not
+  # in the command.
+  bootstrap:
+    command: "my-app-cli create-admin --url $app.url"
     capture:
       invite_link:
         pattern: "(https?://\\S+/invite/\\S+)"

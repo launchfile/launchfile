@@ -146,7 +146,7 @@ validate → build → publish → provision → release → start → (bootstra
 Key properties to preserve:
 
 - **The Launchfile does not change between local and cloud.** Everything provider-specific (region, instance size, registry) lives in provider config (`--provider`, `--target`, `~/.launchfile/config.yaml`), never in the Launchfile (P-1, P-5).
-- **`dev` / `dev:*` commands are ignored entirely** — cloud providers execute the artifact (D-35).
+- **`install` / `dev` commands are ignored entirely** — cloud providers execute the artifact (D-36).
 - **Secrets**: `generator:` secrets are created in the platform's secret store on first deploy and persist across deploys, mirroring how local providers persist them in state.
 - **Builds are remote by default.** The user's machine never needs the toolchain; this is the same trust posture as the containerized local build, lifted to the platform.
 
