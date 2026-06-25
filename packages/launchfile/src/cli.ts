@@ -61,7 +61,8 @@ const noColor =
 const HELP = `launchfile — describe your app, deploy it anywhere
 
 Usage:
-  launchfile up [slug|path]          Start an app (Docker or native)
+  launchfile up [slug|path]          Start an app as a built artifact (Docker)
+  launchfile dev [path]              Run an app from source (install/dev, native)
   launchfile down [id|slug]          Stop a deployment
   launchfile status [id|slug]        Show deployment status
   launchfile logs [id|slug]          View logs
@@ -108,6 +109,18 @@ async function main(): Promise<void> {
 			await handleUp(target, {
 				docker: hasFlag("docker"),
 				native: hasFlag("native"),
+				detach: hasFlag("detach"),
+				dryRun: hasFlag("dry-run"),
+				name: getFlagValue("name"),
+			});
+			break;
+
+		case "dev":
+			// Source mode (D-36): run from source via install/dev. Forces the
+			// native provider, which resolves `install ?? build` (prepare) and
+			// `dev ?? start` (run) in the component's `source` directory.
+			await handleUp(target, {
+				native: true,
 				detach: hasFlag("detach"),
 				dryRun: hasFlag("dry-run"),
 				name: getFlagValue("name"),
