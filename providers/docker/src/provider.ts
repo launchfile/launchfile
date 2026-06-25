@@ -5,7 +5,7 @@
 import { writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { readLaunch } from "@launchfile/sdk";
-import { checkPrereqs } from "./prereqs.js";
+import { checkPrereqs, composeSupportsIgnoreBuildable } from "./prereqs.js";
 import { resolveSource } from "./source-resolver.js";
 import {
 	loadState,
@@ -19,7 +19,7 @@ import {
 } from "./state.js";
 import { allocatePorts } from "./port-allocator.js";
 import { launchToCompose } from "./compose-generator.js";
-import { shell } from "./shell.js";
+import { shell, shellStream } from "./shell.js";
 import { getLogger, withSpan } from "./logger.js";
 import { readdir } from "node:fs/promises";
 
@@ -30,7 +30,22 @@ export interface DockerUpOpts {
 	yes?: boolean;
 }
 
-export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise<void> {
+/**
+ * Identity + source information for a docker deployment, returned to the
+ * caller so the unified CLI keys its deployment index by the SAME slug the
+ * docker provider uses (#48), and can re-locate the Launchfile later (#25).
+ */
+export interface DockerUpResult {
+	slug: string;
+	appName: string;
+	sourceType: "local" | "catalog" | "url";
+	/** Absolute Launchfile path for local sources; undefined otherwise. */
+	sourcePath?: string;
+	/** Original URL for url sources; undefined otherwise. */
+	sourceUrl?: string;
+}
+
+export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise<DockerUpResult> {
 	// Resolve source before the span so we have the slug for span context
 	const resolved = await resolveSource(source);
 
@@ -61,10 +76,14 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 			const images = componentNames
 				.map((name) => launch.components[name]?.image)
 				.filter(Boolean) as string[];
+			const buildComponents = componentNames.filter(
+				(name) => launch.components[name]?.build,
+			);
 
 			console.log(`  App: ${launch.name} (${resolved.slug})`);
 			if (resources.length) console.log(`  Resources: ${resources.join(", ")}`);
 			if (images.length) console.log(`  Images: ${images.join(", ")}`);
+			if (buildComponents.length) console.log(`  Builds from source: ${buildComponents.join(", ")}`);
 			console.log("");
 
 			const confirmed = await confirm("  Proceed? [Y/n] ");
@@ -74,10 +93,24 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 			}
 		}
 
+		// Persisted source info (#25): records where the Launchfile came from
+		// so bootstrap/inspect can re-read it independent of the caller's cwd.
+		const sourceInfo = {
+			sourceType: resolved.source,
+			sourcePath: resolved.source === "local" ? resolved.path : undefined,
+			sourceUrl: resolved.source === "url" ? resolved.url : undefined,
+		};
+
 		// Load or init state
 		let state = await loadState(resolved.slug);
 		if (!state) {
-			state = initState(resolved.slug, launch.name, resolved.yaml);
+			state = initState(resolved.slug, launch.name, resolved.yaml, sourceInfo);
+		} else {
+			// Backfill/refresh source info on existing state (older state files
+			// predate these fields; a re-`up` from a new location updates them).
+			state.sourceType = sourceInfo.sourceType;
+			state.sourcePath = sourceInfo.sourcePath;
+			state.sourceUrl = sourceInfo.sourceUrl;
 		}
 		await ensureStateDir(resolved.slug);
 
@@ -88,6 +121,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		const result = launchToCompose(launch, {
 			secrets: state.secrets,
 			hostPorts,
+			projectDir: resolved.dir,
 		});
 
 		// Log warnings
@@ -100,11 +134,19 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		state.secrets = result.secrets;
 		state.ports = result.ports;
 
+		const upResult: DockerUpResult = {
+			slug: resolved.slug,
+			appName: launch.name,
+			sourceType: sourceInfo.sourceType,
+			sourcePath: sourceInfo.sourcePath,
+			sourceUrl: sourceInfo.sourceUrl,
+		};
+
 		if (opts.dryRun) {
 			console.log("\n--- docker-compose.yml ---\n");
 			console.log(result.yaml);
 			printSummary(launch.name, result.ports);
-			return;
+			return upResult;
 		}
 
 		// Write compose file
@@ -120,19 +162,43 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		const project = composeProject(resolved.slug);
 		const composeFile = composePath(resolved.slug);
 
-		// Pull images — one step per image for progress visibility
-		await withSpan("up:pull", { images: result.images }, async () => {
-			for (const img of result.images) {
+		// Pull images for services that don't build from source
+		if (result.images.length > 0) {
+			await withSpan("up:pull", { images: result.images }, async () => {
 				const t0 = Date.now();
-				process.stdout.write(`  \u2193 Pulling ${img} image...`);
-				await shell("docker", ["compose", "-p", project, "-f", composeFile, "pull", "--quiet"], {
+				process.stdout.write(`  \u2193 Pulling ${result.images.join(", ")}...`);
+				const pullArgs = ["compose", "-p", project, "-f", composeFile, "pull", "--quiet"];
+				// Don't try to pull images that compose will build locally.
+				// --ignore-buildable needs Compose >= 2.18; older installs get
+				// --ignore-pull-failures so locally-built tags don't abort the pull.
+				if (result.builds.length > 0) {
+					pullArgs.push((await composeSupportsIgnoreBuildable()) ? "--ignore-buildable" : "--ignore-pull-failures");
+				}
+				await shell("docker", pullArgs, {
 					timeout: 300_000,
 					silent: true,
 				});
 				const sec = Math.round((Date.now() - t0) / 1000);
 				console.log(` done (${sec}s)`);
-			}
-		});
+			});
+		}
+
+		// Build images for services with a build: config. Source builds run
+		// inside docker build — nothing from the repo executes on the host.
+		if (result.builds.length > 0) {
+			await withSpan("up:build", { services: result.builds }, async () => {
+				const t0 = Date.now();
+				console.log(`  \u2193 Building from source: ${result.builds.join(", ")} (this can take a few minutes)`);
+				// One invocation builds all services concurrently under BuildKit
+				// with a shared layer cache; output streams so the user sees
+				// progress instead of silence (and no maxBuffer ceiling).
+				await shellStream("docker", ["compose", "-p", project, "-f", composeFile, "build", ...result.builds], {
+					timeout: 1_800_000,
+				});
+				const sec = Math.round((Date.now() - t0) / 1000);
+				console.log(`  \u2713 Built ${result.builds.join(", ")} (${sec}s)`);
+			});
+		}
 
 		// Configure resources (if any)
 		const resources = componentNames.flatMap((name) => {
@@ -168,6 +234,8 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 
 		// Print summary
 		printSummary(launch.name, result.ports);
+
+		return upResult;
 	});
 }
 

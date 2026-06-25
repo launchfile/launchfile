@@ -22,6 +22,31 @@ const COLORS = [
 ];
 const RESET = "\x1b[0m";
 
+/**
+ * Signal a detached child's whole process group (negative pid). Falls back to
+ * signaling just the child handle if the group signal fails (e.g. the group is
+ * already gone). Best-effort: swallows ESRCH so shutdown stays idempotent.
+ */
+function killGroupOrSelf(
+	proc: ChildProcess | undefined,
+	pid: number | undefined,
+	signal: NodeJS.Signals,
+): void {
+	if (pid !== undefined) {
+		try {
+			process.kill(-pid, signal);
+			return;
+		} catch {
+			// Group gone or not a group leader — fall through to handle kill.
+		}
+	}
+	try {
+		proc?.kill(signal);
+	} catch {
+		// Already exited.
+	}
+}
+
 interface ManagedProcess {
 	name: string;
 	command: string;
@@ -31,7 +56,17 @@ interface ManagedProcess {
 	health?: NormalizedHealth;
 	port?: number;
 	process?: ChildProcess;
+	/** ISO timestamp captured right after a successful spawn (for pid identity). */
+	startedAt?: string;
 	status: "pending" | "starting" | "running" | "healthy" | "failed" | "stopped";
+}
+
+/** A spawned component process recorded for cross-session shutdown. */
+export interface RecordedProcessInfo {
+	pid: number;
+	pgid: number;
+	startedAt: string;
+	command: string;
 }
 
 export class ProcessManager {
@@ -108,15 +143,20 @@ export class ProcessManager {
 		const maxNameLen = Math.max(...[...this.processes.keys()].map((n) => n.length));
 		const paddedName = name.padEnd(maxNameLen);
 
+		// `detached: true` makes the child the leader of a new process group
+		// (pgid === pid). That lets `launch down` signal the whole group later via
+		// a negative pid, killing the app AND any children it spawned — matching
+		// the foreground SIGINT behavior across sessions. We still keep the handle
+		// so the foreground session can kill it directly on Ctrl+C.
 		proc.process = spawn("sh", ["-c", proc.command], {
 			env: { ...process.env, ...proc.env },
 			cwd: proc.cwd,
 			stdio: ["ignore", "pipe", "pipe"],
-			// Own process group, so shutdown can signal the whole tree. Without
-			// this, SIGTERM hits the `sh -c` wrapper and the actual app process
-			// survives as an orphan.
 			detached: true,
 		});
+		if (proc.process.pid !== undefined) {
+			proc.startedAt = new Date().toISOString();
+		}
 
 		// Pipe stdout with prefix
 		proc.process.stdout?.on("data", (data: Buffer) => {
@@ -175,20 +215,11 @@ export class ProcessManager {
 				return;
 			}
 
-			// Signal the process group (negative pid) so the `sh -c` wrapper's
-			// children die too; fall back to the direct pid if the group is gone.
-			const signalTree = (signal: NodeJS.Signals) => {
-				const pid = proc.process?.pid;
-				if (!pid) return;
-				try {
-					process.kill(-pid, signal);
-				} catch {
-					proc.process?.kill(signal);
-				}
-			};
+			const pid = proc.process.pid;
 
 			const timeout = setTimeout(() => {
-				signalTree("SIGKILL");
+				// Escalate to the whole group so stray children die too.
+				killGroupOrSelf(proc.process, pid, "SIGKILL");
 			}, 10_000);
 
 			proc.process.once("exit", () => {
@@ -197,7 +228,9 @@ export class ProcessManager {
 				resolve();
 			});
 
-			signalTree("SIGTERM");
+			// Children are spawned detached (own process group), so signal the
+			// group (negative pid) to reap any grandchildren too.
+			killGroupOrSelf(proc.process, pid, "SIGTERM");
 		});
 	}
 
@@ -244,6 +277,26 @@ export class ProcessManager {
 		}
 
 		return batches;
+	}
+
+	/**
+	 * Snapshot the live, spawned processes for persistence to state.json.
+	 * Only includes components that actually spawned (have a pid). Because we
+	 * spawn detached, the child is its own group leader, so pgid === pid.
+	 */
+	getRecordedProcesses(): Record<string, RecordedProcessInfo> {
+		const out: Record<string, RecordedProcessInfo> = {};
+		for (const [name, proc] of this.processes) {
+			const pid = proc.process?.pid;
+			if (pid === undefined || proc.startedAt === undefined) continue;
+			out[name] = {
+				pid,
+				pgid: pid,
+				startedAt: proc.startedAt,
+				command: proc.command,
+			};
+		}
+		return out;
 	}
 
 	/** Get status summary for all processes */

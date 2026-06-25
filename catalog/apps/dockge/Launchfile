@@ -17,4 +17,5 @@ storage:
   data:
     path: /app/data
     persistent: true
+health: /
 restart: always

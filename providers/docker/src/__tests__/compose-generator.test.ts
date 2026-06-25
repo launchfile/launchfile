@@ -219,6 +219,39 @@ env:
 		expect(result.yaml).toContain("CALLBACK: http://localhost:10043/oauth/callback");
 	});
 
+	it("resolves $app.authority, $app.scheme, and $app.tls (D-35) — the HedgeDoc shape", () => {
+		const launch = readLaunch(`
+name: hedge-like
+image: nginx
+provides:
+  - port: 3000
+    protocol: http
+    exposed: true
+env:
+  CMD_DOMAIN: $app.authority
+  CMD_PROTOCOL_USESSL: $app.tls
+  SCHEME: $app.scheme
+`);
+		const result = launchToCompose(launch, { hostPorts: { default: 49200 } });
+		// Without these, an empty CMD_DOMAIN makes the app emit an invalid CSP
+		// and the page renders unstyled — the gap this fix closes.
+		expect(result.yaml).toContain("CMD_DOMAIN: localhost:49200");
+		expect(result.yaml).toContain('CMD_PROTOCOL_USESSL: "false"');
+		expect(result.yaml).toContain("SCHEME: http");
+	});
+
+	it("leaves $app.authority/scheme/tls empty for an app with no exposed component", () => {
+		const launch = readLaunch(`
+name: worker
+image: nginx
+env:
+  CMD_DOMAIN: "[\${app.authority}]"
+`);
+		const result = launchToCompose(launch);
+		// No exposed port → empty url → empty authority; resolves to "" not undefined.
+		expect(result.yaml).toContain('CMD_DOMAIN: "[]"');
+	});
+
 	it("falls back to the declared container port when no host port override is given", () => {
 		const launch = readLaunch(`
 name: ghost-like
@@ -282,5 +315,90 @@ secrets:
 		expect(result.secrets["session-id"]).toMatch(
 			/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
 		);
+	});
+});
+
+describe("compose-generator build support", () => {
+	it("emits a build config for components with build:, resolved against projectDir", () => {
+		const launch = readLaunch(`
+name: srcapp
+build:
+  dockerfile: Dockerfile
+provides:
+  - protocol: http
+    port: 9999
+    exposed: true
+`);
+		const result = launchToCompose(launch, { projectDir: "/repos/srcapp" });
+
+		expect(result.warnings).toHaveLength(0);
+		expect(result.builds).toEqual(["srcapp"]);
+		expect(result.images).toHaveLength(0); // nothing to pull
+		expect(result.yaml).toContain("context: /repos/srcapp");
+		expect(result.yaml).toContain("dockerfile: Dockerfile");
+	});
+
+	it("uses image: as the tag for the built artifact when both are present", () => {
+		const launch = readLaunch(`
+name: srcapp
+build: "."
+image: srcapp:dev
+`);
+		const result = launchToCompose(launch, { projectDir: "/repos/srcapp" });
+
+		expect(result.builds).toEqual(["srcapp"]);
+		// The image is a tag for the build output, not something to pull
+		expect(result.images).toHaveLength(0);
+		expect(result.yaml).toContain("image: srcapp:dev");
+	});
+
+	it("passes remote git contexts through untouched", () => {
+		const launch = readLaunch(`
+name: remoteapp
+build:
+  context: https://github.com/example/app.git
+`);
+		const result = launchToCompose(launch);
+
+		expect(result.builds).toEqual(["remoteapp"]);
+		expect(result.yaml).toContain("context: https://github.com/example/app.git");
+	});
+
+	it("skips relative build contexts when the source is not local", () => {
+		const launch = readLaunch(`
+name: srcapp
+build: "."
+`);
+		const result = launchToCompose(launch); // no projectDir
+
+		expect(result.builds).toHaveLength(0);
+		expect(result.warnings.some((w) => w.includes("not local"))).toBe(true);
+	});
+
+	it("warns that build secrets are not supported", () => {
+		const launch = readLaunch(`
+name: srcapp
+build:
+  context: "."
+  secrets: [npm-token]
+`);
+		const result = launchToCompose(launch, { projectDir: "/repos/srcapp" });
+
+		expect(result.warnings.some((w) => w.includes("build secrets"))).toBe(true);
+	});
+
+	it("resolves build args and target", () => {
+		const launch = readLaunch(`
+name: srcapp
+build:
+  context: "."
+  target: runtime
+  args:
+    NODE_ENV: production
+`);
+		const result = launchToCompose(launch, { projectDir: "/repos/srcapp" });
+
+		expect(result.yaml).toContain("target: runtime");
+		expect(result.yaml).toContain("NODE_ENV: production");
 	});
 });

@@ -106,3 +106,57 @@ describe("resolveSource", () => {
 		});
 	});
 });
+
+describe("resolveSource local directories", () => {
+	it("accepts a project directory and finds the Launchfile inside it", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "lf-dir-"));
+		try {
+			writeFileSync(join(dir, "Launchfile"), "name: dirapp\nimage: nginx\n");
+			const result = await resolveSource(dir);
+
+			expect(result.source).toBe("local");
+			expect(result.slug).toBe("dirapp");
+			expect(result.dir).toBe(dir);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("returns the containing directory for a Launchfile path", async () => {
+		const result = await resolveSource(join(CATALOG_DIR, "apps/ghost/Launchfile"));
+		expect(result.dir).toBe(join(CATALOG_DIR, "apps/ghost"));
+	});
+});
+
+describe("resolveSource identity (#48)", () => {
+	it("derives the slug from the Launchfile name:, not the directory basename", async () => {
+		// Directory is "myrepo" but the Launchfile declares name: cool-app.
+		// The provider keys state by the name-derived slug; the unified CLI must
+		// key its index entry by the SAME value or bootstrap/down can't find it.
+		const root = mkdtempSync(join(tmpdir(), "lf-identity-"));
+		try {
+			const dir = join(root, "myrepo");
+			mkdirSync(dir, { recursive: true });
+			writeFileSync(join(dir, "Launchfile"), "name: cool-app\nimage: nginx\n");
+
+			const result = await resolveSource(dir);
+			expect(result.slug).toBe("cool-app");
+			expect(result.slug).not.toBe("myrepo");
+			// Persisted source path points at the actual Launchfile (#25).
+			expect(result.path).toBe(join(dir, "Launchfile"));
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("resolveSource directory without Launchfile", () => {
+	it("throws a helpful error naming the directory", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "lf-empty-"));
+		try {
+			await expect(resolveSource(dir)).rejects.toThrow(/No Launchfile found in/);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});

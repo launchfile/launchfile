@@ -14,4 +14,5 @@ storage:
   data:
     path: /home/node/trilium-data
     persistent: true
+health: /
 restart: always

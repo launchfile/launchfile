@@ -1,7 +1,12 @@
 # yaml-language-server: $schema=https://launchfile.dev/schema/v1
+# Build-from-source variant (HedgeDoc 2.x). Parked alongside the verified
+# image-based draft in ../hedgedoc/ while the 2.x line stabilizes. The build
+# context is the upstream repository's `develop` branch (HedgeDoc 2.x is not
+# yet released as an image).
 version: launch/v1
 name: hedgedoc
 description: "Collaborative markdown editor"
+repository: https://github.com/hedgedoc/hedgedoc
 
 components:
   backend:

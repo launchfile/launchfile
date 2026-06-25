@@ -9,13 +9,20 @@
 
 import { readFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 export interface ResolvedSource {
 	yaml: string;
 	slug: string;
 	source: "local" | "catalog" | "url";
+	/** Project directory for local sources — `build:` contexts resolve against this */
+	dir?: string;
+	/** Absolute path to the Launchfile for local sources — persisted so
+	 * post-launch ops can re-read it without depending on cwd (#25). */
+	path?: string;
+	/** Original URL for `url` sources, so it can be re-fetched later. */
+	url?: string;
 }
 
 // Security: cap remote Launchfile size to prevent memory exhaustion.
@@ -50,10 +57,20 @@ export async function resolveSource(input: string): Promise<ResolvedSource> {
 }
 
 async function readLocal(path: string): Promise<ResolvedSource> {
-	const resolved = resolve(path);
+	let resolved = resolve(path);
+	// Accept a project directory — look for the Launchfile inside it.
+	if (existsSync(resolved) && statSync(resolved).isDirectory()) {
+		const inDir = join(resolved, "Launchfile");
+		if (!existsSync(inDir)) {
+			throw new Error(
+				`No Launchfile found in ${resolved}. Create a file named "Launchfile" (no extension) or pass its path directly.`,
+			);
+		}
+		resolved = inDir;
+	}
 	const yaml = await readFile(resolved, "utf8");
 	const slug = inferSlug(resolved, yaml);
-	return { yaml, slug, source: "local" };
+	return { yaml, slug, source: "local", dir: dirname(resolved), path: resolved };
 }
 
 /**
@@ -108,7 +125,7 @@ async function fetchFromUrl(url: string): Promise<ResolvedSource> {
 		throw new Error(`Remote Launchfile exceeds maximum size (${MAX_REMOTE_SIZE} bytes)`);
 	}
 	const slug = inferSlugFromUrl(url, yaml);
-	return { yaml, slug, source: "url" };
+	return { yaml, slug, source: "url", url };
 }
 
 /** Reasonable ceiling for a slug-like string. Anything longer is rejected

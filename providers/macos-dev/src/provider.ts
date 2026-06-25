@@ -24,6 +24,7 @@ import { getRuntimeInstaller } from "./runtimes/index.js";
 import { detectPackageManager } from "./lockfile-detect.js";
 import { provisionStorage } from "./storage.js";
 import { ProcessManager } from "./process-manager.js";
+import { stopRecordedProcesses } from "./process-stopper.js";
 import { shell } from "./shell.js";
 import { parseDuration } from "./bootstrap.js";
 
@@ -266,10 +267,14 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	}
 
 	// Handle Ctrl+C gracefully
+	const finalState = state;
 	process.on("SIGINT", async () => {
 		console.log("\n\nShutting down...");
 		await pm2.stopAll();
-		await saveState(projectDir, state!);
+		// Processes are now dead; clear the recorded pids so a later `launch down`
+		// doesn't try to signal stale (and possibly recycled) pids.
+		finalState.processes = {};
+		await saveState(projectDir, finalState);
 		process.exit(0);
 	});
 
@@ -277,10 +282,15 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	console.log("");
 	console.log(`  \u2713 All components started`);
 
+	// Record spawned pids so `launch down` can stop them from another shell or
+	// after this foreground session ends (closes #49). Backward compatible: the
+	// field is optional and absent in pre-existing state files.
+	state.processes = pm2.getRecordedProcesses();
+
 	// 17. Print summary
 	printSummary(launch, componentPorts, resourceMap);
 
-	// Save final state
+	// Save final state (now including recorded pids)
 	await saveState(projectDir, state);
 }
 
@@ -305,6 +315,36 @@ export async function launchDown(opts: { destroy?: boolean; projectDir?: string 
 		return;
 	}
 
+	// Stop recorded app processes (closes #49). Backward compatible: state files
+	// written before pid persistence simply have no `processes`, so we skip this
+	// and behave exactly as before (resources-only down).
+	const recorded = state.processes ?? {};
+	if (Object.keys(recorded).length > 0) {
+		console.log("Stopping app processes...");
+		const outcomes = await stopRecordedProcesses(recorded);
+		for (const o of outcomes) {
+			switch (o.result) {
+				case "stopped":
+					console.log(`  Stopped ${o.component}`);
+					break;
+				case "already-dead":
+					console.log(`  ${o.component} was not running`);
+					break;
+				case "identity-mismatch":
+					console.log(`  Skipped ${o.component} (pid recycled — left untouched)`);
+					break;
+				case "error":
+					console.log(`  Failed to stop ${o.component}: ${o.error}`);
+					break;
+			}
+		}
+		// Clear recorded pids now that we've handled them.
+		state.processes = {};
+		if (!opts.destroy) {
+			await saveState(projectDir, state);
+		}
+	}
+
 	if (opts.destroy) {
 		console.log("Destroying resources...");
 		for (const [name, resourceState] of Object.entries(state.resources)) {
@@ -323,6 +363,12 @@ export async function launchDown(opts: { destroy?: boolean; projectDir?: string 
 		console.log("Stopped. Resources are still running (use --destroy to remove them).");
 	}
 }
+
+// --detach is intentionally left as a follow-up: persisting pids (this PR) is
+// the prerequisite for it. With pids now recorded and a working cross-session
+// `down`, detach becomes "spawn detached + unref + don't install the SIGINT
+// foreground loop, then return" — a self-contained change best done separately
+// so the kill-path fix lands reviewable on its own.
 
 export async function launchStatus(opts: { projectDir?: string } = {}): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();

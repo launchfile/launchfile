@@ -31,4 +31,5 @@ env:
   URL:
     required: true
     description: "Public-facing URL of the Outline instance"
+health: /_health
 restart: always

@@ -39,6 +39,7 @@ const TIERS: Record<number, { name: string; apps: string[] }> = {
       "redmine",
       "mattermost",
       "vaultwarden",
+      "hedgedoc",
     ],
   },
   2: {
@@ -77,7 +78,7 @@ const TIERS: Record<number, { name: string; apps: string[] }> = {
   // Skipped: home-assistant (multicast/device), pihole (host networking),
   // plex (claim token), diun (docker socket), calibre-web (host bind mount),
   // ollama-openwebui (GPU), jellyfin (/dev/dri), duplicati (host bind mount),
-  // syncthing (host bind mount), hedgedoc (build only, no image)
+  // syncthing (host bind mount)
 };
 
 // --- CLI args ---

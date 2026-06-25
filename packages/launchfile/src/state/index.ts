@@ -74,6 +74,20 @@ export async function removeDeployment(id: string): Promise<void> {
 	await saveIndex(index);
 }
 
+/**
+ * The slug the docker provider keyed its state under for this deployment (#48).
+ * Prefer the persisted `slug` (written at `up` time, identical to the
+ * provider's `inferSlug` result). Older index entries lack it — fall back to
+ * the legacy derivation: catalog source → slug after the `catalog:` prefix,
+ * otherwise the stored `appName`.
+ */
+export function dockerSlugFor(entry: DeploymentEntry): string {
+	if (entry.slug) return entry.slug;
+	return entry.sourceType === "catalog"
+		? entry.source.replace("catalog:", "")
+		: entry.appName;
+}
+
 /** Find a deployment by ID, name, app slug, or source directory */
 export function findDeployment(
 	index: DeploymentIndex,

@@ -19,4 +19,5 @@ storage:
   data:
     path: /zeroclaw-data
     persistent: true
+health: /
 restart: always

@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { parseExpression, resolveExpression, parseDotPath, isExpression } from "../resolver.js";
+import {
+	parseExpression,
+	resolveExpression,
+	parseDotPath,
+	isExpression,
+	deriveAppUrlProperties,
+} from "../resolver.js";
 
 /*---
 req: REQ-410
@@ -494,5 +500,52 @@ describe("resolveExpression — $app.* prefix (D-33)", () => {
 		expect(resolveExpression("$app.url", ctx)).toBe("https://my-app.example.com");
 		expect(resolveExpression("$host", ctx)).toBe("db");
 		expect(resolveExpression("$secrets.token", ctx)).toBe("abc123");
+	});
+});
+
+/*--- test-spec
+title: deriveAppUrlProperties derives the authority/scheme/tls trio (D-35)
+covers:
+  - $app.authority is the WHATWG URL host (includes non-default port)
+  - default port is omitted from authority
+  - $app.scheme and $app.tls track the URL scheme
+  - empty / invalid URL degrades to empty strings
+tags: [launch-spec, resolver, app-prefix, d-35]
+---*/
+describe("deriveAppUrlProperties (D-35)", () => {
+	it("derives authority with a non-default port (WHATWG URL.host)", () => {
+		expect(deriveAppUrlProperties("http://localhost:49200")).toEqual({
+			authority: "localhost:49200",
+			scheme: "http",
+			tls: "false",
+		});
+	});
+
+	it("omits the port from authority when it is the scheme default", () => {
+		expect(deriveAppUrlProperties("https://my-app.example.com")).toEqual({
+			authority: "my-app.example.com",
+			scheme: "https",
+			tls: "true",
+		});
+	});
+
+	it("reports tls=false for an explicit http URL", () => {
+		expect(deriveAppUrlProperties("http://my-app.example.com").tls).toBe("false");
+	});
+
+	it("degrades to empty strings for an empty URL (no exposed component)", () => {
+		expect(deriveAppUrlProperties("")).toEqual({ authority: "", scheme: "", tls: "" });
+	});
+
+	it("degrades to empty strings for an unparseable URL", () => {
+		expect(deriveAppUrlProperties("not a url")).toEqual({ authority: "", scheme: "", tls: "" });
+	});
+
+	// The derived trio plugs straight into the resolver as $app.* values.
+	it("feeds the resolver so $app.authority / $app.tls resolve end-to-end", () => {
+		const ctx = { app: { url: "http://localhost:49200", ...deriveAppUrlProperties("http://localhost:49200") } };
+		expect(resolveExpression("$app.authority", ctx)).toBe("localhost:49200");
+		expect(resolveExpression("$app.tls", ctx)).toBe("false");
+		expect(resolveExpression("$app.scheme", ctx)).toBe("http");
 	});
 });

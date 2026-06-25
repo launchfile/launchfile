@@ -21,12 +21,40 @@ export interface ResolverContext {
 	/** App-wide generated secrets (e.g., { "jwt-secret": "abc123" }) */
 	secrets?: Record<string, string>;
 	/**
-	 * Platform-injected app properties (D-33). Standard set: url, host, port,
-	 * name. Providers may expose additional properties as platform-specific
-	 * extensions. The provider populates this from its routing strategy at
-	 * deploy time.
+	 * Platform-injected app properties (D-33, D-35). Standard set: url, host,
+	 * port, name, authority, scheme, tls. Providers may expose additional
+	 * properties as platform-specific extensions. The provider populates this
+	 * from its routing strategy at deploy time — see {@link deriveAppUrlProperties}
+	 * for the authority/scheme/tls trio.
 	 */
 	app?: Record<string, string | number>;
+}
+
+/**
+ * Derive the URL-shaped members of the standard `$app.*` set (D-35) from a
+ * resolved public URL: `authority` (WHATWG URL `host` — hostname plus port,
+ * port omitted when it's the default for the scheme), `scheme` (`http`/`https`),
+ * and `tls` (the string `"true"` when https, else `"false"`).
+ *
+ * A provider computes `$app.url` for its routing strategy, then spreads this to
+ * get the split-field tokens for free, keeping a single definition consistent
+ * with the spec. An empty or unparseable URL (e.g. an app with no exposed
+ * component) yields empty strings, so the tokens degrade to "" like any other
+ * unresolved `$app.*` property.
+ */
+export function deriveAppUrlProperties(
+	url: string,
+): { authority: string; scheme: string; tls: string } {
+	try {
+		const u = new URL(url);
+		return {
+			authority: u.host,
+			scheme: u.protocol.replace(/:$/, ""),
+			tls: u.protocol === "https:" ? "true" : "false",
+		};
+	} catch {
+		return { authority: "", scheme: "", tls: "" };
+	}
 }
 
 /** Result of parsing a set_env value */

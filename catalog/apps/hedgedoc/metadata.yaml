@@ -1,0 +1,19 @@
+category: Documents
+tagline: Collaborative markdown editor
+homepage: https://hedgedoc.org
+test_results:
+  last_tested: 2026-06-18
+  pull_time_seconds: 2
+  startup_time_seconds: 11
+  total_disk_mb: 290
+  health_check_passed: true
+  notes: ""
+images:
+  - name: quay.io/hedgedoc/hedgedoc:1.10.8
+    size_mb: 181
+    platform:
+      - linux/arm64
+  - name: postgres:16-alpine
+    size_mb: 109
+    platform:
+      - linux/arm64

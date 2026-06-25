@@ -1,0 +1,50 @@
+# yaml-language-server: $schema=https://launchfile.dev/schema/v1
+version: launch/v1
+name: hedgedoc
+description: "Collaborative markdown editor"
+repository: https://github.com/hedgedoc/hedgedoc
+
+components:
+  default:
+    image: quay.io/hedgedoc/hedgedoc:1.10.8
+    provides:
+      - protocol: http
+        port: 3000
+        exposed: true
+    requires:
+      - type: postgres
+        version: ">=9.6"
+        set_env:
+          CMD_DB_URL: $url
+    env:
+      # HedgeDoc builds absolute URLs for assets, scripts, CSP, and the
+      # collaboration websocket from its configured domain. It must match the
+      # address the browser actually used, or every asset 404s / is CSP-blocked
+      # and the editor websocket fails. $app.authority is host[:port] of the
+      # deployment's public URL; with CMD_URL_ADDPORT=false HedgeDoc uses it
+      # verbatim. CMD_PROTOCOL_USESSL tracks the deployment scheme via $app.tls.
+      CMD_DOMAIN:
+        default: $app.authority
+        description: "Public host[:port] HedgeDoc is served from"
+      CMD_PROTOCOL_USESSL:
+        default: $app.tls
+        description: "Whether the public URL is HTTPS"
+      CMD_URL_ADDPORT:
+        default: "false"
+        description: "Don't append the internal port — the authority already carries the public one"
+      CMD_ALLOW_ANONYMOUS:
+        default: "true"
+        description: "Allow anonymous note creation/editing"
+    storage:
+      uploads:
+        path: /hedgedoc/public/uploads
+        persistent: true
+    health:
+      # The hedgedoc image ships neither wget nor curl, so the default HTTP
+      # probe (wget/curl against health.path) can never run and the container
+      # would never go healthy. It does ship node, so probe /_health with a
+      # tiny node one-liner instead — exit 0 only on HTTP 200.
+      command: 'node -e ''require("http").get("http://localhost:3000/_health",r=>process.exit(r.statusCode===200?0:1)).on("error",()=>process.exit(1))'''
+      # First boot runs all DB migrations before the server listens; keep a
+      # generous start period so early probes don't burn the retry budget.
+      start_period: 90s
