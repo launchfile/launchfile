@@ -580,29 +580,38 @@ commands:
 	});
 });
 
-describe("dev-mode commands (D-35)", () => {
-	it("normalizes dev and dev:<stage> command keys", () => {
+describe("source-mode commands (D-36)", () => {
+	it("normalizes the install and dev command keys and the source field", () => {
 		const launch = readLaunch(`
 name: devapp
+source: ./apps/api
 commands:
-  start: "node server.js"
+  build: "docker build ."
+  install: "bun install"
+  start: "node dist/server.js"
   dev: "bun run dev"
-  "dev:build":
-    command: "bun install && bun run codegen"
-    timeout: "15m"
-  "dev:bootstrap":
-    command: "bin/cli create-admin --url $app.url"
-    capture:
-      invite_link:
-        pattern: "(https?://\\\\S+)"
-        sensitive: true
 `);
-		const commands = launch.components.default!.commands!;
+		const component = launch.components.default!;
+		expect(component.source).toBe("./apps/api");
+		const commands = component.commands!;
+		expect(commands.install).toEqual({ command: "bun install" });
 		expect(commands.dev).toEqual({ command: "bun run dev" });
-		expect(commands["dev:build"]).toMatchObject({
-			command: "bun install && bun run codegen",
-			timeout: "15m",
-		});
-		expect(commands["dev:bootstrap"]!.capture!.invite_link!.sensitive).toBe(true);
+		// release/bootstrap/seed/test are mode-invariant — no dev:<stage> variants
+		expect(commands["dev:build"]).toBeUndefined();
+	});
+
+	it("round-trips install/dev and source through write", () => {
+		const out = writeLaunch(
+			readLaunch(`
+name: devapp
+source: ./apps/api
+commands:
+  install: "bun install"
+  dev: "bun run dev"
+`),
+		);
+		expect(out).toContain("install: bun install");
+		expect(out).toContain("dev: bun run dev");
+		expect(out).toContain("source: ./apps/api");
 	});
 });

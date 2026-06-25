@@ -66,6 +66,7 @@ function denormalizeComponent(comp: NormalizedComponent): Record<string, unknown
 
 	const build = denormalizeBuild(comp.build);
 	if (build !== undefined) result.build = build;
+	if (comp.source) result.source = comp.source;
 
 	if (comp.provides?.length) result.provides = comp.provides;
 

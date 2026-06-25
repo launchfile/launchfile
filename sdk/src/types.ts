@@ -162,24 +162,30 @@ export interface Health {
 
 /** Lifecycle commands */
 export interface Commands {
-	/** Build stage — install deps, compile */
+	/** Build stage — install deps, compile (artifact prepare) */
 	build?: string | CommandDetail;
+	/**
+	 * Source-mode prepare — install deps / codegen when running from source (D-36).
+	 * The source-mode pair of `build`; a source launch runs `install ?? build` on
+	 * demand. Ignored by providers that execute the built artifact.
+	 */
+	install?: string | CommandDetail;
 	/** Release stage — migrations, cache clear, asset compilation */
 	release?: string | CommandDetail;
-	/** Run stage — start the application */
+	/** Run stage — start the application (artifact run) */
 	start?: string | CommandDetail;
 	/**
-	 * Dev-mode variant of start — run the app from source (D-35).
-	 * Preferred over `start` by dev-mode providers; ignored by providers
-	 * that execute the built artifact. Other stages take dev-mode variants
-	 * via `dev:<stage>` keys (dev:build, dev:release, dev:bootstrap, dev:seed, dev:test).
+	 * Source-mode run — run the app from source (D-36). The source-mode pair of
+	 * `start`; run precedence is `dev` > `image` > `start`. Ignored by providers
+	 * that execute the built artifact. Only prepare (`install`) and run (`dev`)
+	 * are mode-aware; release/bootstrap/seed/test are mode-invariant.
 	 */
 	dev?: string | CommandDetail;
 	/** Seed the database with initial data */
 	seed?: string | CommandDetail;
 	/** Run the test suite */
 	test?: string | CommandDetail;
-	/** Additional named commands, including dev-mode variants (`dev:<stage>`) */
+	/** Additional named commands */
 	[key: string]: string | CommandDetail | undefined;
 }
 
@@ -263,6 +269,8 @@ export interface Component {
 	image?: string;
 	/** Build configuration */
 	build?: string | Build;
+	/** Working directory for source-mode commands (install/dev); defaults to build.context, then repo root (D-36) */
+	source?: string;
 	/** What this component exposes */
 	provides?: Provides[];
 	/** Required resource dependencies */
@@ -320,6 +328,7 @@ export interface Launch {
 	runtime?: Runtime;
 	image?: string;
 	build?: string | Build;
+	source?: string;
 	provides?: Provides[];
 	requires?: Array<string | Requirement>;
 	supports?: Array<string | Support>;
@@ -397,6 +406,7 @@ export interface NormalizedComponent {
 	runtime?: Runtime;
 	image?: string;
 	build?: NormalizedBuild;
+	source?: string;
 	provides?: Provides[];
 	requires?: NormalizedRequirement[];
 	supports?: NormalizedRequirement[];
