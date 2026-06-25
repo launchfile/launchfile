@@ -60,6 +60,33 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const launch = readLaunch(launchfileContent);
 	const componentNames = Object.keys(launch.components);
 
+	// 2b. Source-mode guard (D-36) — fail fast before provisioning anything.
+	// This provider runs apps from source; a component is source-runnable only
+	// if it declares `dev` or `start`. If nothing is, the app is image-only and
+	// belongs on an artifact provider (`launchfile up`), not source mode.
+	const sourceRunnable = Object.entries(launch.components).filter(
+		([, c]) => c.commands?.dev || c.commands?.start,
+	);
+	if (sourceRunnable.length === 0) {
+		const hasImage = Object.values(launch.components).some((c) => c.image);
+		console.error("Nothing to run from source: no component declares a `dev` or `start` command.");
+		console.error(
+			hasImage
+				? "This app runs from an image — use `launchfile up` to launch the built artifact."
+				: "Add a `dev` (or `start`) command to run it from source.",
+		);
+		process.exit(1);
+	}
+	// Mixed app: warn about image-only components this (source) provider can't launch.
+	for (const [name, c] of Object.entries(launch.components)) {
+		if (!c.commands?.dev && !c.commands?.start && c.image) {
+			console.warn(
+				`  ! [${name}] runs from an image with no source command (dev/start) — ` +
+					"skipped in source mode; use `launchfile up` to run it as an artifact.",
+			);
+		}
+	}
+
 	// 3. Load or init state
 	let state = await loadState(projectDir);
 	if (!state) {
