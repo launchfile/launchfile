@@ -7,6 +7,7 @@ import {
 } from "../env-writer.js";
 import { resolveExpression, type NormalizedComponent, type NormalizedLaunch, type Secret } from "@launchfile/sdk";
 import type { ResourceProperties } from "../resources/types.js";
+import { storagePaths } from "../storage.js";
 
 const NO_APP: Record<string, string | number> = {};
 
@@ -209,6 +210,55 @@ describe("resolveComponentEnv", () => {
 		const env = resolveComponentEnv(component, context, resourceMap);
 
 		expect(env.DATABASE_URL).toBe("postgresql://real-url");
+	});
+
+	// D-39: the provider injects each volume's resolved local path as
+	// $storage.<name>.path. macos-dev resolves to .launchfile/storage/<comp>/<name>.
+	it("injects $storage.<name>.path from the provider storage map", () => {
+		const component: NormalizedComponent = {
+			env: {
+				STORAGE_DIR: { default: "$storage.data.path" },
+				MP_DATABASE: { default: "${storage.data.path}/mailpit.db" },
+			},
+		};
+		const context = buildResolverContext({}, {}, {}, NO_APP);
+		const storage = { data: { path: "/proj/.launchfile/storage/default/data" } };
+
+		const env = resolveComponentEnv(component, context, {}, storage);
+
+		expect(env.STORAGE_DIR).toBe("/proj/.launchfile/storage/default/data");
+		expect(env.MP_DATABASE).toBe("/proj/.launchfile/storage/default/data/mailpit.db");
+	});
+
+	it("leaves $storage.<name>.path empty when no storage map is passed", () => {
+		const component: NormalizedComponent = {
+			env: { STORAGE_DIR: { default: "$storage.data.path" } },
+		};
+		const context = buildResolverContext({}, {}, {}, NO_APP);
+
+		const env = resolveComponentEnv(component, context, {});
+
+		expect(env.STORAGE_DIR).toBe("");
+	});
+});
+
+describe("storagePaths (D-39)", () => {
+	it("maps each volume name to .launchfile/storage/<component>/<name>", () => {
+		const paths = storagePaths(
+			{
+				data: { path: "/usr/src/app/data", persistent: true },
+				cache: { path: "/usr/src/app/cache", persistent: false },
+			},
+			"web",
+			"/proj",
+		);
+		expect(paths.data).toBe("/proj/.launchfile/storage/web/data");
+		// non-persistent volumes live under tmp/, not storage/
+		expect(paths.cache).toBe("/proj/.launchfile/tmp/web/cache");
+	});
+
+	it("returns an empty map when the component declares no storage", () => {
+		expect(storagePaths(undefined, "web", "/proj")).toEqual({});
 	});
 });
 
