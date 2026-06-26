@@ -28,17 +28,6 @@ export interface ResolverContext {
 	 * for the authority/scheme/tls trio.
 	 */
 	app?: Record<string, string | number>;
-	/**
-	 * Provider-resolved storage properties (D-39) — home #3 of D-36's varying
-	 * value litmus. Keyed by the volume name declared in `storage:`. Each volume
-	 * exposes `path`: the filesystem path the provider actually provisioned for
-	 * that volume — the declared container path under a container provider, a
-	 * host directory under a native provider. The provider populates this from
-	 * its storage strategy at deploy time. Reserved namespace, checked before
-	 * user-named resources; unknown volume/property resolves to undefined (caller
-	 * falls back to "" or `:-default`), matching `$app.*` (see {@link ResolverContext.app}).
-	 */
-	storage?: Record<string, Record<string, string>>;
 }
 
 /**
@@ -268,9 +257,8 @@ export function parseDotPath(path: string): string[] {
  * 1. Starts with "app" → platform-injected app property (reserved namespace, D-33)
  * 2. Starts with "secrets" → app-wide secret lookup
  * 3. Starts with "components" → component lookup
- * 4. Starts with "storage" → provider-resolved storage property (reserved namespace, D-39)
- * 5. Single segment → enclosing resource property
- * 6. Multi-segment → first segment is resource name, rest is property
+ * 4. Single segment → enclosing resource property
+ * 5. Multi-segment → first segment is resource name, rest is property
  */
 export function resolveExpression(
 	value: string,
@@ -330,17 +318,6 @@ function resolvePath(
 		// Try remaining path as dotted key, then just last segment
 		const propKey = path.slice(2).join(".");
 		const val = component[propKey] ?? component[path[path.length - 1]!];
-		return val !== undefined ? String(val) : undefined;
-	}
-
-	// storage.name.prop → provider-resolved storage property (reserved namespace,
-	// D-39). Checked before user-named resources so a volume (or resource) named
-	// "storage" cannot shadow it. Unknown volume or property resolves to undefined
-	// (caller falls back to "" or `:-default`), matching $app.* and L-4.
-	if (first === "storage" && path.length === 3 && context.storage) {
-		const volume = context.storage[path[1]!];
-		if (!volume) return undefined;
-		const val = volume[path[2]!];
 		return val !== undefined ? String(val) : undefined;
 	}
 
