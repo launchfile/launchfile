@@ -19,6 +19,7 @@ export const navigation: NavGroup[] = [
       { title: "Runtime", href: "/spec/runtime/" },
       { title: "Image", href: "/spec/image/" },
       { title: "Build", href: "/spec/build/" },
+      { title: "Source", href: "/spec/source/" },
       { title: "Provides", href: "/spec/provides/" },
       { title: "Requires", href: "/spec/requires/" },
       { title: "Supports", href: "/spec/supports/" },
