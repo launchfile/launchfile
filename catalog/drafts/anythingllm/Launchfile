@@ -10,8 +10,8 @@ provides:
     exposed: true
 env:
   STORAGE_DIR:
-    default: $storage.data.path
-    description: "Storage directory for documents and data (the provisioned data volume)"
+    default: /app/server/storage
+    description: "Storage directory for documents and data"
   SIG_KEY:
     generator: secret
     sensitive: true

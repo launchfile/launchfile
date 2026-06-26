@@ -39,7 +39,7 @@ import { getProvisioner, type ResourceProperties } from "./resources/index.js";
 import { allocatePorts } from "./port-allocator.js";
 import { getRuntimeInstaller } from "./runtimes/index.js";
 import { detectPackageManager } from "./lockfile-detect.js";
-import { provisionStorage, storagePaths } from "./storage.js";
+import { provisionStorage } from "./storage.js";
 import { ProcessManager } from "./process-manager.js";
 import { stopRecordedProcesses } from "./process-stopper.js";
 import { shell } from "./shell.js";
@@ -213,16 +213,9 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	// 10. Detect package manager
 	const pm = await detectPackageManager(projectDir);
 
-	// 11. Create storage directories, capturing each volume's resolved local path
-	// so it can be injected as $storage.<name>.path (D-39). Scoped per component.
-	const componentStorage: Record<string, Record<string, Record<string, string>>> = {};
+	// 11. Create storage directories
 	for (const [name, component] of Object.entries(launch.components)) {
-		const volumeMap = await provisionStorage(component.storage, name, projectDir);
-		const storageCtx: Record<string, Record<string, string>> = {};
-		for (const [volName, localPath] of Object.entries(volumeMap)) {
-			storageCtx[volName] = { path: localPath };
-		}
-		componentStorage[name] = storageCtx;
+		await provisionStorage(component.storage, name, projectDir);
 	}
 
 	// 12. Resolve env vars and write .env files
@@ -230,7 +223,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const isSingleComponent = componentNames.length === 1 && componentNames[0] === "default";
 
 	for (const [name, component] of Object.entries(launch.components)) {
-		const env = resolveComponentEnv(component, context, resourceMap, componentStorage[name]);
+		const env = resolveComponentEnv(component, context, resourceMap);
 		await resolveGenerators(component, env);
 
 		const port = componentPorts[name];
@@ -482,16 +475,7 @@ export async function launchEnv(opts: { component?: string; projectDir?: string 
 	for (const [name, component] of Object.entries(launch.components)) {
 		if (opts.component && name !== opts.component) continue;
 
-		// Resolved storage paths (D-39) — computed, not provisioned (no mkdir):
-		// `launchfile env` only prints, and the dirs already exist from `up`.
-		const storageCtx: Record<string, Record<string, string>> = {};
-		for (const [volName, localPath] of Object.entries(
-			storagePaths(component.storage, name, projectDir),
-		)) {
-			storageCtx[volName] = { path: localPath };
-		}
-
-		const env = resolveComponentEnv(component, context, resourceMap, storageCtx);
+		const env = resolveComponentEnv(component, context, resourceMap);
 		await resolveGenerators(component, env);
 
 		const port = state.ports[name];

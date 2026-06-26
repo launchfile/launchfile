@@ -776,11 +776,10 @@ flowchart TD
 1. Starts with `app` -- platform-injected app property (see [App Properties](#app-properties))
 2. Starts with `secrets` -- app-wide secret lookup
 3. Starts with `components` -- component endpoint lookup
-4. Starts with `storage` -- provider-resolved storage path (see [Storage Properties](#storage-properties))
-5. Single segment -- enclosing resource property (e.g. `$url` inside a `set_env` block)
-6. Multi-segment -- first segment is the resource name (defaults to `type`, overridden by `name`), rest is property path
+4. Single segment -- enclosing resource property (e.g. `$url` inside a `set_env` block)
+5. Multi-segment -- first segment is the resource name (defaults to `type`, overridden by `name`), rest is property path
 
-The `app` and `storage` namespaces are reserved: each is checked before any user-named resource and cannot be shadowed by one. If a `requires:` entry is named `app`, or a `storage:` volume or resource is named `storage`, expressions like `$app.url` and `$storage.cache.path` still resolve via their reserved tables rather than against that resource — use a different name to avoid the reserved words.
+The `app` namespace is reserved: it is checked before any other prefix and cannot be shadowed by a user-named resource. If a `requires:` entry is named `app`, expressions like `$app.url` still resolve via the App Properties table rather than against that resource — use a different `name:` for resources to avoid the reserved word.
 
 **Examples:**
 
@@ -798,8 +797,6 @@ env:
   SECRET_KEY_BASE: "$secrets.secret-key-base"                 # app-wide secret
   HOME_BIN: "$$HOME/bin"                                      # literal $
   PUBLIC_URL: $app.url                                        # platform-injected app URL
-  CACHE_DIR: $storage.cache.path                             # provider-resolved storage path
-  DB_FILE: "${storage.data.path}/app.db"                      # storage path + suffix
 ```
 
 ## App Properties
@@ -839,35 +836,6 @@ env:
   CMD_DOMAIN: $app.authority          # public host[:port] HedgeDoc serves from
   CMD_PROTOCOL_USESSL: $app.tls       # whether the public URL is HTTPS
   CMD_URL_ADDPORT: "false"            # authority already carries the public port
-```
-
-## Storage Properties
-
-The `$storage.*` namespace exposes the filesystem path the provider actually provisioned for a declared `storage:` volume, resolved at deploy time by whichever provider is running the app. It lets an app put *its own* storage location into the environment without hardcoding a path that only one provider understands.
-
-| Property | Description |
-|---|---|
-| `$storage.<name>.path` | The path the provider provisioned for the volume named `<name>` |
-
-The declared `storage.<name>.path` is the *canonical* path — the mount point inside the container. `$storage.<name>.path` is the *resolved* path the running provider used:
-
-- a **container provider** bind-mounts the volume at the declared path, so `$storage.<name>.path` equals the declared `path` (e.g. `/data/cache`);
-- a **native (non-container) provider** provisions a host directory, so `$storage.<name>.path` resolves to that directory (e.g. `<project>/.launchfile/storage/<component>/cache`).
-
-The same Launchfile is therefore correct under both. `storage` is a reserved namespace, checked before any user-named resource and not shadowable by one (see [Resolution order](#expression-syntax)). Unknown `$storage.*` — a typo'd volume name, or a provider that does not populate the map — resolves to empty string, matching unknown `$app.*` (see [L-4](DESIGN.md#l-4-resource-property-vocabulary-is-implicit)). Only `.path` is exposed; the author-declared `size` hint is not echoed back ([D-39](DESIGN.md#d-39-storagenamepath-for-provider-resolved-storage-paths)).
-
-Example use:
-
-```yaml
-storage:
-  cache:
-    path: /data/cache
-    persistent: false
-  data:
-    path: /data
-env:
-  CACHE_DIR: $storage.cache.path       # anythingllm STORAGE_DIR, broker cache dir
-  MP_DATABASE: "${storage.data.path}/mailpit.db"   # mailpit — path + suffix
 ```
 
 ## Resource Property Vocabulary

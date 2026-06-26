@@ -290,20 +290,10 @@ export function launchToCompose(launch: NormalizedLaunch): ComposeResult {
     // Environment variables
     const env: Record<string, string> = {};
 
-    // Provider-resolved storage paths (D-39). Like the Docker provider, this
-    // harness bind-mounts each named volume at its declared path, so
-    // $storage.<name>.path resolves to that in-container path.
-    const storageCtx: Record<string, Record<string, string>> = {};
-    if (component.storage) {
-      for (const [volName, vol] of Object.entries(component.storage)) {
-        storageCtx[volName] = { path: vol.path };
-      }
-    }
-
     // Resolve env vars from the Launchfile
     if (component.env) {
       for (const [key, envVar] of Object.entries(component.env)) {
-        const value = resolveEnvVar(envVar, secretValues, key, storageCtx);
+        const value = resolveEnvVar(envVar, secretValues, key);
         if (value !== undefined) {
           env[key] = value;
         }
@@ -428,7 +418,6 @@ function resolveEnvVar(
   envVar: NormalizedEnvVar,
   secrets: Record<string, string>,
   key?: string,
-  storage?: Record<string, Record<string, string>>,
 ): string | undefined {
   // Generator takes precedence
   if (envVar.generator) {
@@ -439,9 +428,9 @@ function resolveEnvVar(
 
   if (envVar.default !== undefined) {
     const val = String(envVar.default);
-    // Resolve expressions ($secrets.*, $storage.*.path, etc.) via SDK resolver
+    // Resolve expressions ($secrets.*, ${secrets.*}, etc.) via SDK resolver
     if (isExpression(val)) {
-      return resolveExpression(val, { secrets, storage });
+      return resolveExpression(val, { secrets });
     }
     return val;
   }
