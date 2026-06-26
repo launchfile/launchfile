@@ -251,41 +251,6 @@ env:
 		// No exposed port → empty url → empty authority; resolves to "" not undefined.
 		expect(result.yaml).toContain('CMD_DOMAIN: "[]"');
 	});
-});
-
-describe("compose-generator $storage.* properties (D-39)", () => {
-	// Docker bind-mounts each named volume at its declared path, so
-	// $storage.<name>.path resolves to that in-container path — and the path
-	// leaves the command/duplicated-default entirely (the mailpit/anythingllm fix).
-	it("resolves $storage.<name>.path to the declared container path", () => {
-		const launch = readLaunch(`
-name: mailpit
-image: axllent/mailpit
-storage:
-  data:
-    path: /data
-env:
-  MP_DATABASE: "\${storage.data.path}/mailpit.db"
-  DATA_DIR: $storage.data.path
-`);
-		const result = launchToCompose(launch);
-		expect(result.yaml).toContain("MP_DATABASE: /data/mailpit.db");
-		expect(result.yaml).toContain("DATA_DIR: /data");
-	});
-
-	it("leaves $storage.<name>.path empty for an unknown volume name", () => {
-		const launch = readLaunch(`
-name: app
-image: nginx
-storage:
-  data:
-    path: /data
-env:
-  X: "[\${storage.nope.path}]"
-`);
-		const result = launchToCompose(launch);
-		expect(result.yaml).toContain('X: "[]"');
-	});
 
 	it("falls back to the declared container port when no host port override is given", () => {
 		const launch = readLaunch(`

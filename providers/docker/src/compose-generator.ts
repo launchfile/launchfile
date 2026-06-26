@@ -537,27 +537,12 @@ export function launchToCompose(
 			}
 		}
 
-		// Provider-resolved storage paths (D-39). Docker bind-mounts each named
-		// volume at its declared `path`, so `$storage.<name>.path` resolves to that
-		// in-container path. Scoped per component (volume names are component-local).
-		const componentContext: ResolverContext = component.storage
-			? {
-					...resolverContext,
-					storage: Object.fromEntries(
-						Object.entries(component.storage).map(([volName, vol]) => [
-							volName,
-							{ path: vol.path },
-						]),
-					),
-				}
-			: resolverContext;
-
 		// Environment variables
 		const env: Record<string, string> = {};
 
 		if (component.env) {
 			for (const [key, envVar] of Object.entries(component.env)) {
-				const value = resolveEnvVar(envVar, componentContext, key);
+				const value = resolveEnvVar(envVar, resolverContext, key);
 				if (value !== undefined) {
 					env[key] = value;
 				}
@@ -586,7 +571,7 @@ export function launchToCompose(
 					if (req.set_env) {
 						// Build scoped context with enclosing resource for $prop resolution
 						const scopedContext: ResolverContext = {
-							...componentContext,
+							...resolverContext,
 							resource: backingResult.properties,
 						};
 						for (const [envKey, expr] of Object.entries(req.set_env)) {

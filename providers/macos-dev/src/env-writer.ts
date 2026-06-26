@@ -100,14 +100,8 @@ export function resolveComponentEnv(
 	component: NormalizedComponent,
 	context: ResolverContext,
 	resourceMap: Record<string, ResourceProperties>,
-	storage?: Record<string, Record<string, string>>,
 ): Record<string, string> {
 	const env: Record<string, string> = {};
-
-	// This component's provider-resolved storage paths (D-39). Scoped per
-	// component because volume names are component-local — component A's
-	// `$storage.cache.path` must not see component B's `cache`.
-	const ctx: ResolverContext = storage ? { ...context, storage } : context;
 
 	// 1. Resolve set_env from requires
 	for (const req of component.requires ?? []) {
@@ -121,7 +115,7 @@ export function resolveComponentEnv(
 			if (v !== undefined) resourceRecord[k] = v;
 		}
 		const scopedContext: ResolverContext = {
-			...ctx,
+			...context,
 			resource: resourceRecord,
 		};
 
@@ -141,7 +135,7 @@ export function resolveComponentEnv(
 			if (v !== undefined) resourceRecord[k] = v;
 		}
 		const scopedContext: ResolverContext = {
-			...ctx,
+			...context,
 			resource: resourceRecord,
 		};
 
@@ -158,7 +152,7 @@ export function resolveComponentEnv(
 			if (envVar.default !== undefined) {
 				const defaultStr = String(envVar.default);
 				if (isExpression(defaultStr)) {
-					env[key] = resolveExpression(defaultStr, ctx);
+					env[key] = resolveExpression(defaultStr, context);
 				} else {
 					env[key] = defaultStr;
 				}
