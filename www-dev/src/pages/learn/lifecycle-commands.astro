@@ -14,13 +14,14 @@ const captureYaml = captureYamlRaw.replace(/^#.*\n/gm, "").trim();
 
 <CourseLayout
   title="Lifecycle Commands"
-  subtitle="Build, release, start, seed — the full app lifecycle."
+  subtitle="Build, release, start, seed — plus running from source with install and dev."
   moduleName="Production-Ready"
   moduleNumber={2}
   lessonNumber={5}
   learningGoals={[
     "The six command types: build, release, start, seed, test, bootstrap",
     "When each command runs in the deployment lifecycle",
+    "Running from source with install / dev and launchfile dev",
     "Command capture for post-start output",
     "The build block for Dockerfile-based builds",
   ]}
@@ -107,6 +108,39 @@ commands:
   </p>
 </Callout>
 
+<h2 id="source-mode">Running from source: <code>install</code> and <code>dev</code></h2>
+
+<p>
+  The commands above run the app <strong>as a built artifact</strong> — <code>build</code> compiles it, <code>start</code> runs it. But on a dev machine you often want to run the app <strong>from source</strong> instead: hot reload, the repo's own dev server, no container. That's a different <em>execution mode</em>, and it varies exactly one thing — the command lines.
+</p>
+
+<p>Two source-mode keys pair with the artifact ones:</p>
+
+<ul>
+  <li><strong><code>install</code></strong> — source-mode <em>prepare</em> (the counterpart of <code>build</code>). Runs on demand: first launch, or when dependencies change.</li>
+  <li><strong><code>dev</code></strong> — source-mode <em>run</em> (the counterpart of <code>start</code>). Your dev server.</li>
+</ul>
+
+<BeforeAfter
+  before={{ title: "launchfile up (artifact)", yaml: `commands:
+  build: "bun install && bun run build"
+  start: "node dist/server.js"` }}
+  after={{ title: "launchfile dev (source)", yaml: `source: ./apps/api        # working dir for install/dev
+commands:
+  install: "bun install"
+  dev: "bun run dev"` }}
+/>
+
+<p>
+  <code>launchfile up</code> runs the artifact (<code>build</code> → <code>start</code>); <code>launchfile dev</code> runs from source (<code>install</code> → <code>dev</code>), in the optional <code>source</code> directory. Run precedence is <code>dev</code> &gt; <code>image</code> &gt; <code>start</code>: a prebuilt <code>image</code> stays an artifact unless <code>dev</code> overrides it. Only <em>prepare</em> and <em>run</em> are mode-aware — <code>release</code>, <code>bootstrap</code>, <code>seed</code>, and <code>test</code> are the same command in either mode.
+</p>
+
+<Callout type="tip" title="Only declare what differs">
+  <p>
+    An app whose dev command equals its production command needs nothing extra — a plain <code>start</code> works in both modes. Add <code>dev</code> / <code>install</code> only when running from source needs a different command line than the built artifact (a compiled binary vs. <code>bun run dev</code>, an image entrypoint vs. a repo script).
+  </p>
+</Callout>
+
 <h2 id="in-the-wild">In the wild</h2>
 
 <p>
@@ -140,6 +174,7 @@ commands:
   <div class="takeaways-title">Key takeaways</div>
   <ul>
     <li>The <strong>deployment lifecycle</strong> is: build, release, start. Seed, test, and bootstrap are on-demand.</li>
+    <li><strong><code>install</code></strong> / <strong><code>dev</code></strong> run the app <strong>from source</strong> (<code>launchfile dev</code>) — the source-mode pair of <code>build</code> / <code>start</code>. Only these two are mode-aware.</li>
     <li><strong><code>release</code></strong> runs once per deploy (migrations). <strong><code>bootstrap</code></strong> runs once ever (initial setup).</li>
     <li>Commands can use the <strong>capture</strong> pattern to extract values from stdout via regex.</li>
     <li>Top-level <strong><code>build:</code></strong> configures Docker image builds. <strong><code>commands.build</code></strong> runs shell commands inside a container.</li>

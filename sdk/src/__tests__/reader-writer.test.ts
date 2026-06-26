@@ -579,3 +579,39 @@ commands:
 		).toThrow();
 	});
 });
+
+describe("source-mode commands (D-38)", () => {
+	it("normalizes the install and dev command keys and the source field", () => {
+		const launch = readLaunch(`
+name: devapp
+source: ./apps/api
+commands:
+  build: "docker build ."
+  install: "bun install"
+  start: "node dist/server.js"
+  dev: "bun run dev"
+`);
+		const component = launch.components.default!;
+		expect(component.source).toBe("./apps/api");
+		const commands = component.commands!;
+		expect(commands.install).toEqual({ command: "bun install" });
+		expect(commands.dev).toEqual({ command: "bun run dev" });
+		// release/bootstrap/seed/test are mode-invariant — no dev:<stage> variants
+		expect(commands["dev:build"]).toBeUndefined();
+	});
+
+	it("round-trips install/dev and source through write", () => {
+		const out = writeLaunch(
+			readLaunch(`
+name: devapp
+source: ./apps/api
+commands:
+  install: "bun install"
+  dev: "bun run dev"
+`),
+		);
+		expect(out).toContain("install: bun install");
+		expect(out).toContain("dev: bun run dev");
+		expect(out).toContain("source: ./apps/api");
+	});
+});

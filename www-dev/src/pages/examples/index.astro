@@ -9,6 +9,7 @@ const examples = [
   { slug: "prebuilt-image", title: "Prebuilt Image", description: "Deploy from an existing OCI/Docker image.", icon: "package" },
   { slug: "cron-job", title: "Cron Job", description: "Scheduled task on a cron schedule, no persistent process.", icon: "clock" },
   { slug: "host-orchestrator", title: "Host Orchestrator", description: "Docker daemon access and host networking.", icon: "server" },
+  { slug: "local-dev", title: "Local Dev (Source Mode)", description: "Run from source with install / dev — launchfile dev, no container.", icon: "terminal" },
 ];
 ---
 
@@ -43,6 +44,9 @@ const examples = [
           )}
           {example.icon === "clock" && (
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          )}
+          {example.icon === "terminal" && (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
           )}
           {example.icon === "server" && (
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>

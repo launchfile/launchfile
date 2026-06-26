@@ -218,6 +218,9 @@ export async function launchBootstrap(
 	for (const [name, component] of Object.entries(launch.components)) {
 		if (opts.component && name !== opts.component) continue;
 
+		// `bootstrap` is mode-invariant (D-38): the same command runs from
+		// source or artifact. A path or binary that differs by mode belongs in
+		// storage:/env/PATH, not a separate command.
 		const bootstrap = component.commands?.bootstrap;
 		if (!bootstrap) continue;
 
