@@ -50,7 +50,7 @@ commands:
   start: "bun run dev"
 ```
 
-`launchfile up .` runs `build` then `start`. Swap the commands for any runtime — `runtime: node` with `npm install` / `npm run dev`, `runtime: python` with `pip install -r requirements.txt` / `python manage.py runserver`, etc. See [`spec/examples/local-dev.yaml`](examples/local-dev.yaml).
+`launchfile up .` runs `build` then `start`. Swap the commands for any runtime — `runtime: node` with `npm install` / `npm run dev`, `runtime: python` with `pip install -r requirements.txt` / `python manage.py runserver`, etc. See [`spec/examples/local-dev.yaml`](examples/local-dev.yaml). To run a *different* command from source than from the built artifact, declare a [`dev` command](#source-mode-commands).
 
 **Single component** with a database and health check:
 
@@ -374,9 +374,11 @@ Platforms execute well-known commands in this order: **build → release → sta
 
 | Stage | Purpose | When |
 |---|---|---|
-| `build` | Install dependencies, compile | Every deploy |
+| `build` | Install dependencies, compile — **artifact prepare** | Every deploy |
+| `install` | Prepare **from source** (deps, codegen) — the source-mode pair of `build` | Source-mode launches, on demand. See [Source-mode commands](#source-mode-commands) below. |
 | `release` | Migrations, cache clear, asset compilation | Every deploy, after build |
-| `start` | Start the application | Every deploy, after release |
+| `start` | Start the application — **artifact run** | Every deploy, after release |
+| `dev` | Start the application **from source** — the source-mode pair of `start` | Source-mode launches; preferred over `start` when running from source, ignored by artifact providers. See [Source-mode commands](#source-mode-commands) below. |
 | `bootstrap` | Post-start setup that must run against a *running* component: create the first admin user, generate an initial invite link, write runtime config that depends on the deploy URL | On demand after `start` (user-invoked, re-runnable, non-deploy-failing). See [Bootstrap stage](#bootstrap-stage) below. |
 | `seed` | Seed the database with initial data | On demand (first deploy or explicit trigger) |
 | `test` | Run the test suite | On demand (CI or explicit trigger) |
@@ -399,6 +401,42 @@ commands:
     command: "npx prisma migrate deploy"
     timeout: "5m"
 ```
+
+### Source-mode commands
+
+Lifecycle commands run **in the context of the built artifact** — `start` is what the production image runs, `build` produces that artifact. Running the app **from source** on a developer machine is a different execution context: the artifact's entrypoint may be a compiled binary absent from the source tree, and the source tree has dev affordances (hot reload, unbundled assets) the artifact doesn't. Execution mode — source vs. artifact — is a *distinct* axis from deployment environment (DESIGN.md [D-37](DESIGN.md) / L-3): "dev" is a **mode**, not an environment.
+
+Two well-known keys name the source-mode commands, and one optional component field names where they run:
+
+| Key | Pairs with | Role | Example |
+|---|---|---|---|
+| `install` | `build` | source-mode **prepare** | `"bun install"` |
+| `dev` | `start` | source-mode **run** | `"bun run dev"` |
+| `source` *(component field)* | — | working directory for `install` / `dev` (defaults to `build.context`, then repo root) | `"./apps/api"` |
+
+**Only prepare and run are mode-aware.** `release`, `bootstrap`, `seed`, and `test` are **mode-invariant** — the same command runs whether you launch from source or from the artifact. A path or binary that genuinely differs by mode (a cache dir, a repo-local CLI) belongs in `storage:` / `env` / the provider's `PATH`, not a separate command.
+
+**Resolution (per component).** A provider selects one mode for the launch (`launchfile dev` → source, `launchfile up` → artifact) and resolves each component:
+
+- **Run**, by precedence `dev` > `image` > `start`: a `dev` command runs the component from source; an `image` keeps it in artifact mode *unless* `dev` overrides it; a bare `start` runs from source only when there is no `image` — so a prebuilt image is never replaced by a `start` that assumes the image's internals (fallbacks must be detectably safe).
+- **Prepare**: source mode runs `install ?? build`, **on demand** (first launch or a detected dependency/lockfile change), not on every run; artifact mode runs `build` (or pulls `image`).
+
+Providers that execute the built artifact (Docker, Kubernetes, cloud platforms) **ignore** `install` and `dev`. The values are ordinary command values — string shorthand or the expanded form with `timeout` and [`capture`](#command-capture).
+
+A Launchfile that declares both is launchable in either mode from the same file:
+
+```yaml
+components:
+  api:
+    source: ./apps/api                  # cwd for install/dev
+    image: ghcr.io/acme/api:1.4         # artifact run (ENTRYPOINT = compiled binary)
+    commands:
+      install: "bun install"            # source prepare
+      dev: "bun src/index.ts --port $PORT"   # source run
+      bootstrap: "api-cli create-admin --url $app.url"  # mode-invariant
+```
+
+`launchfile up` pulls and runs the image; `launchfile dev` runs `bun install` (on demand) then `bun src/index.ts` from `./apps/api`, ignoring the image. `bootstrap` is identical in both modes. Source mode is a deliberately narrow carve-out: it expresses that the *same lifecycle intent* needs a different command line from source than from the artifact — it is **not** an environment-override mechanism (staging vs. production config remains an orchestrator concern, DESIGN.md L-3).
 
 ### Bootstrap stage
 
@@ -907,7 +945,24 @@ The `config` field in `requires`/`supports` entries accepts arbitrary key-value 
 
 ### Commands and health checks are executable
 
-`commands.start`, `commands.build`, `commands.release`, and `health.command` contain shell commands that the provider executes. This is by design — the user chose to run this Launchfile. Providers that fetch Launchfiles from remote sources (catalogs, URLs) should display what will be executed and prompt for confirmation before running.
+`commands.start`, `commands.build`, `commands.install`, `commands.dev`, `commands.release`, and `health.command` contain shell commands that the provider executes — and `install`/`dev` run **natively on the host** in source mode (see [Execution modes and source trust](#execution-modes-and-source-trust)). This is by design — the user chose to run this Launchfile. Providers that fetch Launchfiles from remote sources (catalogs, URLs) should display what will be executed and prompt for confirmation before running.
+
+### Execution modes and source trust
+
+A Launchfile can be executed in four modes, with different trust requirements. Where the app's code runs determines how much the user must trust the source:
+
+| Mode | What executes where | Appropriate for |
+|---|---|---|
+| **Dev launch from source** | `install` / `dev` commands run natively on the host, in the project directory | Repos the user owns or has reviewed — the commands have full user-level access to the machine |
+| **Containerized build + run** | `build:` runs inside `docker build`; the app runs inside a container | Unknown or third-party repos — neither the build nor the app touches the host beyond declared ports and volumes |
+| **Image run** | A pre-built `image:` is pulled and run in a container | Catalog apps; trust shifts to the image publisher |
+| **Cloud build + deploy** | Build and run both happen on remote infrastructure | Production; the platform's isolation applies |
+
+Guidance for providers:
+
+- **Native (source-mode) providers SHOULD only run local sources.** Running `install` / `dev` commands from a freshly fetched URL or catalog entry executes unreviewed code with user privileges. If a native provider supports remote sources at all, it MUST show the commands and prompt.
+- **Container-based providers are the sandboxed path for untrusted sources.** A `build:` config keeps the entire build inside `docker build` — dependency install scripts, codegen, and compilers never execute on the host. Remote build contexts (git URLs) extend this: the provider never even clones the repo onto the host itself.
+- **The confirmation prompt is per-source, not per-field.** Before executing a remote Launchfile, show the user what will run: images to pull, components built from source, resources provisioned, and host capabilities requested.
 
 ### Host capabilities require user consent
 

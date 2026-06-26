@@ -55,6 +55,10 @@
       "description": "Pre-built OCI image (alternative to build)"
     },
     "build": { "$ref": "#/$defs/buildOrString" },
+    "source": {
+      "type": "string",
+      "description": "Working directory for source-mode commands (install/dev). Defaults to build.context, then the repo root (D-38)."
+    },
     "provides": {
       "type": "array",
       "items": { "$ref": "#/$defs/provides" }
@@ -311,8 +315,16 @@
       "type": "object",
       "properties": {
         "build": { "$ref": "#/$defs/commandOrString" },
+        "install": {
+          "$ref": "#/$defs/commandOrString",
+          "description": "Source-mode prepare — install deps / codegen when running from source (D-38). The source-mode pair of build; a source launch runs `install ?? build` on demand. Ignored by providers that execute the built artifact."
+        },
         "release": { "$ref": "#/$defs/commandOrString" },
         "start": { "$ref": "#/$defs/commandOrString" },
+        "dev": {
+          "$ref": "#/$defs/commandOrString",
+          "description": "Source-mode run — run the app from source (D-38). The source-mode pair of start; run precedence is dev > image > start. Ignored by providers that execute the built artifact. Only prepare (install) and run (dev) are mode-aware; release/bootstrap/seed/test are mode-invariant."
+        },
         "seed": { "$ref": "#/$defs/commandOrString" },
         "test": { "$ref": "#/$defs/commandOrString" }
       },
@@ -362,6 +374,10 @@
         "runtime": { "$ref": "#/$defs/runtime" },
         "image": { "type": "string" },
         "build": { "$ref": "#/$defs/buildOrString" },
+        "source": {
+          "type": "string",
+          "description": "Working directory for source-mode commands (install/dev). Defaults to build.context, then the repo root (D-38)."
+        },
         "provides": {
           "type": "array",
           "items": { "$ref": "#/$defs/provides" }
