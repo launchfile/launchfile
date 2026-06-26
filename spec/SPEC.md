@@ -552,6 +552,21 @@ build:
     - ssh-deploy-key     # platform-managed, provided out-of-band
 ```
 
+## Source
+
+The working directory for **source-mode commands** (`install` / `dev`). When a provider runs the app from source (`launchfile dev`), `install` and `dev` execute in this directory. Defaults to `build.context`, then the repository root.
+
+```yaml
+components:
+  api:
+    source: ./apps/api      # install/dev run here
+    commands:
+      install: "bun install"
+      dev: "bun run dev"
+```
+
+`source` has no effect in artifact mode — providers that run the built artifact ignore it. See [Source-mode commands](#source-mode-commands) for the full resolution rules and the `dev` > `image` > `start` precedence.
+
 ## Storage
 
 Declares persistent volumes. Value is a map of named volumes.
