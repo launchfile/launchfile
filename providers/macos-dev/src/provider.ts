@@ -7,7 +7,24 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { readLaunch, type NormalizedLaunch } from "@launchfile/sdk";
+import { readLaunch, type NormalizedLaunch, type NormalizedComponent } from "@launchfile/sdk";
+
+/**
+ * Source-mode run resolution (D-38, precedence `dev` > `image` > `start`).
+ * This provider runs apps from source. A component is source-runnable when it
+ * declares `dev`, or a `start` with no `image` — an `image` without a `dev`
+ * override stays artifact-mode, which this source-only provider can't launch.
+ */
+export function isSourceRunnable(component: NormalizedComponent): boolean {
+	return Boolean(component.commands?.dev || (component.commands?.start && !component.image));
+}
+
+/** The command run from source, or undefined if the component resolves to its artifact. */
+export function sourceRunCommand(component: NormalizedComponent): string | undefined {
+	if (component.commands?.dev?.command) return component.commands.dev.command;
+	if (component.image) return undefined; // image, no `dev` override → artifact
+	return component.commands?.start?.command;
+}
 import { checkPrereqs } from "./prereqs.js";
 import { loadState, initState, saveState, ensureDirs } from "./state.js";
 import {
@@ -26,6 +43,7 @@ import { provisionStorage } from "./storage.js";
 import { ProcessManager } from "./process-manager.js";
 import { stopRecordedProcesses } from "./process-stopper.js";
 import { shell } from "./shell.js";
+import { parseDuration } from "./bootstrap.js";
 
 export interface LaunchUpOpts {
 	withOptional?: boolean;
@@ -58,6 +76,33 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 
 	const launch = readLaunch(launchfileContent);
 	const componentNames = Object.keys(launch.components);
+
+	// 2b. Source-mode guard (D-38) — fail fast before provisioning anything.
+	// Run precedence is `dev` > `image` > `start`: a component runs from source
+	// when it declares `dev`, or a `start` with no `image`. An `image` without a
+	// `dev` override stays artifact-mode — which this source-only provider can't
+	// launch. If nothing is source-runnable, the app belongs on `launchfile up`.
+	const sourceRunnable = Object.values(launch.components).filter(isSourceRunnable);
+	if (sourceRunnable.length === 0) {
+		const hasImage = Object.values(launch.components).some((c) => c.image);
+		console.error("Nothing to run from source: no component declares `dev` (or a `start` without an `image`).");
+		console.error(
+			hasImage
+				? "This app runs from an image — use `launchfile up` to launch the built artifact."
+				: "Add a `dev` (or `start`) command to run it from source.",
+		);
+		process.exit(1);
+	}
+	// Mixed app: warn about artifact components (image, no `dev` override) that
+	// this source-only provider can't launch — they need `launchfile up`.
+	for (const [name, c] of Object.entries(launch.components)) {
+		if (!isSourceRunnable(c) && c.image) {
+			console.warn(
+				`  ! [${name}] has an image and no \`dev\` override — runs as an artifact, ` +
+					"skipped in source mode; use `launchfile up` to run it.",
+			);
+		}
+	}
 
 	// 3. Load or init state
 	let state = await loadState(projectDir);
@@ -213,48 +258,52 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		return;
 	}
 
-	// 14. Run build commands
+	// 14. Run source-mode prepare \u2014 `install ?? build` (D-38), on demand
 	if (!opts.noBuild) {
 		for (const [name, component] of Object.entries(launch.components)) {
-			const buildCmd = component.commands?.build?.command;
-			const cmd = buildCmd ?? pm?.installCommand;
+			const prepare = component.commands?.install ?? component.commands?.build;
+			const cmd = prepare?.command ?? pm?.installCommand;
 			if (cmd) {
-				console.log(`  \u2193 Building${componentNames.length > 1 ? ` [${name}]` : ""}...`);
+				console.log(`  \u2193 Preparing${componentNames.length > 1 ? ` [${name}]` : ""}...`);
 				await shell(cmd, {
-					cwd: projectDir,
+					cwd: join(projectDir, component.source ?? component.build?.context ?? "."),
 					env: allEnvs[name],
+					// Installs/compiles routinely exceed the 2-minute shell default;
+					// honor a declared timeout, else allow 10 minutes.
+					timeout: prepare?.timeout ? parseDuration(prepare.timeout) : 600_000,
 				});
 			}
 		}
 	}
 
-	// 15. Run release commands (migrations)
+	// 15. Run release commands (migrations) \u2014 mode-invariant (D-38)
 	for (const [name, component] of Object.entries(launch.components)) {
-		const releaseCmd = component.commands?.release?.command;
-		if (releaseCmd) {
+		const release = component.commands?.release;
+		if (release?.command) {
 			console.log(`  \u2193 Running release${componentNames.length > 1 ? ` [${name}]` : ""}...`);
-			await shell(releaseCmd, {
-				cwd: projectDir,
+			await shell(release.command, {
+				cwd: join(projectDir, component.source ?? component.build?.context ?? "."),
 				env: allEnvs[name],
+				timeout: release.timeout ? parseDuration(release.timeout) : undefined,
 			});
 		}
 	}
 
-	// 16. Start all components
+	// 16. Run components from source \u2014 `dev` over `start` (D-38; this provider ignores `image`)
 	process.stdout.write(`  \u2193 Starting services...`);
 	const pm2 = new ProcessManager(projectDir);
 
 	for (const [name, component] of Object.entries(launch.components)) {
-		const startCmd = component.commands?.start?.command;
-		if (!startCmd) {
-			console.warn(`\n  ! [${name}] No start command — skipping`);
-			continue;
-		}
+		// Resolve the source-mode run command (D-38 precedence `dev` > `image` >
+		// `start`). Artifact components (image, no `dev` override) resolve to
+		// undefined — they were warned by the guard; skip them.
+		const startCmd = sourceRunCommand(component);
+		if (!startCmd) continue;
 
 		pm2.register(name, {
 			command: startCmd,
 			env: { ...process.env as Record<string, string>, ...allEnvs[name] },
-			cwd: projectDir,
+			cwd: join(projectDir, component.source ?? component.build?.context ?? "."),
 			dependsOn: component.depends_on,
 			health: component.health,
 			port: componentPorts[name],

@@ -9,6 +9,7 @@ A Launchfile provider that runs apps natively on macOS for local development. Us
 ## Philosophy
 
 - **Source-first** — ignores `image:`, uses `runtime:` + native package managers
+- **Source-mode commands** — runs from source: `install ?? build` for prepare, `dev` over `start` for run (D-38); `release`/`bootstrap`/`seed`/`test` are mode-invariant. Commands run natively with user privileges, so this provider is for local, trusted sources
 - **Brew-first** — shared database services, app-specific databases namespaced by app name
 - **Supports skip by default** — use `--with-optional` for optional resources
 

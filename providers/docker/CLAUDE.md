@@ -9,7 +9,7 @@ A Launchfile provider that runs apps via Docker Compose. Generates a docker-comp
 ## Philosophy
 
 - **Image-first, build-capable** — uses `image:` when present; components with `build:` are built via `docker compose build` (contexts resolve against the project directory; git-URL contexts pass through). Building in Docker is the sandboxed path for untrusted sources — nothing from the repo executes on the host
-- **Artifact-context commands only** — runs `commands.start`/`bootstrap`; ignores dev-mode variants (`dev`, `dev:*` — D-35)
+- **Artifact-context commands only** — runs `commands.start`/`bootstrap`; ignores source-mode commands (`install`, `dev` — D-38)
 - **Zero-install** — works via `npx launchfile up ghost`
 - **100% cleanable** — `down --destroy` removes all containers, volumes, and networks
 - **Catalog-friendly** — accepts app slugs, URLs, or local Launchfile paths
