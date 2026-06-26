@@ -23,8 +23,8 @@ storage:
     persistent: true
 env:
   MP_DATABASE:
-    default: "/data/mailpit.db"
-    description: "Path to the SQLite database for message storage"
+    default: "${storage.data.path}/mailpit.db"
+    description: "Path to the SQLite database for message storage (under the provisioned data volume)"
   MP_MAX_MESSAGES:
     default: "5000"
     description: "Maximum number of messages to store (0 = unlimited)"
