@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=../schema/launchfile.schema.json
+#
+# Example: provider-resolved storage paths ($storage.<name>.path, D-39).
+#
+# An app declares the storage it needs (a named volume). The provider decides
+# *where* that volume actually lives, then injects the resolved path back into
+# the app's environment via $storage.<name>.path — so the app never has to
+# hardcode a path that only one provider understands.
+#
+# The declared `storage.<name>.path` is the canonical/container path. The
+# expression `$storage.<name>.path` is the path the running provider used:
+#   - container provider  → the declared path (the bind-mount target), e.g. /data
+#   - native provider     → a host directory, e.g.
+#                           <project>/.launchfile/storage/<component>/<name>
+#
+# The same Launchfile is correct under both — the path leaves the command and
+# the duplicated env default entirely. Unknown $storage.* resolves to "".
+#
+# See also: spec/SPEC.md § Storage Properties, spec/DESIGN.md D-39 (and D-36,
+# which classifies a storage path as a provider-resolved "home #3" value).
+
+version: launch/v1
+name: notes-app
+
+image: ghcr.io/example/notes-app:latest
+
+provides:
+  - port: 8080
+    protocol: http
+    exposed: true
+
+storage:
+  # A persistent data volume and an ephemeral cache.
+  data:
+    path: /var/lib/notes
+    persistent: true
+  cache:
+    path: /var/cache/notes
+    persistent: false
+
+env:
+  # The app's data directory — resolved per provider, not hardcoded.
+  NOTES_DATA_DIR: $storage.data.path
+  # A path built from a storage path plus a suffix (use the braced form so the
+  # "/" cleanly terminates the reference).
+  NOTES_DB: "${storage.data.path}/notes.db"
+  # The cache directory — points at the ephemeral volume the provider made.
+  NOTES_CACHE_DIR: $storage.cache.path
+
+health: /healthz
+restart: always
