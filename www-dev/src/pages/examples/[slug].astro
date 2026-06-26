@@ -163,6 +163,27 @@ export function getStaticPaths() {
         { line: "requires: [{type: docker}]", text: "Declares the Docker daemon as a dependency." },
       ],
     },
+    {
+      slug: "local-dev",
+      title: "Local Dev (Source Mode)",
+      description: "Run an app from source with install / dev — launchfile dev, no container.",
+      catalogLink: 'Source mode is for apps you clone and develop locally, alongside their artifact deploy.',
+      concepts: [
+        "`install` / `dev` are the source-mode pair of `build` / `start`",
+        "`launchfile dev` runs from source; `launchfile up` runs the built artifact",
+        "An optional `source` field sets the working directory for source commands",
+        "Only prepare/run are mode-aware — release, bootstrap, seed, test are identical in both modes",
+      ],
+      guidance: "Add install / dev only when running from source needs a different command than the built artifact.",
+      specLinks: [
+        { label: "Commands", href: "https://launchfile.org/spec/commands/" },
+        { label: "Source", href: "https://launchfile.org/spec/source/" },
+      ],
+      annotations: [
+        { line: "install:", text: "Source-mode prepare — the counterpart of build. Runs on demand (first launch or dependency change)." },
+        { line: "dev:", text: "Source-mode run — the counterpart of start. Your dev server, launched by launchfile dev." },
+      ],
+    },
   ];
 
   return examples.map((ex) => ({
