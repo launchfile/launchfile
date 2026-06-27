@@ -35,7 +35,7 @@ A provider exposes a subset of these operations. `up`/`down`/`status` are the mi
 | `list` | List known deployments. | ✅ docker |
 | `translate` | Emit target artifacts without deploying (IaC, manifests). | 📐 (AWS probe) |
 
-Identity & re-location: a provider keys each deployment by a stable id (slug / directory / content hash) so the CLI can re-find it later (see §7).
+Identity & re-location: a provider keys each deployment by a stable id (slug / directory / content hash) so the CLI can re-find it later (see §8).
 
 ---
 
@@ -51,7 +51,7 @@ A provider operates on **slots**, not raw command names. A slot is a lifecycle p
 | **bootstrap** | post-run setup against the running app | `bootstrap` | on demand after run |
 | **seed / test / …** | ad-hoc | `seed` / `test` / custom | on demand |
 
-Providers SHOULD surface progress on slot boundaries (`prepare.start/end`, `run.healthy`, …) — see §7. `prepare` MUST run on demand / on input change, **not** on every `run`.
+Providers SHOULD surface progress on slot boundaries (`prepare.start/end`, `run.healthy`, …) — see §8. `prepare` MUST run on demand / on input change, **not** on every `run`.
 
 > **12-Factor V (build/release/run):** `prepare` generalizes factor V's *build* (the source command is an *install*, not a *build*). `prepare` is the slot; `build` is the artifact-mode command that fills it.
 
@@ -100,7 +100,34 @@ A specialization makes a matching provider more faithful; it never makes the app
 
 ---
 
-## 7. Deployment state & the event model 📐 (cross-invocation state design note)
+## 7. Expression resolution — provider-supplied values ✅
+
+The file declares *intent*; the provider supplies *values* (P-11). Beyond running commands, a provider MUST resolve the `$`-expressions in `env`, `set_env`, and command strings into concrete strings before the app sees them. Unlike §3–§4 (📐, pending RFC #77), this contract is **ratified and implemented today** — the reference resolver and both reference providers resolve every namespace below.
+
+**The three homes (D-36).** Every value in a Launchfile has exactly one home. The provider owns **home #3** — values it *computes* from its own routing, storage, provisioning, and `PATH` strategy. The app names the need; the provider resolves the value, the *same* expression yielding a different concrete string per provider. (Home #1 is the app's command/intent; home #2 is per-environment config the orchestrator supplies — neither is the provider's to invent.)
+
+**Resolution order.** Reserved namespaces are matched **before** any user-named resource, so a resource or volume named `app`/`storage` cannot shadow them. An unknown reserved key resolves to the empty string (L-4), so a provider that doesn't supply a given value degrades gracefully (P-13) rather than erroring.
+
+| Expression | Home-#3 value the provider supplies | Source |
+|---|---|---|
+| `$app.*` — `url`, `host`, `port`, `name`, `authority`, `scheme`, `tls` | the app's own public address, computed from the provider's routing strategy | D-33, D-35 |
+| `$secrets.<name>` | an app-wide generated secret | D-18 |
+| `$components.<name>.*` | a sibling component's endpoint, resolved by **consumer vantage** (§8) | — |
+| `$storage.<name>.path` | the filesystem path the provider provisioned for the named volume | **D-39** |
+| `$<resource>.<prop>` / enclosing `$url`, `$host`, … | a provisioned resource's connection properties | D-7 |
+
+**Storage paths (D-39) — the home-#3 obligation made concrete.** The declared `storage.<name>.path` is the *canonical / container* path. A provider that provisions a volume MUST resolve `$storage.<name>.path` to the path it **actually used** and inject it wherever the app references it, so the path never has to appear in a command:
+
+- a **container** provider bind-mounts the volume at the declared path → `$storage.<name>.path` = that path (e.g. `/data/cache`);
+- a **native** provider provisions a host directory → `$storage.<name>.path` = that directory (e.g. `.launchfile/storage/<component>/cache`).
+
+The same Launchfile is therefore correct under both, and an author never hardcodes a path only one provider understands — the exact failure D-36/D-39 close. A provider that does not provision storage leaves `$storage.*` unresolved (→ `""`).
+
+> **Why resolution is the provider's job, not the file's:** a path, URL, or secret that varies by provider is home #3 — if the app embedded it, the file would stop being portable (P-1, P-5). Resolution is the mechanism that keeps "same file, every provider" honest, and is the concrete enforcement point for the [D-36](DESIGN.md#d-36-the-three-homes-of-a-varying-value-p-1-litmus-refinement) litmus.
+
+---
+
+## 8. Deployment state & the event model 📐 (cross-invocation state design note)
 
 Providers persist deployment state so `status`/`env`/`down` work across shells, and so **separate invocations can compose one app** (`launch up backend && launch dev frontend`) by sharing the runtime-resolved values (actual ports, generated secrets, captures) that env inheritance cannot carry sibling-to-sibling.
 
@@ -119,11 +146,11 @@ local watcher ← emit ← diff() ← fs change ────┘
 - **Deployment id (so `&&` is one deployment, not two):** `--state <path>`/`--name <id>` › `LAUNCHFILE_STATE` env › implicit app+dir.
 - **`launch env`** reads this state and emits resolved, vantage-aware `export K=V` — `eval "$(launch env backend)"`.
 
-> Today each reference provider persists its **own** state shape (see §8); the unified `DeploymentState` + event model is the proposed standardization.
+> Today each reference provider persists its **own** state shape (see §9); the unified `DeploymentState` + event model is the proposed standardization.
 
 ---
 
-## 8. Reference providers — implemented today ✅
+## 9. Reference providers — implemented today ✅
 
 ### `@launchfile/docker` — artifact / container
 
@@ -134,6 +161,7 @@ local watcher ← emit ← diff() ← fs change ────┘
 - **Build:** components with `build:` are built from source **inside `docker compose build`** (BuildKit — nothing from the repo runs on the host); `image:` services are pulled.
 - **Flow:** build (from source) → start (`compose up`) → bootstrap.
 - **Sources:** local path, catalog slug, remote URL (with a confirmation prompt for remote, bypassable via `yes`).
+- **Storage:** resolves `$storage.<name>.path` to the bind-mounted container path (D-39).
 - **State:** `DockerState` per slug (compose project/path, allocated ports, source info) under the provider state dir.
 - **Selection:** honors the component selector; the post-`up` summary reports only the started subset.
 
@@ -146,7 +174,8 @@ local watcher ← emit ← diff() ← fs change ────┘
 - **Prepare-on-change:** `lockfile-detect` decides when to (re)install — `prepare` is not re-run on every `up`.
 - **Process management:** components are spawned detached; `pid`/`pgid`/`startedAt`/`command` are recorded so `down` from another shell can signal the whole group, guarded against pid reuse.
 - **Also:** health checks, secret generation, persistent storage, env writing.
-- **`env`:** prints a component's resolved environment — the read surface §7 generalizes.
+- **`env`:** prints a component's resolved environment (§7) — the read surface §8 generalizes.
+- **Storage:** resolves `$storage.<name>.path` to `.launchfile/storage/<component>/<name>` on the host (D-39).
 - **State:** `LaunchState` at `<projectDir>/.launchfile/state.json`, keyed by Launchfile **content hash**; holds `resources`, `secrets`, `ports`, `processes`.
 - **Selection:** narrows `components` after the prereq gate so every phase honors it.
 
@@ -156,7 +185,7 @@ The docker provider is effectively **artifact-first** (it builds/pulls images); 
 
 ---
 
-## 9. Conformance — what a new provider must do
+## 10. Conformance — what a new provider must do
 
 A provider claiming Launchfile support MUST:
 
@@ -165,8 +194,9 @@ A provider claiming Launchfile support MUST:
 3. **Resolve mode per component** for whatever modes it supports; ignore the other mode's fields (§4). (A cloud provider is typically artifact-only.)
 4. **Honor the component selector** and `--deps-only` semantics (§5).
 5. **Provision `requires` resources** as a precondition of any selected component; treat `depends_on` as satisfy-not-expand (§5).
-6. **Persist resolved deployment state** and resolve cross-component references by consumer vantage (§7). Providers SHOULD interoperate via the shared state file so invocations compose.
-7. **Report gaps, not silent drops** — if a field can't be honored, surface it (the AWS probe's conformance report is the model).
+6. **Resolve the reserved expression namespaces it supports** — `$app.*`, `$storage.<name>.path`, resource properties, `$secrets.*`, `$components.*`; unknown reserved keys resolve to `""` (L-4). A provider that provisions storage MUST inject `$storage.<name>.path` so the path never appears in a command (D-36/D-39, §7).
+7. **Persist resolved deployment state** and resolve cross-component references by consumer vantage (§8). Providers SHOULD interoperate via the shared state file so invocations compose.
+8. **Report gaps, not silent drops** — if a field can't be honored, surface it (the AWS probe's conformance report is the model).
 
 A **translation-only** provider (IaC/manifest emitter) satisfies the contract by mapping the fields above to its target and listing what it cannot map — it need not implement `up`/`down`.
 
