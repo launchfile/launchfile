@@ -184,6 +184,28 @@ export function getStaticPaths() {
         { line: "dev:", text: "Source-mode run — the counterpart of start. Your dev server, launched by launchfile dev." },
       ],
     },
+    {
+      slug: "storage-paths",
+      title: "Storage Paths",
+      description: "Reference a provisioned volume's path with $storage.<name>.path — the same Launchfile resolves correctly under any provider.",
+      catalogLink: '<a href="https://launchfile.io/apps/mailpit/">Mailpit</a> and <a href="https://launchfile.io/apps/anythingllm/">AnythingLLM</a> use $storage.* to wire their data paths into the environment.',
+      concepts: [
+        "`storage` declares named volumes the provider provisions and mounts",
+        "`$storage.<name>.path` resolves to the path the provider actually used",
+        "Docker resolves it to the container mount path; the native provider resolves it to a host directory — the file stays the same",
+        "`persistent: false` marks ephemeral scratch space like caches",
+      ],
+      guidance: "Apps that need a storage path in their environment — without hardcoding a path that only one provider understands.",
+      specLinks: [
+        { label: "Storage", href: "https://launchfile.org/spec/storage/" },
+        { label: "Storage Properties", href: "https://launchfile.org/spec/storage-properties/" },
+        { label: "Expressions", href: "https://launchfile.org/spec/expression-syntax/" },
+      ],
+      annotations: [
+        { line: "NOTES_DATA_DIR: $storage.data.path", text: "Resolves to the provisioned path — /var/lib/notes under Docker, a host directory under the native provider. Never hardcoded." },
+        { line: "persistent: false", text: "Marks the cache volume as ephemeral scratch — not preserved across restarts like the data volume." },
+      ],
+    },
   ];
 
   return examples.map((ex) => ({
