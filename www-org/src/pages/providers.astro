@@ -1,0 +1,12 @@
+---
+import DocsLayout from "@/layouts/DocsLayout.astro";
+import { getEntry, render } from "astro:content";
+
+const entry = await getEntry("spec", "providers");
+if (!entry) throw new Error("PROVIDERS.md not found in spec collection");
+const { Content } = await render(entry);
+---
+
+<DocsLayout title="Provider Contract — Launchfile" description="The runtime contract for Launchfile providers: verbs, lifecycle slots, execution modes, component selection, the build-recipe line, and deployment state." currentPath="/providers/">
+  <Content />
+</DocsLayout>
