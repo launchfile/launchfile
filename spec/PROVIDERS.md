@@ -179,7 +179,7 @@ local watcher ← emit ← diff() ← fs change ────┘
 - **`env`:** prints a component's resolved environment (§7) — the read surface §8 generalizes.
 - **Storage:** resolves `$storage.<name>.path` to `.launchfile/storage/<component>/<name>` on the host (D-39).
 - **State:** `LaunchState` at `<projectDir>/.launchfile/state.json`, keyed by Launchfile **content hash**; holds `resources`, `secrets`, `ports`, `processes`.
-- **Selection:** narrows `components` after the prereq gate so every phase honors it.
+- **Selection:** narrows `components` to the selected set's downward `depends_on` closure (`selectionClosure`) after the prereq gate, so every phase honors it.
 
 ### Mode coverage today
 
@@ -195,7 +195,7 @@ A provider claiming Launchfile support MUST:
 2. **Ignore specializations it doesn't understand** and still launch (§6).
 3. **Resolve mode per component** for whatever modes it supports; ignore the other mode's fields (§4). (A cloud provider is typically artifact-only.)
 4. **Honor the component selector** and `--deps-only` semantics (§5).
-5. **Provision `requires` resources** as a precondition of any selected component; treat `depends_on` as satisfy-not-expand (§5).
+5. **Provision `requires` resources** as a precondition of any selected component, and **start the selected components' downward `depends_on` closure** (the declared dependency targets, transitively); never start unrelated components or reverse-dependencies (§5).
 6. **Resolve the reserved expression namespaces it supports** — `$app.*`, `$storage.<name>.path`, resource properties, `$secrets.*`, `$components.*`; unknown reserved keys resolve to `""` (L-4). A provider that provisions storage MUST inject `$storage.<name>.path` so the path never appears in a command (D-36/D-39, §7).
 7. **Persist resolved deployment state** and resolve cross-component references by consumer vantage (§8). Providers SHOULD interoperate via the shared state file so invocations compose.
 8. **Report gaps, not silent drops** — if a field can't be honored, surface it (the AWS probe's conformance report is the model).
