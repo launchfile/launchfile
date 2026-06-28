@@ -32,9 +32,22 @@
     try {
       const base = window.location.origin;
       const url = new URL("/pagefind/pagefind.js", base).href;
-      pagefind = await import(/* @vite-ignore */ url);
+      // Load Pagefind's runtime bundle from a URL computed at runtime. The
+      // indirection through `new Function` hides the import() from the bundler,
+      // so Vite/Rollup never rewrites it into a `__vitePreload(…, __VITE_PRELOAD__)`
+      // call. Under Astro 7 / Vite 7 that rewrite leaks an *undefined*
+      // `__VITE_PRELOAD__` into this inline script and throws at runtime —
+      // which silently disabled site search after the astro 6→7 bump. A plain
+      // `/* @vite-ignore */` dynamic import is no longer enough to prevent it.
+      // NB: if a strict CSP is ever added to these sites it must allow
+      // `'unsafe-eval'` (for this Function constructor), or search breaks again.
+      const dynamicImport = new Function("u", "return import(u)") as (u: string) => Promise<any>;
+      pagefind = await dynamicImport(url);
       await pagefind.init({});
-    } catch {
+    } catch (e) {
+      // Surface the failure: the previous silent `catch {}` is exactly why a
+      // broken search shipped unnoticed for days. A real failure should be loud.
+      console.error("Pagefind failed to load — site search disabled", e);
       pagefind = null;
     }
     return pagefind;
