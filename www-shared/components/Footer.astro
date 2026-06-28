@@ -1,16 +1,28 @@
 ---
+// Single shared site footer.
+//
+// One <footer>, one row. Consuming sites can override the link group and the
+// right-hand meta text via the `links` and `meta` named slots. The defaults
+// below are the open-source nav used by launchfile.dev / launchfile.org; the
+// commercial launchfile.io site passes its own links + copyright through the
+// slots. This keeps it to a SINGLE footer everywhere instead of stacking a
+// commercial bar under a shared one.
 ---
 
 <footer class="mt-auto border-t border-[var(--lf-purple-100)] bg-[var(--lf-white)]">
   <div class="px-6 py-8">
-    <div class="flex flex-wrap items-center justify-between gap-4 text-sm text-slate">
-      <div class="flex gap-6">
-        <a href="https://launchfile.dev" class="no-underline hover:text-ink transition-colors">Docs</a>
-        <a href="https://launchfile.org" class="no-underline hover:text-ink transition-colors">Spec</a>
-        <a href="https://launchfile.io" class="no-underline hover:text-ink transition-colors">Catalog</a>
-        <a href="https://github.com/launchfile/launchfile" class="no-underline hover:text-ink transition-colors">GitHub</a>
-      </div>
-      <p>Launchfile is open source under the MIT license.</p>
+    <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 text-sm text-slate">
+      <nav class="flex flex-wrap gap-x-6 gap-y-2" aria-label="Footer">
+        <slot name="links">
+          <a href="https://launchfile.dev" class="no-underline hover:text-ink transition-colors">Docs</a>
+          <a href="https://launchfile.org" class="no-underline hover:text-ink transition-colors">Spec</a>
+          <a href="https://launchfile.io" class="no-underline hover:text-ink transition-colors">Catalog</a>
+          <a href="https://github.com/launchfile/launchfile" class="no-underline hover:text-ink transition-colors">GitHub</a>
+        </slot>
+      </nav>
+      <p class="text-slate">
+        <slot name="meta">Launchfile is open source under the MIT license.</slot>
+      </p>
     </div>
   </div>
 </footer>
