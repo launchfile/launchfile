@@ -245,6 +245,12 @@ export function launchToCompose(launch: NormalizedLaunch): ComposeResult {
   // across components like the Docker provider's resourceMap (compose-generator).
   const resources: Record<string, Record<string, string>> = {};
 
+  // App-wide component properties for $components.<name>.prop resolution, shared
+  // across components like the Docker provider's componentMap. Populated as each
+  // component is processed (below), so a later component can reference an earlier
+  // one; an unregistered component resolves to "" (L-4), as on the provider.
+  const components: Record<string, Record<string, string | number>> = {};
+
   for (const [componentName, component] of Object.entries(launch.components)) {
     const serviceName =
       componentName === "default" ? launch.name : `${launch.name}-${componentName}`;
@@ -300,6 +306,25 @@ export function launchToCompose(launch: NormalizedLaunch): ComposeResult {
       service.ports = allExposedPorts.map((p) => `0:${p.port}`);
     }
 
+    // Register this component for $components.<name>.prop resolution, mirroring the
+    // Docker provider (compose-generator.ts): the in-network address is the service
+    // hostname on the component's first exposed port. We use the provider's
+    // default-exposed semantics (`exposed !== false`) here — intentionally looser
+    // than the host-port mapping above (explicit `exposed` only) — because the goal
+    // is to predict what $components.* resolves to on a real provider, where any
+    // component is reachable by service name on the ports it declares. url is always
+    // http:// (the provider does the same); a component with no provides gets no
+    // entry and $components.<name>.* degrades to "".
+    const refPorts = (component.provides ?? []).filter((p) => p.exposed !== false);
+    if (refPorts.length > 0) {
+      const containerPort = refPorts[0]!.port;
+      components[componentName] = {
+        url: `http://${serviceName}:${containerPort}`,
+        host: serviceName,
+        port: containerPort,
+      };
+    }
+
     // Environment variables
     const env: Record<string, string> = {};
 
@@ -325,7 +350,7 @@ export function launchToCompose(launch: NormalizedLaunch): ComposeResult {
       url: "http://localhost",
       ...deriveAppUrlProperties("http://localhost"),
     };
-    const baseCtx: ResolverContext = { secrets: secretValues, storage: storageCtx, app: appCtx };
+    const baseCtx: ResolverContext = { secrets: secretValues, storage: storageCtx, app: appCtx, components };
 
     // Resolve env vars from the Launchfile
     if (component.env) {
