@@ -237,6 +237,10 @@ export function launchToCompose(launch: NormalizedLaunch): ComposeResult {
     }
   }
 
+  // App-wide resource properties for $<resource>.prop set_env resolution, shared
+  // across components like the Docker provider's resourceMap (compose-generator).
+  const resources: Record<string, Record<string, string>> = {};
+
   for (const [componentName, component] of Object.entries(launch.components)) {
     const serviceName =
       componentName === "default" ? launch.name : `${launch.name}-${componentName}`;
@@ -333,7 +337,6 @@ export function launchToCompose(launch: NormalizedLaunch): ComposeResult {
     const dependsOn: Record<string, { condition: string }> = {};
 
     if (component.requires?.length) {
-      const resources: Record<string, Record<string, string>> = {};
       for (const req of component.requires) {
         const backingResult = addBackingService(
           launch.name,
