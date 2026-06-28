@@ -4,6 +4,12 @@ on:
   pull_request:
     branches: [main]
 
+# Least privilege: every job here only reads the checked-out code (build/test/
+# validate). No job writes to the repo, comments, or deploys, so the workflow
+# token needs nothing beyond read. (CodeQL: actions/missing-workflow-permissions.)
+permissions:
+  contents: read
+
 jobs:
   sdk:
     name: SDK
