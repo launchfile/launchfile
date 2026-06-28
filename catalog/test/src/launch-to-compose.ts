@@ -6,7 +6,12 @@
  */
 
 import { stringify } from "yaml";
-import { resolveExpression, isExpression } from "../../../sdk/src/resolver.ts";
+import {
+  resolveExpression,
+  isExpression,
+  deriveAppUrlProperties,
+  type ResolverContext,
+} from "../../../sdk/src/resolver.ts";
 import type {
   NormalizedLaunch,
   NormalizedRequirement,
@@ -300,10 +305,24 @@ export function launchToCompose(launch: NormalizedLaunch): ComposeResult {
       }
     }
 
+    // Best-effort $app.* context (D-33/D-35). The harness assigns ephemeral host
+    // ports at generation time, so the real public URL/port aren't known here —
+    // provide the host-shaped fields a localhost deploy would expose; unknown
+    // $app.* (e.g. the actual port) degrade to "" via the resolver, as on a real
+    // provider. The component context (secrets, storage, app) is shared by both
+    // `env:` defaults and `set_env`, exactly as the providers resolve them.
+    const appCtx: Record<string, string | number> = {
+      name: launch.name,
+      host: "localhost",
+      url: "http://localhost",
+      ...deriveAppUrlProperties("http://localhost"),
+    };
+    const baseCtx: ResolverContext = { secrets: secretValues, storage: storageCtx, app: appCtx };
+
     // Resolve env vars from the Launchfile
     if (component.env) {
       for (const [key, envVar] of Object.entries(component.env)) {
-        const value = resolveEnvVar(envVar, secretValues, key, storageCtx);
+        const value = resolveEnvVar(envVar, baseCtx, key);
         if (value !== undefined) {
           env[key] = value;
         }
@@ -314,6 +333,7 @@ export function launchToCompose(launch: NormalizedLaunch): ComposeResult {
     const dependsOn: Record<string, { condition: string }> = {};
 
     if (component.requires?.length) {
+      const resources: Record<string, Record<string, string>> = {};
       for (const req of component.requires) {
         const backingResult = addBackingService(
           launch.name,
@@ -325,11 +345,20 @@ export function launchToCompose(launch: NormalizedLaunch): ComposeResult {
           warnings,
         );
         if (backingResult) {
-          // Wire env vars from set_env
+          resources[req.name ?? req.type] = backingResult.properties;
+          // Wire env vars from set_env via the SDK resolver — the same path the
+          // providers use. The enclosing resource is the single-segment scope
+          // ($url, $host); named resources, $secrets.*, $storage.*.path, and
+          // $app.* all resolve too (previously a resource-props-only stub left
+          // those unresolved, so set_env using $secrets/$storage/$app was wrong).
           if (req.set_env) {
-            for (const [envKey, propRef] of Object.entries(req.set_env)) {
-              const resolved = resolvePropRef(propRef, backingResult.properties);
-              env[envKey] = resolved;
+            const scopedCtx: ResolverContext = {
+              ...baseCtx,
+              resource: backingResult.properties,
+              resources,
+            };
+            for (const [envKey, expr] of Object.entries(req.set_env)) {
+              env[envKey] = resolveExpression(expr, scopedCtx);
             }
           }
           dependsOn[backingResult.serviceName] = {
@@ -426,9 +455,8 @@ export function launchToCompose(launch: NormalizedLaunch): ComposeResult {
 
 function resolveEnvVar(
   envVar: NormalizedEnvVar,
-  secrets: Record<string, string>,
+  ctx: ResolverContext,
   key?: string,
-  storage?: Record<string, Record<string, string>>,
 ): string | undefined {
   // Generator takes precedence
   if (envVar.generator) {
@@ -439,9 +467,10 @@ function resolveEnvVar(
 
   if (envVar.default !== undefined) {
     const val = String(envVar.default);
-    // Resolve expressions ($secrets.*, $storage.*.path, etc.) via SDK resolver
+    // Resolve expressions ($secrets.*, $storage.*.path, $app.*, etc.) via the SDK
+    // resolver — the same resolver the providers use, so the harness matches.
     if (isExpression(val)) {
-      return resolveExpression(val, { secrets, storage });
+      return resolveExpression(val, ctx);
     }
     return val;
   }
@@ -461,14 +490,6 @@ function resolveEnvVar(
   return undefined;
 }
 
-function resolvePropRef(ref: string, properties: Record<string, string>): string {
-  // $url → properties.url, $host → properties.host, etc.
-  if (ref.startsWith("$")) {
-    const prop = ref.slice(1);
-    return properties[prop] ?? ref;
-  }
-  return ref;
-}
 
 function addBackingService(
   appName: string,
