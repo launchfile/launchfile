@@ -4,7 +4,7 @@
 
 import { writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
-import { readLaunch } from "@launchfile/sdk";
+import { readLaunch, selectionClosure } from "@launchfile/sdk";
 import { checkPrereqs, composeSupportsIgnoreBuildable } from "./prereqs.js";
 import { resolveSource } from "./source-resolver.js";
 import {
@@ -28,6 +28,21 @@ export interface DockerUpOpts {
 	dryRun?: boolean;
 	/** Skip confirmation prompt for remote Launchfiles */
 	yes?: boolean;
+	/**
+	 * Component selector (#77): if non-empty, these components plus their
+	 * transitive downward `depends_on` closure are started (D-41). The start-set
+	 * is computed from the SDK's `selectionClosure` — the same definition the
+	 * macOS provider uses — so both produce the identical running topology (P-5),
+	 * rather than leaning on compose's implicit `depends_on` expansion. Each
+	 * closure member's `requires` come along via compose `depends_on`. Empty =
+	 * all components.
+	 */
+	components?: string[];
+}
+
+/** component name → compose service name (mirrors compose-generator). */
+function serviceNameFor(appName: string, componentName: string): string {
+	return componentName === "default" ? appName : `${appName}-${componentName}`;
 }
 
 /**
@@ -65,6 +80,30 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// Parse Launchfile
 		const launch = readLaunch(resolved.yaml);
 		const componentNames = Object.keys(launch.components);
+
+		// Resolve component selector (#77) into its D-41 start-set: selected
+		// components + their transitive downward `depends_on` closure. Empty = all.
+		const selection = selectionClosure(launch, opts.components ?? []);
+		if (selection.unknown.length > 0 || selection.resources.length > 0) {
+			console.error(`\nCannot select: ${[...selection.unknown, ...selection.resources].join(", ")}`);
+			for (const r of selection.resources) {
+				console.error(`  - "${r}" is a backing resource, not a component; select the component that requires it.`);
+			}
+			for (const u of selection.unknown) {
+				console.error(`  - "${u}" matches no component. Available: ${componentNames.join(", ")}`);
+			}
+			process.exit(1);
+		}
+		const selectorActive = (opts.components?.length ?? 0) > 0;
+		// Pass the explicit closure to `compose up` rather than relying on compose's
+		// implicit depends_on expansion, so the start-set matches macOS exactly.
+		const selectedServices = selectorActive
+			? selection.start.map((name) => serviceNameFor(launch.name, name))
+			: [];
+		// When a selector is active, the post-up summary reports only the components
+		// actually started this invocation (#77) — now the full closure, not just
+		// the directly-named ones. Undefined means "report all".
+		const summaryOnly = selectorActive ? new Set(selection.start) : undefined;
 
 		// Security: prompt for confirmation before executing remote Launchfiles.
 		// Remote content can specify arbitrary images, commands, and env vars.
@@ -145,7 +184,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		if (opts.dryRun) {
 			console.log("\n--- docker-compose.yml ---\n");
 			console.log(result.yaml);
-			printSummary(launch.name, result.ports);
+			printSummary(launch.name, result.ports, summaryOnly);
 			return upResult;
 		}
 
@@ -217,7 +256,13 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// Start services
 		await withSpan("up:start", { project }, async () => {
 			process.stdout.write(`  \u2193 Starting services...`);
-			await shell("docker", ["compose", "-p", project, "-f", composeFile, "up", "-d"], { silent: true });
+			// The closure's services start with their compose `depends_on` (resources)
+			// pulled in automatically; components outside the closure stay down (#77).
+			await shell(
+				"docker",
+				["compose", "-p", project, "-f", composeFile, "up", "-d", ...selectedServices],
+				{ silent: true },
+			);
 			console.log("");
 		});
 
@@ -233,7 +278,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		});
 
 		// Print summary
-		printSummary(launch.name, result.ports);
+		printSummary(launch.name, result.ports, summaryOnly);
 
 		return upResult;
 	});
@@ -412,11 +457,37 @@ async function waitForHealth(project: string, composeFile: string): Promise<bool
 	return false;
 }
 
-function printSummary(appName: string, ports: Record<string, number>): void {
-	console.log("");
+/**
+ * Build the "<component> is running at …" summary lines, one per exposed port.
+ *
+ * `only`, when provided, restricts the summary to that set of component names —
+ * used by the component selector (#77) so a partial `up` doesn't claim that
+ * components it never started are running. An undefined `only` means "report
+ * everything" (the all-components default). Pure and side-effect-free so it can
+ * be unit-tested without spinning Docker.
+ */
+export function summaryLines(
+	appName: string,
+	ports: Record<string, number>,
+	only?: ReadonlySet<string>,
+): string[] {
+	const lines: string[] = [];
 	for (const [name, port] of Object.entries(ports)) {
+		if (only && !only.has(name)) continue;
 		const label = name === "default" ? appName : name;
-		console.log(`  ${label} is running at http://localhost:${port}`);
+		lines.push(`  ${label} is running at http://localhost:${port}`);
+	}
+	return lines;
+}
+
+function printSummary(
+	appName: string,
+	ports: Record<string, number>,
+	only?: ReadonlySet<string>,
+): void {
+	console.log("");
+	for (const line of summaryLines(appName, ports, only)) {
+		console.log(line);
 	}
 }
 

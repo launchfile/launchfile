@@ -7,6 +7,7 @@
 
 import { readFileSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
+import { lintLaunch } from "./lint.js";
 import { readLaunch } from "./reader.js";
 import type { NormalizedLaunch } from "./types.js";
 
@@ -90,6 +91,8 @@ export interface ValidateResult {
 	components?: string[];
 	requires?: string[];
 	errors?: string[];
+	/** Non-fatal lint advisories (do not affect `valid`). */
+	warnings?: string[];
 }
 
 /**
@@ -104,6 +107,7 @@ export function cmdValidate(path: string, opts: ValidateOpts = {}): ValidateResu
 		const launch = readLaunch(yaml);
 		const componentNames = Object.keys(launch.components);
 		const allRequires = collectRequires(launch);
+		const warnings = lintLaunch(launch);
 
 		const result: ValidateResult = {
 			valid: true,
@@ -111,6 +115,7 @@ export function cmdValidate(path: string, opts: ValidateOpts = {}): ValidateResu
 			name: launch.name,
 			components: componentNames,
 			requires: allRequires,
+			...(warnings.length > 0 && { warnings }),
 		};
 
 		if (opts.json) {
@@ -123,6 +128,9 @@ export function cmdValidate(path: string, opts: ValidateOpts = {}): ValidateResu
 			console.log(`  ${fmt.dim("components:")} ${componentNames.join(", ")}`);
 			if (allRequires.length > 0) {
 				console.log(`  ${fmt.dim("requires:")}   ${allRequires.join(", ")}`);
+			}
+			for (const w of warnings) {
+				console.error(`  ${fmt.yellow("warning:")} ${w}`);
 			}
 		}
 
