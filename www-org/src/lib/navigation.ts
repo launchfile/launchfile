@@ -51,6 +51,7 @@ export const navigation: NavGroup[] = [
     items: [
       { title: "Why Launchfile", href: "/why/" },
       { title: "Design Principles", href: "/design/" },
+      { title: "Provider Contract", href: "/providers/" },
       { title: "Contributing", href: "/contributing/" },
       { title: "Known Gaps", href: "/gaps/" },
     ],
