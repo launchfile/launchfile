@@ -1,4 +1,5 @@
 export { cmdInspect, cmdSchema, cmdValidate } from "./commands.js";
+export { lintLaunch } from "./lint.js";
 export { readLaunch, validateLaunch } from "./reader.js";
 export {
 	deriveAppUrlProperties,
@@ -8,18 +9,22 @@ export {
 	type ResolverContext,
 	resolveExpression,
 } from "./resolver.js";
-export { lintLaunch } from "./lint.js";
 export { LaunchSchema } from "./schema.js";
-export { selectComponents, type SelectionResult } from "./select.js";
+export {
+	type SelectionClosureResult,
+	type SelectionResult,
+	selectComponents,
+	selectionClosure,
+} from "./select.js";
 export {
 	type ComponentState,
 	type DeploymentState,
 	diff,
 	type Endpoint,
 	type LaunchEvent,
+	type ResourceState,
 	reduce,
 	resolveRef,
-	type ResourceState,
 	type Vantage,
 } from "./state.js";
 export type {

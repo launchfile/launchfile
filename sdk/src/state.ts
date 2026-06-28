@@ -390,9 +390,17 @@ export function resolveRef(
 		const name = path[1];
 		const prop = path[2];
 		if (!name || !prop) return "";
-		const component = state.components[name];
+		// Object.hasOwn, not `name in` / bracket access: a plain Record inherits
+		// Object.prototype, so `state.components["toString"]` would otherwise hand
+		// back the inherited method instead of resolving to "".
+		const component = Object.hasOwn(state.components, name)
+			? state.components[name]
+			: undefined;
 		if (!component) return "";
-		if (prop in component.captures) return component.captures[prop]!;
+		// hasOwn, not `prop in`: keeps `$components.api.toString` from resolving to
+		// the inherited Object.prototype.toString rather than "".
+		if (Object.hasOwn(component.captures, prop))
+			return component.captures[prop]!;
 		const endpoint = defaultEndpoint(component.endpoints);
 		if (!endpoint || !ADDRESS_PROPS.has(prop)) return "";
 		return endpointProp(endpoint, prop, vantage);
@@ -402,7 +410,9 @@ export function resolveRef(
 	const name = path[0];
 	const prop = path[1];
 	if (!name || !prop) return "";
-	const resource = state.resources[name];
+	const resource = Object.hasOwn(state.resources, name)
+		? state.resources[name]
+		: undefined;
 	if (!resource) return "";
 	const endpoint = defaultEndpoint(resource.endpoints);
 	if (!endpoint || !ADDRESS_PROPS.has(prop)) return "";
