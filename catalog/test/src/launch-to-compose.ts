@@ -208,7 +208,11 @@ function generateUuid(): string {
 }
 
 function generatePort(): string {
-  return String(10000 + Math.floor(Math.random() * 55000));
+  // crypto, not Math.random: a secret may declare `generator: port`, so this
+  // value can land in a secret/credential context (CodeQL js/insecure-randomness).
+  const buf = new Uint32Array(1);
+  crypto.getRandomValues(buf);
+  return String(10000 + (buf[0]! % 55000));
 }
 
 // --- Main translator ---
