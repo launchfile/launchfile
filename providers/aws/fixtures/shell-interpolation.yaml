@@ -1,0 +1,14 @@
+# Regression fixture: a shell ${VAR} inside commands.start must NOT break the
+# emitted Terraform. The cloud-init heredoc neutralizes ${...}/%{...} so user
+# command strings render as literal text, not live Terraform interpolations.
+# Guards the heredoc-escaping fix surfaced in the PR #108 review.
+version: launch/v1
+name: shell-interp
+runtime: python
+provides:
+  - protocol: http
+    port: 8000
+    exposed: true
+commands:
+  build: "pip install -r requirements.txt"
+  start: "gunicorn --bind 0.0.0.0:${PORT} --workers ${WEB_CONCURRENCY:-2} app:server"

@@ -83,6 +83,7 @@ Every publishable package MUST have a `files` array in package.json. This is the
 | `sdk/` | `@launchfile/sdk` | `dist/**/*.js`, `dist/**/*.d.ts`, `schema/**`, `README.md` | — |
 | `providers/docker/` | `@launchfile/docker` | `dist/**/*.js`, `dist/**/*.d.ts`, `README.md` | — |
 | `providers/macos-dev/` | `@launchfile/macos-dev` | `dist/**/*.js`, `dist/**/*.d.ts`, `README.md` | — |
+| `providers/aws/` | `@launchfile/aws` | `dist/**/*.js`, `dist/**/*.d.ts`, `README.md` | `dist/cli.js` |
 | `packages/launchfile/` | `launchfile` | `dist/**/*.js`, `dist/**/*.d.ts`, `README.md` | `dist/cli.js` |
 
 Never include: `src/`, `**/__tests__/`, `*.map`, `tsconfig*.json`, `bun.lock`.
