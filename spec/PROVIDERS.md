@@ -85,8 +85,8 @@ Resources (`requires`) have **no source form** — provisioned identically in bo
 
 `up`/`down`/`status`/`dev` accept an optional **component selector** (verb argument, not a file field — D-37).
 
-- Selecting a component provisions its `requires`; selecting nothing acts on all components. ✅ (docker, macos-dev — `selectComponents()` in the SDK)
-- `depends_on` is a readiness constraint to **satisfy**, not a selection to **expand** (fail loud if a dependency isn't running; `--with-deps` to opt in). 🔶
+- Selecting a component starts it **plus its transitive downward dependency closure** — its `depends_on` target components and every closure member's `requires` backing services (**D-41**). Selecting nothing acts on all components. ✅ (docker, macos-dev — `selectComponents()` / `selectionClosure()` in the SDK)
+- The closure is **downward only**: `up backend` never starts `frontend` (a reverse-dependency) or unrelated components, and **already-running dependencies are left untouched** (idempotent). `depends_on` is honored as a hard prerequisite (D-16), so a selected component's `depends_on` targets come along — they are not left down for the operator to satisfy. A future `--no-deps` opt-out starts only the directly-named components.
 - **`--deps-only[=requires|supports]`** 📐 — provision the resource closure of the selected (or all) components and start **no component**. It never traverses `depends_on`. `requires` = mandatory; `supports` = optional (L-6, orchestrator-activated). A backing service modeled as a *component* (not a `requires`) is not picked up — select it explicitly.
 
 ---
