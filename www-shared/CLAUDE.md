@@ -1,6 +1,23 @@
 # www-shared
 
-Shared layouts, components, and styles used by both `www-dev` (launchfile.dev) and `www-org` (launchfile.org).
+Shared layouts, components, styles, and markdown plugins used by both `www-dev` (launchfile.dev) and `www-org` (launchfile.org).
+
+## Markdown plugins (`lib/markdown/`)
+
+Shared Sätteri (Astro 7 native markdown) plugins, wired into each site's
+`astro.config.ts` `markdown.processor`:
+
+- `hast-github-breaks.ts` — soft line breaks → `<br>` (matches GitHub's rendering of repo `.md` files; the `remark-breaks` replacement)
+- `mdast-mermaid.ts` — ` ```mermaid ` fences → `<pre class="mermaid">` for client-side diagram rendering
+- `mdast-rewrite-links.ts` — `createRewriteLinksPlugin(map)` factory; each site passes its own relative-link → route map
+
+**This directory is a package** (has its own `package.json` + lockfile) because
+those plugins import `satteri` / `hast` / `mdast` — which a raw source dir can't
+resolve. **Run `bun install` here** (and CI does `cd www-shared && bun install
+--frozen-lockfile`) before building a site, or the site config fails to resolve
+`satteri`. The site `astro.config.ts` imports the plugins by relative path
+(`../www-shared/lib/markdown/index.ts`), not the `@shared` alias, since the
+config loader resolves before tsconfig path aliases apply.
 
 ## Responsive Header Behavior
 

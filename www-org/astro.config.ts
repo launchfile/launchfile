@@ -2,9 +2,25 @@ import { defineConfig } from "astro/config";
 import cloudflare from "@astrojs/cloudflare";
 import tailwindcss from "@tailwindcss/vite";
 import { satteri } from "@astrojs/markdown-satteri";
-import { rewriteLinksPlugin } from "./src/lib/mdast-rewrite-links.ts";
-import { mermaidPlugin } from "./src/lib/mdast-mermaid.ts";
-import { githubBreaksPlugin } from "./src/lib/hast-github-breaks.ts";
+import {
+  githubBreaksPlugin,
+  mermaidPlugin,
+  createRewriteLinksPlugin,
+} from "../www-shared/lib/markdown/index.ts";
+
+const GITHUB_REPO = "https://github.com/launchfile/launchfile";
+
+// launchfile.org renders the spec docs; rewrite their relative links to site routes.
+const rewriteLinksPlugin = createRewriteLinksPlugin({
+  // Files rendered as site pages
+  "DESIGN.md": "/design/",
+  "CONTRIBUTING.md": "/contributing/",
+  "SPEC.md": "/spec/",
+  // Files not rendered on site → GitHub blob
+  "GOVERNANCE.md": `${GITHUB_REPO}/blob/main/spec/GOVERNANCE.md`,
+  "../AUTHORS": `${GITHUB_REPO}/blob/main/AUTHORS`,
+  "../catalog/": `${GITHUB_REPO}/tree/main/catalog`,
+});
 
 export default defineConfig({
   site: "https://launchfile.org",
@@ -14,13 +30,11 @@ export default defineConfig({
     plugins: [tailwindcss()],
   },
   markdown: {
-    // Astro 7's native Sätteri pipeline (replaces the legacy @astrojs/markdown-remark
-    // remark/rehype path). Three plugins carry over the behaviors the legacy pipeline
-    // provided:
-    //   - rewriteLinks (mdast): relative .md links → site routes
-    //   - mermaid (mdast): ```mermaid fences → <pre class="mermaid"> so DocsLayout
-    //     renders them as diagrams (the content-collection path never did this)
-    //   - githubBreaks (hast): soft line breaks → <br>, matching GitHub (remark-breaks)
+    // Astro 7's native Sätteri pipeline. Markdown plugins are shared with
+    // launchfile.dev via www-shared/lib/markdown:
+    //   - rewriteLinks (mdast): relative .md links → site routes (per-site map)
+    //   - mermaid (mdast): ```mermaid fences → <pre class="mermaid"> diagrams
+    //   - githubBreaks (hast): soft line breaks → <br>, matching GitHub
     // shikiConfig still flows through the top-level markdown option.
     processor: satteri({
       mdastPlugins: [rewriteLinksPlugin, mermaidPlugin],

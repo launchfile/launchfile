@@ -1,14 +1,17 @@
 /**
  * Sätteri hast plugin: render a soft line break (a single newline within a
- * paragraph) as a hard `<br>`, matching GitHub's rendering of these spec `.md`
+ * paragraph) as a hard `<br>`, matching how GitHub renders these repo `.md`
  * files. This is the Sätteri port of `remark-breaks` (the legacy
  * `@astrojs/markdown-remark` pipeline used that plugin; Sätteri has no native
  * hard-break feature).
  *
+ * Shared by the launchfile.org and launchfile.dev sites — any page that renders
+ * repo markdown (the spec docs on .org, the SDK README on .dev) wants the same
+ * GitHub-faithful line breaks.
+ *
  * CommonMark — and Sätteri by default — keeps a soft break as a `\n` inside a
  * text node's value, which collapses to a space in HTML. GitHub instead renders
- * it as a line break, and several spec docs (e.g. DESIGN.md's metadata header,
- * GAPS.md's intro) are authored to rely on that.
+ * it as a line break, and several of these docs are authored to rely on that.
  *
  * We run at the hast (HTML AST) level rather than mdast, for two reasons:
  *   1. Inserting `<br>` elements among inline siblings is natural here, whereas

@@ -1,13 +1,11 @@
 /**
  * Sätteri mdast plugin: emit a ```mermaid fenced code block as
- * `<pre class="mermaid">…</pre>` so the client-side mermaid runner in
- * DocsLayout.astro turns it into a diagram, instead of a syntax-highlighted
- * code block.
+ * `<pre class="mermaid">…</pre>` so a client-side mermaid runner (e.g.
+ * DocsLayout.astro on launchfile.org) turns it into a diagram, instead of a
+ * syntax-highlighted code block.
  *
- * The standalone SPEC.md pipeline (`spec-sections.ts`, via `marked`) already
- * does this; the Astro markdown pipeline (content-collection docs like
- * DESIGN.md) never did, so its mermaid diagram rendered as text. This closes
- * that gap on the native Sätteri engine.
+ * Shared across the sites that render repo markdown. Harmless no-op on pages
+ * with no ```mermaid fences.
  */
 
 import { defineMdastPlugin } from "satteri";
