@@ -120,6 +120,8 @@ const { title, description, currentPath } = Astro.props;
       // dynamic import into a `__vitePreload(…, __VITE_PRELOAD__)` call — under
       // Astro 7 / Vite 7 that leaks an undefined __VITE_PRELOAD__ and throws at
       // runtime (same regression fixed in SearchDialog after the astro 6→7 bump).
+      // NB: a future strict CSP must allow `'unsafe-eval'` (Function constructor)
+      // and `script-src https://cdn.jsdelivr.net`, or diagrams break again.
       const dynamicImport = new Function('u', 'return import(u)') as (u: string) => Promise<any>;
       const mermaidModule = await dynamicImport(url);
       mermaidModule.default.initialize({ startOnLoad: false, theme: 'neutral' });
