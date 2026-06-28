@@ -1,6 +1,6 @@
 # Launchfile Provider Contract
 
-> **Status: draft for review.** `SPEC.md` defines the *file*; this document defines what a **provider** does with it — the runtime counterpart. Parts marked 📐 depend on RFCs [#77](https://github.com/launchfile/launchfile/issues/77), [#79](https://github.com/launchfile/launchfile/issues/79), [#78](https://github.com/launchfile/launchfile/issues/78) and the cross-invocation state design note, which are not yet ratified. Parts marked ✅ are implemented in the reference providers today.
+> **Status: draft for review.** `SPEC.md` defines the *file*; this document defines what a **provider** does with it — the runtime counterpart. It consolidates ratified decisions **D-37** (execution mode vs. environment), **D-38** (`install`/`dev` + `source`), **D-39** (`$storage.*`), and **D-40** (the app/provider build line). Parts marked 📐 are not-yet-ratified elaborations — the cross-invocation state/event model (a design note) and `--deps-only`. Parts marked ✅ are implemented in the reference providers today.
 
 A **provider** translates a Launchfile into a running (or described) deployment on one target — Docker Compose locally, native services on macOS, Terraform for AWS, Kubernetes, etc. The format captures *intent*; the provider maps intent to execution (P-1, P-5, P-11). This contract is what keeps "same file, every provider" (12-Factor X) honest.
 
@@ -39,7 +39,7 @@ Identity & re-location: a provider keys each deployment by a stable id (slug / d
 
 ---
 
-## 3. Lifecycle slots 📐 (RFC #77)
+## 3. Lifecycle slots (D-37)
 
 A provider operates on **slots**, not raw command names. A slot is a lifecycle phase; *which command fills it* is a mode-resolution detail (§4). Two slots are mode-aware; the rest are invariant.
 
@@ -57,7 +57,7 @@ Providers SHOULD surface progress on slot boundaries (`prepare.start/end`, `run.
 
 ---
 
-## 4. Execution modes 📐 (RFC #77)
+## 4. Execution modes (D-37, D-38)
 
 A provider runs in exactly one **mode** per launch — `artifact` (built image/platform build) or `source` (run from the working tree). Mode is **requested globally and resolved per component**.
 
@@ -83,7 +83,7 @@ Resources (`requires`) have **no source form** — provisioned identically in bo
 
 ## 5. Component selection & `--deps-only`
 
-`up`/`down`/`status`/`dev` accept an optional **component selector** (verb argument, not a file field — RFC #77).
+`up`/`down`/`status`/`dev` accept an optional **component selector** (verb argument, not a file field — D-37).
 
 - Selecting a component provisions its `requires`; selecting nothing acts on all components. ✅ (docker, macos-dev — `selectComponents()` in the SDK)
 - `depends_on` is a readiness constraint to **satisfy**, not a selection to **expand** (fail loud if a dependency isn't running; `--with-deps` to opt in). 🔶
@@ -91,18 +91,20 @@ Resources (`requires`) have **no source form** — provisioned identically in bo
 
 ---
 
-## 6. Build: portable contract vs. provider specialization 📐 (RFC #78)
+## 6. Build: portable contract vs. provider specialization (D-40)
 
 - **Portable contract (every provider MUST be able to build from):** `runtime` + `commands` (`build`/`install`/`start`/`dev`/…). 
-- **Provider specialization (fenced):** in-repo recipes a provider discovers — `build.dockerfile`/`target`/`args` (OCI family), `nixpacks.toml`, `Procfile`, etc. Rules: **discovered, not enumerated**; **never the sole build path** (a provider that understands none of an app's specializations MUST still build it from the contract; `validate` warns when only a Docker recipe exists); **ignored safely** (unknown recipe → fall back to contract, never error).
+- **Provider specialization (fenced):** in-repo recipes a provider discovers — `build.dockerfile`/`target`/`args` (OCI family), `nixpacks.toml`, `Procfile`, etc. Rules: **discovered, not enumerated**; **never the sole build path** (a provider that understands none of an app's specializations MUST still build it from the contract); **ignored safely** (unknown recipe → fall back to contract, never error). `build.dockerfile`/`target`/`args` are reclassified as OCI-family hints — never removed. No general `x-<provider>:` block is admitted.
 
 A specialization makes a matching provider more faithful; it never makes the app deployable only on that provider.
+
+**Reduced-portability diagnostic (D-40):** a `validate`-only, non-fatal, **suppressible** warning that fires when an app's only build path is a provider-specific recipe (a Dockerfile) *or* a prebuilt `image:` with no portable `runtime`/`commands` contract. It is **never** emitted by operational commands (`up`/`down`/`logs`/…), so the image-first catalog is unaffected in normal flows — only an explicit `validate` surfaces it.
 
 ---
 
 ## 7. Expression resolution — provider-supplied values ✅
 
-The file declares *intent*; the provider supplies *values* (P-11). Beyond running commands, a provider MUST resolve the `$`-expressions in `env`, `set_env`, and command strings into concrete strings before the app sees them. Unlike §3–§4 (📐, pending RFC #77), this contract is **ratified and implemented today** — the reference resolver and both reference providers resolve every namespace below.
+The file declares *intent*; the provider supplies *values* (P-11). Beyond running commands, a provider MUST resolve the `$`-expressions in `env`, `set_env`, and command strings into concrete strings before the app sees them — a contract **ratified and implemented today** (D-33/D-35/D-36/D-39): the reference resolver and both reference providers resolve every namespace below.
 
 **The three homes (D-36).** Every value in a Launchfile has exactly one home. The provider owns **home #3** — values it *computes* from its own routing, storage, provisioning, and `PATH` strategy. The app names the need; the provider resolves the value, the *same* expression yielding a different concrete string per provider. (Home #1 is the app's command/intent; home #2 is per-environment config the orchestrator supplies — neither is the provider's to invent.)
 
@@ -202,4 +204,4 @@ A **translation-only** provider (IaC/manifest emitter) satisfies the contract by
 
 ---
 
-*This contract consolidates the provider-facing halves of RFC #77 (modes, slots, selection), RFC #78 (build line), and the cross-invocation state design note. `DESIGN.md` remains the file-format decision log; provider-runtime decisions live here.*
+*This contract consolidates the provider-facing halves of **D-37** (modes, slots, selection), **D-38** (`install`/`dev`/`source`), and **D-40** (build line), plus the cross-invocation state/event design note. `DESIGN.md` remains the file-format decision log; provider-runtime decisions live here.*
