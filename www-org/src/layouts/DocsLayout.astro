@@ -112,9 +112,21 @@ const { title, description, currentPath } = Astro.props;
 
 <script>
   async function initMermaid() {
-    const mermaidModule = await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs');
-    mermaidModule.default.initialize({ startOnLoad: false, theme: 'neutral' });
-    mermaidModule.default.run({ querySelector: '.mermaid' });
+    // Skip the CDN fetch entirely on pages with no diagrams.
+    if (!document.querySelector('.mermaid')) return;
+    try {
+      const url = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+      // Load via `new Function` indirection so the bundler can't rewrite this
+      // dynamic import into a `__vitePreload(…, __VITE_PRELOAD__)` call — under
+      // Astro 7 / Vite 7 that leaks an undefined __VITE_PRELOAD__ and throws at
+      // runtime (same regression fixed in SearchDialog after the astro 6→7 bump).
+      const dynamicImport = new Function('u', 'return import(u)') as (u: string) => Promise<any>;
+      const mermaidModule = await dynamicImport(url);
+      mermaidModule.default.initialize({ startOnLoad: false, theme: 'neutral' });
+      mermaidModule.default.run({ querySelector: '.mermaid' });
+    } catch (e) {
+      console.error('Mermaid failed to load — diagrams not rendered', e);
+    }
   }
   document.addEventListener('astro:page-load', initMermaid);
 </script>
