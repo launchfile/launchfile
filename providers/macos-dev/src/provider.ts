@@ -7,7 +7,7 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { readLaunch, selectComponents, type NormalizedLaunch, type NormalizedComponent } from "@launchfile/sdk";
+import { readLaunch, selectionClosure, type NormalizedLaunch, type NormalizedComponent } from "@launchfile/sdk";
 
 /**
  * Source-mode run resolution (D-38, precedence `dev` > `image` > `start`).
@@ -52,9 +52,11 @@ export interface LaunchUpOpts {
 	dryRun?: boolean;
 	projectDir?: string;
 	/**
-	 * Component selector (#77): if non-empty, only these components are started
-	 * (and only their `requires` provisioned). `depends_on` is satisfy-not-expand.
-	 * Empty = all components.
+	 * Component selector (#77): if non-empty, these components plus their
+	 * transitive downward `depends_on` closure are started (D-41), and the
+	 * `requires` of every closure member are provisioned. The start-set is the
+	 * SDK's `selectionClosure` — the same definition the Docker provider uses —
+	 * so both yield the identical running topology (P-5). Empty = all components.
 	 */
 	components?: string[];
 }
@@ -83,11 +85,14 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const launch = readLaunch(launchfileContent);
 	const allComponentNames = Object.keys(launch.components);
 
-	// Resolve component selector (#77). Empty = all components. Narrowing
+	// Resolve component selector (#77) into its D-41 start-set: selected
+	// components + their transitive downward `depends_on` closure (and, by
+	// narrowing to that set, every closure member's `requires`). Narrowing
 	// launch.components here makes every downstream phase loop in launchUp honor
-	// the selection without per-loop edits. down/status/env re-read the file, so
-	// they are unaffected.
-	const selection = selectComponents(launch, opts.components ?? []);
+	// the closure without per-loop edits — dropping it would hand back an app
+	// missing the very dependencies a selected component needs to start (D-16).
+	// down/status/env re-read the file, so they are unaffected.
+	const selection = selectionClosure(launch, opts.components ?? []);
 	if (selection.unknown.length > 0 || selection.resources.length > 0) {
 		console.error(`\nCannot select: ${[...selection.unknown, ...selection.resources].join(", ")}`);
 		for (const r of selection.resources) {
@@ -99,8 +104,9 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		process.exit(1);
 	}
 	if (opts.components && opts.components.length > 0) {
+		const startSet = new Set(selection.start);
 		launch.components = Object.fromEntries(
-			Object.entries(launch.components).filter(([n]) => selection.selected.includes(n)),
+			Object.entries(launch.components).filter(([n]) => startSet.has(n)),
 		);
 	}
 	const componentNames = Object.keys(launch.components);

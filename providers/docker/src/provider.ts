@@ -4,7 +4,7 @@
 
 import { writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
-import { readLaunch, selectComponents } from "@launchfile/sdk";
+import { readLaunch, selectionClosure } from "@launchfile/sdk";
 import { checkPrereqs, composeSupportsIgnoreBuildable } from "./prereqs.js";
 import { resolveSource } from "./source-resolver.js";
 import {
@@ -29,9 +29,13 @@ export interface DockerUpOpts {
 	/** Skip confirmation prompt for remote Launchfiles */
 	yes?: boolean;
 	/**
-	 * Component selector (#77): if non-empty, only these components are started.
-	 * Their `requires` come along via compose `depends_on`; `depends_on` targets
-	 * are NOT auto-added (satisfy-not-expand). Empty = all components.
+	 * Component selector (#77): if non-empty, these components plus their
+	 * transitive downward `depends_on` closure are started (D-41). The start-set
+	 * is computed from the SDK's `selectionClosure` — the same definition the
+	 * macOS provider uses — so both produce the identical running topology (P-5),
+	 * rather than leaning on compose's implicit `depends_on` expansion. Each
+	 * closure member's `requires` come along via compose `depends_on`. Empty =
+	 * all components.
 	 */
 	components?: string[];
 }
@@ -77,8 +81,9 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		const launch = readLaunch(resolved.yaml);
 		const componentNames = Object.keys(launch.components);
 
-		// Resolve component selector (#77). Empty = all components.
-		const selection = selectComponents(launch, opts.components ?? []);
+		// Resolve component selector (#77) into its D-41 start-set: selected
+		// components + their transitive downward `depends_on` closure. Empty = all.
+		const selection = selectionClosure(launch, opts.components ?? []);
 		if (selection.unknown.length > 0 || selection.resources.length > 0) {
 			console.error(`\nCannot select: ${[...selection.unknown, ...selection.resources].join(", ")}`);
 			for (const r of selection.resources) {
@@ -90,13 +95,15 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 			process.exit(1);
 		}
 		const selectorActive = (opts.components?.length ?? 0) > 0;
+		// Pass the explicit closure to `compose up` rather than relying on compose's
+		// implicit depends_on expansion, so the start-set matches macOS exactly.
 		const selectedServices = selectorActive
-			? selection.selected.map((name) => serviceNameFor(launch.name, name))
+			? selection.start.map((name) => serviceNameFor(launch.name, name))
 			: [];
-		// When a selector is active, the post-up summary must report only the
-		// components actually started this invocation (#77) — not every component
-		// in the Launchfile. Undefined means "report all".
-		const summaryOnly = selectorActive ? new Set(selection.selected) : undefined;
+		// When a selector is active, the post-up summary reports only the components
+		// actually started this invocation (#77) — now the full closure, not just
+		// the directly-named ones. Undefined means "report all".
+		const summaryOnly = selectorActive ? new Set(selection.start) : undefined;
 
 		// Security: prompt for confirmation before executing remote Launchfiles.
 		// Remote content can specify arbitrary images, commands, and env vars.
@@ -249,8 +256,8 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// Start services
 		await withSpan("up:start", { project }, async () => {
 			process.stdout.write(`  \u2193 Starting services...`);
-			// Selected services start with their compose `depends_on` (resources)
-			// pulled in automatically; non-selected components stay down (#77).
+			// The closure's services start with their compose `depends_on` (resources)
+			// pulled in automatically; components outside the closure stay down (#77).
 			await shell(
 				"docker",
 				["compose", "-p", project, "-f", composeFile, "up", "-d", ...selectedServices],
