@@ -66,11 +66,14 @@ const MANAGED_RESOURCES: Record<
 
 /** Lowercase, DNS-safe identifier for AWS resource names (RDS identifiers, cache cluster ids). */
 function dnsName(name: string): string {
-	const cleaned = name
+	// Linear-time trim (no anchored `-+` ReDoS on untrusted names) — same shape as tfName.
+	const collapsed = name
 		.toLowerCase()
 		.replace(/[^a-z0-9-]/g, "-")
-		.replace(/-+/g, "-")
-		.replace(/^-+|-+$/g, "");
+		.replace(/-{2,}/g, "-");
+	const start = collapsed.startsWith("-") ? 1 : 0;
+	const end = collapsed.endsWith("-") ? collapsed.length - 1 : collapsed.length;
+	const cleaned = collapsed.slice(start, Math.max(start, end));
 	const safe = cleaned.length > 0 ? cleaned : "app";
 	return /^[0-9]/.test(safe) ? `a${safe}` : safe;
 }

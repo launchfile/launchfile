@@ -135,11 +135,15 @@ export function document(blocks: string[]): string {
 
 /** Sanitize an arbitrary name (kebab, dots) into a valid Terraform identifier label. */
 export function tfName(name: string): string {
-	const cleaned = name
-		.replace(/[^a-zA-Z0-9_]/g, "_")
-		.replace(/_+/g, "_")
-		.replace(/^_+|_+$/g, "");
-	const safe = cleaned.length > 0 ? cleaned : "x";
+	// Linear-time only — no anchored `+` quantifier on a repeatable class, which
+	// CodeQL flags as polynomial ReDoS on untrusted names (many `_`). After
+	// collapsing runs to a single `_`, at most one leading/trailing `_` remains,
+	// so trim by slicing rather than a backtracking-prone `/^_+|_+$/` regex.
+	const collapsed = name.replace(/[^a-zA-Z0-9_]/g, "_").replace(/_{2,}/g, "_");
+	const start = collapsed.startsWith("_") ? 1 : 0;
+	const end = collapsed.endsWith("_") ? collapsed.length - 1 : collapsed.length;
+	const trimmed = collapsed.slice(start, Math.max(start, end));
+	const safe = trimmed.length > 0 ? trimmed : "x";
 	// Labels may not start with a digit.
 	return /^[0-9]/.test(safe) ? `_${safe}` : safe;
 }
