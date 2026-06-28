@@ -40,7 +40,7 @@ export async function shell(
 	return new Promise((resolve, reject) => {
 		cpExec(command, execOpts, (error, stdout, stderr) => {
 			const result: ShellResult = {
-				exitCode: error?.code ?? (typeof error?.code === "number" ? error.code : 0),
+				exitCode: typeof error?.code === "number" ? error.code : 0,
 				stdout: typeof stdout === "string" ? stdout : "",
 				stderr: typeof stderr === "string" ? stderr : "",
 			};
