@@ -21,6 +21,7 @@ const ghostYaml = ghostYamlRaw.replace(/^#.*\n/gm, "").trim();
   learningGoals={[
     "How provides declares ports and protocols your app exposes",
     "Using storage for persistent volumes",
+    "Referencing a volume's resolved path with $storage.<name>.path",
     "Health checks — shorthand and expanded forms",
     "The exposed flag for public-facing ports",
   ]}
@@ -101,6 +102,39 @@ health:
   },
 ]} />
 
+<h2 id="referencing-the-path">Referencing the path</h2>
+
+<p>
+  Declaring a volume gives it a <code>path</code> — but you rarely want to hardcode that path into your app's configuration. Different providers may mount the volume in different places: <code>/var/lib/app/data</code> under Docker, a host directory under the native provider. Reference the path the provider <em>actually</em> used with the <code>$storage.&lt;name&gt;.path</code> expression instead of repeating the literal path.
+</p>
+
+<BeforeAfter
+  before={{
+    title: "Hardcoded — brittle",
+    yaml: `storage:
+  data:
+    path: /var/lib/app/data
+
+env:
+  DATA_DIR: /var/lib/app/data`,
+  }}
+  after={{
+    title: "Expression — portable",
+    yaml: `storage:
+  data:
+    path: /var/lib/app/data
+
+env:
+  DATA_DIR: $storage.data.path`,
+  }}
+/>
+
+<Callout type="tip" title="Why not just repeat the path?">
+  <p>
+    The two copies can drift. Change <code>storage.data.path</code> but forget the duplicate in <code>env</code>, and your app reads from the wrong directory — silently. <code>$storage.&lt;name&gt;.path</code> always resolves to wherever the provider mounted the volume, so the same Launchfile runs correctly under any provider with no edits. Catalog apps like <a href="https://launchfile.io/apps/mailpit/">Mailpit</a> and <a href="https://launchfile.io/apps/anythingllm/">AnythingLLM</a> use it to wire their data paths into the environment.
+  </p>
+</Callout>
+
 <h2 id="health-checks">Health check deep dive</h2>
 
 <p>
@@ -161,6 +195,7 @@ health:
   <ul>
     <li><strong><code>provides</code></strong> declares every network endpoint your app exposes, with protocol, port, and visibility.</li>
     <li><strong><code>storage</code></strong> declares named volumes. Set <code>persistent: true</code> for data that must survive restarts.</li>
+    <li><strong><code>$storage.&lt;name&gt;.path</code></strong> resolves to the path the provider actually mounted — reference it in <code>env</code> instead of hardcoding the path in two places.</li>
     <li><strong><code>health</code></strong> tells the provider how to check your app. Use the string shorthand for simple cases, the object form for tuning.</li>
     <li><strong><code>exposed: true</code></strong> means "the internet should reach this." Default is <code>false</code> (internal only).</li>
   </ul>
