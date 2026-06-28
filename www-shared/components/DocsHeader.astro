@@ -2,10 +2,12 @@
 interface Props {
   site?: "dev" | "org" | "io";
   /**
-   * Show the "Get Started" CTA. launchfile.io turns this off and supplies its
-   * own auth-aware actions (avatar / Sign up) via the `header-actions` slot.
+   * The "Get Started" CTA (header + drawer), injected by the consuming site so
+   * no funnel URL is hardcoded in this shared shell. Omit it for no CTA — e.g.
+   * launchfile.io's dashboard supplies its own auth-aware actions (avatar /
+   * Sign up) via the `header-actions` slot instead.
    */
-  showGetStarted?: boolean;
+  getStarted?: { href: string; label?: string };
   /**
    * Show the docs search (⌘K bar + mobile icon). The authenticated dashboard
    * shell turns this off — there's no docs index to search there.
@@ -19,7 +21,7 @@ const siteLabels: Record<string, string> = {
   io: "Catalog",
 };
 
-const { site = "dev", showGetStarted = true, showSearch = true } = Astro.props;
+const { site = "dev", getStarted, showSearch = true } = Astro.props;
 const siteLabel = siteLabels[site] ?? "Docs";
 
 const sites = [
@@ -77,8 +79,8 @@ const hasDrawerNav = Astro.slots.has("drawer-nav");
         ))}
       </nav>
 
-      {showGetStarted && (
-        <a href="https://launchfile.io/get-started" class="docs-get-started">Get Started</a>
+      {getStarted && (
+        <a href={getStarted.href} class="docs-get-started">{getStarted.label ?? "Get Started"}</a>
       )}
 
       {showSearch && (
@@ -122,8 +124,8 @@ const hasDrawerNav = Astro.slots.has("drawer-nav");
           {s.label}
         </a>
       ))}
-      {showGetStarted && (
-        <a href="https://launchfile.io/get-started" class="drawer-get-started">Get Started</a>
+      {getStarted && (
+        <a href={getStarted.href} class="drawer-get-started">{getStarted.label ?? "Get Started"}</a>
       )}
       <slot name="drawer-actions" />
     </nav>
