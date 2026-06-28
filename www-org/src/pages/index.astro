@@ -1,6 +1,7 @@
 ---
 import Base from "@shared/layouts/Base.astro";
 import DocsHeader from "@shared/components/DocsHeader.astro";
+import { GET_STARTED } from "@/site";
 import SearchDialog from "@shared/components/SearchDialog.astro";
 
 import "@/styles/global.css";
@@ -22,7 +23,7 @@ const specSections = [
 ---
 
 <Base title="Launchfile — Application Deployment Specification" description="An open specification for describing application deployment requirements. Platform-agnostic, human-writable, machine-parseable." site="org">
-  <DocsHeader slot="nav" site="org" />
+  <DocsHeader slot="nav" getStarted={GET_STARTED} site="org" />
 
   <main>
     <!-- Hero section with grid pattern background -->

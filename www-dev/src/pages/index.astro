@@ -1,6 +1,7 @@
 ---
 import Base from "@shared/layouts/Base.astro";
 import DocsHeader from "@shared/components/DocsHeader.astro";
+import { GET_STARTED } from "@/site";
 import SearchDialog from "@shared/components/SearchDialog.astro";
 import "@/styles/global.css";
 
@@ -39,7 +40,7 @@ const quickLinks = [
 ---
 
 <Base title="Launchfile — Describe your app. Deploy it anywhere." description="Developer documentation for the Launchfile deployment specification. SDK, examples, and guides." site="dev">
-  <DocsHeader slot="nav" />
+  <DocsHeader slot="nav" getStarted={GET_STARTED} />
 
   <main>
     <!-- Dark hero section -->

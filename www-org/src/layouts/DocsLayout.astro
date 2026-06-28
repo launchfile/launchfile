@@ -1,6 +1,7 @@
 ---
 import Base from "@shared/layouts/Base.astro";
 import DocsHeader from "@shared/components/DocsHeader.astro";
+import { GET_STARTED } from "@/site";
 import Sidebar from "@shared/components/Sidebar.astro";
 import SidebarNav from "@shared/components/SidebarNav.astro";
 import PageFooter from "@shared/components/PageFooter.astro";
@@ -17,7 +18,7 @@ const { title, description, currentPath } = Astro.props;
 ---
 
 <Base title={title} description={description} site="org">
-  <DocsHeader slot="nav" site="org">
+  <DocsHeader slot="nav" getStarted={GET_STARTED} site="org">
     <SidebarNav slot="drawer-nav" currentPath={currentPath} />
   </DocsHeader>
   <div class="docs-layout">

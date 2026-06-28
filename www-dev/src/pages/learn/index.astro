@@ -1,6 +1,7 @@
 ---
 import Base from "@shared/layouts/Base.astro";
 import DocsHeader from "@shared/components/DocsHeader.astro";
+import { GET_STARTED } from "@/site";
 import Sidebar from "@shared/components/Sidebar.astro";
 import SidebarNav from "@shared/components/SidebarNav.astro";
 import SearchDialog from "@shared/components/SearchDialog.astro";
@@ -42,7 +43,7 @@ const modules = [
 ---
 
 <Base title="Learn Launchfile — Step-by-Step Course" description="Learn to write Launchfiles from scratch. 7 lessons from minimal to multi-component." site="dev">
-  <DocsHeader slot="nav">
+  <DocsHeader slot="nav" getStarted={GET_STARTED}>
     <SidebarNav slot="drawer-nav" currentPath={currentPath} />
   </DocsHeader>
   <div class="docs-layout">

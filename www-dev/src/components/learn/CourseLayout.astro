@@ -1,6 +1,7 @@
 ---
 import Base from "@shared/layouts/Base.astro";
 import DocsHeader from "@shared/components/DocsHeader.astro";
+import { GET_STARTED } from "@/site";
 import Sidebar from "@shared/components/Sidebar.astro";
 import SidebarNav from "@shared/components/SidebarNav.astro";
 import SearchDialog from "@shared/components/SearchDialog.astro";
@@ -22,7 +23,7 @@ const currentPath = Astro.url.pathname;
 ---
 
 <Base title={`${title} — Learn Launchfile`} description={subtitle} site="dev">
-  <DocsHeader slot="nav">
+  <DocsHeader slot="nav" getStarted={GET_STARTED}>
     <SidebarNav slot="drawer-nav" currentPath={currentPath} />
   </DocsHeader>
   <div class="course-layout">
