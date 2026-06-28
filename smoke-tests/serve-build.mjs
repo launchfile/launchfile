@@ -6,7 +6,7 @@
 //   node smoke-tests/serve-build.mjs <dir> [port]
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
-import { join, extname, normalize, resolve as resolvePath } from "node:path";
+import { join, extname, normalize, relative, isAbsolute, resolve as resolvePath } from "node:path";
 
 const dir = resolvePath(process.argv[2] ?? ".");
 const port = Number(process.argv[3] ?? 8080);
@@ -29,7 +29,10 @@ const MIME = {
 
 async function resolveFile(pathname) {
   const candidate = normalize(join(dir, decodeURIComponent(pathname)));
-  if (!candidate.startsWith(dir)) return null; // path-traversal guard
+  // path-traversal guard: candidate must be inside dir (not a `..` escape and
+  // not a sibling like `dist/clientX` that prefix-matches `dist/client`).
+  const rel = relative(dir, candidate);
+  if (rel.startsWith("..") || isAbsolute(rel)) return null;
   try {
     if ((await stat(candidate)).isDirectory()) {
       const index = join(candidate, "index.html");
