@@ -39,6 +39,8 @@
       // `__VITE_PRELOAD__` into this inline script and throws at runtime —
       // which silently disabled site search after the astro 6→7 bump. A plain
       // `/* @vite-ignore */` dynamic import is no longer enough to prevent it.
+      // NB: if a strict CSP is ever added to these sites it must allow
+      // `'unsafe-eval'` (for this Function constructor), or search breaks again.
       const dynamicImport = new Function("u", "return import(u)") as (u: string) => Promise<any>;
       pagefind = await dynamicImport(url);
       await pagefind.init({});
