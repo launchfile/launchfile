@@ -56,23 +56,37 @@ export function interp(text: string): HclRaw {
 	return raw(`"${text.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`);
 }
 
-/** An indented heredoc (`<<-EOT`), correct under any block nesting. */
+/**
+ * Neutralize Terraform interpolation/directive markers (`${`, `%{`) in text that
+ * must be emitted as literal. Function replacements are mandatory: in a string
+ * replacement, `$$` collapses to a single `$`.
+ */
+function neutralizeInterpolation(value: string): string {
+	return value.replace(/\$\{/g, () => "$${").replace(/%\{/g, () => "%%{");
+}
+
+/**
+ * An indented heredoc (`<<-EOT`), correct under any block nesting.
+ *
+ * The body is treated as **literal** script text: Terraform processes `${...}`
+ * and `%{...}` template sequences inside indented heredocs too, so user-controlled
+ * content (e.g. a shell `${VAR}` in `commands.start`) would otherwise either emit
+ * invalid HCL or smuggle a live interpolation in. Neutralize them — the same
+ * invariant the quoted-string path enforces; the heredoc must not be the gap.
+ * (No caller injects intentional Terraform interpolation into a heredoc here.)
+ */
 export function heredoc(body: string, tag = "EOT"): HclRaw {
-	const lines = body.replace(/\n$/, "").split("\n");
+	const lines = neutralizeInterpolation(body).replace(/\n$/, "").split("\n");
 	return raw([`<<-${tag}`, ...lines, tag].join("\n"));
 }
 
 function escapeString(value: string): string {
-	return (
+	return neutralizeInterpolation(
 		value
 			.replace(/\\/g, "\\\\")
 			.replace(/"/g, '\\"')
 			.replace(/\n/g, "\\n")
-			.replace(/\t/g, "\\t")
-			// Neutralize Terraform interpolation/directive markers in literal strings.
-			// Use function replacements: in a string replacement, `$$` would collapse to `$`.
-			.replace(/\$\{/g, () => "$${")
-			.replace(/%\{/g, () => "%%{")
+			.replace(/\t/g, "\\t"),
 	);
 }
 

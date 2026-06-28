@@ -38,6 +38,22 @@ commands:
 			conformance.mapped.some((m) => m.target === "aws_instance (cloud-init)"),
 		).toBe(true);
 	});
+
+	it("neutralizes interpolation from user commands in cloud-init (correctness + injection)", () => {
+		// A shell ${PORT} must survive as literal (valid Terraform), and a crafted
+		// ${aws_vpc.main.id} must NOT resolve to a live reference inside user_data.
+		const { hcl } = tf(`
+version: launch/v1
+name: shellapp
+runtime: node
+commands:
+  start: "gunicorn --bind 0.0.0.0:\${PORT} \${aws_vpc.main.id}"
+`);
+		expect(hcl).toContain("0.0.0.0:$${PORT}");
+		expect(hcl).toContain("$${aws_vpc.main.id}");
+		// The raw, un-neutralized form must be absent from the user_data heredoc.
+		expect(hcl).not.toContain("0.0.0.0:${PORT}");
+	});
 });
 
 describe("translate — requires → managed services (P-1/P-11)", () => {

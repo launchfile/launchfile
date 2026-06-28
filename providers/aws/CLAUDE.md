@@ -46,8 +46,17 @@ Terraform interpolation. A `raw(...)` / `interp(...)` / `ref(...)` value is
 emitted **verbatim** — that is how we deliberately reference AWS attributes and
 build the interpolated connection strings that carry a resource's runtime
 address into `env`. Mixing these up is how you'd either break refs or open an
-injection. The `escapeString` replacements use **function** callbacks because a
+injection. The neutralization replacements use **function** callbacks because a
 string replacement would collapse `$$` back to `$`.
+
+**Heredocs are the third front, and they bite.** Terraform processes `${...}` /
+`%{...}` inside indented `<<-EOT` heredocs too — so `heredoc()` neutralizes its
+body by the same rule. This matters because all user-controlled `commands.*`
+strings flow through cloud-init → `heredoc()` → `user_data`; without it, a shell
+`${PORT}` in `commands.start` emits *invalid* Terraform and a crafted
+`${aws_vpc.main.id}` would inject a live reference. (Caught in PR #108 review;
+regression-tested in `hcl.test.ts`, `translate.test.ts`, and a `validate:tf`
+fixture.)
 
 ## Expression resolution
 

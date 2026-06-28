@@ -52,6 +52,20 @@ function sources(examplesOnly: boolean): Source[] {
 			}
 		}
 	}
+	// Provider-local regression fixtures — always swept (incl. --examples / CI),
+	// so cases the spec examples don't exercise (e.g. a shell ${VAR} in a command)
+	// still gate the emitted HCL.
+	const fixturesDir = resolve(HERE, "..", "fixtures");
+	if (existsSync(fixturesDir)) {
+		for (const f of readdirSync(fixturesDir)) {
+			if (f.endsWith(".yaml") || f.endsWith(".yml")) {
+				out.push({
+					name: `fix-${f.replace(/\.ya?ml$/, "")}`,
+					path: resolve(fixturesDir, f),
+				});
+			}
+		}
+	}
 	if (!examplesOnly) {
 		const catalogDir = resolve(ROOT, "catalog", "apps");
 		if (existsSync(catalogDir)) {

@@ -85,6 +85,15 @@ describe("heredoc", () => {
 		const h = heredoc("line1\nline2");
 		expect(renderValue(h)).toBe("<<-EOT\nline1\nline2\nEOT");
 	});
+
+	it("neutralizes interpolation in the body so literal text can't emit a live ref", () => {
+		// A shell ${VAR} in a script body must render as literal ${VAR}, not a
+		// Terraform reference — Terraform interpolates inside indented heredocs too.
+		const h = heredoc("ExecStart=server --port ${PORT}\n%{ if x }");
+		expect(renderValue(h)).toBe(
+			"<<-EOT\nExecStart=server --port $${PORT}\n%%{ if x }\nEOT",
+		);
+	});
 });
 
 describe("document", () => {
