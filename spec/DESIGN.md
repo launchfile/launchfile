@@ -448,6 +448,16 @@ Source-mode resolution is **per component**, with precedence **`dev` > `image` >
 
 ---
 
+### D-41: Component selection starts the downward dependency closure
+
+**Decision**: The component selector (the verb argument from [D-37](#d-37-execution-mode-vs-deployment-environment-commands-vary-by-mode-config-by-environment)) starts the named components **plus their transitive downward dependency closure** — each selected component's `depends_on` target components (transitively) and every closure member's `requires` backing services. It does **not** start reverse-dependencies (components that depend *on* a selected one) or unrelated components; the closure is downward only (`up backend` does not start `frontend`). Already-running dependencies are left untouched (idempotent). Selecting nothing acts on all components. A future `--no-deps` opt-out MAY start only the directly-named components for operators who manage dependencies themselves; absent that flag, the closure is started. Providers MUST compute the start-set from one shared definition (a `selectionClosure` helper in the SDK) so every provider produces the same running topology.
+
+**Rejected**: *Satisfy-not-expand* (start only the named components; fail if a `depends_on` target is not already running) — contradicts [D-16](#d-16-depends_on-for-startup-ordering), which makes `depends_on` a hard startup prerequisite (SPEC.md: *"`depends_on` ensures `frontend` waits for `backend` to become healthy before starting"*); a selected component whose prerequisite is down is non-functional by the file's own declaration, so the headline `up <component>` would fail by default. It also pulled the two reference providers apart — Docker's `compose up <service>` starts the closure while a hand-narrowed macOS started only the named component — a [P-5](#p-5-provider-translatable) violation (same file, two running topologies). *Total/upward closure* (also starting reverse-deps) — starts components the operator neither asked for nor needs.
+
+**Why**: Honors D-16 so a selected component can actually start. One shared `selectionClosure` definition closes the provider divergence at the source (Docker's compose default is already correct under this rule; macOS adopts the same helper). Downward-only keeps the set minimal — you get what you asked for and what it needs, never what needs it. Purely additive ([P-13](#p-13-additive-extensibility)): no schema or parser change; with no selector, behavior is unchanged. Extends D-37. See [#97](https://github.com/launchfile/launchfile/pull/97).
+
+---
+
 ## 4. Known Limitations
 
 Each limitation includes the problem, current stance, and future considerations.
