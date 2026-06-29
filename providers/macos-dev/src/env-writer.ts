@@ -216,9 +216,12 @@ export async function writeEnvFile(
 	const lines = Object.entries(env)
 		.sort(([a], [b]) => a.localeCompare(b))
 		.map(([key, value]) => {
-			// Quote values that contain spaces, #, or newlines
+			// Quote values that contain spaces, #, or newlines. Escape backslashes
+			// first, then quotes — otherwise a value containing a backslash would
+			// produce broken or injectable quoting (CWE-116 incomplete escaping).
 			if (/[\s#\n]/.test(value)) {
-				return `${key}="${value.replace(/"/g, '\\"')}"`;
+				const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+				return `${key}="${escaped}"`;
 			}
 			return `${key}=${value}`;
 		});

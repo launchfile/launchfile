@@ -49,7 +49,8 @@ export class MysqlProvisioner implements ResourceProvisioner {
 		);
 		await shell(
 			`mysql -h ${DEFAULT_HOST} -u root -e "CREATE USER IF NOT EXISTS '${user}'@'${DEFAULT_HOST}' IDENTIFIED BY '${password}';"`,
-			{ allowFailure: true },
+			// silent: this command embeds the generated DB password; don't echo it (CWE-532).
+			{ allowFailure: true, silent: true },
 		);
 		await shell(
 			`mysql -h ${DEFAULT_HOST} -u root -e "GRANT ALL PRIVILEGES ON \\\`${dbName}\\\`.* TO '${user}'@'${DEFAULT_HOST}';"`,
