@@ -33,11 +33,11 @@ const multiComponentYaml = multiComponentYamlRaw.replace(/^#.*\n/gm, "").trim();
 </p>
 
 <p>
-  Instead of a flat Launchfile, you nest each service under a key in <code>components:</code>. Each component gets its own runtime, commands, ports, and health checks. The provider launches them together and wires them up.
+  Instead of a flat Launchfile, you nest each service under a key in <code>components:</code>. Each component gets its own runtime, commands, ports, and health checks. They're launched together and wired up automatically.
 </p>
 
 <p>
-  Components can depend on each other using <GlossaryTip term="depends_on" definition="Declares that one component must be healthy before another starts. Ensures correct startup ordering.">depends_on</GlossaryTip> — the provider ensures the backend is healthy before starting the frontend.
+  Components can depend on each other using <GlossaryTip term="depends_on" definition="Declares that one component must be healthy before another starts. Ensures correct startup ordering.">depends_on</GlossaryTip> — the backend is brought to a healthy state before the frontend starts.
 </p>
 
 <h2 id="build-it-up">Build it up</h2>
@@ -93,7 +93,7 @@ components:
     health:
       path: /api/private/config
       start_period: 30s`,
-    note: "Add a health check so the provider knows when the backend is ready. The <code>release</code> command runs migrations before each deploy.",
+    note: "Add a health check so the backend's readiness is known before the frontend starts. The <code>release</code> command runs migrations before each deploy.",
   },
   {
     yaml: `name: hedgedoc
@@ -139,7 +139,7 @@ components:
 <h2 id="cross-component-wiring">Cross-component wiring</h2>
 
 <Callout type="info" title="How components talk to each other">
-  <p>The <GlossaryTip term="expression" definition="A $-prefixed reference that the provider resolves at deploy time — like $url for database URLs or $components.backend.url for cross-component references.">expression</GlossaryTip> <code>$components.backend.url</code> resolves to the backend's internal URL at deploy time. No hardcoded ports, no guessing — the provider handles the wiring.</p>
+  <p>The <GlossaryTip term="expression" definition="A $-prefixed reference that the provider resolves at deploy time — like $url for database URLs or $components.backend.url for cross-component references.">expression</GlossaryTip> <code>$components.backend.url</code> resolves to the backend's internal URL at deploy time. No hardcoded ports, no guessing — the wiring is handled for you.</p>
   <p>Notice that only the frontend has <code>exposed: true</code>. That's because the frontend is the public-facing entry point — users hit the frontend, which talks to the backend internally. The backend stays on the private network, inaccessible from the outside.</p>
 </Callout>
 
@@ -156,7 +156,7 @@ components:
   yaml={multiComponentYaml}
   annotations={[
     { line: "depends_on:", text: "The frontend waits for the backend to pass its health check before starting." },
-    { line: "$components.backend.url", text: "The provider resolves this to the backend's internal URL — no hardcoded addresses." },
+    { line: "$components.backend.url", text: "Resolves to the backend's internal URL at deploy time — no hardcoded addresses." },
     { line: "exposed: true", text: "Only the frontend is public-facing. The backend stays on the internal network." },
   ]}
 />
