@@ -1,5 +1,12 @@
 # @launchfile/aws
 
+## 0.1.1
+
+### Patch Changes
+
+- Updated dependencies [[`6248fad`](https://github.com/launchfile/launchfile/commit/6248fadedb23ef08b4caa2e9bc4b60824ae0abfd)]:
+  - @launchfile/sdk@0.3.0
+
 ## 0.1.0 — alpha
 
 Initial release — a translation-only AWS provider (spec-conformance probe).
