@@ -1,5 +1,12 @@
 # @launchfile/macos-dev
 
+## 0.3.0
+
+### Patch Changes
+
+- Updated dependencies [[`6248fad`](https://github.com/launchfile/launchfile/commit/6248fadedb23ef08b4caa2e9bc4b60824ae0abfd)]:
+  - @launchfile/sdk@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes
