@@ -15,6 +15,9 @@ env:
     generator: secret
     sensitive: true
     description: "Admin password"
+  GF_SERVER_ROOT_URL:
+    default: $app.url
+    description: "Public URL Grafana builds links and redirects from"
 health: /api/health
 storage:
   data:

@@ -19,7 +19,7 @@ env:
     generator: secret
     sensitive: true
   NEXTAUTH_URL:
-    default: "http://localhost:3000"
+    default: $app.url
 storage:
   data:
     path: /data/data

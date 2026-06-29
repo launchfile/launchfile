@@ -15,6 +15,9 @@ env:
     generator: secret
     sensitive: true
     description: "JWT secret for authentication"
+  NC_PUBLIC_URL:
+    default: $app.url
+    description: "Public base URL NocoDB uses for invite and email links"
 storage:
   data:
     path: /usr/app/data

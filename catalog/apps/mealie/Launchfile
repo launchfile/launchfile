@@ -20,7 +20,7 @@ env:
     default: "true"
     description: "Allow new user registration"
   BASE_URL:
-    required: true
+    default: $app.url
     description: "Public URL for the Mealie instance"
   DEFAULT_EMAIL:
     default: "changeme@example.com"

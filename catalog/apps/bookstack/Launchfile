@@ -20,7 +20,7 @@ requires:
       DB_PASSWORD: $password
 env:
   APP_URL:
-    required: true
+    default: $app.url
     description: "Public URL of the BookStack instance"
   APP_KEY:
     generator: secret
