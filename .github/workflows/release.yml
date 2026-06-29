@@ -1,4 +1,24 @@
-name: Changesets
+name: Release
+
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  ⚠️  DO NOT RENAME THIS FILE.  The filename `release.yml` is load-bearing. │
+# └─────────────────────────────────────────────────────────────────────────┘
+#
+# npm trusted publishing (OIDC) matches the GitHub token's `job_workflow_ref`,
+# which is THIS FILE'S PATH. Each published package's trusted publisher on
+# npmjs.com is configured for `Workflow: release.yml` in launchfile/launchfile
+# (@launchfile/sdk, @launchfile/docker, @launchfile/macos-dev, launchfile).
+# Rename this file and the path no longer matches — `npm publish` is rejected
+# at the handshake and EVERY release fails, silently, until it's renamed back.
+#
+# This already happened: #26 renamed this workflow to `changesets.yml` without
+# updating the npm side; the next publish attempt after that failed at the OIDC
+# handshake (v0.2.0, via release.yml, was the last release that shipped). This
+# file was restored to `release.yml` to fix it — see RELEASING.md.
+#
+# If you ever need to change the publish-workflow filename: update the trusted
+# publisher's `Workflow` on npmjs.com for ALL published packages FIRST, then
+# rename here. Never the other way around.
 
 # One workflow, two phases — on purpose.
 #
