@@ -14,7 +14,7 @@ const ghostYaml = ghostYamlRaw.replace(/^#.*\n/gm, "").trim();
 
 <CourseLayout
   title="Ports, Storage & Health"
-  subtitle="Expose endpoints, persist data, and tell providers how to check your app."
+  subtitle="Expose endpoints, persist data, and describe how your app stays healthy."
   moduleName="Production-Ready"
   moduleNumber={2}
   lessonNumber={4}
@@ -42,7 +42,7 @@ const ghostYaml = ghostYamlRaw.replace(/^#.*\n/gm, "").trim();
   <li><strong><code>protocol</code></strong> — What the endpoint speaks: <code>http</code>, <code>https</code>, <code>tcp</code>, or <code>grpc</code>.</li>
   <li><strong><code>port</code></strong> — The port number your app listens on inside the container.</li>
   <li><strong><code>bind</code></strong> — Optional. The address to bind to (defaults to <code>0.0.0.0</code>).</li>
-  <li><strong><code>exposed</code></strong> — When <code>true</code>, the provider should make this port <GlossaryTip term="exposed" definition="An exposed port is publicly accessible from the internet, not just from other services in the same deployment.">publicly accessible</GlossaryTip> from the internet. When <code>false</code> (the default), it's only reachable by other components in the same deployment.</li>
+  <li><strong><code>exposed</code></strong> — When <code>true</code>, this port is meant to be <GlossaryTip term="exposed" definition="An exposed port is reachable from outside the deployment, not just from other services in the same deployment.">reachable from outside</GlossaryTip> the deployment — your app's public entry point. When <code>false</code> (the default), it's only reachable by other components in the same deployment.</li>
 </ul>
 
 <h2 id="build-it-up">Build it up</h2>
@@ -79,7 +79,7 @@ storage:
     persistent: true
 
 health: /health`,
-    note: "Add a <strong>health check</strong> using shorthand. The provider will GET this path and expect a 2xx response.",
+    note: "Add a <strong>health check</strong> using shorthand. An HTTP GET to this path is expected to return a 2xx response.",
   },
   {
     yaml: `provides:
@@ -105,7 +105,7 @@ health:
 <h2 id="referencing-the-path">Referencing the path</h2>
 
 <p>
-  Declaring a volume gives it a <code>path</code> — but you rarely want to hardcode that path into your app's configuration. Different providers may mount the volume in different places: <code>/var/lib/app/data</code> under Docker, a host directory under the native provider. Reference the path the provider <em>actually</em> used with the <code>$storage.&lt;name&gt;.path</code> expression instead of repeating the literal path.
+  Declaring a volume gives it a <code>path</code> — but you rarely want to hardcode that path into your app's configuration. The volume may live at a different real path depending on where you deploy. Reference the path it was <em>actually</em> provisioned at with the <code>$storage.&lt;name&gt;.path</code> expression instead of repeating the literal path.
 </p>
 
 <BeforeAfter
@@ -131,14 +131,14 @@ env:
 
 <Callout type="tip" title="Why not just repeat the path?">
   <p>
-    The two copies can drift. Change <code>storage.data.path</code> but forget the duplicate in <code>env</code>, and your app reads from the wrong directory — silently. <code>$storage.&lt;name&gt;.path</code> always resolves to wherever the provider mounted the volume, so the same Launchfile runs correctly under any provider with no edits. Catalog apps like <a href="https://launchfile.io/apps/mailpit/">Mailpit</a> and <a href="https://launchfile.io/apps/anythingllm/">AnythingLLM</a> use it to wire their data paths into the environment.
+    The two copies can drift. Change <code>storage.data.path</code> but forget the duplicate in <code>env</code>, and your app reads from the wrong directory — silently. <code>$storage.&lt;name&gt;.path</code> always resolves to wherever your volume was actually provisioned, so the same Launchfile runs correctly anywhere with no edits. <em>Under the hood:</em> where the volume actually lives differs by deployment — a container provider bind-mounts it at the declared path, while a native dev provider provisions a separate host directory — and the expression hides that difference. Catalog apps like <a href="https://launchfile.io/apps/mailpit/">Mailpit</a> and <a href="https://launchfile.io/apps/anythingllm/">AnythingLLM</a> use it to wire their data paths into the environment.
   </p>
 </Callout>
 
 <h2 id="health-checks">Health check deep dive</h2>
 
 <p>
-  The shorthand form covers most cases: give it a path and the provider does the rest. When you need more control, expand it into an object.
+  The shorthand form covers most cases: give it a path and the rest is handled for you. When you need more control, expand it into an object.
 </p>
 
 <BeforeAfter
@@ -153,12 +153,12 @@ env:
 
 <Callout type="info" title="Slow starters">
   <p>
-    The <code>start_period</code> field gives your app time to boot before the provider starts counting failures. A Java app loading Spring context or a Rails app compiling assets might need 60&ndash;120 seconds. During the start period, failed health checks don't count toward the retry limit.
+    The <code>start_period</code> field gives your app time to boot before failed health checks start counting against it. A Java app loading Spring context or a Rails app compiling assets might need 60&ndash;120 seconds. During the start period, failed health checks don't count toward the retry limit.
   </p>
 </Callout>
 
 <p>
-  If your app has no HTTP endpoint (say, a background worker), you can omit <code>health</code> entirely. The provider will fall back to checking whether the process is running.
+  If your app has no HTTP endpoint (say, a background worker), you can omit <code>health</code> entirely — with no HTTP check declared, liveness falls back to a simpler signal, like whether the process is still running.
 </p>
 
 <h2 id="in-the-wild">In the wild</h2>
@@ -183,7 +183,7 @@ env:
 <Quiz
   question="What does exposed: true mean on a provides entry?"
   options={[
-    { text: "The port is publicly accessible from the internet", correct: true, explanation: "Correct! An exposed port is reachable from outside the deployment — the provider configures routing, load balancing, and TLS accordingly." },
+    { text: "The port is publicly accessible from the internet", correct: true, explanation: "Correct! An exposed port is reachable from outside the deployment — routing, load balancing, and TLS are configured for you." },
     { text: "The port is logged for debugging", correct: false, explanation: "Not quite. Exposed controls network visibility, not logging." },
     { text: "The container port is mapped to the host", correct: false, explanation: "That's an implementation detail of how a specific provider works. Exposed is a higher-level declaration about intent — should the internet be able to reach this port?" },
     { text: "The health check is enabled", correct: false, explanation: "Health checks are configured separately via the health field. Exposed is about network access." },
@@ -195,8 +195,8 @@ env:
   <ul>
     <li><strong><code>provides</code></strong> declares every network endpoint your app exposes, with protocol, port, and visibility.</li>
     <li><strong><code>storage</code></strong> declares named volumes. Set <code>persistent: true</code> for data that must survive restarts.</li>
-    <li><strong><code>$storage.&lt;name&gt;.path</code></strong> resolves to the path the provider actually mounted — reference it in <code>env</code> instead of hardcoding the path in two places.</li>
-    <li><strong><code>health</code></strong> tells the provider how to check your app. Use the string shorthand for simple cases, the object form for tuning.</li>
+    <li><strong><code>$storage.&lt;name&gt;.path</code></strong> resolves to the real path the volume was actually provisioned at — reference it in <code>env</code> instead of hardcoding the path in two places.</li>
+    <li><strong><code>health</code></strong> describes how your app's readiness is checked. Use the string shorthand for simple cases, the object form for tuning.</li>
     <li><strong><code>exposed: true</code></strong> means "the internet should reach this." Default is <code>false</code> (internal only).</li>
   </ul>
 </div>

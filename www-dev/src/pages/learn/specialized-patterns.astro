@@ -47,11 +47,11 @@ schedule: "0 0 * * *"
 restart: "no"
 commands:
   start: "node scripts/sync.js"`,
-    note: "A minimal cron job. The <code>schedule</code> is a standard cron expression (midnight daily). <code>restart: no</code> tells the provider this is a one-shot task, not a daemon.",
+    note: "A minimal cron job. The <code>schedule</code> is a standard cron expression (midnight daily). <code>restart: no</code> declares this is a one-shot task, not a daemon.",
   },
   {
     yaml: cronJobYaml,
-    note: "The full example adds a Postgres dependency. The provider spins up the task on schedule, injects the database URL, runs the script, and shuts it down.",
+    note: "The full example adds a Postgres dependency. On schedule, the task is started with the database URL injected, runs the script, and shuts down.",
   },
 ]} />
 
@@ -68,7 +68,7 @@ commands:
 <p>Each answers a different question:</p>
 
 <ul>
-  <li><strong><code>runtime:</code></strong> — what language is this? Metadata only; tooling and buildpack-style providers use it.</li>
+  <li><strong><code>runtime:</code></strong> — what language is this? Metadata only; used by tooling and buildpack-style deploys.</li>
   <li><strong><code>build:</code></strong> — how do I build from source? Dockerfile path, context, build args, and build-time secrets.</li>
   <li><strong><code>image:</code></strong> — what's the image called? Either the image you pull, or the tag of what <code>build</code> produces.</li>
 </ul>
@@ -77,7 +77,7 @@ commands:
   <p>The <code>build</code> and <code>image</code> fields mirror Docker Compose:</p>
   <ul>
     <li><code>image</code> alone → pull the image from a registry.</li>
-    <li><code>build</code> alone → build from a Dockerfile; the provider names the artifact.</li>
+    <li><code>build</code> alone → build from a Dockerfile; the resulting image is named for you.</li>
     <li><code>build</code> + <code>image</code> → build from source and tag the result as <code>image</code> (useful when you want to push to a registry).</li>
     <li><code>runtime</code> + anything → <code>runtime</code> is metadata; it doesn't change how the container is made.</li>
   </ul>
@@ -90,7 +90,7 @@ commands:
 <h3 id="platform-pinning">Platform pinning</h3>
 
 <p>
-  Many third-party images only ship for <code>linux/amd64</code>. The <code>platform</code> field tells the provider which OCI architecture to pull — important on ARM hosts (Apple Silicon dev machines, Graviton, Raspberry Pi) so the right variant is fetched or emulation is arranged.
+  Many third-party images only ship for <code>linux/amd64</code>. The <code>platform</code> field declares which OCI platform(s) the image supports (e.g. <code>linux/amd64</code>) — important on ARM hosts (Apple Silicon dev machines, Graviton, Raspberry Pi) so the right variant is fetched or emulation is arranged.
 </p>
 
 <RealWorldExample
@@ -98,8 +98,8 @@ commands:
   yaml={prebuiltImageYaml}
   annotations={[
     { line: "image:", text: "A specific version tag, not :latest — prebuilt deploys should be reproducible." },
-    { line: "platform:", text: "Declares the target architecture. This image only ships amd64; providers on ARM hosts need to know so they can emulate or refuse." },
-    { line: "requires:", text: "Prebuilt images declare dependencies the same way as source-based apps — the provider injects env vars before starting the container." },
+    { line: "platform:", text: "Declares the platform the image supports. This image only ships amd64, so on an ARM host it must be emulated or refused." },
+    { line: "requires:", text: "Prebuilt images declare dependencies the same way as source-based apps — env vars are injected before the container starts." },
     { line: "health:", text: "Health checks apply to prebuilt images too. start_period gives the container time to initialize before checks begin." },
   ]}
 />
@@ -115,11 +115,11 @@ commands:
 </p>
 
 <p>
-  Add <code>host.privileged: true</code> when the app needs elevated privileges — e.g. device access for monitoring agents or kernel-level tools. Providers treat this as the most sensitive host flag and may refuse it in managed environments.
+  Add <code>host.privileged: true</code> when the app needs elevated privileges — e.g. device access for monitoring agents or kernel-level tools. It's the most sensitive host flag — managed environments may refuse it.
 </p>
 
 <Callout type="warning" title="Security-sensitive">
-  <p>Host access breaks the container isolation boundary. Providers may restrict or refuse apps that request it. Always document <em>why</em> your app needs host access in the Launchfile's <code>description</code>.</p>
+  <p>Host access breaks the container isolation boundary, so it may be restricted or refused where it's deployed. Always document <em>why</em> your app needs host access in the Launchfile's <code>description</code>.</p>
 </Callout>
 
 <p>Here's a deployment tool that needs all three:</p>
@@ -142,7 +142,7 @@ commands:
 </p>
 
 <p>
-  Use <code>supports:</code> for these. The provider provisions them if available, but the app still starts without them.
+  Use <code>supports:</code> for these. They're provisioned if available, but the app still starts without them.
 </p>
 
 <BeforeAfter
@@ -188,7 +188,7 @@ commands:
   options={[
     { text: "requires is for databases, supports is for caching", correct: false, explanation: "The difference is about necessity, not type. You can require a Redis cache or support a Postgres read replica — it depends on whether the app needs it to start." },
     { text: "requires means the app won't start without it, supports means it's optional", correct: true, explanation: "Correct! Required dependencies must be provisioned or the app fails. Supported dependencies are nice-to-have — the app starts either way." },
-    { text: "They're interchangeable", correct: false, explanation: "They have different semantics. A provider must provision required dependencies. Supported ones are optional and may not be provisioned." },
+    { text: "They're interchangeable", correct: false, explanation: "They have different semantics. Required dependencies must be provisioned. Supported ones are optional and may not be." },
     { text: "supports is for development only", correct: false, explanation: "supports works in all environments. It means the dependency is optional, not that it's dev-only." },
   ]}
 />

@@ -23,6 +23,6 @@ env:
     sensitive: true
     description: "Secret key for session encryption"
   APP_URL:
-    required: true
+    default: $app.url
     description: "Public-facing URL of the Docmost instance"
 restart: always

@@ -41,7 +41,7 @@ const captureYaml = captureYamlRaw.replace(/^#.*\n/gm, "").trim();
   <li><strong><code><GlossaryTip term="release" definition="A command that runs once per deployment before start — typically database migrations or asset uploads. If it fails, the deploy is rolled back.">release</GlossaryTip></code></strong> — Runs once per deployment, before start. Migrations, asset uploads, cache warming. If it fails, the deploy stops.</li>
   <li><strong><code>start</code></strong> — The long-running process. This is your app.</li>
   <li><strong><code>seed</code></strong> — Populate the database with sample or default data. Typically run on demand, not on every deploy.</li>
-  <li><strong><code>test</code></strong> — Run the test suite. Used by CI and by providers that validate before promoting a deploy.</li>
+  <li><strong><code>test</code></strong> — Run the test suite. Used by CI and during deploys that validate before promoting.</li>
   <li><strong><code><GlossaryTip term="bootstrap" definition="A command that runs once ever — like creating the initial admin user or generating a one-time invite link. Re-runnable but only needed on first setup.">bootstrap</GlossaryTip></code></strong> — First-time setup. Create the admin user, generate invite links, initialize config. Runs on user request, not automatically.</li>
 </ol>
 
@@ -57,7 +57,7 @@ const captureYaml = captureYamlRaw.replace(/^#.*\n/gm, "").trim();
   {
     yaml: `commands:
   start: "node server.js"`,
-    note: "The minimum: a <code>start</code> command. The provider runs this to launch your app.",
+    note: "The minimum: a <code>start</code> command — this is what launches your app.",
   },
   {
     yaml: `commands:
@@ -104,7 +104,7 @@ commands:
 
 <Callout type="warning" title="Don't confuse the two">
   <p>
-    <code>commands.build</code> runs <em>inside</em> an already-built container (or on the host). The top-level <code>build:</code> block tells the provider <em>how to build the container image itself</em> from a Dockerfile. If you're using a prebuilt image (like <code>image: node:20</code>), you only need <code>commands.build</code>. If you have a Dockerfile, use the top-level <code>build:</code> block.
+    <code>commands.build</code> runs <em>inside</em> an already-built container (or on the host). The top-level <code>build:</code> block describes <em>how to build the container image itself</em> from a Dockerfile. If you're using a prebuilt image (like <code>image: node:20</code>), you only need <code>commands.build</code>. If you have a Dockerfile, use the top-level <code>build:</code> block.
   </p>
 </Callout>
 
@@ -154,7 +154,7 @@ commands:
     { line: "build:", text: "Top-level build block — this app uses a Dockerfile, not a prebuilt image." },
     { line: "commands:", text: "The commands block defines start and bootstrap. No release or build command needed since the Dockerfile handles compilation." },
     { line: "bootstrap:", text: "Runs on user request after the app is up. Creates an admin invite and captures the URL from stdout." },
-    { line: "capture:", text: "Extracts the invite link via regex. The provider stores it and shows it to the user." },
+    { line: "capture:", text: "Extracts the invite link via regex — it's captured and surfaced to the user." },
   ]}
 />
 

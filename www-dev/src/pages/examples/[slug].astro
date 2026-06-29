@@ -25,7 +25,7 @@ export function getStaticPaths() {
       concepts: [
         "The `version` field identifies the spec version",
         "App `name` follows kebab-case convention",
-        "The `runtime` field tells providers what language runtime to use",
+        "The `runtime` field declares the language or environment your app runs in",
         "A single `start` command is all you need to run",
       ],
       guidance: "Starting point for any new app — add complexity only as you need it.",
@@ -34,7 +34,7 @@ export function getStaticPaths() {
         { label: "Commands", href: "https://launchfile.org/spec/commands/" },
       ],
       annotations: [
-        { line: "runtime: node", text: "Providers use this to install the right version manager (fnm, nvm, etc.)." },
+        { line: "runtime: node", text: "Metadata describing the app — some platforms use it to pick a base image or version manager (fnm, nvm, etc.)." },
       ],
     },
     {
@@ -44,7 +44,7 @@ export function getStaticPaths() {
       catalogLink: '<a href="https://launchfile.io/apps/miniflux/">Miniflux</a>, <a href="https://launchfile.io/apps/umami/">Umami</a>, and <a href="https://launchfile.io/apps/linkding/">Linkding</a> all follow this pattern.',
       concepts: [
         "The `requires` array shorthand — `[postgres]` expands to `[{type: postgres}]`",
-        "Providers auto-provision required resources and inject connection details",
+        "Required resources are provisioned for you and their connection details injected",
         "The `health` shorthand — a path string expands to `{path: /health}`",
       ],
       guidance: "Most web apps need a database — this is the typical starting point.",
@@ -53,8 +53,8 @@ export function getStaticPaths() {
         { label: "Health", href: "https://launchfile.org/spec/health/" },
       ],
       annotations: [
-        { line: "requires: [postgres]", text: "Shorthand for [{type: postgres}]. The provider creates the DB and injects $url, $host, etc." },
-        { line: "health: /health", text: "Shorthand for {path: /health}. Providers poll this endpoint to confirm readiness." },
+        { line: "requires: [postgres]", text: "Shorthand for [{type: postgres}]. The DB is provisioned and $url, $host, etc. are injected." },
+        { line: "health: /health", text: "Shorthand for {path: /health}. This endpoint is checked to confirm readiness." },
       ],
     },
     {
@@ -159,7 +159,7 @@ export function getStaticPaths() {
         { label: "Host", href: "https://launchfile.org/spec/host/" },
       ],
       annotations: [
-        { line: "host:", text: "Declares privileged host access — providers should treat this as a security-sensitive feature." },
+        { line: "host:", text: "Declares privileged host access — a security-sensitive capability a deployer may refuse if it can't safely grant it." },
         { line: "requires: [{type: docker}]", text: "Declares the Docker daemon as a dependency." },
       ],
     },
@@ -190,19 +190,19 @@ export function getStaticPaths() {
       description: "Reference a provisioned volume's path with $storage.<name>.path — the same Launchfile resolves correctly under any provider.",
       catalogLink: '<a href="https://launchfile.io/apps/mailpit/">Mailpit</a> and <a href="https://launchfile.io/apps/anythingllm/">AnythingLLM</a> use $storage.* to wire their data paths into the environment.',
       concepts: [
-        "`storage` declares named volumes the provider provisions and mounts",
-        "`$storage.<name>.path` resolves to the path the provider actually used",
-        "Docker resolves it to the container mount path; the native provider resolves it to a host directory — the file stays the same",
+        "`storage` declares named volumes that are provisioned for you",
+        "`$storage.<name>.path` resolves to the real path the volume was provisioned at",
+        "It resolves to a real path wherever you deploy — the declared mount path under a container provider, a separate host directory in local dev — and your config never changes",
         "`persistent: false` marks ephemeral scratch space like caches",
       ],
-      guidance: "Apps that need a storage path in their environment — without hardcoding a path that only one provider understands.",
+      guidance: "Apps that need a storage path in their environment — without hardcoding a path that only works in one place.",
       specLinks: [
         { label: "Storage", href: "https://launchfile.org/spec/storage/" },
         { label: "Storage Properties", href: "https://launchfile.org/spec/storage-properties/" },
         { label: "Expressions", href: "https://launchfile.org/spec/expression-syntax/" },
       ],
       annotations: [
-        { line: "NOTES_DATA_DIR: $storage.data.path", text: "Resolves to the provisioned path — /var/lib/notes under Docker, a host directory under the native provider. Never hardcoded." },
+        { line: "NOTES_DATA_DIR: $storage.data.path", text: "Resolves to the provisioned path — /var/lib/notes under a container provider, a host directory in local dev. Never hardcoded." },
         { line: "persistent: false", text: "Marks the cache volume as ephemeral scratch — not preserved across restarts like the data volume." },
       ],
     },

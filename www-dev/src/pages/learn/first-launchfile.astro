@@ -25,7 +25,7 @@ const cyberchefYaml = stripComments(cyberchefYamlRaw);
     "What a Launchfile is and where it lives",
     "The minimum: a name plus a way to run your code",
     "Two paths: build from source (runtime) or pull a prebuilt image",
-    "How providers use your Launchfile to deploy your app",
+    "How a Launchfile becomes a running app — the provider, under the hood",
   ]}
   nextLesson={{ title: "Adding a Database", description: "Declare a Postgres dependency and wire it into your app.", href: "/learn/adding-a-database/" }}
 >
@@ -41,7 +41,7 @@ const cyberchefYaml = stripComments(cyberchefYamlRaw);
 </p>
 
 <p>
-  You declare your app's <GlossaryTip term="runtime" definition="The language or environment your app runs in — node, python, ruby, go, etc.">runtime</GlossaryTip>, how to start it, what databases it depends on, what environment variables it expects — and that's it. The provider handles the rest.
+  You declare your app's <GlossaryTip term="runtime" definition="The language or environment your app runs in — node, python, ruby, go, etc.">runtime</GlossaryTip>, how to start it, what databases it depends on, what environment variables it expects — and that's it. That single declaration is enough to deploy it.
 </p>
 
 <h2 id="build-it-up">Build it up</h2>
@@ -55,7 +55,7 @@ const cyberchefYaml = stripComments(cyberchefYamlRaw);
   },
   {
     yaml: "name: my-app\nruntime: node",
-    note: "The <code>runtime</code> tells providers what language your app uses — <code>node</code>, <code>python</code>, <code>ruby</code>, <code>go</code>, etc.",
+    note: "The <code>runtime</code> declares the language or environment your app runs in — <code>node</code>, <code>python</code>, <code>ruby</code>, <code>go</code>, etc.",
   },
   {
     yaml: minimalYaml,
@@ -92,8 +92,14 @@ image: ghcr.io/org/my-app:latest`,
 
 <Callout type="tip" title="The basics">
   <p>The file is called <code>Launchfile</code> (no extension) and lives in your project root — right next to <code>package.json</code> or <code>requirements.txt</code>.</p>
-  <p>When you deploy, the provider reads this file and provisions everything: the runtime, the start command, any databases or services you declared. You don't write shell scripts or Dockerfiles — the Launchfile is the contract.</p>
+  <p>This one file is the complete contract for running your app: the runtime, the start command, any databases or services it needs. You don't write shell scripts or Dockerfiles — you declare what the app needs, and that's enough to deploy it.</p>
   <p>The <code>version: launch/v1</code> line is optional. Your Launchfile works without it, but including it pins the schema version you wrote against — good practice as the spec evolves.</p>
+</Callout>
+
+<Callout type="info" title="Under the hood">
+  <p>So how does "what your app needs" become a running app? That's the job of a <strong>provider</strong>.</p>
+  <p>A provider is the piece that reads your Launchfile and runs your app on a specific kind of infrastructure — there's one for Docker, one for local macOS dev, one for a cloud platform, and so on. Each provider translates the same declarations ("I need Postgres", "expose port 3000") into whatever that infrastructure actually does to deliver them.</p>
+  <p>That's the whole point of describing your app instead of scripting a deploy: <strong>one Launchfile runs anywhere</strong>, and the provider handles the how. You'll see this idea referenced throughout the course — but you never have to think about a specific provider to write a correct Launchfile.</p>
 </Callout>
 
 <h2 id="in-the-wild">In the wild</h2>
@@ -106,7 +112,7 @@ image: ghcr.io/org/my-app:latest`,
   annotations={[
     { line: "image:", text: "Instead of building from source, CyberChef uses a prebuilt Docker image." },
     { line: "provides:", text: "Declares an HTTP endpoint on port 8000, exposed to the internet." },
-    { line: "restart: always", text: "Tells the provider to restart the app if it crashes." },
+    { line: "restart: always", text: "Declares that the app should be restarted if it crashes." },
   ]}
   catalogUrl="https://launchfile.io/apps/cyberchef/"
 />
@@ -129,7 +135,7 @@ image: ghcr.io/org/my-app:latest`,
     <li>A Launchfile is a YAML file called <code>Launchfile</code> in your project root.</li>
     <li>The minimum is a <code>name</code> plus a way to run your code.</li>
     <li>Source-based apps use <code>runtime</code> + <code>commands.start</code>. Prebuilt apps use <code>image</code>.</li>
-    <li>Providers read your Launchfile and handle the infrastructure — you describe the <em>what</em>, they handle the <em>how</em>.</li>
+    <li>You describe the <em>what</em>; the infrastructure handles the <em>how</em> (see "Under the hood" above).</li>
   </ul>
 </div>
 
