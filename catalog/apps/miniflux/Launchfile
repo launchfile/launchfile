@@ -29,5 +29,8 @@ env:
     sensitive: true
     description: "Admin password"
     generator: secret
+  BASE_URL:
+    default: $app.url
+    description: "Public-facing URL; miniflux uses it for absolute links and feed URLs"
 health: /healthcheck
 restart: always
