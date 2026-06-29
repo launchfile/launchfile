@@ -22,6 +22,7 @@ env:
   database__client:
     default: "mysql"
   url:
+    default: $app.url
     required: true
     description: "Public URL of the Ghost instance"
 storage:
