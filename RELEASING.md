@@ -6,6 +6,8 @@ How Launchfile packages are versioned, changelogged, and published.
 
 Releases are managed by [Changesets](https://github.com/changesets/changesets) and published via GitHub Actions using [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/) (OIDC — no npm tokens stored).
 
+> ⚠️ **The publish workflow is [`.github/workflows/release.yml`](.github/workflows/release.yml), and its filename is load-bearing.** npm's trusted publisher for each package is configured for `Workflow: release.yml`; OIDC matches that path. **Do not rename the file** — doing so breaks `npm publish` for every package at the OIDC handshake. (#26 renamed it to `changesets.yml` without updating npm and silently broke publishing until it was restored.) To change the name, update the trusted publisher on npmjs.com for all packages **first**, then rename. See the banner at the top of the workflow.
+
 ### The Flow
 
 ```
@@ -25,6 +27,8 @@ launchfile               ← depends on SDK + docker
 ```
 
 All packages use [linked versioning](https://github.com/changesets/changesets/blob/main/docs/linked-packages.md) — they share the same version number.
+
+> `@launchfile/aws` is intentionally **`private: true`** and **not** published — it's an alpha, translation-only conformance probe. When it's ready to ship, configure its npm trusted publisher (Workflow: `release.yml`) **before** removing the `private` flag, or the publish run will 404 and fail the whole release.
 
 ## Daily Workflow
 
@@ -67,12 +71,13 @@ Just commit normally. No changeset needed. No changelog entry will be generated.
 ### Automated (normal path)
 
 1. Changesets accumulate on `main` as PRs are merged
-2. The [Changesets workflow](.github/workflows/changesets.yml) opens/updates a "Version Packages" PR
+2. The [release workflow](.github/workflows/release.yml) (Phase A) opens/updates a "Version Packages" PR
 3. That PR shows: version bumps, changelog entries, consumed changeset files
-4. **Merge the PR** → triggers the [Release workflow](.github/workflows/release.yml):
-   - Tests run
-   - Packages are published to npm with provenance
-   - A GitHub Release is created with auto-generated notes
+4. **Merge the PR** → the same [release workflow](.github/workflows/release.yml) runs again with no changesets present (Phase B):
+   - Packages are built and published to npm with provenance via OIDC
+   - Git tags are pushed and a GitHub Release is created per package
+
+   (One workflow, two phases — the changesets action picks the phase from repo state. They were briefly split into two files; #18's postmortem and the banner atop `release.yml` explain why they must not be re-split.)
 
 ### Agent-driven release
 
