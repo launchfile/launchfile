@@ -59,7 +59,8 @@ export class PostgresProvisioner implements ResourceProvisioner {
 		// Create user (idempotent)
 		await shell(
 			`psql -h ${DEFAULT_HOST} -p ${port} postgres -c "DO \\$\\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${user}') THEN CREATE ROLE ${user} WITH LOGIN PASSWORD '${password}' CREATEDB; END IF; END \\$\\$;"`,
-			{ allowFailure: true },
+			// silent: this command embeds the generated DB password; don't echo it (CWE-532).
+			{ allowFailure: true, silent: true },
 		);
 
 		// Create database (idempotent)
