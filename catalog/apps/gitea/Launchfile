@@ -24,6 +24,9 @@ requires:
 env:
   GITEA__database__DB_TYPE:
     default: "postgres"
+  GITEA__server__ROOT_URL:
+    default: $app.url
+    description: "Public base URL Gitea builds clone and web links from"
 storage:
   data:
     path: /data

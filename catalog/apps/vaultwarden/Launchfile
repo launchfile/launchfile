@@ -22,6 +22,9 @@ env:
   SIGNUPS_ALLOWED:
     default: "true"
     description: "Whether new user signups are allowed"
+  DOMAIN:
+    default: $app.url
+    description: "Public URL vaultwarden is served from (required for WebAuthn/U2F)"
 storage:
   data:
     path: /data

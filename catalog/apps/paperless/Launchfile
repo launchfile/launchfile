@@ -35,6 +35,9 @@ env:
   PAPERLESS_OCR_LANGUAGE:
     default: "eng"
     description: "OCR language (ISO 639-2/T codes, e.g., eng+deu)"
+  PAPERLESS_URL:
+    default: $app.url
+    description: "Public URL paperless-ngx is served from (CSRF trusted origin behind the proxy)"
 storage:
   data:
     path: /usr/src/paperless/data

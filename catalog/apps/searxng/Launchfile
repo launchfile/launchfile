@@ -15,6 +15,9 @@ env:
     generator: secret
     sensitive: true
     description: "Secret key for session encryption"
+  SEARXNG_BASE_URL:
+    default: $app.url
+    description: "Public base URL SearXNG builds result and opensearch links from"
 storage:
   data:
     path: /etc/searxng

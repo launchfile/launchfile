@@ -30,5 +30,5 @@ env:
     generator: secret
     sensitive: true
   AP_FRONTEND_URL:
-    default: "http://localhost"
+    default: $app.url
 restart: always
