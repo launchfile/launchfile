@@ -15,6 +15,11 @@ on:
       - "packages/**"
       - "smoke-tests/**"
 
+# Least-privilege default token: every job here only reads the repo
+# (checkout) and uploads its own run artifacts. No write scopes needed.
+permissions:
+  contents: read
+
 jobs:
   smoke-npm:
     name: "Smoke (Node ${{ matrix.node-version }})"
