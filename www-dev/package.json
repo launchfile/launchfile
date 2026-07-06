@@ -18,12 +18,12 @@
     "@tailwindcss/vite": "^4.3.1",
     "astro": "7.0.0",
     "marked": "^18.0.2",
-    "shiki": "^4.3.0",
+    "shiki": "^4.3.1",
     "tailwindcss": "^4.3.1"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.9",
-    "@types/node": "^26.0.0",
+    "@types/node": "^26.1.0",
     "pagefind": "^1.5.2",
     "typescript": "^6.0.3"
   }
