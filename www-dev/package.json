@@ -16,7 +16,7 @@
     "@astrojs/markdown-satteri": "^0.3.1",
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.3.1",
-    "astro": "7.0.0",
+    "astro": "7.1.0",
     "marked": "^18.0.2",
     "shiki": "^4.3.0",
     "tailwindcss": "^4.3.1"
