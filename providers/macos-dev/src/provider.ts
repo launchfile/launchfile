@@ -90,6 +90,35 @@ export function refusedHostCapabilities(
 	return refused;
 }
 
+/**
+ * Remove every component this provider must refuse, and say so on stderr.
+ *
+ * The removal is the refusal (D-44, PROVIDERS.md §11): a component left in the
+ * map goes on to be installed, env-wired, registered with the process manager
+ * and started, so logging alone would have the provider assert a refusal it
+ * did not perform. Mutates `launch.components` for exactly that reason —
+ * everything downstream reads it.
+ *
+ * Returns "none-left" when nothing survives, so the caller can fail rather than
+ * report success over an empty set.
+ */
+export function applyHostCapabilityRefusals(
+	launch: NormalizedLaunch,
+): "ok" | "none-left" {
+	const refused = refusedHostCapabilities(launch);
+	for (const [name, caps] of refused) {
+		console.error(
+			`  Refused: ${name} requires host capabilities this provider cannot grant ` +
+				`(${caps.join("; ")}) — component not started`,
+		);
+	}
+	if (refused.size === 0) return "ok";
+	launch.components = Object.fromEntries(
+		Object.entries(launch.components).filter(([n]) => !refused.has(n)),
+	);
+	return Object.keys(launch.components).length === 0 ? "none-left" : "ok";
+}
+
 export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 
@@ -146,25 +175,11 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	// leave the provider asserting a refusal it did not perform.
 	// Both spellings fold together so they land identically (§11 equivalence):
 	// the `host:` entry form and the legacy top-level block.
-	const refusedCapabilities = refusedHostCapabilities(launch);
-	for (const [name, caps] of refusedCapabilities) {
+	if (applyHostCapabilityRefusals(launch) === "none-left") {
 		console.error(
-			`  Refused: ${name} requires host capabilities this provider cannot grant ` +
-				`(${caps.join("; ")}) — component not started`,
+			"Every selected component requires a host capability this provider cannot grant.",
 		);
-	}
-	if (refusedCapabilities.size > 0) {
-		launch.components = Object.fromEntries(
-			Object.entries(launch.components).filter(
-				([n]) => !refusedCapabilities.has(n),
-			),
-		);
-		if (Object.keys(launch.components).length === 0) {
-			console.error(
-				"Every selected component requires a host capability this provider cannot grant.",
-			);
-			process.exit(1);
-		}
+		process.exit(1);
 	}
 	// An optional capability is not refused — the component runs, degraded.
 	for (const [name, c] of Object.entries(launch.components)) {
