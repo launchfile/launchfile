@@ -22,6 +22,7 @@ const captureYaml = captureYamlRaw.replace(/^#.*\n/gm, "").trim();
     "The six command types: build, release, start, seed, test, bootstrap",
     "When each command runs in the deployment lifecycle",
     "Running from source with install / dev and launchfile dev",
+    "Where a provider gets the source: attached checkout vs. the repository origin",
     "Command capture for post-start output",
     "The build block for Dockerfile-based builds",
   ]}
@@ -140,6 +141,16 @@ commands:
     An app whose dev command equals its production command needs nothing extra — a plain <code>start</code> works in both modes. Add <code>dev</code> / <code>install</code> only when running from source needs a different command line than the built artifact (a compiled binary vs. <code>bun run dev</code>, an image entrypoint vs. a repo script).
   </p>
 </Callout>
+
+<h2 id="source-origin">Where the source comes from</h2>
+
+<p>
+  Locally, the source is the checkout your Launchfile sits in. A <strong>remote</strong> provider building from source has to acquire the tree first, and resolves it in order: a source the orchestrator hands it always wins (a fork, a mirror, a per-environment ref); otherwise the checkout the file was read from is shipped as the build context; otherwise — for a standalone file, like a catalog entry — it clones the <code>repository</code> field, the app's canonical origin.
+</p>
+
+<p>
+  On a git-hosted URL, a <code>#</code> fragment names the <strong>baseline ref</strong> the declaration describes — <code>repository: https://github.com/hedgedoc/hedgedoc#develop</code> is how an edge variant pins its baseline while the stable variant tracks a release. It's a default, never a lock: an orchestrator-supplied source always overrides it. A bare URL means the default branch.
+</p>
 
 <h2 id="in-the-wild">In the wild</h2>
 

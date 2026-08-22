@@ -27,7 +27,7 @@
     "repository": {
       "type": "string",
       "format": "uri",
-      "description": "Source code URL (e.g. GitHub repository)"
+      "description": "Canonical source origin URL (e.g. GitHub repository). On a git-hosted URL, a '#' fragment names the baseline ref (branch, tag, or commit SHA)"
     },
     "website": {
       "type": "string",

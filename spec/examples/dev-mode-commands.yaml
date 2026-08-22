@@ -20,6 +20,12 @@
 version: launch/v1
 name: my-app
 
+# Canonical source origin. A provider that needs the source and wasn't handed
+# one (and isn't running inside this repo's checkout) may clone from here.
+# The #main fragment is the baseline ref this declaration describes — an
+# orchestrator-supplied source always overrides it.
+repository: https://github.com/example/my-app#main
+
 runtime: bun
 
 # Artifact: multi-stage image build compiles the server binary + web assets.
