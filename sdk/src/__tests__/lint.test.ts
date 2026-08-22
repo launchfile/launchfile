@@ -174,6 +174,7 @@ describe("host-capability marker advisory — product spellings (D-44)", () => {
 	it("stays silent for an ordinary backing service", () => {
 		expect(lint("requires:\n  - postgres\n")).toEqual([]);
 describe("lintLaunch — non-standard resource properties (D-45)", () => {
+describe("lintLaunch — non-standard resource properties (D-46)", () => {
 	it("warns on a typo'd property with the type's known property list", () => {
 		const launch = readLaunch(`
 name: acme

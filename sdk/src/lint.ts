@@ -93,7 +93,7 @@ function bareReferences(value: string): string[] {
 }
 
 /**
- * D-45 check: for each set_env expression on a requirement whose type is in
+ * D-46 check: for each set_env expression on a requirement whose type is in
  * the standard vocabulary (SPEC.md § Resource Property Vocabulary), warn when
  * a bare property reference is outside that type's known set. Known-type
  * vocabularies are open — a provider extension is legitimate — so the copy is
@@ -138,7 +138,7 @@ function checkResourceProperties(
  * - (D-44 marker enforcement, advisory) a backing-service entry whose `type`
  *   names a known host capability is warned about: host capabilities require
  *   the `host:` marker so the privilege surface stays machine-extractable.
- * - Non-standard resource properties (D-45): see {@link checkResourceProperties}.
+ * - Non-standard resource properties (D-46): see {@link checkResourceProperties}.
  */
 export function lintLaunch(launch: NormalizedLaunch): string[] {
 	const warnings: string[] = [];

@@ -1,6 +1,6 @@
 /**
  * Standard resource property vocabulary (SPEC.md § Resource Property
- * Vocabulary, D-45).
+ * Vocabulary, D-46).
  *
  * Three forms of the same vocabulary exist: the SPEC.md prose table (canonical),
  * `spec/schema/resource-properties.json` (machine-readable registry, shipped in

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { RESOURCE_PROPERTY_VOCABULARY } from "../resource-properties.js";
 
 /**
- * Single-source-of-truth guard (D-45): the vocabulary exists in three forms —
+ * Single-source-of-truth guard (D-46): the vocabulary exists in three forms —
  * the SPEC.md prose table (canonical, human-governed), the machine-readable
  * registry `spec/schema/resource-properties.json`, and the SDK's runtime
  * module. This suite parses the SPEC.md table as ground truth and asserts the
@@ -44,7 +44,7 @@ function parseSpecVocabulary(): Record<string, string[]> {
 	return vocabulary;
 }
 
-describe("resource property registry consistency (D-45)", () => {
+describe("resource property registry consistency (D-46)", () => {
 	const specVocabulary = parseSpecVocabulary();
 
 	it("parses all 12 resource types from the SPEC.md table", () => {
