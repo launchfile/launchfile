@@ -39,6 +39,10 @@ function denormalizeLaunch(launch: NormalizedLaunch): Record<string, unknown> {
 	if (launch.generator) result.generator = launch.generator;
 	result.name = launch.name;
 	if (launch.description) result.description = launch.description;
+	if (launch.repository) result.repository = launch.repository;
+	if (launch.website) result.website = launch.website;
+	if (launch.logo) result.logo = launch.logo;
+	if (launch.keywords && launch.keywords.length > 0) result.keywords = launch.keywords;
 	if (launch.secrets && Object.keys(launch.secrets).length > 0) result.secrets = launch.secrets;
 
 	if (isSingle) {
