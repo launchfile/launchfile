@@ -21,6 +21,8 @@ const captureYaml = captureYamlRaw.replace(/^#.*\n/gm, "").trim();
   learningGoals={[
     "The six command types: build, release, start, seed, test, bootstrap",
     "When each command runs in the deployment lifecycle",
+    "What happens when each command fails — and which failures stop a deploy",
+    "Timeouts and the duration grammar (30s, 5m, 2h)",
     "Running from source with install / dev and launchfile dev",
     "Where a provider gets the source: attached checkout vs. the repository origin",
     "Command capture for post-start output",
@@ -39,7 +41,7 @@ const captureYaml = captureYamlRaw.replace(/^#.*\n/gm, "").trim();
 
 <ol>
   <li><strong><code>build</code></strong> — Compile source, install dependencies, generate assets. Runs at build time.</li>
-  <li><strong><code><GlossaryTip term="release" definition="A command that runs once per deployment before start — typically database migrations or asset uploads. If it fails, the deploy is rolled back.">release</GlossaryTip></code></strong> — Runs once per deployment, before start. Migrations, asset uploads, cache warming. If it fails, the deploy stops.</li>
+  <li><strong><code><GlossaryTip term="release" definition="A command that runs once per deployment before start — typically database migrations or asset uploads. If it fails, the deploy fails.">release</GlossaryTip></code></strong> — Runs once per deployment, before start. Migrations, asset uploads, cache warming. If it fails, the deploy stops.</li>
   <li><strong><code>start</code></strong> — The long-running process. This is your app.</li>
   <li><strong><code>seed</code></strong> — Populate the database with sample or default data. Typically run on demand, not on every deploy.</li>
   <li><strong><code>test</code></strong> — Run the test suite. Used by CI and during deploys that validate before promoting.</li>
@@ -49,6 +51,51 @@ const captureYaml = captureYamlRaw.replace(/^#.*\n/gm, "").trim();
 <Callout type="tip" title="release vs. bootstrap">
   <p>
     Think of <code>release</code> as "every deploy" (migrations) and <code>bootstrap</code> as "first deploy ever" (admin setup). Both run against a live app, but release gates the deploy while bootstrap is fire-and-forget.
+  </p>
+</Callout>
+
+<h2 id="failure-semantics">When a command fails</h2>
+
+<p>
+  Every stage has exactly one failure disposition, so you never have to guess whether a failed command stops a deploy:
+</p>
+
+<table>
+  <thead>
+    <tr><th>Stage</th><th>On failure</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>build</code></td><td><strong>Fails the deploy</strong> — there's no artifact to run.</td></tr>
+    <tr><td><code>release</code></td><td><strong>Fails the deploy.</strong> Runs after resources are ready and before <code>start</code>, so a failed migration never serves traffic.</td></tr>
+    <tr><td><code>start</code></td><td><strong>Fails the deploy</strong> — the component didn't come up.</td></tr>
+    <tr><td><code>install</code>, <code>dev</code></td><td><strong>Fail your dev session</strong> — source-mode commands are never a deployed-state concern.</td></tr>
+    <tr><td><code>bootstrap</code>, <code>seed</code>, <code>test</code>, custom</td><td><strong>Reported to whoever invoked them</strong> — on-demand commands never affect deploy status.</td></tr>
+  </tbody>
+</table>
+
+<h2 id="timeouts">Timeouts and durations</h2>
+
+<p>
+  Any command in the expanded form can declare a <code>timeout</code>:
+</p>
+
+<CodeBuildUp steps={[
+  {
+    yaml: `commands:
+  release:
+    command: "npx prisma migrate deploy"
+    timeout: "5m"`,
+    note: "A <strong>timeout</strong> caps how long the command may run. Without one, the provider applies its own documented default.",
+  },
+]} />
+
+<p>
+  Every duration in a Launchfile uses one grammar: an integer immediately followed by exactly one unit — <code>ms</code>, <code>s</code>, <code>m</code>, or <code>h</code>. Valid: <code>500ms</code>, <code>30s</code>, <code>5m</code>, <code>2h</code>. Not valid: <code>5 m</code> (no spaces), <code>1m30s</code> (no compounds), <code>1.5h</code> (no fractions). The same grammar covers the health check durations (<code>interval</code>, <code>timeout</code>, <code>start_period</code>).
+</p>
+
+<Callout type="warning" title="Timeouts follow the failure table">
+  <p>
+    A timeout that expires is a failure of that stage: a <code>release</code> that overruns fails the deploy; a <code>bootstrap</code> that overruns is reported. And <code>launchfile validate</code> warns on any duration it can't parse — providers surface the error rather than silently substituting a default.
   </p>
 </Callout>
 
@@ -176,7 +223,7 @@ commands:
   options={[
     { text: "Once when the app is first deployed", correct: false, explanation: "That's bootstrap. Release runs on every deployment, not just the first." },
     { text: "Every time the app starts", correct: false, explanation: "That's start. Release runs once per deployment, before start — not on every restart." },
-    { text: "Once per deployment, before start", correct: true, explanation: "Correct! Release runs after the build and before start — the right place for database migrations, asset compilation, or cache warming. If it fails, the deploy is rolled back." },
+    { text: "Once per deployment, before start", correct: true, explanation: "Correct! Release runs after the build (once resources are ready) and before start — the right place for database migrations, asset compilation, or cache warming. If it fails, the deploy fails." },
     { text: "Only in CI", correct: false, explanation: "Release runs in every deployment, whether triggered by CI or manually. You might be thinking of the test command, which is often CI-only." },
   ]}
 />
@@ -185,6 +232,8 @@ commands:
   <div class="takeaways-title">Key takeaways</div>
   <ul>
     <li>The <strong>deployment lifecycle</strong> is: build, release, start. Seed, test, and bootstrap are on-demand.</li>
+    <li><strong>Failure semantics</strong>: build/release/start fail the deploy; install/dev fail your dev session; on-demand commands are reported. Timeout expiry counts as a failure of its stage.</li>
+    <li><strong>Durations</strong> are an integer plus one unit (<code>30s</code>, <code>5m</code>) — for <code>timeout</code> and the health check timings. <code>validate</code> warns on anything else.</li>
     <li><strong><code>install</code></strong> / <strong><code>dev</code></strong> run the app <strong>from source</strong> (<code>launchfile dev</code>) — the source-mode pair of <code>build</code> / <code>start</code>. Only these two are mode-aware.</li>
     <li><strong><code>release</code></strong> runs once per deploy (migrations). <strong><code>bootstrap</code></strong> runs once ever (initial setup).</li>
     <li>Commands can use the <strong>capture</strong> pattern to extract values from stdout via regex.</li>
