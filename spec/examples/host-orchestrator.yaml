@@ -17,10 +17,6 @@ host:
   network: host           # Shares host network to manage container ports
   filesystem: read-write  # Persistent state in ~/.launchpad/
 
-requires:
-  - type: docker
-    description: Orchestrates app containers on the host
-
 provides:
   - protocol: http
     port: 3001
