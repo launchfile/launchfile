@@ -88,7 +88,7 @@ export function extractCaptures(
 
 /**
  * Parse a simple duration string like "5m", "30s", "1h" into milliseconds
- * using the ratified grammar (D-47). Throws on an unparseable value —
+ * using the ratified grammar (D-48). Throws on an unparseable value —
  * PROVIDERS.md §10.9 forbids silently substituting a default. Re-exported
  * for unit testing.
  */

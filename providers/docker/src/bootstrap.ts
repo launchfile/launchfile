@@ -60,7 +60,7 @@ export function extractCaptures(
 
 /**
  * Parse a duration string like "5m" into milliseconds using the ratified
- * grammar (D-47). Throws on an unparseable value — PROVIDERS.md §10.9
+ * grammar (D-48). Throws on an unparseable value — PROVIDERS.md §10.9
  * forbids silently substituting a default. Re-exported for unit testing.
  */
 export const parseDuration = parseDurationMs;

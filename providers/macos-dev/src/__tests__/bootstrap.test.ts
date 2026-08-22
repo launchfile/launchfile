@@ -91,7 +91,7 @@ describe("parseDuration", () => {
 		expect(parseDuration("2h")).toBe(7_200_000);
 	});
 
-	it("rejects whitespace forms (ratified grammar, D-47)", () => {
+	it("rejects whitespace forms (ratified grammar, D-48)", () => {
 		expect(() => parseDuration(" 10s ")).toThrow(/invalid duration/);
 		expect(() => parseDuration("5 m")).toThrow(/invalid duration/);
 	});

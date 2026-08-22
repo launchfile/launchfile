@@ -69,7 +69,7 @@ describe("parseDuration (docker provider)", () => {
 		expect(() => parseDuration("")).toThrow(/invalid duration/);
 	});
 
-	it("rejects whitespace forms (ratified grammar, D-47)", () => {
+	it("rejects whitespace forms (ratified grammar, D-48)", () => {
 		expect(() => parseDuration("5 m")).toThrow(/invalid duration/);
 		expect(() => parseDuration(" 10s ")).toThrow(/invalid duration/);
 	});
