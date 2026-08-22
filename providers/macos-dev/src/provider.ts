@@ -9,6 +9,26 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { readLaunch, selectionClosure, type NormalizedLaunch, type NormalizedComponent } from "@launchfile/sdk";
 
+import { checkPrereqs } from "./prereqs.js";
+import { loadState, initState, saveState, ensureDirs } from "./state.js";
+import {
+	buildResolverContext,
+	computeAppProperties,
+	resolveComponentEnv,
+	generateSecrets,
+	resolveGenerators,
+	writeEnvFile,
+} from "./env-writer.js";
+import { getProvisioner, type ResourceProperties } from "./resources/index.js";
+import { allocatePorts } from "./port-allocator.js";
+import { getRuntimeInstaller } from "./runtimes/index.js";
+import { detectPackageManager } from "./lockfile-detect.js";
+import { provisionStorage, storagePaths } from "./storage.js";
+import { ProcessManager } from "./process-manager.js";
+import { stopRecordedProcesses } from "./process-stopper.js";
+import { shell } from "./shell.js";
+import { parseDuration } from "./bootstrap.js";
+
 /**
  * Source-mode run resolution (D-38, precedence `dev` > `image` > `start`).
  * This provider runs apps from source. A component is source-runnable when it
@@ -40,25 +60,6 @@ function declaredTimeout(timeout: string | undefined, label: string): number | u
 		throw new Error(`${label}: ${err instanceof Error ? err.message : String(err)}`);
 	}
 }
-import { checkPrereqs } from "./prereqs.js";
-import { loadState, initState, saveState, ensureDirs } from "./state.js";
-import {
-	buildResolverContext,
-	computeAppProperties,
-	resolveComponentEnv,
-	generateSecrets,
-	resolveGenerators,
-	writeEnvFile,
-} from "./env-writer.js";
-import { getProvisioner, type ResourceProperties } from "./resources/index.js";
-import { allocatePorts } from "./port-allocator.js";
-import { getRuntimeInstaller } from "./runtimes/index.js";
-import { detectPackageManager } from "./lockfile-detect.js";
-import { provisionStorage, storagePaths } from "./storage.js";
-import { ProcessManager } from "./process-manager.js";
-import { stopRecordedProcesses } from "./process-stopper.js";
-import { shell } from "./shell.js";
-import { parseDuration } from "./bootstrap.js";
 
 export interface LaunchUpOpts {
 	withOptional?: boolean;
