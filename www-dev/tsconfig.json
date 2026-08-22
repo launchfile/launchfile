@@ -1,6 +1,7 @@
 {
   "extends": "astro/tsconfigs/strict",
   "compilerOptions": {
+    "noUnusedLocals": true,
     "paths": {
       "@/*": ["./src/*"],
       "@shared/*": ["../www-shared/*"]
