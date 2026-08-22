@@ -492,6 +492,12 @@ Source-mode resolution is **per component**, with precedence **`dev` > `image` >
 
 ---
 
+### D-45: Reserved — unknown-field preservation
+
+**Status**: Reserved; no decision recorded. The proposal that would occupy this slot — [#171](https://github.com/launchfile/launchfile/issues/171), pinning down what P-13's "unknown fields are ignored" actually obliges — was deferred pending rework, and the number is held so the record stays stable when it returns.
+
+---
+
 ### D-46: Resource property registry — vocabulary is standard but open
 
 **Decision**: Ratify the resource property vocabulary of SPEC.md § Resource Property Vocabulary as a machine-readable registry, `spec/schema/resource-properties.json`: resource type → property → one-line semantics. The registry's content is exactly the documented vocabulary — no property is added, removed, or redefined by the registry itself. Three rules govern it:
