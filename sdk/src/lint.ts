@@ -8,7 +8,17 @@
  * rejects a file; it only advises.
  */
 
+import { parseExpression } from "./resolver.js";
+import { RESOURCE_PROPERTY_VOCABULARY } from "./resource-properties.js";
 import type { NormalizedLaunch, NormalizedRequirement } from "./types.js";
+
+/** Reserved expression namespaces — never resource properties. */
+const RESERVED_NAMESPACES = new Set([
+	"app",
+	"secrets",
+	"components",
+	"storage",
+]);
 
 /** A resource declaration seen at a particular location, for conflict reporting. */
 interface ResourceDecl {
@@ -61,6 +71,64 @@ const PRODUCT_SPELLINGS: Record<string, string> = {
 };
 
 /**
+ * Extract every bare single-segment reference (`$prop` / `${prop}` /
+ * `${prop:-default}`) from a set_env value. Bare references always target the
+ * enclosing resource, so the resource type is unambiguous. Multi-segment
+ * references (`$name.prop`, `$components.x.url`, …) are excluded: their first
+ * segment names a namespace or another resource, not a property of this one.
+ */
+function bareReferences(value: string): string[] {
+	const parsed = parseExpression(value);
+	const refs: { path: string[] }[] =
+		parsed.kind === "reference"
+			? [parsed]
+			: parsed.kind === "template"
+				? parsed.parts.filter(
+						(p): p is { kind: "ref"; path: string[] } => p.kind === "ref",
+					)
+				: [];
+	return refs
+		.filter((r) => r.path.length === 1 && !RESERVED_NAMESPACES.has(r.path[0]!))
+		.map((r) => r.path[0]!);
+}
+
+/**
+ * D-46 check: for each set_env expression on a requirement whose type is in
+ * the standard vocabulary (SPEC.md § Resource Property Vocabulary), warn when
+ * a bare property reference is outside that type's known set. Known-type
+ * vocabularies are open — a provider extension is legitimate — so the copy is
+ * advisory ("not in the standard vocabulary"), never an accusation of
+ * invalidity. Unknown resource types are fully open (L-4) and stay silent.
+ */
+function checkResourceProperties(
+	launch: NormalizedLaunch,
+	warnings: string[],
+): void {
+	for (const component of Object.values(launch.components)) {
+		for (const req of [
+			...(component.requires ?? []),
+			...(component.supports ?? []),
+		]) {
+			// req.type is arbitrary user input (L-4). A bare index would resolve
+			// Object.prototype keys (constructor, toString, …) to inherited values.
+			const vocabulary = Object.hasOwn(RESOURCE_PROPERTY_VOCABULARY, req.type)
+				? RESOURCE_PROPERTY_VOCABULARY[req.type]
+				: undefined;
+			if (!vocabulary || !req.set_env) continue;
+			for (const value of Object.values(req.set_env)) {
+				for (const prop of bareReferences(value)) {
+					if (vocabulary.includes(prop)) continue;
+					warnings.push(
+						`"$${prop}" is not in the standard vocabulary for ${req.type} ` +
+							`(known: ${vocabulary.join(", ")})`,
+					);
+				}
+			}
+		}
+	}
+}
+
+/**
  * Lint a normalized Launch, returning non-fatal warning strings (empty = clean).
  *
  * Checks:
@@ -74,6 +142,7 @@ const PRODUCT_SPELLINGS: Record<string, string> = {
  * - (D-44 marker enforcement, advisory) a backing-service entry whose `type`
  *   names a known host capability is warned about: host capabilities require
  *   the `host:` marker so the privilege surface stays machine-extractable.
+ * - Non-standard resource properties (D-46): see {@link checkResourceProperties}.
  */
 export function lintLaunch(launch: NormalizedLaunch): string[] {
 	const warnings: string[] = [];
@@ -87,7 +156,10 @@ export function lintLaunch(launch: NormalizedLaunch): string[] {
 			...(component.supports ?? []),
 		]) {
 			if (req.host) continue; // capability entry, not a resource (D-44)
-			const productSpelling = PRODUCT_SPELLINGS[req.type];
+			// Guarded for the same reason as the vocabulary lookup above.
+			const productSpelling = Object.hasOwn(PRODUCT_SPELLINGS, req.type)
+				? PRODUCT_SPELLINGS[req.type]
+				: undefined;
 			if (productSpelling || KNOWN_HOST_CAPABILITIES.has(req.type)) {
 				const suggestion = productSpelling ?? `${req.type}: ...`;
 				warnings.push(
@@ -127,6 +199,8 @@ export function lintLaunch(launch: NormalizedLaunch): string[] {
 			);
 		}
 	}
+
+	checkResourceProperties(launch, warnings);
 
 	return warnings;
 }

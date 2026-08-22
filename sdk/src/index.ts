@@ -11,6 +11,7 @@ export {
 	type ResolverContext,
 	resolveExpression,
 } from "./resolver.js";
+export { RESOURCE_PROPERTY_VOCABULARY } from "./resource-properties.js";
 export { LaunchSchema } from "./schema.js";
 export {
 	type SelectionClosureResult,

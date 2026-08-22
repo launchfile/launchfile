@@ -175,3 +175,150 @@ describe("host-capability marker advisory — product spellings (D-44)", () => {
 		expect(lint("requires:\n  - postgres\n")).toEqual([]);
 	});
 });
+
+describe("lintLaunch — non-standard resource properties (D-46)", () => {
+	it("warns on a typo'd property with the type's known property list", () => {
+		const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    requires:
+      - type: postgres
+        set_env:
+          DB_HOST: $hoost
+`);
+		const warnings = lintLaunch(launch);
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toBe(
+			'"$hoost" is not in the standard vocabulary for postgres ' +
+				"(known: url, host, port, user, password, name)",
+		);
+	});
+
+	it("stays silent for known properties, templates, and fallbacks", () => {
+		const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    requires:
+      - type: postgres
+        set_env:
+          DATABASE_URL: $url
+          DB_ADDR: "\${host}:\${port:-5432}"
+      - type: redis
+        set_env:
+          REDIS_PASSWORD: $password
+`);
+		expect(lintLaunch(launch)).toEqual([]);
+	});
+
+	it("stays silent for unknown resource types (L-4: types stay open)", () => {
+		const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    requires:
+      - type: mariadb
+        set_env:
+          DB_SOCKET: $socket
+`);
+		expect(lintLaunch(launch)).toEqual([]);
+	});
+
+	it("stays silent for reserved namespaces and cross-resource references", () => {
+		const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    requires:
+      - type: postgres
+        set_env:
+          PUBLIC_URL: $app.url
+          API_KEY: $secrets.api-key
+          CACHE_URL: $redis.url
+`);
+		expect(lintLaunch(launch)).toEqual([]);
+	});
+
+	it("warns per occurrence across multiple components", () => {
+		const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    requires:
+      - type: postgres
+        set_env:
+          DB_HOST: $hoost
+  worker:
+    image: worker:latest
+    requires:
+      - type: redis
+        set_env:
+          REDIS_URL: $uri
+`);
+		const warnings = lintLaunch(launch);
+		expect(warnings).toHaveLength(2);
+		expect(warnings.join("\n")).toContain(
+			'"$hoost" is not in the standard vocabulary for postgres',
+		);
+		expect(warnings.join("\n")).toContain(
+			'"$uri" is not in the standard vocabulary for redis ' +
+				"(known: url, host, port, password)",
+		);
+	});
+
+	it("warns inside template expressions on a supports entry", () => {
+		const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    supports:
+      - type: redis
+        set_env:
+          CACHE_ADDR: "\${hostt}:\${port}"
+`);
+		const warnings = lintLaunch(launch);
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toContain('"$hostt"');
+	});
+});
+
+describe("lintLaunch — resource types that name Object.prototype keys", () => {
+	const PROTOTYPE_KEYS = [
+		"constructor",
+		"__proto__",
+		"toString",
+		"valueOf",
+		"hasOwnProperty",
+		"isPrototypeOf",
+		"propertyIsEnumerable",
+	];
+
+	// Both vocabulary tables are indexed by a user-supplied `type` string, which
+	// L-4 leaves fully open. Without an own-property guard the lookup inherits
+	// from Object.prototype: `RESOURCE_PROPERTY_VOCABULARY[type]` returns a
+	// truthy non-array and `.includes` throws (turning a spec-valid file into
+	// exit 1, which D-46's warn-only rule forbids), and `PRODUCT_SPELLINGS[type]`
+	// renders the inherited function into the D-44 advisory text.
+	for (const type of PROTOTYPE_KEYS) {
+		it(`stays silent and does not throw for type: ${type}`, () => {
+			const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    requires:
+      - type: ${type === "__proto__" ? '"__proto__"' : type}
+        set_env:
+          X: $host
+`);
+			expect(lintLaunch(launch)).toEqual([]);
+		});
+	}
+});

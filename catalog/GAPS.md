@@ -35,14 +35,6 @@ Each gap includes the apps that exposed it and a severity rating.
 **Issue**: Rocket.Chat needs MongoDB with replica set enabled. `requires.config` can hold `{ replicaSet: "rs0" }` but there's no convention for generating an oplog URL vs standard URL, or for expressing "must be a replica set."
 **Workaround**: Use `config: { replicaSet: rs0 }` and document that the orchestrator must handle it.
 
-### G-6: No resource property registry / validation 🟡
-**Apps**: All apps using `set_env`
-**Issue**: `$host`, `$port`, `$url` etc. are convention, not validated. A typo like `$hoost` isn't caught.
-**Workaround**: Works at runtime — resolver returns empty string for unknown properties.
-**Suggestion**: Define a machine-readable property registry per resource type (already in plan as L-4).
-
----
-
 ## Protocol & Networking
 
 ### G-9: No multicast / link-local network capability declaration 🟡
@@ -144,7 +136,7 @@ Each gap includes the apps that exposed it and a severity rating.
 | Severity | Count | Gaps |
 |----------|-------|------|
 | 🔴 Blocks real apps | 0 | *(G-2 shared secrets and G-8 UDP now addressed in spec)* |
-| 🟡 Workaround exists | 13 | G-1, G-3, G-4, G-5, G-6, G-9, G-9b, G-10, G-11, G-12, G-13, G-17, G-19, G-20 |
+| 🟡 Workaround exists | 12 | G-1, G-3, G-4, G-5, G-9, G-9b, G-10, G-11, G-12, G-13, G-17, G-19, G-20 *(G-6 property registry now addressed in spec — D-46)* |
 | 🟢 Nice-to-have | 4 | G-14, G-15, G-16, G-18 |
 
 ## Apps per Gap
@@ -155,7 +147,6 @@ Each gap includes the apps that exposed it and a severity rating.
 | G-3 | Appwrite |
 | G-4 | Plausible |
 | G-5 | Rocket.Chat |
-| G-6 | All apps using `set_env` |
 | G-9 | Home Assistant |
 | G-9b | Home Assistant |
 | G-10 | Ollama, Jellyfin, Plex, Immich |

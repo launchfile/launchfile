@@ -492,6 +492,26 @@ Source-mode resolution is **per component**, with precedence **`dev` > `image` >
 
 ---
 
+### D-45: Reserved — unknown-field preservation
+
+**Status**: Reserved; no decision recorded. The proposal that would occupy this slot — [#171](https://github.com/launchfile/launchfile/issues/171), pinning down what P-13's "unknown fields are ignored" actually obliges — was deferred pending rework, and the number is held so the record stays stable when it returns.
+
+---
+
+### D-46: Resource property registry — vocabulary is standard but open
+
+**Decision**: Ratify the resource property vocabulary of SPEC.md § Resource Property Vocabulary as a machine-readable registry, `spec/schema/resource-properties.json`: resource type → property → one-line semantics. The registry's content is exactly the documented vocabulary — no property is added, removed, or redefined by the registry itself. Three rules govern it:
+
+1. **The vocabulary for a known type is OPEN.** SPEC.md already permits provider-extension properties for `$app.*` ([D-33](#d-33-app-prefix-for-platform-injected-app-properties)); the same posture applies to known resource types — a provider MAY expose properties beyond the registry. Enforcement is therefore **warn-only, never an error**: SDK lint advises that a property is "not in the standard vocabulary" for the type, listing the known set, so a typo is caught while a deliberate extension is advised, not accused. Unknown resource *types* stay fully open with no warnings — [L-4](#l-4-resource-property-vocabulary-is-implicit)'s "any string is accepted" is preserved verbatim.
+2. **Semantics notes are descriptive only.** A note records the documented meaning and existing provider latitude (e.g. `url`'s TLS mode is provider latitude) — it never settles a semantic the spec leaves undefined. Settling one is a spec decision that must be argued as its own change, not smuggled in as registry metadata.
+3. **One vocabulary, consistency-checked.** The SPEC.md prose table stays canonical; the registry and the SDK's runtime copy are asserted equal to it by an SDK test, so drift between the forms fails CI.
+
+**Rejected**: *Closed vocabulary / hard validation error* — rejects legitimate provider extensions and breaks files that work today, against [P-13](#p-13-additive-extensibility). *Warning on unknown resource types* — collapses the deliberate openness of the type namespace (L-4). *Generating the prose table from the JSON* — couples the ratified document's wording to build tooling; a CI consistency check gets the same single-source guarantee without it. *Resolver change (error or placeholder on unknown property)* — resolution semantics (unknown resolves to empty string) are load-bearing for forward compatibility ([D-33](#d-33-app-prefix-for-platform-injected-app-properties) relies on older providers degrading gracefully).
+
+**Why**: The registry is the machine-checkable form of what [P-3](#p-3-machine-generatable) promises — and machine-generated files are the population most exposed to a typo that silently resolves to `""`. For a human author, the warning with the valid property list is [P-4](#p-4-human-writable)'s two-minute fix instead of a runtime debugging session. Zero YAML change ([P-6](#p-6-its-just-yaml)) and purely additive ([P-13](#p-13-additive-extensibility)): no file that validates today stops validating. The lint check reuses the existing warn-only surface established by [D-24](#d-24-resource-naming-via-optional-name-field)'s divergent-resource check. Delivers [L-4](#l-4-resource-property-vocabulary-is-implicit)'s stated Future and closes catalog gap G-6 (GAPS.md: all `set_env` users affected). Note this does not reopen what [D-7](#d-7-resource-properties-as-standard-vocabulary) rejected: D-7 declined *author-side* property declarations per resource type — configuration in the app-facing file. The registry publishes the same convention **spec-side**, adding no author-facing declaration and changing no property's meaning.
+
+---
+
 ## 4. Known Limitations
 
 Each limitation includes the problem, current stance, and future considerations.
@@ -518,7 +538,7 @@ Each limitation includes the problem, current stance, and future considerations.
 
 **Problem**: The standard properties (`url`, `host`, `port`, `user`, `password`, `name`) are convention, not enforced by the schema. A typo like `$hoost` passes validation and silently resolves to an empty string.
 **Current stance**: The resolver returns empty string for unknown properties, which usually causes a clear app error. The GAPS.md tracks this.
-**Future**: Build a machine-readable property registry per resource type with post-parse validation.
+**Future**: Delivered by [D-46](#d-46-resource-property-registry--vocabulary-is-standard-but-open) — the registry is `spec/schema/resource-properties.json` and SDK lint warns (advisory, never an error) on properties outside a known type's standard vocabulary.
 
 ### L-5: `set_env` co-location vs. flat visibility trade-off
 

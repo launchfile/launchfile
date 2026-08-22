@@ -970,7 +970,11 @@ Each resource type exposes well-known properties for use in `set_env` expression
 
 The `url` property is always a fully-formed connection string (e.g. `postgresql://user:pass@host:5432/dbname`). Other properties provide individual components for apps that require them separately.
 
-Resource types are extensible -- any string is accepted. Unknown types have no predefined property vocabulary; their properties are platform-defined.
+This vocabulary is also published in machine-readable form as [`schema/resource-properties.json`](schema/resource-properties.json), which adds a one-line semantic per property and is what tooling reads for advisory typo warnings (see [DESIGN.md D-46](DESIGN.md#d-46-resource-property-registry--vocabulary-is-standard-but-open)).
+
+The table above is the **portable** vocabulary: every provider that supports a listed type must expose those properties under those names. It is authoritative but **not closed** — a provider MAY expose additional properties for a listed type as a platform-specific extension, mirroring the `$app.*` rule above. Portable Launchfiles should use only the standard set. A reference outside the standard set is therefore not invalid: tooling reports it as an **advisory warning**, never a validation error, because it may be either a typo or a deliberate provider extension. Unknown properties resolve to empty string.
+
+Resource types are extensible -- any string is accepted. Unknown types have no predefined property vocabulary; their properties are platform-defined, and no warning is reported for them.
 
 ## YAML Compatibility
 
