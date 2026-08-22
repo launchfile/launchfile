@@ -696,7 +696,6 @@ function emitComponent(
 	// forbids. `resourceMap` is fully populated before this loop, so the arrival
 	// test below is decidable here.
 	reportUnsuppliedRequired(comp, name, c, baseContext);
-	reportUnsuppliedRequired(comp, name, c);
 	// host capabilities a bare-EC2 target can't honor. Both spellings are
 	// graded identically (PROVIDERS.md §11): the D-44 entry form below, and the
 	// legacy block after it.
