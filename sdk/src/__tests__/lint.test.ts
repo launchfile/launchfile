@@ -288,3 +288,37 @@ components:
 		expect(warnings[0]).toContain('"$hostt"');
 	});
 });
+
+describe("lintLaunch — resource types that name Object.prototype keys", () => {
+	const PROTOTYPE_KEYS = [
+		"constructor",
+		"__proto__",
+		"toString",
+		"valueOf",
+		"hasOwnProperty",
+		"isPrototypeOf",
+		"propertyIsEnumerable",
+	];
+
+	// Both vocabulary tables are indexed by a user-supplied `type` string, which
+	// L-4 leaves fully open. Without an own-property guard the lookup inherits
+	// from Object.prototype: `RESOURCE_PROPERTY_VOCABULARY[type]` returns a
+	// truthy non-array and `.includes` throws (turning a spec-valid file into
+	// exit 1, which D-46's warn-only rule forbids), and `PRODUCT_SPELLINGS[type]`
+	// renders the inherited function into the D-44 advisory text.
+	for (const type of PROTOTYPE_KEYS) {
+		it(`stays silent and does not throw for type: ${type}`, () => {
+			const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    requires:
+      - type: ${type === "__proto__" ? '"__proto__"' : type}
+        set_env:
+          X: $host
+`);
+			expect(lintLaunch(launch)).toEqual([]);
+		});
+	}
+});

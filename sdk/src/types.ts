@@ -265,6 +265,8 @@ export interface Host {
 export interface StorageVolume {
 	/** Mount path inside the container */
 	path: string;
+	/** Minimum size hint, e.g. "512MB", "10GB" (D-30) */
+	size?: string;
 	/** Whether data should survive restarts */
 	persistent?: boolean;
 }
