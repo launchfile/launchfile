@@ -432,7 +432,7 @@ Every declared env value has exactly one provenance class, determined by precede
 - **Author default** (literal `default:`) — a starting value chosen by the file author; ordinary per-environment config the orchestrator may override.
 - **User-supplied** (no generator, no default) — never supplied or altered by the platform, whether `required: true` or a bare declaration whose presence activates a feature.
 
-`set_env` entries classify the same way: expression wirings are derived; literal wirings are deliberately constant and passed through verbatim — overriding one breaks the declared resource wiring rather than configuring the app. Whether a deployed value is currently the resolved default, an operator override, or a once-generated secret is orchestrator state, never recorded in the file. See [DESIGN.md D-48](DESIGN.md#d-48-env-value-provenance--four-declaration-classes-with-per-layer-obligations) for the full rationale.
+`set_env` entries classify the same way: expression wirings are derived; literal wirings are deliberately constant and passed through verbatim — overriding one breaks the declared resource wiring rather than configuring the app. Whether a deployed value is currently the resolved default, an operator override, or a once-generated secret is orchestrator state, never recorded in the file. See [DESIGN.md D-49](DESIGN.md#d-49-env-value-provenance--four-declaration-classes-with-per-layer-obligations) for the full rationale.
 
 ## Commands
 
