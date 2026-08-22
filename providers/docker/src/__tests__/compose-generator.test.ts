@@ -161,7 +161,7 @@ image: louislam/dockge:1
 requires:
   - host: { container_runtime: docker }
     set_env:
-      DOCKER_HOST: $host
+      DOCKER_HOST: $url
 provides:
   - protocol: http
     port: 5001
