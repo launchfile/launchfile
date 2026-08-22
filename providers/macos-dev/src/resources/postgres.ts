@@ -46,7 +46,10 @@ export class PostgresProvisioner implements ResourceProvisioner {
 		}
 
 		// Wait for ready
-		await shell("pg_isready --timeout=10", { allowFailure: true });
+		const ready = await shellOk("pg_isready --timeout=10");
+		if (!ready) {
+			throw new Error("PostgreSQL did not become ready within timeout");
+		}
 
 		// Determine database and user names
 		const resourceName = req.name ?? req.type;
