@@ -357,6 +357,22 @@ env:
 		expect(gap?.severity).toBe("blocker");
 	});
 
+	it("still reports it when the component has no runtime and no start command", () => {
+		// The second early return, alongside the image-only one above.
+		const { conformance } = tf(`
+version: launch/v1
+name: app
+env:
+  ADMIN_TOKEN:
+    required: true
+    sensitive: true
+`);
+		expect(conformance.gaps.some((g) => g.field === "runtime")).toBe(true);
+		expect(conformance.gaps.some((g) => g.field === "env.ADMIN_TOKEN")).toBe(
+			true,
+		);
+	});
+
 	it("explains in the report why a sensitive var is a blocker", () => {
 		const { conformance } = tf(`
 version: launch/v1

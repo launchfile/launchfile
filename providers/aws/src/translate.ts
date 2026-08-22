@@ -693,10 +693,8 @@ function emitComponent(
 	// the mode gaps below can return. A component this probe cannot translate still
 	// has an environment contract the operator must satisfy, and dropping it because
 	// the component gapped for an unrelated reason is the silent drop the rule
-	// forbids. `set_env` keys are known statically from the file, so this does not
-	// need to wait for values to resolve — and `supports:` keys are deliberately not
-	// counted, since they inject only when the optional resource is provisioned
-	// (SPEC.md §Supports), which this probe never does.
+	// forbids. `resourceMap` is fully populated before this loop, so the arrival
+	// test below is decidable here.
 	reportUnsuppliedRequired(comp, name, c, baseContext);
 	reportUnsuppliedRequired(comp, name, c);
 	// host capabilities a bare-EC2 target can't honor. Both spellings are
