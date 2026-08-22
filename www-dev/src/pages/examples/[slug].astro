@@ -140,7 +140,7 @@ export function getStaticPaths() {
       ],
       annotations: [
         { line: "schedule:", text: "Standard cron syntax. This job runs once daily at midnight." },
-        { line: "restart: no", text: "The process exits after each run — the scheduler handles re-invocation." },
+        { line: "restart: no", text: "The process exits after each run — re-invocation belongs to the provider's scheduler. Providers without one warn at launch instead of running the job." },
       ],
     },
     {
