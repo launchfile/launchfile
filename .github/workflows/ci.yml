@@ -1,8 +1,13 @@
 name: CI
 
 on:
+  # Every pull request, whatever its base. A base filter of [main] silently
+  # skips stacked PRs, which merge into a sibling branch and inherit no run
+  # from it: GitHub retargets an open PR when its base merges, but that fires
+  # `pull_request.edited`, which is not a default trigger type. Nothing holds
+  # the filter up on the other side either — CI reads no secret and carries a
+  # read-only token, so a run costs minutes and nothing else.
   pull_request:
-    branches: [main]
 
 # Least privilege: every job here only reads the checked-out code (build/test/
 # validate). No job writes to the repo, comments, or deploys, so the workflow
