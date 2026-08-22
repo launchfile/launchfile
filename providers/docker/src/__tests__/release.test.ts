@@ -77,10 +77,12 @@ describe("planReleases", () => {
 		});
 		const backend = plan.find((p) => p.component === "backend")!;
 		expect(backend.command).toBe("backend-migrate --url http://localhost:8080");
+		// SPEC.md § Command interpretation: the resolved string is handed to a
+		// shell as one argument, not split into argv by the provider.
 		expect(backend.argv).toEqual([
-			"backend-migrate",
-			"--url",
-			"http://localhost:8080",
+			"sh",
+			"-c",
+			"backend-migrate --url http://localhost:8080",
 		]);
 		expect(backend.timeoutMs).toBe(300_000);
 	});
@@ -196,5 +198,31 @@ describe("runReleases", () => {
 			}),
 		).rejects.toThrow(/release \[backend\] failed with exit code 1/);
 		expect(calls).toHaveLength(1);
+	});
+});
+
+describe("command interpretation (SPEC.md § Command interpretation)", () => {
+	const services = { default: "acme-app" };
+	const plan = (command: string) =>
+		planReleases(
+			readLaunch(`version: launch/v1\nname: acme\ncommands:\n  release: ${JSON.stringify(command)}\n  start: serve\nimage: acme:1\n`),
+			{ services, hostPorts: {}, secrets: {} },
+		)[0]!;
+
+	it("keeps shell operators intact instead of splitting them into argv", () => {
+		// Splitting would send `&&` to the container as a literal argument and
+		// run only the first command — the divergence from macos-dev this closes.
+		const item = plan("rails db:migrate && rails db:seed");
+		expect(item.argv).toEqual(["sh", "-c", "rails db:migrate && rails db:seed"]);
+	});
+
+	it("passes the command as exactly one argv element", () => {
+		const item = plan("sed -i \"s/a/b/\" f.json; echo done");
+		expect(item.argv).toHaveLength(3);
+		expect(item.argv[2]).toBe('sed -i "s/a/b/" f.json; echo done');
+	});
+
+	it("still rejects a command that resolves to nothing", () => {
+		expect(() => plan("   ")).toThrow(/empty string/);
 	});
 });

@@ -10,8 +10,12 @@
  * conditions, so backing resources are provisioned and healthy before the
  * command executes, while the app service itself is not yet started.
  *
- * Commands are argv-split and exec'd with shell:false (same trust posture
- * as bootstrap.ts): shell metacharacters are not interpreted.
+ * The command runs through a POSIX shell inside the container
+ * (SPEC.md § Command interpretation), so `&&`, pipes, redirection and
+ * variable expansion behave as authors write them. The string is passed as a
+ * single argv element to `sh -c` — it is never interpolated into a shell
+ * string on this side, so nothing the app declares can affect the compose
+ * invocation itself.
  */
 
 import {
@@ -104,10 +108,12 @@ export function planReleases(
 		if (!release?.command) continue;
 
 		const command = resolveExpression(release.command, resolverContext);
-		const argv = command.trim().split(/\s+/).filter(Boolean);
-		if (argv.length === 0) {
+		if (command.trim() === "") {
 			throw new Error(`release [${name}]: command resolved to an empty string`);
 		}
+		// `sh -c <command>` — one argv element, so the shell interprets the
+		// command and nothing else (SPEC.md § Command interpretation).
+		const argv = ["sh", "-c", command];
 
 		let timeoutMs = DEFAULT_RELEASE_TIMEOUT_MS;
 		if (release.timeout !== undefined) {
