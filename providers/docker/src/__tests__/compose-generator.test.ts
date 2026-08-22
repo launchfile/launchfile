@@ -153,6 +153,82 @@ provides:
 		expect(result.yaml).toContain("bridge");
 	});
 
+	describe("host capabilities — grant/refuse (D-43)", () => {
+		it("refuses a required capability in the new entry form with a surfaced message", () => {
+			const launch = readLaunch(`
+name: dockge
+image: louislam/dockge:1
+requires:
+  - host: { container_runtime: docker }
+    set_env:
+      DOCKER_HOST: $host
+provides:
+  - protocol: http
+    port: 5001
+    exposed: true
+`);
+			const result = launchToCompose(launch);
+
+			expect(result.yaml).not.toContain("louislam/dockge");
+			expect(result.warnings).toHaveLength(1);
+			expect(result.warnings[0]).toContain("refused");
+			expect(result.warnings[0]).toContain("container_runtime=docker");
+			expect(result.warnings[0]).toContain("skipped");
+		});
+
+		it("refuses the legacy host block equivalently", () => {
+			const launch = readLaunch(`
+name: legacy-app
+image: app:1
+host:
+  docker: required
+`);
+			const result = launchToCompose(launch);
+
+			expect(result.yaml).not.toContain("app:1");
+			expect(result.warnings).toHaveLength(1);
+			expect(result.warnings[0]).toContain("refused");
+			expect(result.warnings[0]).toContain("container_runtime=docker");
+		});
+
+		it("refuses folded capabilities (network/privileged) in the new form", () => {
+			const launch = readLaunch(`
+name: wg-easy
+image: wg-easy:latest
+requires:
+  - host: { network: host }
+  - host: { privileged: true }
+`);
+			const result = launchToCompose(launch);
+
+			expect(result.warnings).toHaveLength(1);
+			expect(result.warnings[0]).toContain("refused");
+			expect(result.warnings[0]).toContain("network=host");
+			expect(result.warnings[0]).toContain("privileged=true");
+		});
+
+		it("deploys with a note when an optional (supports) capability is not granted", () => {
+			const launch = readLaunch(`
+name: beszel
+image: henrygd/beszel:latest
+supports:
+  - host: { container_runtime: any }
+provides:
+  - protocol: http
+    port: 8090
+    exposed: true
+`);
+			const result = launchToCompose(launch);
+
+			// Component still deploys — optional means deploy, probe, degrade
+			expect(result.yaml).toContain("henrygd/beszel");
+			expect(result.warnings).toHaveLength(1);
+			expect(result.warnings[0]).toContain("optional host capability");
+			expect(result.warnings[0]).toContain("container_runtime=any");
+			expect(result.warnings[0]).not.toContain("refused");
+		});
+	});
+
 	it("skips components without images", () => {
 		const launch = readLaunch(`
 name: test-app
