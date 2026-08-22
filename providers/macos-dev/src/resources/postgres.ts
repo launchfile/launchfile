@@ -16,16 +16,33 @@ import type { ProvisionOpts, ResourceProperties, ResourceProvisioner } from "./t
 
 const DEFAULT_PORT = 5432;
 const DEFAULT_HOST = "localhost";
+const READY_TIMEOUT_SECONDS = 10;
 
 // Security: validate identifiers before interpolating into shell/SQL commands.
 // Only alphanumeric + underscore — safe for SQL identifiers and shell args.
 const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
+/**
+ * The shell surface this provisioner runs against. Injecting it lets tests
+ * drive the provisioning sequence without a live Postgres or Homebrew.
+ */
+export interface ShellRunner {
+	shell: typeof shell;
+	shellOk: typeof shellOk;
+}
+
 export class PostgresProvisioner implements ResourceProvisioner {
 	readonly type = "postgres";
+	readonly #shell: ShellRunner["shell"];
+	readonly #shellOk: ShellRunner["shellOk"];
+
+	constructor(deps: Partial<ShellRunner> = {}) {
+		this.#shell = deps.shell ?? shell;
+		this.#shellOk = deps.shellOk ?? shellOk;
+	}
 
 	async isRunning(): Promise<boolean> {
-		return shellOk("pg_isready -q");
+		return this.#shellOk("pg_isready -q");
 	}
 
 	async provision(
@@ -37,16 +54,26 @@ export class PostgresProvisioner implements ResourceProvisioner {
 		if (!(await this.isRunning())) {
 			console.log("  Starting PostgreSQL via brew...");
 			// Try to start; if not installed, install first
-			const started = await shellOk("brew services start postgresql");
+			const started = await this.#shellOk("brew services start postgresql");
 			if (!started) {
 				// Try versioned formula
-				await shell("brew install postgresql@16");
-				await shell("brew services start postgresql@16");
+				await this.#shell("brew install postgresql@16");
+				await this.#shell("brew services start postgresql@16");
 			}
 		}
 
-		// Wait for ready
-		await shell("pg_isready --timeout=10", { allowFailure: true });
+		// pg_isready blocks until the server answers or the timeout expires, so a
+		// false here means Postgres never came up — every psql call below would
+		// fail with a connection error that says nothing about the real cause.
+		const ready = await this.#shellOk(
+			`pg_isready --timeout=${READY_TIMEOUT_SECONDS}`,
+		);
+		if (!ready) {
+			throw new Error(
+				`PostgreSQL did not accept connections within ${READY_TIMEOUT_SECONDS}s. ` +
+					`Check \`brew services list\` and \`pg_isready\`.`,
+			);
+		}
 
 		// Determine database and user names
 		const resourceName = req.name ?? req.type;
@@ -57,18 +84,18 @@ export class PostgresProvisioner implements ResourceProvisioner {
 		const port = DEFAULT_PORT;
 
 		// Create user (idempotent)
-		await shell(
+		await this.#shell(
 			`psql -h ${DEFAULT_HOST} -p ${port} postgres -c "DO \\$\\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${user}') THEN CREATE ROLE ${user} WITH LOGIN PASSWORD '${password}' CREATEDB; END IF; END \\$\\$;"`,
 			// silent: this command embeds the generated DB password; don't echo it (CWE-532).
 			{ allowFailure: true, silent: true },
 		);
 
 		// Create database (idempotent)
-		const dbExists = await shellOk(
+		const dbExists = await this.#shellOk(
 			`psql -h ${DEFAULT_HOST} -p ${port} postgres -tAc "SELECT 1 FROM pg_database WHERE datname='${dbName}'"`,
 		);
 		if (!dbExists) {
-			await shell(
+			await this.#shell(
 				`createdb -h ${DEFAULT_HOST} -p ${port} -O ${user} ${dbName}`,
 				{ allowFailure: true },
 			);
@@ -85,7 +112,7 @@ export class PostgresProvisioner implements ResourceProvisioner {
 					console.warn(`  Skipping invalid extension name: ${ext}`);
 					continue;
 				}
-				await shell(
+				await this.#shell(
 					`psql -h ${DEFAULT_HOST} -p ${port} ${dbName} -c "CREATE EXTENSION IF NOT EXISTS \\"${ext}\\";"`,
 					{ allowFailure: true },
 				);
@@ -119,12 +146,12 @@ export class PostgresProvisioner implements ResourceProvisioner {
 	async destroy(state: ResourceState): Promise<void> {
 		// Security: state values come from disk (state.json) — validate before SQL interpolation
 		if (state.dbName && SAFE_IDENTIFIER.test(state.dbName)) {
-			await shell(`dropdb -h ${DEFAULT_HOST} --if-exists ${state.dbName}`, {
+			await this.#shell(`dropdb -h ${DEFAULT_HOST} --if-exists ${state.dbName}`, {
 				allowFailure: true,
 			});
 		}
 		if (state.user && SAFE_IDENTIFIER.test(state.user)) {
-			await shell(
+			await this.#shell(
 				`psql -h ${DEFAULT_HOST} postgres -c "DROP ROLE IF EXISTS ${state.user};"`,
 				{ allowFailure: true },
 			);
