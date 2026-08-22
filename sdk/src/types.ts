@@ -92,6 +92,29 @@ export interface Requirement {
 	set_env?: Record<string, string>;
 }
 
+/**
+ * A host-capability request in `requires`/`supports` (D-43).
+ *
+ * The `host:` marker distinguishes a capability (granted or refused by the
+ * provider) from a backing service (`type:` entry, provisioned and wired).
+ * The marker is required on every privileged entry so the app's privilege
+ * surface is machine-extractable from the file itself.
+ */
+export interface HostCapability {
+	/**
+	 * Capability name → interface value (e.g. `{ container_runtime: "docker" }`).
+	 * Values name interfaces, never products: `docker` = the Docker Engine API
+	 * (a Podman-compatible socket satisfies it); `any` = runtime-agnostic.
+	 * Open vocabulary — unknown capabilities are tolerated (L-4).
+	 */
+	host: Record<string, string | boolean>;
+	/**
+	 * Maps granted capability properties (`$socket`, `$host`, `$api` for
+	 * `container_runtime`) to app env vars. Values use $ syntax.
+	 */
+	set_env?: Record<string, string>;
+}
+
 /** An optional resource that enhances the app when available */
 export interface Support {
 	/** Resource name for expression references (defaults to type) */
@@ -273,10 +296,10 @@ export interface Component {
 	source?: string;
 	/** What this component exposes */
 	provides?: Provides[];
-	/** Required resource dependencies */
-	requires?: Array<string | Requirement>;
-	/** Optional resource enhancements */
-	supports?: Array<string | Support>;
+	/** Required resource dependencies and host-capability requests (D-43) */
+	requires?: Array<string | Requirement | HostCapability>;
+	/** Optional resource enhancements and host-capability requests (D-43) */
+	supports?: Array<string | Support | HostCapability>;
 	/** App-owned environment variables */
 	env?: Record<string, string | EnvVar>;
 	/** Lifecycle commands (see expanded form for optional capture:) */
@@ -340,8 +363,8 @@ export interface Launch {
 	build?: string | Build;
 	source?: string;
 	provides?: Provides[];
-	requires?: Array<string | Requirement>;
-	supports?: Array<string | Support>;
+	requires?: Array<string | Requirement | HostCapability>;
+	supports?: Array<string | Support | HostCapability>;
 	env?: Record<string, string | EnvVar>;
 	commands?: Commands;
 	health?: string | Health;
@@ -376,6 +399,12 @@ export interface NormalizedRequirement {
 	version?: string;
 	config?: Record<string, unknown>;
 	set_env?: Record<string, string>;
+	/**
+	 * Present when this entry is a host-capability request (D-43); `type` is
+	 * the synthetic `"host"` for such entries. Providers grant (populate the
+	 * capability's properties) or refuse (surfaced message) — never provision.
+	 */
+	host?: Record<string, string | boolean>;
 }
 
 /** Fully expanded depends_on entry */

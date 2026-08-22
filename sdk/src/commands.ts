@@ -47,11 +47,52 @@ function collectRequires(launch: NormalizedLaunch): string[] {
 	for (const comp of Object.values(launch.components)) {
 		if (comp.requires) {
 			for (const req of comp.requires) {
+				if (req.host) continue; // capability, not a backing service (D-43)
 				types.add(req.type);
 			}
 		}
 	}
 	return [...types].sort();
+}
+
+/**
+ * Collect the app's requested host capabilities (D-43) — the privilege
+ * surface `launchfile validate` must always surface. Reads BOTH spellings:
+ * `host:`-marked capability entries in requires/supports, and the legacy
+ * top-level `host:` block (reported in the capability vocabulary).
+ * Each item reads `name=value (required|optional)`.
+ */
+export function collectHostCapabilities(launch: NormalizedLaunch): string[] {
+	const caps = new Set<string>();
+	for (const comp of Object.values(launch.components)) {
+		const homes = [
+			{ entries: comp.requires, mode: "required" },
+			{ entries: comp.supports, mode: "optional" },
+		] as const;
+		for (const { entries, mode } of homes) {
+			for (const req of entries ?? []) {
+				if (!req.host) continue;
+				for (const [capability, value] of Object.entries(req.host)) {
+					caps.add(`${capability}=${String(value)} (${mode})`);
+				}
+			}
+		}
+		// Legacy block spelling — same capabilities, block form (deprecation is #120)
+		const legacy = comp.host;
+		if (legacy) {
+			if (legacy.docker) {
+				caps.add(
+					`container_runtime=docker (${legacy.docker === "required" ? "required" : "optional"})`,
+				);
+			}
+			if (legacy.network === "host") caps.add("network=host (required)");
+			if (legacy.filesystem && legacy.filesystem !== "none") {
+				caps.add(`filesystem=${legacy.filesystem} (required)`);
+			}
+			if (legacy.privileged) caps.add("privileged=true (required)");
+		}
+	}
+	return [...caps].sort();
 }
 
 function formatZodErrors(err: unknown): string[] {
@@ -90,6 +131,8 @@ export interface ValidateResult {
 	name?: string;
 	components?: string[];
 	requires?: string[];
+	/** Requested host capabilities (D-43) — the app's privilege surface. */
+	hostCapabilities?: string[];
 	errors?: string[];
 	/** Non-fatal lint advisories (do not affect `valid`). */
 	warnings?: string[];
@@ -107,6 +150,7 @@ export function cmdValidate(path: string, opts: ValidateOpts = {}): ValidateResu
 		const launch = readLaunch(yaml);
 		const componentNames = Object.keys(launch.components);
 		const allRequires = collectRequires(launch);
+		const hostCapabilities = collectHostCapabilities(launch);
 		const warnings = lintLaunch(launch);
 
 		const result: ValidateResult = {
@@ -115,6 +159,7 @@ export function cmdValidate(path: string, opts: ValidateOpts = {}): ValidateResu
 			name: launch.name,
 			components: componentNames,
 			requires: allRequires,
+			...(hostCapabilities.length > 0 && { hostCapabilities }),
 			...(warnings.length > 0 && { warnings }),
 		};
 
@@ -128,6 +173,13 @@ export function cmdValidate(path: string, opts: ValidateOpts = {}): ValidateResu
 			console.log(`  ${fmt.dim("components:")} ${componentNames.join(", ")}`);
 			if (allRequires.length > 0) {
 				console.log(`  ${fmt.dim("requires:")}   ${allRequires.join(", ")}`);
+			}
+			if (hostCapabilities.length > 0) {
+				// The D-43 privilege-surface audit line — always emitted when any
+				// capability is requested, in either spelling (entry or legacy block).
+				console.log(
+					`  ${fmt.dim("host capabilities requested:")} ${hostCapabilities.join(", ")}`,
+				);
 			}
 			for (const w of warnings) {
 				console.error(`  ${fmt.yellow("warning:")} ${w}`);

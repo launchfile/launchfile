@@ -56,10 +56,24 @@ const RequirementObjectSchema = z.object({
 	set_env: z.record(z.string(), z.string()).optional(),
 });
 
-/** Accepts string shorthand ("postgres") or full object */
+// --- Host capability entry (D-43) ---
+
+/**
+ * A `host:`-marked capability entry in requires/supports. The marker
+ * distinguishes a capability (granted or refused) from a backing service
+ * (`type:` entry, provisioned). Values are an open vocabulary (L-4):
+ * interface names like `docker`/`any`, or booleans (`privileged: true`).
+ */
+const HostCapabilityObjectSchema = z.object({
+	host: z.record(z.string(), z.union([z.string(), z.boolean()])),
+	set_env: z.record(z.string(), z.string()).optional(),
+});
+
+/** Accepts string shorthand ("postgres"), full object, or a host-capability entry */
 const RequirementSchema = z.union([
 	z.string().min(1),
 	RequirementObjectSchema,
+	HostCapabilityObjectSchema,
 ]);
 
 // --- Support (same shape as Requirement) ---
@@ -259,6 +273,7 @@ export {
 	ProvidesSchema,
 	RequirementObjectSchema,
 	RequirementSchema,
+	HostCapabilityObjectSchema,
 	SupportSchema,
 	EnvVarObjectSchema,
 	EnvVarSchema,

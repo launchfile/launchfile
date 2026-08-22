@@ -1,4 +1,4 @@
-export { cmdInspect, cmdSchema, cmdValidate } from "./commands.js";
+export { cmdInspect, cmdSchema, cmdValidate, collectHostCapabilities } from "./commands.js";
 export { lintLaunch } from "./lint.js";
 export { readLaunch, validateLaunch } from "./reader.js";
 export { parseRepository } from "./repository.js";
