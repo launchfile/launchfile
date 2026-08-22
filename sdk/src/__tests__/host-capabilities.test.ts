@@ -13,13 +13,13 @@ image: louislam/dockge:1
 requires:
   - host: { container_runtime: docker }
     set_env:
-      DOCKER_HOST: $host
+      DOCKER_HOST: $url
 `);
 			const reqs = launch.components.default!.requires!;
 			expect(reqs).toHaveLength(1);
 			expect(reqs[0]!.type).toBe("host");
 			expect(reqs[0]!.host).toEqual({ container_runtime: "docker" });
-			expect(reqs[0]!.set_env).toEqual({ DOCKER_HOST: "$host" });
+			expect(reqs[0]!.set_env).toEqual({ DOCKER_HOST: "$url" });
 		});
 
 		it("parses an optional capability under supports", () => {
@@ -94,7 +94,7 @@ image: louislam/dockge:1
 requires:
   - host: { container_runtime: docker }
     set_env:
-      DOCKER_HOST: $host
+      DOCKER_HOST: $url
 `;
 			const written = writeLaunch(readLaunch(yaml));
 			expect(written).toContain("container_runtime: docker");
@@ -103,7 +103,7 @@ requires:
 			expect(reparsed.components.default!.requires![0]).toEqual({
 				type: "host",
 				host: { container_runtime: "docker" },
-				set_env: { DOCKER_HOST: "$host" },
+				set_env: { DOCKER_HOST: "$url" },
 			});
 		});
 	});

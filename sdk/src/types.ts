@@ -109,7 +109,7 @@ export interface HostCapability {
 	 */
 	host: Record<string, string | boolean>;
 	/**
-	 * Maps granted capability properties (`$socket`, `$host`, `$api` for
+	 * Maps granted capability properties (`$socket`, `$url`, `$api` for
 	 * `container_runtime`) to app env vars. Values use $ syntax.
 	 */
 	set_env?: Record<string, string>;
