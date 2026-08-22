@@ -2,7 +2,7 @@
  * The RFC #118 merge gate: `launchfile validate` MUST emit a
  * "host capabilities requested: […]" summary listing the app's requested
  * capabilities — the #113 privilege-surface floor. Exercises the built CLI
- * end-to-end against both spellings: the D-43 `host:` entry form and the
+ * end-to-end against both spellings: the D-44 `host:` entry form and the
  * legacy top-level `host:` block.
  */
 
@@ -27,7 +27,7 @@ function run(cliArgs: string[]): { stdout: string; exitCode: number } {
 	}
 }
 
-describe("launchfile validate — host capabilities summary (D-43 merge gate)", () => {
+describe("launchfile validate — host capabilities summary (D-44 merge gate)", () => {
 	it("lists capabilities requested via the new entry form", () => {
 		const { stdout, exitCode } = run([
 			"validate",
