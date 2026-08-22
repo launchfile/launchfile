@@ -105,6 +105,23 @@ export function refusedHostCapabilities(
 	return refused;
 }
 
+/**
+ * The launch-time notice a provider without a scheduler owes for a declared
+ * `schedule` (D-51, PROVIDERS.md §10 item 8).
+ *
+ * States what *this provider* does, not what will happen to the app: a
+ * component may schedule itself — `catalog/drafts/diun` sets its own
+ * `DIUN_WATCH_SCHEDULE`, and nextcloud's `cron.sh` is a foreground `crond` —
+ * so claiming the job will not run would be false about those apps, and a
+ * warning that misstates the user's app is worse than the silence it replaces.
+ */
+export function scheduleWarning(component: string, schedule: string): string {
+	return (
+		`[${component}] declares \`schedule: ${schedule}\` — this provider will not ` +
+		"run it on a timer. If the component does not schedule itself, the job will not run."
+	);
+}
+
 export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 
@@ -227,10 +244,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		// components with a schedule reach this loop too, and they are skipped
 		// entirely in source mode.
 		if (c.schedule) {
-			console.warn(
-				`  ! [${name}] declares \`schedule: ${c.schedule}\` — nothing will run ` +
-					"it on a timer; this provider has no scheduler.",
-			);
+			console.warn(`  ! ${scheduleWarning(name, c.schedule)}`);
 		}
 	}
 

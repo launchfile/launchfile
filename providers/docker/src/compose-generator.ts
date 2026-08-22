@@ -508,7 +508,7 @@ export function launchToCompose(
 		}
 
 		if (component.schedule) {
-			warnings.push(`${componentName}: has schedule — included but won't cron`);
+			warnings.push(`${componentName}: declares a schedule — this provider will not run it on a timer; if the component does not schedule itself, the job will not run`);
 		}
 
 		const service: Record<string, unknown> = {};
