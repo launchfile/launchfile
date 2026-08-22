@@ -8,6 +8,8 @@
 
 import { resolve as resolvePath } from "node:path";
 import { stringify } from "yaml";
+import { publishedEndpoints } from "./port-allocator.js";
+import type { StateEndpoint } from "./state.js";
 import {
 	deriveAppUrlProperties,
 	resolveExpression,
@@ -507,10 +509,12 @@ function computeAppProperties(
 ): Record<string, string | number> {
 	let primaryPort = 0;
 	for (const [name, component] of Object.entries(launch.components)) {
-		const exposed = component.provides?.filter((p) => p.exposed !== false) ?? [];
-		if (exposed.length === 0) continue;
+		// Only endpoints explicitly marked `exposed: true` are reachable from the
+		// host (D-27), so only they can be the app's public address.
+		const published = component.provides?.filter((p) => p.exposed === true) ?? [];
+		if (published.length === 0) continue;
 		// Prefer caller-supplied host port, fall back to the declared container port.
-		primaryPort = hostPorts?.[name] ?? exposed[0]!.port;
+		primaryPort = hostPorts?.[name] ?? published[0]!.port;
 		break;
 	}
 
@@ -534,7 +538,7 @@ export interface ComposeOpts {
 	 * `<component>.<ENV_NAME>` (mutated with newly minted values).
 	 */
 	generatedEnv?: Record<string, string>;
-	/** Host port overrides, keyed by component name */
+	/** Host port overrides, keyed per `publishedEndpoints` (bare component name for the primary, `component:name` / `component:port` for the rest) */
 	hostPorts?: Record<string, number>;
 	/** Docker network name */
 	networkName?: string;
@@ -568,8 +572,15 @@ export interface ComposeResult {
 	secrets: Record<string, string>;
 	/** `env:`-level generator values minted or reused during composition (save to state) */
 	generatedEnv: Record<string, string>;
-	/** Map of component name → exposed host port */
+	/**
+	 * Host port for every endpoint marked `exposed: true`, keyed per
+	 * `publishedEndpoints`: bare component name for a component's first
+	 * published endpoint, `component:name` / `component:port` for the rest.
+	 * Persist the whole map — the allocator reuses it on the next `up`.
+	 */
 	ports: Record<string, number>;
+	/** Endpoint metadata for each `ports` key (component, name, protocol) */
+	endpoints: Record<string, StateEndpoint>;
 	/** Map of component name → generated compose service name (skipped components absent) */
 	services: Record<string, string>;
 	/**
@@ -603,6 +614,7 @@ export function launchToCompose(
 	const ports: Record<string, number> = {};
 	const componentServices: Record<string, string> = {};
 	const unsuppliedRequired: UnsuppliedRequiredVar[] = [];
+	const endpoints: Record<string, StateEndpoint> = {};
 
 	const backingServices = createBackingServices(secrets);
 
@@ -727,25 +739,52 @@ export function launchToCompose(
 			images.push(component.image!);
 		}
 
-		// Ports — map to specific host ports
+		// Ports and endpoint registration
 		if (component.provides?.length) {
-			const exposed = component.provides.filter((p) => p.exposed !== false);
-			if (exposed.length > 0) {
-				const hostPort = opts.hostPorts?.[componentName] ?? exposed[0]!.port;
-				service.ports = exposed.map((p) => {
-					if (p !== exposed[0]) return `${p.port}`;
-					const bind = p.bind && p.bind !== '0.0.0.0' ? `${p.bind}:` : '';
-					return `${bind}${hostPort}:${p.port}`;
-				});
-				ports[componentName] = hostPort;
-
-				// Register component in resolver context for $components.name.prop refs
-				const containerPort = exposed[0]!.port;
+			// Register component in resolver context for $components.name.prop
+			// refs. This is the in-network address (compose service name +
+			// container port), deliberately independent of D-27 host exposure —
+			// an internal endpoint is still reachable by sibling components.
+			const inNetwork = component.provides.filter((p) => p.exposed !== false);
+			if (inNetwork.length > 0) {
+				const containerPort = inNetwork[0]!.port;
 				componentMap[componentName] = {
 					url: `http://${serviceName}:${containerPort}`,
 					host: serviceName,
 					port: containerPort,
 				};
+			}
+
+			// Host publication: every endpoint marked `exposed: true` (D-27)
+			// gets an explicit host:container mapping. A bare container port
+			// would hand the choice to Docker, which picks a fresh random host
+			// port on every recreate — so the endpoint moves and cannot be
+			// linked to. Entries without `exposed: true` are never published.
+			const published = publishedEndpoints(componentName, component.provides);
+			if (published.length > 0) {
+				const seen = new Set<string>();
+				const mappings: string[] = [];
+				for (const endpoint of published) {
+					const hostPort = opts.hostPorts?.[endpoint.key] ?? endpoint.port;
+					ports[endpoint.key] = hostPort;
+					endpoints[endpoint.key] = {
+						component: componentName,
+						name: endpoint.name,
+						containerPort: endpoint.port,
+						hostPort,
+						protocol: endpoint.protocol,
+					};
+					const bind = endpoint.bind && endpoint.bind !== "0.0.0.0" ? `${endpoint.bind}:` : "";
+					const proto = endpoint.protocol === "udp" ? "/udp" : "";
+					const mapping = `${bind}${hostPort}:${endpoint.port}${proto}`;
+					// Two entries can only produce the same mapping string when no
+					// allocator ran (fallback host port = container port); compose
+					// rejects duplicates, so emit each mapping once.
+					if (seen.has(mapping)) continue;
+					seen.add(mapping);
+					mappings.push(mapping);
+				}
+				service.ports = mappings;
 			}
 		}
 
@@ -907,6 +946,7 @@ export function launchToCompose(
 		secrets,
 		generatedEnv,
 		ports,
+		endpoints,
 		services: componentServices,
 		unsuppliedRequired,
 	};
