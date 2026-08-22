@@ -484,6 +484,8 @@ The rule fires only when the file itself yields nothing: no `generator:`, no `de
 
 **Scope**: this closes the *fabrication* path only. A `required` variable whose `default:` is an expression the provider cannot resolve still yields `""` under conformance rule 6 and [L-4](#l-4-resource-property-vocabulary-is-implicit), reaching the same "launch looks fine, app is broken" outcome by a different route. That gap belongs to L-4 and is not addressed here.
 
+**Conformance at adoption**: unlike [D-43](#d-43-unexecuted-schedule-is-reported-loudly-not-silently-accepted), which merged with every runtime provider already satisfying it, **no deploying provider implements the hard-fail branch when this decision lands.** The aws provider adopts the `translate` branch in the same change; docker and macos-dev stay non-conformant until their fixes land, and docker's is gated on a paired catalog pass, because three tested catalog entries currently depend on the fabricated values to launch at all. That gap is recorded here rather than glossed, since this decision's own subject is not papering over an unmet precondition. It is not what D-43 rejected as *"requiring execution for conformance"*: that objection was to prescribing a **capability** a provider must build — a cron runner — which would have ejected translation-only providers outright. Failing on a value one was never given is not a capability; every provider can already do it, and the `translate` and inspection branches keep non-deploying providers conformant. What is deferred here is the work, not the obligation.
+
 ---
 
 
