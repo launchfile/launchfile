@@ -1,6 +1,10 @@
 import { readLaunch } from "@launchfile/sdk";
 import { describe, expect, it } from "vitest";
-import { refusedHostCapabilities } from "../provider.js";
+import {
+	applyHostCapabilityRefusals,
+	refusedHostCapabilities,
+	sourceRunCommand,
+} from "../provider.js";
 
 /**
  * This provider grants no host capabilities (D-44, PROVIDERS.md §11), so a
@@ -64,5 +68,76 @@ describe("refusedHostCapabilities (D-44 grant/refuse)", () => {
 				"  plain:\n    commands:\n      start: run\n",
 		);
 		expect([...refusedHostCapabilities(launch).keys()]).toEqual(["needsdocker"]);
+	});
+});
+
+/**
+ * The classifier tests above say *which* components are refused. These say what
+ * the provider then does with that answer — the part that actually keeps a
+ * refused component off the host.
+ *
+ * Gutting the removal in applyHostCapabilityRefusals leaves every test above
+ * passing, because a refusal that is only printed still reads correct. These
+ * fail.
+ */
+describe("applyHostCapabilityRefusals — the refusal is the removal", () => {
+	const mk = (body: string) => readLaunch(`version: launch/v1\nname: app\n${body}`);
+
+	/** The names launchUp would hand to the process manager. */
+	const wouldStart = (launch: ReturnType<typeof readLaunch>) =>
+		Object.entries(launch.components)
+			.filter(([, c]) => sourceRunCommand(c) !== undefined)
+			.map(([n]) => n);
+
+	const twoComponents = () =>
+		mk(
+			"components:\n" +
+				"  needsdocker:\n    commands:\n      start: run-it\n    requires:\n      - host: { container_runtime: docker }\n" +
+				"  sibling:\n    commands:\n      start: run-it\n",
+		);
+
+	it("does not hand a refused component to the process manager", () => {
+		const launch = twoComponents();
+		expect(wouldStart(launch)).toContain("needsdocker");
+		applyHostCapabilityRefusals(launch);
+		expect(wouldStart(launch)).not.toContain("needsdocker");
+	});
+
+	it("still starts the siblings", () => {
+		const launch = twoComponents();
+		applyHostCapabilityRefusals(launch);
+		expect(wouldStart(launch)).toEqual(["sibling"]);
+	});
+
+	it("removes the component from the map, not just from the output", () => {
+		const launch = twoComponents();
+		applyHostCapabilityRefusals(launch);
+		expect(Object.keys(launch.components)).toEqual(["sibling"]);
+	});
+
+	it("reports none-left when every component is refused", () => {
+		const launch = mk(
+			"commands:\n  start: run-it\nrequires:\n  - host: { container_runtime: docker }\n",
+		);
+		expect(applyHostCapabilityRefusals(launch)).toBe("none-left");
+	});
+
+	it("refuses the legacy block the same way", () => {
+		const launch = mk("commands:\n  start: run-it\nhost:\n  docker: required\n");
+		expect(applyHostCapabilityRefusals(launch)).toBe("none-left");
+	});
+
+	it("leaves an app with no host capabilities untouched", () => {
+		const launch = mk("commands:\n  start: run-it\nrequires:\n  - postgres\n");
+		expect(applyHostCapabilityRefusals(launch)).toBe("ok");
+		expect(wouldStart(launch)).toEqual(["default"]);
+	});
+
+	it("does not refuse a component for an optional capability", () => {
+		const launch = mk(
+			"commands:\n  start: run-it\nsupports:\n  - host: { container_runtime: any }\n",
+		);
+		expect(applyHostCapabilityRefusals(launch)).toBe("ok");
+		expect(wouldStart(launch)).toEqual(["default"]);
 	});
 });
