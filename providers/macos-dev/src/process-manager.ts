@@ -10,6 +10,7 @@ import { createWriteStream, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { NormalizedHealth, NormalizedDependsOnEntry } from "@launchfile/sdk";
 import { waitForHealthy } from "./health.js";
+import { redactSecrets } from "./redact.js";
 
 // ANSI colors for log prefixing
 const COLORS = [
@@ -135,7 +136,7 @@ export class ProcessManager {
 		}
 
 		proc.status = "starting";
-		console.log(`  [${name}] Starting: ${proc.command}`);
+		console.log(`  [${name}] Starting: ${redactSecrets(proc.command)}`);
 
 		const logFile = createWriteStream(join(this.logDir, `${name}.log`), { flags: "a" });
 		const colorIdx = [...this.processes.keys()].indexOf(name) % COLORS.length;

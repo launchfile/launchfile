@@ -28,6 +28,7 @@ import {
 	resolveComponentEnv,
 	resolveGenerators,
 } from "./env-writer.js";
+import { redactSecrets } from "./redact.js";
 import { getProvisioner, type ResourceProperties } from "./resources/index.js";
 
 /**
@@ -237,7 +238,9 @@ export async function launchBootstrap(
 		if (port && !env.PORT) env.PORT = String(port);
 
 		console.log(`\n  \u2193 Bootstrap [${name}]`);
-		console.log(`    $ ${resolvedCommand}`);
+		// `$secrets.*` / `$<resource>.password` / `$<resource>.url` resolve to live
+		// credentials here, so the echoed command is scrubbed (CWE-532).
+		console.log(`    $ ${redactSecrets(resolvedCommand)}`);
 
 		const { exitCode, stdout, stderr } = await runOnce(resolvedCommand, {
 			cwd: projectDir,
@@ -274,7 +277,7 @@ export async function launchBootstrap(
 
 		if (exitCode !== 0) {
 			console.error(`  \u2717 Bootstrap [${name}] failed with exit code ${exitCode}`);
-			if (stderr) console.error(stderr);
+			if (stderr) console.error(redactSecrets(stderr));
 		} else {
 			console.log(`  \u2713 Bootstrap [${name}] complete`);
 		}
