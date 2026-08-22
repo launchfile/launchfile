@@ -209,4 +209,50 @@ requires: [postgres]
 			expect(collectHostCapabilities(launch)).toEqual([]);
 		});
 	});
+
+	describe("a mixed type:/host: entry (D-44)", () => {
+		const mixed = `
+name: mixed
+image: app:1
+requires:
+  - type: postgres
+    host: { privileged: true }
+`;
+
+		it("is rejected, not silently stripped of its privilege marker", () => {
+			expect(() => readLaunch(mixed)).toThrow(/never both/);
+		});
+
+		it("names the rule instead of failing with a bare union error", () => {
+			expect(() => readLaunch(mixed)).toThrow(
+				/backing service .*or a host capability/,
+			);
+		});
+
+		it("still accepts each spelling on its own", () => {
+			expect(() =>
+				readLaunch(`
+name: split
+image: app:1
+requires:
+  - type: postgres
+  - host: { privileged: true }
+`),
+			).not.toThrow();
+		});
+
+		it("keeps tolerating unrecognized keys on a backing-service entry", () => {
+			// spec/examples/host-orchestrator.yaml carries `description:` here, so
+			// closing this object outright would invalidate a shipped example.
+			expect(() =>
+				readLaunch(`
+name: described
+image: app:1
+requires:
+  - type: docker
+    description: Orchestrates app containers on the host
+`),
+			).not.toThrow();
+		});
+	});
 });

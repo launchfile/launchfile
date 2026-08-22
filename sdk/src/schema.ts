@@ -49,6 +49,10 @@ const ProvidesSchema = z.object({
 const RequirementObjectSchema = z.object({
 	name: NameSchema.optional(),
 	type: z.string().min(1).max(256),
+	// A backing service never carries the `host:` marker. Without this the
+	// union's strip mode would silently swallow `host:` on a `type:` entry,
+	// erasing a declared privilege from the audit surface (D-44).
+	host: z.never().optional(),
 	version: z.string().max(256).optional(),
 	// Security: config is intentionally unconstrained — providers MUST validate/sanitize
 	// these values before using them in shell commands, SQL, or other injectable contexts.
@@ -66,15 +70,41 @@ const RequirementObjectSchema = z.object({
  */
 const HostCapabilityObjectSchema = z.object({
 	host: z.record(z.string(), z.union([z.string(), z.boolean()])),
+	// A capability is granted or refused, never provisioned, so it carries no
+	// backing-service `type:`. Mutually exclusive with the branch above: an
+	// entry with both keys matches neither and is reported, not silently fixed.
+	type: z.never().optional(),
 	set_env: z.record(z.string(), z.string()).optional(),
 });
 
 /** Accepts string shorthand ("postgres"), full object, or a host-capability entry */
-const RequirementSchema = z.union([
-	z.string().min(1),
-	RequirementObjectSchema,
-	HostCapabilityObjectSchema,
-]);
+const RequirementSchema = z
+	.unknown()
+	// Reported before the union, because a union failure would only say
+	// "Invalid input" for the one shape most likely to be written by mistake.
+	.superRefine((val, ctx) => {
+		if (
+			typeof val === "object" &&
+			val !== null &&
+			!Array.isArray(val) &&
+			"host" in val &&
+			"type" in val
+		) {
+			ctx.addIssue({
+				code: "custom",
+				message:
+					"an entry is either a backing service (`type:`) or a host capability " +
+					"(`host:`), never both (D-44) — split it into two entries",
+			});
+		}
+	})
+	.pipe(
+		z.union([
+			z.string().min(1),
+			RequirementObjectSchema,
+			HostCapabilityObjectSchema,
+		]),
+	);
 
 // --- Support (same shape as Requirement) ---
 
