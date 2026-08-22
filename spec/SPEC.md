@@ -459,17 +459,27 @@ commands:
 
 ### Failure semantics
 
-Every stage has exactly one failure disposition. The table is complete and non-overlapping — a platform never has to guess whether a failed command should stop a deploy:
+Every command has exactly one failure disposition, keyed on the **slot** it fills — not on its name. Keying on the name would be ambiguous, because [D-38](DESIGN.md#d-38-install--dev-source-mode-commands-and-the-source-field) lets one command fill a slot in either mode: source prepare resolves `install ?? build`, and source run resolves `dev ?? start`, so `build` and `start` each appear in two modes.
 
-| Stage | On failure |
-|---|---|
-| `build` | **Fails the deploy** — there is no artifact to run. |
-| `release` | **Fails the deploy.** `release` runs after the component's required resources are provisioned and ready, and before `start` — so a failed migration never serves traffic. |
-| `start` | **Fails the deploy** — the component did not come up. |
-| `install`, `dev` | **Fail the invoking session or workflow** (source mode, [D-38](DESIGN.md#d-38-install--dev-source-mode-commands-and-the-source-field)) — never a deployed-state concern. |
-| `bootstrap`, `seed`, `test`, custom commands | **On-demand: failure is reported to the invoker** — it never affects deploy status. |
+| Slot | Filled by | On failure |
+|---|---|---|
+| **prepare** | artifact mode: `build` · source mode: `install ?? build` | **Fails the invocation** — the deploy when deploying, the session when running from source. There is nothing to run either way. |
+| **release** | `release` | **Fails the deploy.** `release` runs after the component's required resources are provisioned and ready, and before the run slot — so a failed migration never serves traffic. |
+| **run** | artifact mode: `start` · source mode: `dev ?? start` | **Fails the invocation** — the component did not come up. |
+| **bootstrap** | `bootstrap` | **Reported to the invoker** — never affects deploy status. |
+| **on-demand** | `seed`, `test`, custom commands | **Reported to the invoker** — never affects deploy status. |
 
-Timeout expiry is a failure with the same disposition as any other failure of that stage: a `build` or `release` that exceeds its `timeout` fails the deploy; a `bootstrap` that exceeds its `timeout` is reported.
+"Fails the invocation" is what makes the table non-overlapping: the prepare and run slots fail whatever asked for them. A deploy (`up`) fails; a source-mode session (`dev`) fails that session and leaves deployed state untouched. A component declaring only `start:` — no `dev`, no `image` — fills the run slot in source mode and is covered exactly once.
+
+Timeout expiry is a failure with the same disposition as any other failure of that slot: a prepare or release that exceeds its `timeout` fails the invocation; a `bootstrap` that exceeds its `timeout` is reported.
+
+### Command interpretation
+
+A command string is interpreted by a **POSIX shell**. Shell features — `&&`, `||`, `;`, pipes, redirection, variable expansion, grouping — are available and are what authors write today; `catalog/apps/paperclip`'s `bootstrap` is a multi-statement script and depends on it.
+
+This is stated because it was ambiguous and the reference providers diverged on it: a provider that splits the string on whitespace and executes `argv[0]` directly will fail on any command using those features, and will fail confusingly — attempting to execute a binary whose name is the first token.
+
+A provider that cannot offer a shell MUST report the command as unhonored (§10.8) rather than attempt a best-effort split.
 
 ### Durations
 
