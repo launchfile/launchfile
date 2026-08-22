@@ -53,6 +53,11 @@ export class PostgresProvisioner implements ResourceProvisioner {
 		const safeName = opts.appName.replace(/-/g, "_");
 		const dbName = existingState?.dbName ?? `launchfile_${safeName}`;
 		const user = existingState?.user ?? `launchfile_${safeName}`;
+		// Security: both are interpolated into the psql commands below. A schema-validated
+		// app name can never fail this, but existingState comes from the on-disk state file,
+		// which is JSON.parse'd without validation (state.ts).
+		if (!SAFE_IDENTIFIER.test(dbName)) throw new Error("Invalid database name");
+		if (!SAFE_IDENTIFIER.test(user)) throw new Error("Invalid database user");
 		const password = existingState?.password ?? generatePassword();
 		const port = DEFAULT_PORT;
 
