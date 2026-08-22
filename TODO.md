@@ -5,7 +5,6 @@ Tracked improvements and future work for the Launchfile project.
 ## Spec
 
 - [ ] Formal dot-path grammar (PEG or BNF) — see DESIGN.md L-1
-- [ ] Machine-readable resource property registry — see DESIGN.md L-4
 - [ ] Environment-specific override pattern (`Launchfile.override`) — see DESIGN.md L-3
 - [ ] Rejected proposals appendix (D-R*) for governance calibration — see DESIGN.md §1b
 
@@ -13,7 +12,6 @@ Tracked improvements and future work for the Launchfile project.
 
 - [ ] Publish `@launchfile/sdk` to npm
 - [ ] Reserve unscoped `launchfile` npm package as redirect
-- [ ] Post-parse validation for resource property typos (e.g. `$hoost`)
 - [ ] YAML Language Server config snippet to suppress `$` warnings
 
 ## Catalog
