@@ -6,7 +6,7 @@
  *
  * Every object schema is loose (`z.looseObject`): unknown fields never
  * invalidate a file at any level and are carried through parse so the
- * writer can re-emit them (D-44 — "ignore" means preserve).
+ * writer can re-emit them (D-45 — "ignore" means preserve).
  */
 
 import { z } from "zod";

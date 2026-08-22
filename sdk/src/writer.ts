@@ -28,7 +28,7 @@ export function writeLaunch(launch: NormalizedLaunch): string {
 	return stringify(output, { lineWidth: 0 });
 }
 
-// D-44: unknown fields are preserved, never stripped. Each denormalizer
+// D-45: unknown fields are preserved, never stripped. Each denormalizer
 // re-emits the fields it does not recognize, and an object holding unknown
 // fields never collapses to its scalar shorthand (collapsing would drop them).
 
@@ -55,7 +55,7 @@ const HEALTH_FIELD_KEYS: ReadonlySet<string> = new Set([
 ]);
 const DEPENDS_ON_FIELD_KEYS: ReadonlySet<string> = new Set(["component", "condition"]);
 
-/** Pick the fields of `obj` that are not in `known` (unknown fields, D-44) */
+/** Pick the fields of `obj` that are not in `known` (unknown fields, D-45) */
 function unknownFields(obj: object, known: ReadonlySet<string>): Record<string, unknown> {
 	const extras: Record<string, unknown> = {};
 	for (const [key, value] of Object.entries(obj)) {

@@ -38,7 +38,7 @@ import type {
 const MAX_YAML_SIZE = 1_048_576; // 1 MB
 const MAX_ALIAS_COUNT = 100;
 
-// D-44: unknown fields are preserved, never stripped. The normalizers below
+// D-45: unknown fields are preserved, never stripped. The normalizers below
 // spread the source object before overwriting known fields, so unknown keys
 // ride through normalization and reach the writer. At the top level the
 // component-shorthand fields fold into the "default" component, so unknown
@@ -57,7 +57,7 @@ const TOP_LEVEL_FIELD_KEYS: ReadonlySet<string> = new Set([
 	...COMPONENT_FIELD_KEYS,
 ]);
 
-/** Pick the fields of `obj` that are not in `known` (unknown fields, D-44) */
+/** Pick the fields of `obj` that are not in `known` (unknown fields, D-45) */
 function unknownFields(obj: object, known: ReadonlySet<string>): Record<string, unknown> {
 	const extras: Record<string, unknown> = {};
 	for (const [key, value] of Object.entries(obj)) {
@@ -134,7 +134,7 @@ function extractComponentFields(launch: Launch): Component {
 	};
 }
 
-/** Normalize a component, expanding all shorthands (unknown fields ride through via spread, D-44) */
+/** Normalize a component, expanding all shorthands (unknown fields ride through via spread, D-45) */
 function normalizeComponent(component: Component, defaults?: Launch): NormalizedComponent {
 	return {
 		...component,

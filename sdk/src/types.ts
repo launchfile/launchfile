@@ -6,7 +6,7 @@
  *
  * Every object shape carries a `[key: string]: unknown` index signature:
  * unknown fields are valid at any level and survive parse → serialize
- * (D-44 — "ignore" means preserve), so the types admit them.
+ * (D-45 — "ignore" means preserve), so the types admit them.
  */
 
 // --- Enums / Unions ---
@@ -60,7 +60,7 @@ export interface Secret {
 	generator: Generator;
 	/** Human description */
 	description?: string;
-	/** Unknown fields are preserved (D-44) */
+	/** Unknown fields are preserved (D-45) */
 	[key: string]: unknown;
 }
 
@@ -80,7 +80,7 @@ export interface Provides {
 	exposed?: boolean;
 	/** API spec references */
 	spec?: Record<string, string>;
-	/** Unknown fields are preserved (D-44) */
+	/** Unknown fields are preserved (D-45) */
 	[key: string]: unknown;
 }
 
@@ -98,7 +98,7 @@ export interface Requirement {
 	config?: Record<string, unknown>;
 	/** Maps resource properties to app env vars. Values use $ syntax. */
 	set_env?: Record<string, string>;
-	/** Unknown fields are preserved (D-44) */
+	/** Unknown fields are preserved (D-45) */
 	[key: string]: unknown;
 }
 
@@ -137,7 +137,7 @@ export interface Support {
 	config?: Record<string, unknown>;
 	/** Maps resource properties to app env vars (only set when resource is available) */
 	set_env?: Record<string, string>;
-	/** Unknown fields are preserved (D-44) */
+	/** Unknown fields are preserved (D-45) */
 	[key: string]: unknown;
 }
 
@@ -157,7 +157,7 @@ export interface EnvVar {
 	generator?: Generator;
 	/** Whether this value should be stored in a secrets manager */
 	sensitive?: boolean;
-	/** Unknown fields are preserved (D-44) */
+	/** Unknown fields are preserved (D-45) */
 	[key: string]: unknown;
 }
 
@@ -175,7 +175,7 @@ export interface Build {
 	args?: Record<string, string>;
 	/** Secrets available during build (never baked into image) */
 	secrets?: string[];
-	/** Unknown fields are preserved (D-44) */
+	/** Unknown fields are preserved (D-45) */
 	[key: string]: unknown;
 }
 
@@ -195,7 +195,7 @@ export interface Health {
 	retries?: number;
 	/** Grace period before failures count (for slow-starting apps) */
 	start_period?: string;
-	/** Unknown fields are preserved (D-44) */
+	/** Unknown fields are preserved (D-45) */
 	[key: string]: unknown;
 }
 
@@ -241,7 +241,7 @@ export interface CommandDetail {
 	 * Supersedes the top-level `outputs:` placement from D-23.
 	 */
 	capture?: Record<string, CaptureEntry>;
-	/** Unknown fields are preserved (D-44) */
+	/** Unknown fields are preserved (D-45) */
 	[key: string]: unknown;
 }
 
@@ -263,7 +263,7 @@ export interface CaptureEntry {
 	description?: string;
 	/** If true, value is masked in API/UI unless explicitly revealed */
 	sensitive?: boolean;
-	/** Unknown fields are preserved (D-44) */
+	/** Unknown fields are preserved (D-45) */
 	[key: string]: unknown;
 }
 
@@ -279,7 +279,7 @@ export interface Host {
 	filesystem?: "read-write" | "read-only" | "none";
 	/** Requires elevated privileges (default: false) */
 	privileged?: boolean;
-	/** Unknown fields are preserved (D-44) */
+	/** Unknown fields are preserved (D-45) */
 	[key: string]: unknown;
 }
 
@@ -293,7 +293,7 @@ export interface StorageVolume {
 	size?: string;
 	/** Whether data should survive restarts */
 	persistent?: boolean;
-	/** Unknown fields are preserved (D-44) */
+	/** Unknown fields are preserved (D-45) */
 	[key: string]: unknown;
 }
 
@@ -305,7 +305,7 @@ export interface DependsOnEntry {
 	component: string;
 	/** Condition to wait for */
 	condition?: DependsOnCondition;
-	/** Unknown fields are preserved (D-44) */
+	/** Unknown fields are preserved (D-45) */
 	[key: string]: unknown;
 }
 
@@ -350,7 +350,7 @@ export interface Component {
 	platform?: string | string[];
 	/** Host-level capabilities */
 	host?: Host;
-	/** Unknown fields are preserved (D-44) */
+	/** Unknown fields are preserved (D-45) */
 	[key: string]: unknown;
 }
 
@@ -410,7 +410,7 @@ export interface Launch {
 
 	// --- Multi-component ---
 	components?: Record<string, Component>;
-	/** Unknown fields are preserved (D-44) */
+	/** Unknown fields are preserved (D-45) */
 	[key: string]: unknown;
 }
 
@@ -424,7 +424,7 @@ export interface NormalizedEnvVar {
 	required?: boolean;
 	generator?: Generator;
 	sensitive?: boolean;
-	/** Unknown fields are preserved (D-44) */
+	/** Unknown fields are preserved (D-45) */
 	[key: string]: unknown;
 }
 
@@ -441,7 +441,7 @@ export interface NormalizedRequirement {
 	 * capability's properties) or refuse (surfaced message) — never provision.
 	 */
 	host?: Record<string, string | boolean>;
-	/** Unknown fields are preserved (D-44) */
+	/** Unknown fields are preserved (D-45) */
 	[key: string]: unknown;
 }
 
@@ -449,7 +449,7 @@ export interface NormalizedRequirement {
 export interface NormalizedDependsOnEntry {
 	component: string;
 	condition?: DependsOnCondition;
-	/** Unknown fields are preserved (D-44) */
+	/** Unknown fields are preserved (D-45) */
 	[key: string]: unknown;
 }
 
@@ -459,7 +459,7 @@ export interface NormalizedCommand {
 	timeout?: string;
 	/** Named captures extracted from stdout via regex (D-34) */
 	capture?: Record<string, CaptureEntry>;
-	/** Unknown fields are preserved (D-44) */
+	/** Unknown fields are preserved (D-45) */
 	[key: string]: unknown;
 }
 
@@ -470,7 +470,7 @@ export interface NormalizedBuild {
 	target?: string;
 	args?: Record<string, string>;
 	secrets?: string[];
-	/** Unknown fields are preserved (D-44) */
+	/** Unknown fields are preserved (D-45) */
 	[key: string]: unknown;
 }
 
@@ -482,7 +482,7 @@ export interface NormalizedHealth {
 	timeout?: string;
 	retries?: number;
 	start_period?: string;
-	/** Unknown fields are preserved (D-44) */
+	/** Unknown fields are preserved (D-45) */
 	[key: string]: unknown;
 }
 
@@ -505,7 +505,7 @@ export interface NormalizedComponent {
 	singleton?: boolean;
 	platform?: string | string[];
 	host?: Host;
-	/** Unknown fields are preserved (D-44) */
+	/** Unknown fields are preserved (D-45) */
 	[key: string]: unknown;
 }
 
@@ -527,6 +527,6 @@ export interface NormalizedLaunch {
 	secrets?: Record<string, Secret>;
 	/** All components (single-component apps are normalized to a "default" component) */
 	components: Record<string, NormalizedComponent>;
-	/** Unknown fields are preserved (D-44) */
+	/** Unknown fields are preserved (D-45) */
 	[key: string]: unknown;
 }
