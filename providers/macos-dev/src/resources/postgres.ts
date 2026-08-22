@@ -85,6 +85,10 @@ export class PostgresProvisioner implements ResourceProvisioner {
 					console.warn(`  Skipping invalid extension name: ${ext}`);
 					continue;
 				}
+				if (!SAFE_IDENTIFIER.test(dbName)) {
+					console.warn(`  Skipping extension install due to invalid database name: ${dbName}`);
+					continue;
+				}
 				await shell(
 					`psql -h ${DEFAULT_HOST} -p ${port} ${dbName} -c "CREATE EXTENSION IF NOT EXISTS \\"${ext}\\";"`,
 					{ allowFailure: true },
