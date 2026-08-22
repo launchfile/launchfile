@@ -61,6 +61,35 @@ export interface LaunchUpOpts {
 	components?: string[];
 }
 
+/**
+ * Components this provider must refuse, mapped to the capabilities it cannot
+ * grant (D-44, PROVIDERS.md §11). Both spellings fold together so the `host:`
+ * entry form and the legacy top-level block produce the same outcome.
+ *
+ * A refusal must remove the component from the run, not merely report it —
+ * this provider grants no host capabilities, so anything listed here cannot
+ * be installed, wired, registered, or started.
+ */
+export function refusedHostCapabilities(
+	launch: NormalizedLaunch,
+): Map<string, string[]> {
+	const refused = new Map<string, string[]>();
+	for (const [name, c] of Object.entries(launch.components)) {
+		const caps: string[] = [];
+		for (const req of c.requires ?? []) {
+			for (const [capability, value] of Object.entries(req.host ?? {})) {
+				caps.push(`${capability}=${String(value)}`);
+			}
+		}
+		if (c.host?.docker === "required")
+			caps.push("container_runtime=docker (host.docker)");
+		if (c.host?.network === "host") caps.push("network=host (host.network)");
+		if (c.host?.privileged) caps.push("privileged=true (host.privileged)");
+		if (caps.length > 0) refused.set(name, caps);
+	}
+	return refused;
+}
+
 export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 
@@ -109,6 +138,46 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 			Object.entries(launch.components).filter(([n]) => startSet.has(n)),
 		);
 	}
+	// 2a. Host capabilities are granted or refused, never provisioned (D-44,
+	// PROVIDERS.md §11). This provider runs processes directly on the host and
+	// grants none of them, so a component with a required capability is
+	// DECLINED — removed from the map here so nothing downstream installs a
+	// runtime, wires env, registers with pm2, or starts it. Logging alone would
+	// leave the provider asserting a refusal it did not perform.
+	// Both spellings fold together so they land identically (§11 equivalence):
+	// the `host:` entry form and the legacy top-level block.
+	const refusedCapabilities = refusedHostCapabilities(launch);
+	for (const [name, caps] of refusedCapabilities) {
+		console.error(
+			`  Refused: ${name} requires host capabilities this provider cannot grant ` +
+				`(${caps.join("; ")}) — component not started`,
+		);
+	}
+	if (refusedCapabilities.size > 0) {
+		launch.components = Object.fromEntries(
+			Object.entries(launch.components).filter(
+				([n]) => !refusedCapabilities.has(n),
+			),
+		);
+		if (Object.keys(launch.components).length === 0) {
+			console.error(
+				"Every selected component requires a host capability this provider cannot grant.",
+			);
+			process.exit(1);
+		}
+	}
+	// An optional capability is not refused — the component runs, degraded.
+	for (const [name, c] of Object.entries(launch.components)) {
+		for (const sup of c.supports ?? []) {
+			for (const [capability, value] of Object.entries(sup.host ?? {})) {
+				console.warn(
+					`  Warning: ${name}: optional host capability ` +
+						`${capability}=${String(value)} not granted — running degraded`,
+				);
+			}
+		}
+	}
+
 	const componentNames = Object.keys(launch.components);
 
 	// 2b. Source-mode guard (D-38) — fail fast before provisioning anything.
@@ -153,31 +222,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	// 6. Provision required resources
 	const resourceMap: Record<string, ResourceProperties> = {};
 
-	for (const [compName, component] of Object.entries(launch.components)) {
-		// Host capabilities are granted or refused, never provisioned (D-44,
-		// PROVIDERS.md §11). This provider runs processes directly on the host
-		// and grants none of them, so a required capability is refused with a
-		// surfaced message naming the capability — not dropped as an unknown
-		// resource type.
-		for (const req of component.requires ?? []) {
-			if (!req.host) continue;
-			for (const [capability, value] of Object.entries(req.host)) {
-				console.error(
-					`  Refused: ${compName} requires host capability ` +
-						`${capability}=${String(value)}, which this provider cannot grant`,
-				);
-			}
-		}
-		for (const sup of component.supports ?? []) {
-			if (!sup.host) continue;
-			for (const [capability, value] of Object.entries(sup.host)) {
-				console.warn(
-					`  Warning: ${compName}: optional host capability ` +
-						`${capability}=${String(value)} not granted — running degraded`,
-				);
-			}
-		}
-
+	for (const [_compName, component] of Object.entries(launch.components)) {
 		for (const req of component.requires ?? []) {
 			if (req.host) continue; // capability, not a backing service (D-44)
 			const resourceName = req.name ?? req.type;
