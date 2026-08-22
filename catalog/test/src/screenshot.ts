@@ -8,7 +8,7 @@
  * Finds the mapped port from docker compose, navigates to it, screenshots.
  */
 
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { chromium } from "playwright";
 
