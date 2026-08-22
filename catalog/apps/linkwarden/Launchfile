@@ -19,6 +19,7 @@ env:
     generator: secret
     sensitive: true
   NEXTAUTH_URL:
+    description: "Public URL for NextAuth callbacks and redirects"
     default: $app.url
 storage:
   data:
