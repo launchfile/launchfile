@@ -322,6 +322,29 @@ describe("host capabilities — grant/refuse (D-44, PROVIDERS.md §11)", () => {
 		expect(gaps).not.toContain("workaround:requires:host");
 	});
 
+	it("reports the legacy block on an image-only component too", () => {
+		// emitComponent used to return at the image-without-runtime branch before
+		// any host check, so this reported only workaround:image. Image-only is
+		// the shape of the apps that ask for a socket, so the privilege surface
+		// was invisible for exactly the motivating cases. Fails on main.
+		const launch = readLaunch(
+			"version: launch/v1\nname: dockge\nimage: louislam/dockge:1\nhost:\n  docker: required\n",
+		);
+		expect(gapsOf(launch)).toContain("blocker:host.docker");
+	});
+
+	it("grades image-only identically across both spellings", () => {
+		const img = (decl: string) =>
+			gapsOf(
+				readLaunch(
+					`version: launch/v1\nname: dockge\nimage: louislam/dockge:1\n${decl}`,
+				),
+			).filter((g) => g.startsWith("blocker:")).length;
+		expect(img("host:\n  docker: required\n")).toBe(
+			img("requires:\n  - host: { container_runtime: docker }\n"),
+		);
+	});
+
 	it("reports the privilege surface even for an image-only component", () => {
 		// emitComponent returns early for image-without-runtime, which is exactly
 		// the shape of the apps that request a runtime socket (Dockge, Portainer).

@@ -6,7 +6,7 @@
 
 - **84** Launchfile(s) translated
 - **162** field mappings
-- **87** gaps logged (never silently dropped)
+- **86** gaps logged (never silently dropped)
 - **8** specializations safely ignored
 
 ### Distinct gaps
@@ -20,7 +20,6 @@
 | `runtime` | 🔴 blocker | no runtime and no commands.start — nothing to build or run on EC2 | — |
 | `schedule` | 🟢 nice-to-have | cron schedule not mapped (no EventBridge Scheduler in this probe) | map to aws_scheduler_schedule |
 | `requires:host.container_runtime` | 🔴 blocker | component requires host capability container_runtime=docker; a bare EC2 target cannot grant it | use an ECS/container provider |
-| `requires:docker` | 🟡 workaround | no managed AWS service mapping for resource type 'docker' | model as a self-hosted component, or extend MANAGED_RESOURCES |
 | `host.docker` | 🔴 blocker | component requires a Docker socket; bare EC2 has none | use an ECS/container provider |
 | `supports:redis` | 🟢 nice-to-have | optional resources (supports) are not provisioned by this probe | provision behind a Terraform variable toggle |
 
@@ -982,7 +981,7 @@
 
 ### launchpad
 
-> Source: `spec/examples/host-orchestrator.yaml` — 8 mapped, 2 gap(s), 1 ignored
+> Source: `spec/examples/host-orchestrator.yaml` — 8 mapped, 1 gap(s), 1 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -997,7 +996,6 @@
 
 **Gaps**
 
-- 🟡 `requires:docker`: no managed AWS service mapping for resource type 'docker' — model as a self-hosted component, or extend MANAGED_RESOURCES
 - 🔴 `host.docker` _(default)_: component requires a Docker socket; bare EC2 has none — use an ECS/container provider
 
 **Ignored specializations** (contract sufficed — D-40 / RFC C)
