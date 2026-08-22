@@ -219,7 +219,7 @@ A **translation-only** provider (IaC/manifest emitter) satisfies the contract by
 
 ---
 
-## 11. Host capabilities — the grant/refuse fulfillment mode ✅ (D-43)
+## 11. Host capabilities — the grant/refuse fulfillment mode ✅ (D-44)
 
 `requires`/`supports` entries marked `host:` (SPEC [Host capabilities](SPEC.md#host-capabilities)) are **not provisioned** — they are **granted or refused**. This is a distinct fulfillment mode from provisioning backing services (§10 item 5). A provider MUST do one of:
 
