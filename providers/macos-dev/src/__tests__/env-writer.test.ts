@@ -5,7 +5,7 @@ import {
 	resolveComponentEnv,
 	generateSecrets,
 } from "../env-writer.js";
-import { resolveExpression, type NormalizedComponent, type NormalizedLaunch, type Secret } from "@launchfile/sdk";
+import type { NormalizedComponent, NormalizedLaunch, Secret } from "@launchfile/sdk";
 import type { ResourceProperties } from "../resources/types.js";
 import { storagePaths } from "../storage.js";
 
