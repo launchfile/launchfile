@@ -111,6 +111,10 @@ export function resolveComponentEnv(
 
 	// 1. Resolve set_env from requires
 	for (const req of component.requires ?? []) {
+		// A host capability (D-44) is never provisioned, so it has no properties
+		// to resolve against. An ungranted capability's set_env vars are omitted
+		// rather than resolved to empty strings.
+		if (req.host) continue;
 		const resourceName = req.name ?? req.type;
 		const props = resourceMap[resourceName];
 		if (!req.set_env || !props) continue;
@@ -132,6 +136,7 @@ export function resolveComponentEnv(
 
 	// 2. Resolve set_env from supports (only if resource was provisioned)
 	for (const sup of component.supports ?? []) {
+		if (sup.host) continue; // capability, not a backing service (D-44)
 		const resourceName = sup.name ?? sup.type;
 		const props = resourceMap[resourceName];
 		if (!sup.set_env || !props) continue;

@@ -153,8 +153,33 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	// 6. Provision required resources
 	const resourceMap: Record<string, ResourceProperties> = {};
 
-	for (const [_compName, component] of Object.entries(launch.components)) {
+	for (const [compName, component] of Object.entries(launch.components)) {
+		// Host capabilities are granted or refused, never provisioned (D-44,
+		// PROVIDERS.md §11). This provider runs processes directly on the host
+		// and grants none of them, so a required capability is refused with a
+		// surfaced message naming the capability — not dropped as an unknown
+		// resource type.
 		for (const req of component.requires ?? []) {
+			if (!req.host) continue;
+			for (const [capability, value] of Object.entries(req.host)) {
+				console.error(
+					`  Refused: ${compName} requires host capability ` +
+						`${capability}=${String(value)}, which this provider cannot grant`,
+				);
+			}
+		}
+		for (const sup of component.supports ?? []) {
+			if (!sup.host) continue;
+			for (const [capability, value] of Object.entries(sup.host)) {
+				console.warn(
+					`  Warning: ${compName}: optional host capability ` +
+						`${capability}=${String(value)} not granted — running degraded`,
+				);
+			}
+		}
+
+		for (const req of component.requires ?? []) {
+			if (req.host) continue; // capability, not a backing service (D-44)
 			const resourceName = req.name ?? req.type;
 			if (resourceMap[resourceName]) continue; // Already provisioned
 
@@ -181,6 +206,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		// Optional supports resources
 		if (opts.withOptional) {
 			for (const sup of component.supports ?? []) {
+				if (sup.host) continue; // capability, not a backing service (D-44)
 				const resourceName = sup.name ?? sup.type;
 				if (resourceMap[resourceName]) continue;
 
