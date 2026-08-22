@@ -1,5 +1,5 @@
 /**
- * The ratified duration grammar (D-47): an integer immediately followed by
+ * The ratified duration grammar (D-48): an integer immediately followed by
  * exactly one unit — `^(\d+)(ms|s|m|h)$`. No internal whitespace, no compound
  * values ("1m30s"), no fractions. It governs `commands.*.timeout` and the
  * `health` durations (`interval`, `timeout`, `start_period`).
