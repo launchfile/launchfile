@@ -12,9 +12,16 @@ Stable host mappings for every published endpoint, and D-27-correct publication.
 - Endpoints that do not set `exposed: true` are no longer published to the
   host (they stay reachable in-network). This matches the spec: `exposed`
   defaults to `false` (D-27). Previously entries that merely omitted `exposed`
-  were published on random host ports.
+  were published on random host ports. For an existing Launchfile that relied
+  on that accidental publication, the visible effect of upgrading is that
+  those endpoints stop reaching the host until they are marked
+  `exposed: true`; the tested catalog apps that need it are updated alongside
+  this release.
 - UDP endpoints are published with the `/udp` protocol suffix instead of
-  silently as TCP; `bind` applies per endpoint.
+  silently as TCP; `bind` applies per endpoint. Host-port availability is
+  tracked per wire protocol, so a tcp and a udp endpoint on the same
+  container port (a DNS resolver's shape) share one host port and keep it
+  across restarts.
 - `launchfile up` / `status` summaries list every published endpoint with a
   protocol-correct address (no more `http://` links to tcp/udp ports), keyed
   by endpoint name (D-6).
