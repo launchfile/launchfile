@@ -2,24 +2,18 @@
  * Health check polling for components.
  */
 
-import type { NormalizedHealth } from "@launchfile/sdk";
+import { parseDurationMs, type NormalizedHealth } from "@launchfile/sdk";
 import { shell } from "./shell.js";
 
-/** Parse a duration string like "30s", "1m", "500ms" to milliseconds */
+/**
+ * Parse a health duration against the ratified grammar (D-48). Throws on an
+ * unparseable value — PROVIDERS.md §10.10 forbids silently substituting a
+ * default, and the previous local parser did exactly that in the worst
+ * possible way: it accepted no `h` unit and returned 0, so a spec-valid
+ * `interval: "1h"` became a zero-length poll that could never pass.
+ */
 export function parseDuration(duration: string): number {
-	const match = /^(\d+)(ms|s|m)$/.exec(duration);
-	if (!match) return 0;
-	const value = Number.parseInt(match[1]!, 10);
-	switch (match[2]) {
-		case "ms":
-			return value;
-		case "s":
-			return value * 1000;
-		case "m":
-			return value * 60_000;
-		default:
-			return 0;
-	}
+	return parseDurationMs(duration);
 }
 
 /**
