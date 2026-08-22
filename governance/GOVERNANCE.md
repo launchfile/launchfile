@@ -59,7 +59,7 @@ Open a GitHub issue with:
 - Problem statement
 - Proposed solution
 - 3+ real-app motivations from the [catalog](../catalog/)
-- Self-assessment against P-1 through P-13
+- Self-assessment against P-1 through P-14
 
 ### 2. AI Evaluation
 
