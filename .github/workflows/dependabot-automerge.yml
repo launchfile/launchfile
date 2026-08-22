@@ -1,0 +1,63 @@
+name: Dependabot auto-merge
+
+# Dependency bumps are the one PR class that should squash: each is a single
+# mechanical commit, and a merge commit on top doubles the history for no
+# information. Every other PR merges (see STEWARD.md) to preserve the
+# monorepo's one-commit-one-directory history for `git subtree split`.
+#
+# Triggering on workflow_run rather than pull_request_target is deliberate:
+# `gh pr merge --auto` only defers to *required* status checks, and main has no
+# branch protection, so --auto would merge the bump the instant it opened —
+# before CI had run at all. workflow_run fires after CI has actually finished,
+# so the success conclusion below is a real gate rather than a decorative one.
+#
+# workflow_run grants a write token to a workflow definition taken from the
+# default branch, never from the PR head, and this job checks out no code, so a
+# malicious bump cannot reach the token.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+# Least privilege: this job merges a pull request and deletes its branch. It
+# builds, tests, and checks out nothing. (CodeQL: actions/missing-workflow-permissions.)
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  squash-merge:
+    name: Squash-merge the dependency bump
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.actor.login == 'dependabot[bot]' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    steps:
+      - name: Resolve and merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          # Resolve the PR from the commit CI actually validated, so the merge
+          # can never land a revision newer than the one that passed. The sha
+          # reaches jq as a named argument, never spliced into the filter text.
+          pr=$(gh pr list --repo "$REPO" --state open \
+                 --json number,headRefOid,author \
+               | jq -r --arg sha "$HEAD_SHA" \
+                   '[.[] | select(.headRefOid == $sha)
+                         | select(.author.login == "app/dependabot")
+                         | .number] | first // empty')
+
+          if [ -z "$pr" ]; then
+            echo "No open dependabot PR at $HEAD_SHA — nothing to merge."
+            exit 0
+          fi
+
+          echo "Squash-merging dependabot PR #$pr ($HEAD_SHA)"
+          gh pr merge "$pr" --repo "$REPO" --squash --delete-branch
