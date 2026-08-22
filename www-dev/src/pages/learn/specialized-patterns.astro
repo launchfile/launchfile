@@ -4,6 +4,7 @@ import prebuiltImageYamlRaw from "../../../../spec/examples/prebuilt-image.yaml?
 import hostOrchestratorYamlRaw from "../../../../spec/examples/host-orchestrator.yaml?raw";
 import uptimeKumaYamlRaw from "../../../../catalog/apps/uptime-kuma/Launchfile?raw";
 
+import { Code } from "astro:components";
 import CourseLayout from "@/components/learn/CourseLayout.astro";
 import CodeBuildUp from "@/components/learn/CodeBuildUp.astro";
 import Callout from "@/components/learn/Callout.astro";
@@ -135,6 +136,27 @@ commands:
   ]}
 />
 
+<h3 id="host-capabilities">Host capabilities in <code>requires</code>/<code>supports</code></h3>
+
+<p>
+  Host access can also be declared as a <strong>host capability entry</strong> — a <code>host:</code>-marked entry in <code>requires</code> or <code>supports</code>. The provider <em>grants</em> the capability or <em>refuses</em> with a clear message; it never provisions anything. The value names an interface, not a product: <code>container_runtime: docker</code> means the Docker Engine API — a Podman-compatible socket satisfies it.
+</p>
+
+<Code
+  code={`requires:
+  - host: { container_runtime: docker }   # granted or refused
+    set_env:
+      DOCKER_HOST: $host                  # e.g. unix:///var/run/docker.sock
+supports:
+  - host: { container_runtime: any }      # optional — deploy, probe, degrade`}
+  lang="yaml"
+  theme="github-dark"
+/>
+
+<p>
+  A granted <code>container_runtime</code> exposes three coordinates you can wire with <code>set_env</code>: <code>$socket</code> (the runtime socket path, e.g. <code>/var/run/docker.sock</code>), <code>$host</code> (a <code>DOCKER_HOST</code>-style connection string), and <code>$api</code> (an HTTP API endpoint when the runtime is reachable over the network). Put the entry under <code>requires</code> when the app can't run without it, or <code>supports</code> when it degrades gracefully. <code>launchfile validate</code> prints every requested capability as a <code>host capabilities requested:</code> summary, so the privilege surface is always visible. See the <a href="/examples/host-container-runtime/">host capability example</a>.
+</p>
+
 <h2 id="optional-dependencies">Optional dependencies</h2>
 
 <p>
@@ -199,6 +221,7 @@ commands:
     <li>Cron jobs use <code>schedule</code> + <code>restart: no</code> — no <code>provides</code> needed.</li>
     <li><code>runtime</code>, <code>build</code>, and <code>image</code> describe three different things and can coexist: <code>runtime</code> is metadata, <code>build</code> creates the image, <code>image</code> names it. Use <code>platform:</code> to pin OCI architecture.</li>
     <li>Host access (<code>host.docker</code>, <code>host.network</code>, <code>host.filesystem</code>) is security-sensitive — declare it explicitly.</li>
+    <li>Host capability entries (<code>- host: {"{ container_runtime: docker }"}</code>) request the same access inside <code>requires</code>/<code>supports</code> — granted or refused, wired via <code>$socket</code>/<code>$host</code>/<code>$api</code>.</li>
     <li><code>supports:</code> is like <code>requires:</code> but optional — the app gracefully degrades without it.</li>
   </ul>
 </div>
