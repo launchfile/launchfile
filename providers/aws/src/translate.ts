@@ -689,6 +689,15 @@ function emitComponent(
 		);
 	}
 
+	// PROVIDERS.md §10 rule 8 (D-44): report unsupplied `required` env vars before
+	// the mode gaps below can return. A component this probe cannot translate still
+	// has an environment contract the operator must satisfy, and dropping it because
+	// the component gapped for an unrelated reason is the silent drop the rule
+	// forbids. `set_env` keys are known statically from the file, so this does not
+	// need to wait for values to resolve — and `supports:` keys are deliberately not
+	// counted, since they inject only when the optional resource is provisioned
+	// (SPEC.md §Supports), which this probe never does.
+	reportUnsuppliedRequired(comp, name, c);
 	// host capabilities a bare-EC2 target can't honor. Both spellings are
 	// graded identically (PROVIDERS.md §11): the D-44 entry form below, and the
 	// legacy block after it.
@@ -913,21 +922,6 @@ function emitComponent(
 		}
 	}
 
-	// PROVIDERS.md §10 rule 8 (D-44): a `required` var that no generator, default,
-	// or set_env binding supplied is unsupplied. This probe is translation-only, so
-	// the conformant response is to emit nothing for it and list it as unmapped —
-	// never to invent a value. Checked after set_env, which resolves last.
-	for (const [key, envVar] of Object.entries(comp.env ?? {})) {
-		if (!envVar.required || resolvedEnv[key]) continue;
-		c.gap(
-			`env.${key}`,
-			envVar.sensitive === true ? "blocker" : "workaround",
-			"required env var with no default, generator, or set_env binding — the operator must supply the value",
-			"supply it at apply time (SSM parameter or TF variable), or give the Launchfile a `default:` or `generator:`",
-			name,
-		);
-	}
-
 	for (const [key, { value, sensitive }] of Object.entries(resolvedEnv)) {
 		const paramTf = `${instanceTf}_${tfName(key)}`;
 		blocks.push(
@@ -960,6 +954,39 @@ function emitComponent(
 
 	// Stash the instance ref so the ALB can attach it.
 	targetGroupFor[name] = instanceTf;
+}
+
+/**
+ * Record a conformance gap for each `required` env var the Launchfile supplies no
+ * value for — PROVIDERS.md §10 rule 8 / D-44.
+ *
+ * A variable is unsupplied when no `generator:`, no `default:`, and no `requires`
+ * `set_env:` binding yields it. `supports:` bindings do not count: they inject only
+ * when the optional resource is provisioned (SPEC.md §Supports) and this probe
+ * gaps `supports` rather than provisioning it.
+ */
+function reportUnsuppliedRequired(
+	comp: NormalizedComponent,
+	name: string,
+	c: Conformance,
+): void {
+	const boundBySetEnv = new Set(
+		(comp.requires ?? []).flatMap((req) => Object.keys(req.set_env ?? {})),
+	);
+	for (const [key, envVar] of Object.entries(comp.env ?? {})) {
+		if (!envVar.required) continue;
+		if (envVar.generator || envVar.default !== undefined) continue;
+		if (boundBySetEnv.has(key)) continue;
+		c.gap(
+			`env.${key}`,
+			envVar.sensitive === true ? "blocker" : "workaround",
+			envVar.sensitive === true
+				? "required sensitive env var with no default, generator, or set_env binding — substituting a value would make this a publicly known constant credential (D-18), so it must be supplied out of band"
+				: "required env var with no default, generator, or set_env binding — the operator must supply the value",
+			"supply it at apply time (SSM parameter or TF variable), or give the Launchfile a `default:` or `generator:`",
+			name,
+		);
+	}
 }
 
 function resolveEnvVar(

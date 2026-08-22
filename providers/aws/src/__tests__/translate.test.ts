@@ -293,6 +293,60 @@ commands:
 			conformance.gaps.some((g) => g.field === "env.DATABASE_URL"),
 		).toBe(false);
 	});
+
+	it("does NOT treat a supports-only binding as supplying the value", () => {
+		// SPEC.md §Supports: set_env injects only when the optional resource is
+		// provisioned. This probe never provisions supports, so the var is unsupplied.
+		const { hcl, conformance } = tf(`
+version: launch/v1
+name: app
+runtime: node
+supports:
+  - type: redis
+    set_env:
+      CACHE_URL: $url
+env:
+  CACHE_URL:
+    required: true
+commands:
+  start: "node server.js"
+`);
+		expect(hcl).not.toContain("app_default_CACHE_URL");
+		expect(conformance.gaps.some((g) => g.field === "env.CACHE_URL")).toBe(true);
+	});
+
+	it("still reports it when the component gaps for an unrelated reason", () => {
+		// An image-only component returns before env translation; the operator's
+		// environment obligation survives that early return.
+		const { conformance } = tf(`
+version: launch/v1
+name: app
+image: nginx:latest
+env:
+  ADMIN_TOKEN:
+    required: true
+    sensitive: true
+`);
+		expect(conformance.gaps.some((g) => g.field === "image")).toBe(true);
+		const gap = conformance.gaps.find((g) => g.field === "env.ADMIN_TOKEN");
+		expect(gap?.severity).toBe("blocker");
+	});
+
+	it("explains in the report why a sensitive var is a blocker", () => {
+		const { conformance } = tf(`
+version: launch/v1
+name: app
+runtime: node
+env:
+  API_KEY:
+    required: true
+    sensitive: true
+commands:
+  start: "node server.js"
+`);
+		const gap = conformance.gaps.find((g) => g.field === "env.API_KEY");
+		expect(gap?.reason).toContain("publicly known constant credential");
+	});
 });
 
 describe("translate — RFC C / D-40 (specialization ignored, not errored)", () => {
