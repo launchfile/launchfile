@@ -220,6 +220,18 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 					"skipped in source mode; use `launchfile up` to run it.",
 			);
 		}
+		// PROVIDERS.md conformance rule 8 (D-43): a provider that does not
+		// execute `schedule` MUST say so at launch. Staying silent leaves an
+		// author believing a declared cron job is running — the one outcome
+		// worse than not supporting it. Wording stays start-agnostic: artifact
+		// components with a schedule reach this loop too, and they are skipped
+		// entirely in source mode.
+		if (c.schedule) {
+			console.warn(
+				`  ! [${name}] declares \`schedule: ${c.schedule}\` — nothing will run ` +
+					"it on a timer; this provider has no scheduler.",
+			);
+		}
 	}
 
 	// 3. Load or init state
