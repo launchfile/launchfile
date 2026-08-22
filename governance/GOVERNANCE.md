@@ -12,7 +12,7 @@ The Launchfile specification is governed by a constitutional model: human author
 
 Listed in the `AUTHORS` file at the repository root. Authors:
 
-- Write and amend the constitution (DESIGN.md principles P-1 through P-13)
+- Write and amend the constitution (DESIGN.md principles P-1 through P-14)
 - Have final authority over all specification decisions
 - Can override any AI recommendation with documented rationale
 - Add new Authors by consensus
