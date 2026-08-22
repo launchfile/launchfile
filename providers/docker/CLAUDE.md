@@ -63,3 +63,12 @@ This package is a library consumed by the unified `launchfile` CLI (`packages/la
 **pino-pretty trust model:** values from Launchfile YAML (slug, image, component names) are rendered verbatim by pino-pretty to stderr. ANSI escapes or embedded newlines in a crafted value could forge terminal log lines. NDJSON file output is safe (JSON-escaped).
 
 **Redaction depth:** `redact.paths` covers the top level and one level deep via `*.field`. pino/fast-redact has no arbitrary-depth wildcard — `**.field` is a literal key, not a deep match. For secrets nested deeper, enumerate concrete paths (e.g., `config.db.password`) or add a custom censor function. The `REDACT_CONFIG` constant is exported from `logger.ts` and the logger tests import it directly so regressions can't slip past a drifted test-only copy.
+
+## Command interpretation
+
+Release commands run via `docker compose run --rm -T <service> sh -c "<command>"`, so shell
+features work as written (SPEC.md § Command interpretation, PROVIDERS.md §10.11). This
+requires a shell in the image — a release on a distroless or scratch image fails with a
+surfaced `sh: not found`, which is the conformant outcome rather than a silent partial run.
+
+`bootstrap` still argv-splits and does not honor §10.11. Tracked in #185.

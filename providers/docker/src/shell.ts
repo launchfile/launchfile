@@ -4,6 +4,7 @@
 
 import { execFile as cpExecFile, spawn, type ExecFileOptions } from "node:child_process";
 import { getLogger } from "./logger.js";
+import { redactSecrets } from "./redact.js";
 
 export interface ShellResult {
 	exitCode: number;
@@ -25,11 +26,17 @@ export async function shell(
 ): Promise<ShellResult> {
 	const display = [cmd, ...args].join(" ");
 	if (!opts.silent) {
-		console.log(`  $ ${display}`);
+		console.log(`  $ ${redactSecrets(display)}`);
 	}
 
+	// A release command arrives here with `$secrets.*` already resolved, so an
+	// argument can be a live credential. pino's REDACT_PATHS cannot reach it --
+	// fast-redact matches key paths, and the value is a string inside an array --
+	// so the scrub has to happen before the log call (D-18, CWE-532).
+	const safeArgs = args.map(redactSecrets);
+
 	const log = getLogger();
-	log.debug({ cmd, args, cwd: opts.cwd }, "shell exec");
+	log.debug({ cmd, args: safeArgs, cwd: opts.cwd }, "shell exec");
 	const t0 = performance.now();
 
 	const execOpts: ExecFileOptions = {
@@ -52,11 +59,14 @@ export async function shell(
 			}
 
 			const durationMs = Math.round(performance.now() - t0);
-			log.debug({ cmd, args, exitCode: result.exitCode, durationMs }, "shell complete");
+			log.debug(
+				{ cmd, args: safeArgs, exitCode: result.exitCode, durationMs },
+				"shell complete",
+			);
 
 			if (error && !opts.allowFailure) {
 				reject(
-					Object.assign(new Error(`Command failed: ${display}`), {
+					Object.assign(new Error(`Command failed: ${redactSecrets(display)}`), {
 						result,
 					}),
 				);
@@ -84,11 +94,14 @@ export async function shellStream(
 ): Promise<number> {
 	const display = [cmd, ...args].join(" ");
 	if (!opts.silent) {
-		console.log(`  $ ${display}`);
+		console.log(`  $ ${redactSecrets(display)}`);
 	}
 
+	// Same reason as in `shell` above: an argument may be a resolved credential.
+	const safeArgs = args.map(redactSecrets);
+
 	const log = getLogger();
-	log.debug({ cmd, args, cwd: opts.cwd }, "shell stream exec");
+	log.debug({ cmd, args: safeArgs, cwd: opts.cwd }, "shell stream exec");
 	const t0 = performance.now();
 
 	return new Promise((resolvePromise, reject) => {
@@ -111,11 +124,11 @@ export async function shellStream(
 			if (timer) clearTimeout(timer);
 			const exitCode = code ?? 1;
 			log.debug(
-				{ cmd, args, exitCode, durationMs: Math.round(performance.now() - t0) },
+				{ cmd, args: safeArgs, exitCode, durationMs: Math.round(performance.now() - t0) },
 				"shell stream complete",
 			);
 			if (exitCode !== 0 && !opts.allowFailure) {
-				reject(new Error(`Command failed: ${display} (exit ${exitCode})`));
+				reject(new Error(`Command failed: ${redactSecrets(display)} (exit ${exitCode})`));
 			} else {
 				resolvePromise(exitCode);
 			}
