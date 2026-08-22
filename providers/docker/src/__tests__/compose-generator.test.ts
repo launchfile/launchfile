@@ -153,7 +153,7 @@ provides:
 		expect(result.yaml).toContain("bridge");
 	});
 
-	describe("host capabilities — grant/refuse (D-43)", () => {
+	describe("host capabilities — grant/refuse (D-44)", () => {
 		it("refuses a required capability in the new entry form with a surfaced message", () => {
 			const launch = readLaunch(`
 name: dockge

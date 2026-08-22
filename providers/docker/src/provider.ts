@@ -110,7 +110,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		if (resolved.source !== "local" && !opts.yes && !opts.dryRun) {
 			const resources = componentNames.flatMap((name) => {
 				const comp = launch.components[name];
-				// Host-capability entries (D-43) are not backing resources
+				// Host-capability entries (D-44) are not backing resources
 				return (comp?.requires ?? []).filter((r) => !r.host).map((r) => r.type);
 			});
 			const images = componentNames
@@ -164,7 +164,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 			projectDir: resolved.dir,
 		});
 
-		// Log warnings; refusals (un-grantable host capabilities, D-43) are
+		// Log warnings; refusals (un-grantable host capabilities, D-44) are
 		// surfaced distinctly — a refusal is user-visible output, not a line
 		// buried in a warnings list (PROVIDERS.md §11).
 		for (const w of result.warnings) {
@@ -249,7 +249,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// Configure resources (if any)
 		const resources = componentNames.flatMap((name) => {
 			const comp = launch.components[name];
-			// Host-capability entries (D-43) are refused/noted, not configured
+			// Host-capability entries (D-44) are refused/noted, not configured
 			return (comp?.requires ?? []).filter((r) => !r.host).map((r) => r.type);
 		});
 		for (const res of resources) {

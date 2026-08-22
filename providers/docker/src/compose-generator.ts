@@ -462,7 +462,7 @@ export function launchToCompose(
 			continue;
 		}
 
-		// Host capabilities — grant or refuse (D-43, PROVIDERS.md §11). This
+		// Host capabilities — grant or refuse (D-44, PROVIDERS.md §11). This
 		// provider grants none: handing an app the host's runtime socket, host
 		// network, or privileged mode from inside a managed compose project
 		// defeats its isolation model (and Docker-in-Docker is unreliable). A
