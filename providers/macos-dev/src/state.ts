@@ -8,6 +8,7 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
+import { registerSecrets } from "./redact.js";
 
 export interface ResourceState {
 	type: string;
@@ -78,7 +79,13 @@ export function hashLaunchfile(content: string): string {
 export async function loadState(projectDir: string): Promise<LaunchState | null> {
 	try {
 		const raw = await readFile(statePath(projectDir), "utf8");
-		return JSON.parse(raw) as LaunchState;
+		const state = JSON.parse(raw) as LaunchState;
+		// Persisted credentials are reused verbatim in provisioning commands and
+		// in `$secrets.*` / `$<resource>.*` expressions, so they must be known to
+		// the redactor before anything can echo them.
+		registerSecrets(Object.values(state.secrets ?? {}));
+		registerSecrets(Object.values(state.resources ?? {}).map((r) => r.password));
+		return state;
 	} catch {
 		return null;
 	}

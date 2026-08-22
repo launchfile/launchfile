@@ -3,6 +3,7 @@
  */
 
 import { exec as cpExec, type ExecOptions } from "node:child_process";
+import { redactSecrets } from "./redact.js";
 
 export interface ShellResult {
 	exitCode: number;
@@ -27,7 +28,9 @@ export async function shell(
 	opts: ShellOpts & { allowFailure?: boolean } = {},
 ): Promise<ShellResult> {
 	if (!opts.silent) {
-		console.log(`  $ ${command}`);
+		// Commands can carry resolved secrets (a generated DB password, a
+		// `$secrets.*` expression, a credential-bearing URL). Scrub before echo.
+		console.log(`  $ ${redactSecrets(command)}`);
 	}
 
 	const execOpts: ExecOptions = {
@@ -52,9 +55,15 @@ export async function shell(
 
 			if (error && !opts.allowFailure) {
 				reject(
-					Object.assign(new Error(`Command failed: ${command}\n${result.stderr}`), {
-						result,
-					}),
+					Object.assign(
+						new Error(
+							// The message is surfaced to the user and may be logged by a
+							// caller; both the command and the child's stderr can echo a
+							// secret back, so neither goes in unscrubbed.
+							`Command failed: ${redactSecrets(command)}\n${redactSecrets(result.stderr)}`,
+						),
+						{ result },
+					),
 				);
 			} else {
 				resolve(result);
