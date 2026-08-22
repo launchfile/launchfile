@@ -226,6 +226,34 @@ storage:
 		});
 	});
 
+	it("reads the D-30 size hint the published schema defines", () => {
+		const result = readLaunch(`
+name: my-app
+storage:
+  data:
+    path: /data
+    size: 10GB
+    persistent: true
+`);
+		expect(result.components.default?.storage?.data).toEqual({
+			path: "/data",
+			size: "10GB",
+			persistent: true,
+		});
+	});
+
+	it("carries the size hint through parse → serialize", () => {
+		const yaml = `version: launch/v1
+name: my-app
+image: nginx
+storage:
+  data:
+    path: /data
+    size: 512MB
+`;
+		expect(writeLaunch(readLaunch(yaml))).toContain("size: 512MB");
+	});
+
 	// Secrets
 	it("reads secrets block and passes to normalized output", () => {
 		const result = readLaunch(`

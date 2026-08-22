@@ -156,6 +156,10 @@ const CommandsSchema = z.record(z.string(), CommandValueSchema);
 
 const StorageVolumeSchema = z.object({
 	path: z.string().max(1024),
+	// D-30 size hint. Declared in the published JSON Schema; omitting it here
+	// meant zod's strip mode deleted it on every parse, so a documented field
+	// silently vanished through parse → serialize.
+	size: z.string().max(256).optional(),
 	persistent: z.boolean().optional(),
 });
 
