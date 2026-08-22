@@ -27,7 +27,7 @@
     "repository": {
       "type": "string",
       "format": "uri",
-      "description": "Source code URL (e.g. GitHub repository)"
+      "description": "Canonical source origin URL (e.g. GitHub repository). On a git-hosted URL, a '#' fragment names the baseline ref (branch, tag, or commit SHA)"
     },
     "website": {
       "type": "string",
@@ -55,6 +55,10 @@
       "description": "Pre-built OCI image (alternative to build)"
     },
     "build": { "$ref": "#/$defs/buildOrString" },
+    "source": {
+      "type": "string",
+      "description": "Working directory for source-mode commands (install/dev). Defaults to build.context, then the repo root (D-38)."
+    },
     "provides": {
       "type": "array",
       "items": { "$ref": "#/$defs/provides" }
@@ -73,11 +77,6 @@
       "additionalProperties": { "$ref": "#/$defs/envVarOrScalar" }
     },
     "commands": { "$ref": "#/$defs/commands" },
-    "outputs": {
-      "type": "object",
-      "description": "Named outputs extracted from release command stdout via regex patterns",
-      "additionalProperties": { "$ref": "#/$defs/output" }
-    },
     "health": { "$ref": "#/$defs/healthOrString" },
     "depends_on": {
       "type": "array",
@@ -204,8 +203,32 @@
     "requirementOrString": {
       "oneOf": [
         { "type": "string", "minLength": 1 },
-        { "$ref": "#/$defs/requirement" }
+        { "$ref": "#/$defs/requirement" },
+        { "$ref": "#/$defs/hostCapability" }
       ]
+    },
+    "hostCapability": {
+      "type": "object",
+      "required": ["host"],
+      "description": "Host capability entry (D-44): a privileged grant the provider grants or refuses, marked by the required 'host' field. Distinct from a backing service ('type' entry).",
+      "properties": {
+        "host": {
+          "type": "object",
+          "description": "Capability name → interface value (e.g. container_runtime: docker — the Docker Engine API, never a product name). Open vocabulary: unknown capabilities are tolerated.",
+          "additionalProperties": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "boolean" }
+            ]
+          }
+        },
+        "set_env": {
+          "type": "object",
+          "description": "Maps granted capability properties (e.g. $socket, $url, $api for container_runtime) to app env vars. Use $prop for references, plain strings for literals.",
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
     },
     "envVar": {
       "type": "object",
@@ -297,7 +320,12 @@
       "required": ["command"],
       "properties": {
         "command": { "type": "string" },
-        "timeout": { "type": "string" }
+        "timeout": { "type": "string" },
+        "capture": {
+          "type": "object",
+          "description": "Named captures extracted from this command's stdout via regex (D-34). Supersedes the top-level outputs: placement from D-23.",
+          "additionalProperties": { "$ref": "#/$defs/output" }
+        }
       },
       "additionalProperties": false
     },
@@ -311,8 +339,16 @@
       "type": "object",
       "properties": {
         "build": { "$ref": "#/$defs/commandOrString" },
+        "install": {
+          "$ref": "#/$defs/commandOrString",
+          "description": "Source-mode prepare — install deps / codegen when running from source (D-38). The source-mode pair of build; a source launch runs `install ?? build` on demand. Ignored by providers that execute the built artifact."
+        },
         "release": { "$ref": "#/$defs/commandOrString" },
         "start": { "$ref": "#/$defs/commandOrString" },
+        "dev": {
+          "$ref": "#/$defs/commandOrString",
+          "description": "Source-mode run — run the app from source (D-38). The source-mode pair of start; run precedence is dev > image > start. Ignored by providers that execute the built artifact. Only prepare (install) and run (dev) are mode-aware; release/bootstrap/seed/test are mode-invariant."
+        },
         "seed": { "$ref": "#/$defs/commandOrString" },
         "test": { "$ref": "#/$defs/commandOrString" }
       },
@@ -362,6 +398,10 @@
         "runtime": { "$ref": "#/$defs/runtime" },
         "image": { "type": "string" },
         "build": { "$ref": "#/$defs/buildOrString" },
+        "source": {
+          "type": "string",
+          "description": "Working directory for source-mode commands (install/dev). Defaults to build.context, then the repo root (D-38)."
+        },
         "provides": {
           "type": "array",
           "items": { "$ref": "#/$defs/provides" }
@@ -379,10 +419,6 @@
           "additionalProperties": { "$ref": "#/$defs/envVarOrScalar" }
         },
         "commands": { "$ref": "#/$defs/commands" },
-        "outputs": {
-          "type": "object",
-          "additionalProperties": { "$ref": "#/$defs/output" }
-        },
         "health": { "$ref": "#/$defs/healthOrString" },
         "depends_on": {
           "type": "array",

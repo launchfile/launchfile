@@ -1,0 +1,42 @@
+# Example: App that needs the host's container runtime (D-44)
+# Modeled on Dockge (a Docker Compose stack manager, catalog/apps/dockge) —
+# the same pattern fits Portainer, Diun, and Beszel.
+#
+# The `host:` marker on a requires/supports entry requests a host
+# CAPABILITY: the provider grants it (mounts/forwards the runtime socket
+# and populates $socket / $url / $api) or refuses with a clear message.
+# It never provisions anything — unlike a backing service (`type:` entry).
+#
+# The value names an interface, not a product: `container_runtime: docker`
+# means "the Docker Engine API" — a Podman-compatible socket satisfies it.
+
+version: launch/v1
+name: dockge
+description: "Easy-to-use Docker Compose stack manager with web UI"
+
+image: louislam/dockge:1
+
+requires:
+  - host: { container_runtime: docker }   # capability → grant or refuse
+    set_env:
+      DOCKER_HOST: $url                  # e.g. unix:///var/run/docker.sock
+
+provides:
+  - protocol: http
+    port: 5001
+    exposed: true
+
+storage:
+  stacks:
+    path: /opt/stacks
+    persistent: true
+  data:
+    path: /app/data
+    persistent: true
+
+health: /
+restart: always
+
+# Optional variant — a monitoring agent like Beszel declares the socket
+# under `supports:` instead: it deploys everywhere, probes DOCKER_HOST at
+# startup, and shows container stats only where the capability was granted.

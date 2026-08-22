@@ -124,6 +124,13 @@ function denormalizeRequirements(
 ): Array<string | Record<string, unknown>> | undefined {
 	if (!reqs?.length) return undefined;
 	return reqs.map((r) => {
+		// Host-capability entry (D-44): serialize with the `host:` marker,
+		// never the synthetic `type: "host"` the normalizer added.
+		if (r.host) {
+			const capability: Record<string, unknown> = { host: r.host };
+			if (r.set_env) capability.set_env = r.set_env;
+			return capability;
+		}
 		// Collapse to string if only type is set
 		if (!r.name && !r.version && !r.config && !r.set_env) {
 			return r.type;

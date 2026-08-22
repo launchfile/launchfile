@@ -33,11 +33,14 @@ export function selectComponents(
 ): SelectionResult {
 	const componentNames = new Set(Object.keys(launch.components));
 	const resourceNames = new Set<string>();
+	// Host-capability entries (D-44) are granted or refused, never provisioned,
+	// so they are not selectable resource names — without the filter, the
+	// synthetic `type: "host"` leaks into user-facing selection errors.
 	for (const comp of Object.values(launch.components)) {
 		for (const req of comp.requires ?? [])
-			resourceNames.add(req.name ?? req.type);
+			if (!req.host) resourceNames.add(req.name ?? req.type);
 		for (const sup of comp.supports ?? [])
-			resourceNames.add(sup.name ?? sup.type);
+			if (!sup.host) resourceNames.add(sup.name ?? sup.type);
 	}
 
 	if (requested.length === 0) {

@@ -110,7 +110,8 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		if (resolved.source !== "local" && !opts.yes && !opts.dryRun) {
 			const resources = componentNames.flatMap((name) => {
 				const comp = launch.components[name];
-				return (comp?.requires ?? []).map((r) => r.type);
+				// Host-capability entries (D-44) are not backing resources
+				return (comp?.requires ?? []).filter((r) => !r.host).map((r) => r.type);
 			});
 			const images = componentNames
 				.map((name) => launch.components[name]?.image)
@@ -163,10 +164,16 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 			projectDir: resolved.dir,
 		});
 
-		// Log warnings
+		// Log warnings; refusals (un-grantable host capabilities, D-44) are
+		// surfaced distinctly — a refusal is user-visible output, not a line
+		// buried in a warnings list (PROVIDERS.md §11).
 		for (const w of result.warnings) {
 			log.warn({ warning: w }, "compose generation warning");
-			console.warn(`  Warning: ${w}`);
+			if (w.startsWith("refused:")) {
+				console.error(`  Refused: ${w.slice("refused: ".length)}`);
+			} else {
+				console.warn(`  Warning: ${w}`);
+			}
 		}
 
 		// Update state
@@ -242,7 +249,8 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// Configure resources (if any)
 		const resources = componentNames.flatMap((name) => {
 			const comp = launch.components[name];
-			return (comp?.requires ?? []).map((r) => r.type);
+			// Host-capability entries (D-44) are refused/noted, not configured
+			return (comp?.requires ?? []).filter((r) => !r.host).map((r) => r.type);
 		});
 		for (const res of resources) {
 			console.log(`  \u2193 Configuring ${res}... done`);

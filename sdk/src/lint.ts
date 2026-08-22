@@ -36,14 +36,44 @@ function resourceName(req: NormalizedRequirement): string {
 }
 
 /**
+ * Capability names a host-capability entry can carry (D-44). Used only for
+ * the marker-enforcement advisory: a backing-service entry whose `type` is
+ * one of these almost certainly meant to be a `host:`-marked capability.
+ * The real vocabulary is open (L-4) — this set only powers the warning.
+ */
+const KNOWN_HOST_CAPABILITIES = new Set([
+	"container_runtime",
+	"network",
+	"filesystem",
+	"privileged",
+]);
+
+/**
+ * Product-named spellings a pre-D-44 file actually writes, mapped to the
+ * interface that replaces them. Suggesting `host: { docker: … }` would trade
+ * one P-1 violation for another — the marker is only half the fix; naming an
+ * interface rather than a product is the other half.
+ */
+const PRODUCT_SPELLINGS: Record<string, string> = {
+	docker: "container_runtime: docker",
+	"docker.sock": "container_runtime: docker",
+	podman: "container_runtime: docker",
+};
+
+/**
  * Lint a normalized Launch, returning non-fatal warning strings (empty = clean).
  *
- * Currently checks (Q1): when two `requires`/`supports` entries across all
- * components (and any single-component top-level fields, which normalize into
- * the "default" component) resolve to the SAME resource name (D-24) but declare
- * DIVERGENT `type`, `version`, or `config`, a single warning per conflicting
- * resource names the field(s) that diverge. Same name + identical definition is
- * normal resource sharing and is not warned about.
+ * Checks:
+ * - (Q1) when two `requires`/`supports` entries across all components (and any
+ *   single-component top-level fields, which normalize into the "default"
+ *   component) resolve to the SAME resource name (D-24) but declare DIVERGENT
+ *   `type`, `version`, or `config`, a single warning per conflicting resource
+ *   names the field(s) that diverge. Same name + identical definition is
+ *   normal resource sharing and is not warned about. Host-capability entries
+ *   (D-44) are not resources and are excluded from this grouping.
+ * - (D-44 marker enforcement, advisory) a backing-service entry whose `type`
+ *   names a known host capability is warned about: host capabilities require
+ *   the `host:` marker so the privilege surface stays machine-extractable.
  */
 export function lintLaunch(launch: NormalizedLaunch): string[] {
 	const warnings: string[] = [];
@@ -56,6 +86,16 @@ export function lintLaunch(launch: NormalizedLaunch): string[] {
 			...(component.requires ?? []),
 			...(component.supports ?? []),
 		]) {
+			if (req.host) continue; // capability entry, not a resource (D-44)
+			const productSpelling = PRODUCT_SPELLINGS[req.type];
+			if (productSpelling || KNOWN_HOST_CAPABILITIES.has(req.type)) {
+				const suggestion = productSpelling ?? `${req.type}: ...`;
+				warnings.push(
+					`${where}: "${req.type}" looks like a host capability — the host: marker is ` +
+						`required on privileged entries (D-44): use \`- host: { ${suggestion} }\``,
+				);
+				continue;
+			}
 			const name = resourceName(req);
 			const decls = byName.get(name) ?? [];
 			decls.push({ where, req });

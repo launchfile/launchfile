@@ -250,6 +250,11 @@ export function translate(
 	let needsCacheSubnetGroup = false;
 	for (const comp of Object.values(launch.components)) {
 		for (const req of comp.requires ?? []) {
+			// A host capability (D-44) is granted or refused, never provisioned.
+			// Without this it is reported as a missing managed-service mapping,
+			// which both loses the capability name and grades a privileged
+			// request as a "workaround" rather than a blocker.
+			if (req.host) continue;
 			const resourceName = req.name ?? req.type;
 			if (provisioned.has(resourceName)) continue;
 			const spec = MANAGED_RESOURCES[req.type];
@@ -285,6 +290,7 @@ export function translate(
 			}
 		}
 		for (const sup of comp.supports ?? []) {
+			if (sup.host) continue; // capability, not a backing service (D-44)
 			c.gap(
 				`supports:${sup.type}`,
 				"nice-to-have",
@@ -686,6 +692,45 @@ function emitComponent(
 		);
 	}
 
+	// host capabilities a bare-EC2 target can't honor. Both spellings are
+	// graded identically (PROVIDERS.md §11): the D-44 entry form below, and the
+	// legacy block after it.
+	for (const req of comp.requires ?? []) {
+		if (!req.host) continue;
+		for (const [capability, value] of Object.entries(req.host)) {
+			c.gap(
+				`requires:host.${capability}`,
+				"blocker",
+				`component requires host capability ${capability}=${String(value)}; ` +
+					"a bare EC2 target cannot grant it",
+				"use an ECS/container provider",
+				name,
+			);
+		}
+	}
+	for (const sup of comp.supports ?? []) {
+		if (!sup.host) continue;
+		for (const [capability, value] of Object.entries(sup.host)) {
+			c.gap(
+				`supports:host.${capability}`,
+				"nice-to-have",
+				`optional host capability ${capability}=${String(value)} is not granted; ` +
+					"the component runs degraded",
+				"use an ECS/container provider if the capability is needed",
+				name,
+			);
+		}
+	}
+	if (comp.host?.docker === "required") {
+		c.gap(
+			"host.docker",
+			"blocker",
+			"component requires a Docker socket; bare EC2 has none",
+			"use an ECS/container provider",
+			name,
+		);
+	}
+
 	if (!comp.runtime && comp.image) {
 		c.gap(
 			"image",
@@ -720,6 +765,7 @@ function emitComponent(
 	// requires/depends_on → Terraform ordering.
 	const dependsOn: HclValue[] = [];
 	for (const req of comp.requires ?? []) {
+		if (req.host) continue; // capability, not a backing service (D-44)
 		const spec = MANAGED_RESOURCES[req.type];
 		if (!spec) continue;
 		const resourceName = req.name ?? req.type;
@@ -856,6 +902,7 @@ function emitComponent(
 		}
 	}
 	for (const req of comp.requires ?? []) {
+		if (req.host) continue; // ungranted capability — its set_env is omitted (D-44)
 		if (!req.set_env) continue;
 		const resourceName = req.name ?? req.type;
 		const resourceProps = baseContext.resources?.[resourceName];
@@ -889,16 +936,6 @@ function emitComponent(
 	// health → recorded; the ALB target group carries the actual check.
 	if (comp.health) c.map("health", "aws_lb_target_group health_check", name);
 
-	// host capabilities a bare-EC2 target can't honor.
-	if (comp.host?.docker === "required") {
-		c.gap(
-			"host.docker",
-			"blocker",
-			"component requires a Docker socket; bare EC2 has none",
-			"use an ECS/container provider",
-			name,
-		);
-	}
 	if (comp.schedule) {
 		c.gap(
 			"schedule",

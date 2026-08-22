@@ -289,3 +289,68 @@ components:
 		).toBe(true);
 	});
 });
+
+describe("host capabilities — grant/refuse (D-44, PROVIDERS.md §11)", () => {
+	const mk = (extra: string) =>
+		readLaunch(
+			`version: launch/v1\nname: dockge\nruntime: node\ncommands:\n  start: node server.js\n${extra}`,
+		);
+	const gapsOf = (launch: Parameters<typeof translate>[0]) =>
+		translate(launch).conformance.gaps.map((g) => `${g.severity}:${g.field}`);
+
+	it("grades a required capability as a blocker", () => {
+		expect(gapsOf(mk("requires:\n  - host: { container_runtime: docker }\n"))).toContain(
+			"blocker:requires:host.container_runtime",
+		);
+	});
+
+	it("grades the entry form and the legacy block at the same severity", () => {
+		const entry = gapsOf(mk("requires:\n  - host: { container_runtime: docker }\n"));
+		const legacy = gapsOf(mk("host:\n  docker: required\n"));
+		const sev = (g: string[]) => g.filter((x) => x.startsWith("blocker:")).length;
+		expect(sev(entry)).toBe(sev(legacy));
+	});
+
+	it("grades an optional capability as nice-to-have, not a blocker", () => {
+		const gaps = gapsOf(mk("supports:\n  - host: { container_runtime: any }\n"));
+		expect(gaps).toContain("nice-to-have:supports:host.container_runtime");
+		expect(gaps.some((g) => g.startsWith("blocker:"))).toBe(false);
+	});
+
+	it("does not report a capability as a missing managed-service mapping", () => {
+		const gaps = gapsOf(mk("requires:\n  - host: { container_runtime: docker }\n"));
+		expect(gaps).not.toContain("workaround:requires:host");
+	});
+
+	it("reports the legacy block on an image-only component too", () => {
+		// emitComponent used to return at the image-without-runtime branch before
+		// any host check, so this reported only workaround:image. Image-only is
+		// the shape of the apps that ask for a socket, so the privilege surface
+		// was invisible for exactly the motivating cases. Fails on main.
+		const launch = readLaunch(
+			"version: launch/v1\nname: dockge\nimage: louislam/dockge:1\nhost:\n  docker: required\n",
+		);
+		expect(gapsOf(launch)).toContain("blocker:host.docker");
+	});
+
+	it("grades image-only identically across both spellings", () => {
+		const img = (decl: string) =>
+			gapsOf(
+				readLaunch(
+					`version: launch/v1\nname: dockge\nimage: louislam/dockge:1\n${decl}`,
+				),
+			).filter((g) => g.startsWith("blocker:")).length;
+		expect(img("host:\n  docker: required\n")).toBe(
+			img("requires:\n  - host: { container_runtime: docker }\n"),
+		);
+	});
+
+	it("reports the privilege surface even for an image-only component", () => {
+		// emitComponent returns early for image-without-runtime, which is exactly
+		// the shape of the apps that request a runtime socket (Dockge, Portainer).
+		const launch = readLaunch(
+			"version: launch/v1\nname: dockge\nimage: louislam/dockge:1\nrequires:\n  - host: { container_runtime: docker }\n",
+		);
+		expect(gapsOf(launch)).toContain("blocker:requires:host.container_runtime");
+	});
+});

@@ -462,17 +462,46 @@ export function launchToCompose(
 			continue;
 		}
 
+		// Host capabilities — grant or refuse (D-44, PROVIDERS.md §11). This
+		// provider grants none: handing an app the host's runtime socket, host
+		// network, or privileged mode from inside a managed compose project
+		// defeats its isolation model (and Docker-in-Docker is unreliable). A
+		// required capability therefore REFUSES the component with a surfaced
+		// message — never a silent drop. Both spellings are honored
+		// equivalently: `host:`-marked requires entries and the legacy host
+		// block. Optional (supports) capabilities are left ungranted with a
+		// note so the degradation is visible.
+		const refusedCapabilities: string[] = [];
+		for (const req of component.requires ?? []) {
+			if (!req.host) continue;
+			for (const [capability, value] of Object.entries(req.host)) {
+				refusedCapabilities.push(`${capability}=${String(value)}`);
+			}
+		}
 		if (component.host?.docker === "required") {
-			warnings.push(`${componentName}: requires Docker socket — skipped`);
-			continue;
+			refusedCapabilities.push("container_runtime=docker (host.docker: required)");
 		}
 		if (component.host?.network === "host") {
-			warnings.push(`${componentName}: requires host networking — skipped`);
-			continue;
+			refusedCapabilities.push("network=host (host.network: host)");
 		}
 		if (component.host?.privileged) {
-			warnings.push(`${componentName}: requires privileged mode — skipped`);
+			refusedCapabilities.push("privileged=true (host.privileged)");
+		}
+		if (refusedCapabilities.length > 0) {
+			warnings.push(
+				`refused: ${componentName} requires host capabilities this provider cannot grant ` +
+					`(${refusedCapabilities.join("; ")}) — component skipped`,
+			);
 			continue;
+		}
+		for (const sup of component.supports ?? []) {
+			if (!sup.host) continue;
+			for (const [capability, value] of Object.entries(sup.host)) {
+				warnings.push(
+					`${componentName}: optional host capability ${capability}=${String(value)} ` +
+						"not granted — its set_env vars are omitted and the app runs degraded",
+				);
+			}
 		}
 
 		if (component.schedule) {
