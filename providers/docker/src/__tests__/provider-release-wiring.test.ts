@@ -47,17 +47,35 @@ vi.mock("../port-allocator.js", () => ({
 	allocatePorts: async () => ({ app: 8080 }),
 }));
 
-vi.mock("node:fs/promises", async (importOriginal) => ({
-	...(await importOriginal<typeof import("node:fs/promises")>()),
+// Both factories list every export the code under test pulls, rather than
+// spreading the real module via vitest's `importOriginal`. CI runs `bun test`
+// (ci.yml, the providers matrix), whose `vi.mock` passes no `importOriginal`
+// argument -- a factory that calls it throws before any test runs.
+vi.mock("node:fs/promises", () => ({
 	writeFile: async () => {},
+	readdir: async () => [],
+	rm: async () => {},
 }));
 
-vi.mock("../state.js", async (importOriginal) => ({
-	...(await importOriginal<typeof import("../state.js")>()),
+vi.mock("../state.js", () => ({
 	loadState: async () => null,
 	saveState: async () => {},
 	ensureStateDir: async () => {},
 	composePath: () => composeFile,
+	composeProject: (slug: string) => `launchfile-${slug}`,
+	stateBaseDir: () => "/tmp/launchfile-release-wiring/state",
+	stateDir: (slug: string) => `/tmp/launchfile-release-wiring/state/${slug}`,
+	initState: (slug: string, appName: string) => ({
+		version: 1,
+		slug,
+		appName,
+		composeProject: `launchfile-${slug}`,
+		launchfileHash: "test",
+		createdAt: "2026-01-01T00:00:00.000Z",
+		updatedAt: "2026-01-01T00:00:00.000Z",
+		secrets: {},
+		ports: {},
+	}),
 }));
 
 vi.mock("../shell.js", () => ({
