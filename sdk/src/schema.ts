@@ -3,6 +3,10 @@
  *
  * Handles both shorthand (scalar) and full (object) forms.
  * Use `LaunchSchema` to validate raw YAML-parsed input.
+ *
+ * Every object schema is loose (`z.looseObject`): unknown fields never
+ * invalidate a file at any level and are carried through parse so the
+ * writer can re-emit them (D-44 — "ignore" means preserve).
  */
 
 import { z } from "zod";
@@ -28,14 +32,14 @@ const DependsOnConditionSchema = z.enum(["started", "healthy"]);
 
 // --- Secrets ---
 
-const SecretSchema = z.object({
+const SecretSchema = z.looseObject({
 	generator: GeneratorSchema,
 	description: z.string().max(1024).optional(),
 });
 
 // --- Provides ---
 
-const ProvidesSchema = z.object({
+const ProvidesSchema = z.looseObject({
 	name: NameSchema.optional(),
 	protocol: ProtocolSchema,
 	port: z.number().int().min(1).max(65535),
@@ -46,7 +50,7 @@ const ProvidesSchema = z.object({
 
 // --- Requirement (full form) ---
 
-const RequirementObjectSchema = z.object({
+const RequirementObjectSchema = z.looseObject({
 	name: NameSchema.optional(),
 	type: z.string().min(1).max(256),
 	version: z.string().max(256).optional(),
@@ -82,7 +86,7 @@ const SupportSchema = RequirementSchema;
 
 // --- EnvVar ---
 
-const EnvVarObjectSchema = z.object({
+const EnvVarObjectSchema = z.looseObject({
 	default: z.union([z.string(), z.number(), z.boolean()]).optional(),
 	description: z.string().max(1024).optional(),
 	label: z.string().max(256).optional(),
@@ -101,7 +105,7 @@ const EnvVarSchema = z.union([
 
 // --- Build ---
 
-const BuildObjectSchema = z.object({
+const BuildObjectSchema = z.looseObject({
 	context: z.string().max(1024).optional(),
 	dockerfile: z.string().max(1024).optional(),
 	target: z.string().max(256).optional(),
@@ -114,7 +118,7 @@ const BuildSchema = z.union([z.string(), BuildObjectSchema]);
 
 // --- Health ---
 
-const HealthObjectSchema = z.object({
+const HealthObjectSchema = z.looseObject({
 	path: z.string().max(1024).optional(),
 	command: z.string().max(10240).optional(),
 	interval: z.string().max(64).optional(),
@@ -138,7 +142,7 @@ const HealthSchema = z.union([z.string(), HealthObjectSchema]);
  * (`commands.*.capture`). The shape is unchanged; only the name reflects
  * its new role.
  */
-const CaptureEntrySchema = z.object({
+const CaptureEntrySchema = z.looseObject({
 	// Security: validate that patterns compile as RegExp to catch errors early,
 	// and cap length to limit ReDoS attack surface.
 	pattern: z.string().max(1024).refine((p) => {
@@ -150,7 +154,7 @@ const CaptureEntrySchema = z.object({
 
 // --- Commands ---
 
-const CommandDetailSchema = z.object({
+const CommandDetailSchema = z.looseObject({
 	command: z.string().max(10240),
 	timeout: z.string().max(64).optional(),
 	/**
@@ -168,14 +172,16 @@ const CommandsSchema = z.record(z.string(), CommandValueSchema);
 
 // --- Storage ---
 
-const StorageVolumeSchema = z.object({
+const StorageVolumeSchema = z.looseObject({
 	path: z.string().max(1024),
+	/** Minimum size hint, e.g. "512MB", "10GB" (D-30) */
+	size: z.string().max(64).optional(),
 	persistent: z.boolean().optional(),
 });
 
 // --- DependsOn ---
 
-const DependsOnEntryObjectSchema = z.object({
+const DependsOnEntryObjectSchema = z.looseObject({
 	component: z.string().min(1),
 	condition: DependsOnConditionSchema.optional(),
 });
@@ -188,7 +194,7 @@ const DependsOnEntrySchema = z.union([
 
 // --- Host ---
 
-const HostSchema = z.object({
+const HostSchema = z.looseObject({
 	docker: z.enum(["required", "optional"]).optional(),
 	network: z.enum(["host", "bridge"]).optional(),
 	filesystem: z.enum(["read-write", "read-only", "none"]).optional(),
@@ -201,7 +207,7 @@ const PlatformSchema = z.union([z.string(), z.array(z.string())]);
 
 // --- Component ---
 
-const ComponentSchema = z.object({
+const ComponentSchema = z.looseObject({
 	runtime: RuntimeSchema.optional(),
 	image: z.string().max(1024).optional(),
 	build: BuildSchema.optional(),
@@ -223,7 +229,7 @@ const ComponentSchema = z.object({
 
 // --- Top-Level Launch ---
 
-export const LaunchSchema = z.object({
+export const LaunchSchema = z.looseObject({
 	version: z.string().max(64).optional(),
 	generator: z.string().max(256).optional(),
 	name: NameSchema,

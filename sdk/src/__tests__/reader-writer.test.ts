@@ -615,3 +615,100 @@ commands:
 		expect(out).toContain("source: ./apps/api");
 	});
 });
+
+describe("unknown-field preservation (D-44)", () => {
+	it("preserves an x- key at the top level through read → write", () => {
+		const written = writeLaunch(
+			readLaunch(`
+name: my-app
+runtime: node
+x-team: platform
+commands:
+  start: "node server.js"
+`),
+		);
+		expect(written).toContain("x-team: platform");
+		const reread = readLaunch(written);
+		expect(reread["x-team"]).toBe("platform");
+	});
+
+	it("preserves an unknown key inside a component", () => {
+		const written = writeLaunch(
+			readLaunch(`
+name: my-app
+components:
+  web:
+    runtime: node
+    x-scaling:
+      min: 1
+      max: 3
+    commands:
+      start: "node server.js"
+  worker:
+    runtime: node
+    commands:
+      start: "node worker.js"
+`),
+		);
+		const reread = readLaunch(written);
+		expect(reread.components.web?.["x-scaling"]).toEqual({ min: 1, max: 3 });
+	});
+
+	it("preserves storage size (D-30)", () => {
+		const result = readLaunch(`
+name: my-app
+runtime: node
+storage:
+  data:
+    path: /var/lib/data
+    size: 10GB
+commands:
+  start: "node server.js"
+`);
+		expect(result.components.default?.storage?.data?.size).toBe("10GB");
+		const written = writeLaunch(result);
+		expect(written).toContain("size: 10GB");
+		expect(readLaunch(written).components.default?.storage?.data?.size).toBe("10GB");
+	});
+
+	it("does not collapse a shorthand when the object holds unknown fields", () => {
+		// build with only context normally collapses to a string — an unknown
+		// field must keep the object form, or the field would be dropped
+		const reread = readLaunch(
+			writeLaunch(
+				readLaunch(`
+name: my-app
+build:
+  context: .
+  x-cache: warm
+commands:
+  start: "node server.js"
+`),
+			),
+		);
+		expect(reread.components.default?.build?.context).toBe(".");
+		expect(reread.components.default?.build?.["x-cache"]).toBe("warm");
+	});
+
+	it("preserves unknown fields on nested objects (env var, requirement)", () => {
+		const reread = readLaunch(
+			writeLaunch(
+				readLaunch(`
+name: my-app
+runtime: node
+env:
+  API_KEY:
+    required: true
+    x-rotation: 90d
+requires:
+  - type: postgres
+    x-tier: gold
+commands:
+  start: "node server.js"
+`),
+			),
+		);
+		expect(reread.components.default?.env?.API_KEY?.["x-rotation"]).toBe("90d");
+		expect(reread.components.default?.requires?.[0]?.["x-tier"]).toBe("gold");
+	});
+});

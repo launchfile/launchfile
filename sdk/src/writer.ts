@@ -28,6 +28,46 @@ export function writeLaunch(launch: NormalizedLaunch): string {
 	return stringify(output, { lineWidth: 0 });
 }
 
+// D-44: unknown fields are preserved, never stripped. Each denormalizer
+// re-emits the fields it does not recognize, and an object holding unknown
+// fields never collapses to its scalar shorthand (collapsing would drop them).
+
+const LAUNCH_FIELD_KEYS: ReadonlySet<string> = new Set([
+	"version", "generator", "name", "description", "secrets", "components",
+]);
+const COMPONENT_FIELD_KEYS: ReadonlySet<string> = new Set([
+	"runtime", "image", "build", "source", "provides", "requires", "supports",
+	"env", "commands", "health", "depends_on", "storage", "restart",
+	"schedule", "singleton", "platform", "host",
+]);
+const BUILD_FIELD_KEYS: ReadonlySet<string> = new Set([
+	"context", "dockerfile", "target", "args", "secrets",
+]);
+const REQUIREMENT_FIELD_KEYS: ReadonlySet<string> = new Set([
+	"name", "type", "version", "config", "set_env",
+]);
+const ENV_VAR_FIELD_KEYS: ReadonlySet<string> = new Set([
+	"default", "description", "label", "required", "generator", "sensitive",
+]);
+const COMMAND_FIELD_KEYS: ReadonlySet<string> = new Set(["command", "timeout", "capture"]);
+const HEALTH_FIELD_KEYS: ReadonlySet<string> = new Set([
+	"path", "command", "interval", "timeout", "retries", "start_period",
+]);
+const DEPENDS_ON_FIELD_KEYS: ReadonlySet<string> = new Set(["component", "condition"]);
+
+/** Pick the fields of `obj` that are not in `known` (unknown fields, D-44) */
+function unknownFields(obj: object, known: ReadonlySet<string>): Record<string, unknown> {
+	const extras: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(obj)) {
+		if (!known.has(key) && value !== undefined) extras[key] = value;
+	}
+	return extras;
+}
+
+function hasUnknownFields(obj: object, known: ReadonlySet<string>): boolean {
+	return Object.keys(unknownFields(obj, known)).length > 0;
+}
+
 /** Convert normalized form back to the most compact valid Launch */
 function denormalizeLaunch(launch: NormalizedLaunch): Record<string, unknown> {
 	const componentNames = Object.keys(launch.components);
@@ -57,6 +97,8 @@ function denormalizeLaunch(launch: NormalizedLaunch): Record<string, unknown> {
 		}
 		result.components = components;
 	}
+
+	Object.assign(result, unknownFields(launch, LAUNCH_FIELD_KEYS));
 
 	return result;
 }
@@ -99,6 +141,8 @@ function denormalizeComponent(comp: NormalizedComponent): Record<string, unknown
 	if (comp.platform) result.platform = comp.platform;
 	if (comp.host) result.host = comp.host;
 
+	Object.assign(result, unknownFields(comp, COMPONENT_FIELD_KEYS));
+
 	return result;
 }
 
@@ -107,7 +151,14 @@ function denormalizeComponent(comp: NormalizedComponent): Record<string, unknown
 function denormalizeBuild(build: NormalizedBuild | undefined): string | Record<string, unknown> | undefined {
 	if (!build) return undefined;
 	// Collapse to string if only context is set
-	if (build.context && !build.dockerfile && !build.target && !build.args && !build.secrets) {
+	if (
+		build.context &&
+		!build.dockerfile &&
+		!build.target &&
+		!build.args &&
+		!build.secrets &&
+		!hasUnknownFields(build, BUILD_FIELD_KEYS)
+	) {
 		return build.context;
 	}
 	const result: Record<string, unknown> = {};
@@ -116,6 +167,7 @@ function denormalizeBuild(build: NormalizedBuild | undefined): string | Record<s
 	if (build.target) result.target = build.target;
 	if (build.args) result.args = build.args;
 	if (build.secrets) result.secrets = build.secrets;
+	Object.assign(result, unknownFields(build, BUILD_FIELD_KEYS));
 	return result;
 }
 
@@ -132,7 +184,7 @@ function denormalizeRequirements(
 			return capability;
 		}
 		// Collapse to string if only type is set
-		if (!r.name && !r.version && !r.config && !r.set_env) {
+		if (!r.name && !r.version && !r.config && !r.set_env && !hasUnknownFields(r, REQUIREMENT_FIELD_KEYS)) {
 			return r.type;
 		}
 		const result: Record<string, unknown> = {};
@@ -141,6 +193,7 @@ function denormalizeRequirements(
 		if (r.version) result.version = r.version;
 		if (r.config) result.config = r.config;
 		if (r.set_env) result.set_env = r.set_env;
+		Object.assign(result, unknownFields(r, REQUIREMENT_FIELD_KEYS));
 		return result;
 	});
 }
@@ -158,7 +211,8 @@ function denormalizeEnv(
 			!val.label &&
 			!val.required &&
 			!val.generator &&
-			!val.sensitive
+			!val.sensitive &&
+			!hasUnknownFields(val, ENV_VAR_FIELD_KEYS)
 		) {
 			result[key] = val.default;
 		} else {
@@ -169,6 +223,7 @@ function denormalizeEnv(
 			if (val.required) obj.required = val.required;
 			if (val.generator) obj.generator = val.generator;
 			if (val.sensitive) obj.sensitive = val.sensitive;
+			Object.assign(obj, unknownFields(val, ENV_VAR_FIELD_KEYS));
 			result[key] = obj;
 		}
 	}
@@ -183,12 +238,13 @@ function denormalizeCommands(
 	for (const [key, val] of Object.entries(commands)) {
 		const hasCapture = val.capture && Object.keys(val.capture).length > 0;
 		// Collapse to string shorthand only if there are no fields beyond command
-		if (!val.timeout && !hasCapture) {
+		if (!val.timeout && !hasCapture && !hasUnknownFields(val, COMMAND_FIELD_KEYS)) {
 			result[key] = val.command;
 		} else {
 			const expanded: Record<string, unknown> = { command: val.command };
 			if (val.timeout) expanded.timeout = val.timeout;
 			if (hasCapture) expanded.capture = val.capture;
+			Object.assign(expanded, unknownFields(val, COMMAND_FIELD_KEYS));
 			result[key] = expanded;
 		}
 	}
@@ -198,7 +254,15 @@ function denormalizeCommands(
 function denormalizeHealth(health: NormalizedHealth | undefined): string | Record<string, unknown> | undefined {
 	if (!health) return undefined;
 	// Collapse to string if only path is set
-	if (health.path && !health.command && !health.interval && !health.timeout && !health.retries && !health.start_period) {
+	if (
+		health.path &&
+		!health.command &&
+		!health.interval &&
+		!health.timeout &&
+		!health.retries &&
+		!health.start_period &&
+		!hasUnknownFields(health, HEALTH_FIELD_KEYS)
+	) {
 		return health.path;
 	}
 	const result: Record<string, unknown> = {};
@@ -208,6 +272,7 @@ function denormalizeHealth(health: NormalizedHealth | undefined): string | Recor
 	if (health.timeout) result.timeout = health.timeout;
 	if (health.retries) result.retries = health.retries;
 	if (health.start_period) result.start_period = health.start_period;
+	Object.assign(result, unknownFields(health, HEALTH_FIELD_KEYS));
 	return result;
 }
 
@@ -217,7 +282,7 @@ function denormalizeDependsOn(
 	if (!deps?.length) return undefined;
 	return deps.map((d) => {
 		// Collapse to string if no condition
-		if (!d.condition) return d.component;
-		return { component: d.component, condition: d.condition };
+		if (!d.condition && !hasUnknownFields(d, DEPENDS_ON_FIELD_KEYS)) return d.component;
+		return { component: d.component, condition: d.condition, ...unknownFields(d, DEPENDS_ON_FIELD_KEYS) };
 	});
 }

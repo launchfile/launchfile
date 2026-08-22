@@ -38,6 +38,34 @@ import type {
 const MAX_YAML_SIZE = 1_048_576; // 1 MB
 const MAX_ALIAS_COUNT = 100;
 
+// D-44: unknown fields are preserved, never stripped. The normalizers below
+// spread the source object before overwriting known fields, so unknown keys
+// ride through normalization and reach the writer. At the top level the
+// component-shorthand fields fold into the "default" component, so unknown
+// top-level keys are picked out explicitly and kept at the top level.
+
+/** Component-level fields the normalizer consumes (shared by top level as shorthand) */
+const COMPONENT_FIELD_KEYS = [
+	"runtime", "image", "build", "source", "provides", "requires", "supports",
+	"env", "commands", "health", "depends_on", "storage", "restart",
+	"schedule", "singleton", "platform", "host",
+] as const;
+
+/** Top-level fields the normalizer consumes */
+const TOP_LEVEL_FIELD_KEYS: ReadonlySet<string> = new Set([
+	"version", "generator", "name", "description", "secrets", "components",
+	...COMPONENT_FIELD_KEYS,
+]);
+
+/** Pick the fields of `obj` that are not in `known` (unknown fields, D-44) */
+function unknownFields(obj: object, known: ReadonlySet<string>): Record<string, unknown> {
+	const extras: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(obj)) {
+		if (!known.has(key) && value !== undefined) extras[key] = value;
+	}
+	return extras;
+}
+
 /** Parse and validate a YAML string into a normalized Launch object */
 export function readLaunch(yaml: string): NormalizedLaunch {
 	if (yaml.length > MAX_YAML_SIZE) {
@@ -57,6 +85,7 @@ export function validateLaunch(data: unknown): NormalizedLaunch {
 /** Normalize a validated Launch into its fully expanded form */
 function normalizeLaunch(launch: Launch): NormalizedLaunch {
 	const result: NormalizedLaunch = {
+		...unknownFields(launch, TOP_LEVEL_FIELD_KEYS),
 		version: launch.version,
 		generator: launch.generator,
 		name: launch.name,
@@ -105,9 +134,10 @@ function extractComponentFields(launch: Launch): Component {
 	};
 }
 
-/** Normalize a component, expanding all shorthands */
+/** Normalize a component, expanding all shorthands (unknown fields ride through via spread, D-44) */
 function normalizeComponent(component: Component, defaults?: Launch): NormalizedComponent {
 	return {
+		...component,
 		runtime: component.runtime ?? defaults?.runtime,
 		image: component.image ?? defaults?.image,
 		build: normalizeBuild(component.build ?? defaults?.build),
@@ -133,13 +163,7 @@ function normalizeComponent(component: Component, defaults?: Launch): Normalized
 function normalizeBuild(build: string | Build | undefined): NormalizedBuild | undefined {
 	if (build === undefined) return undefined;
 	if (typeof build === "string") return { context: build };
-	return {
-		context: build.context,
-		dockerfile: build.dockerfile,
-		target: build.target,
-		args: build.args,
-		secrets: build.secrets,
-	};
+	return { ...build };
 }
 
 function normalizeRequirements(
@@ -152,15 +176,10 @@ function normalizeRequirements(
 			// Host-capability entry (D-44): the `host:` marker is the kind
 			// discriminator; `type` is synthesized as "host" so consumers that
 			// key on type keep working. The `host` field stays authoritative.
-			return { type: "host", host: r.host, set_env: r.set_env };
+			// The spread carries unknown fields through (D-45).
+			return { ...r, type: "host" };
 		}
-		return {
-			name: r.name,
-			type: r.type,
-			version: r.version,
-			config: r.config,
-			set_env: r.set_env,
-		};
+		return { ...r };
 	});
 }
 
@@ -173,14 +192,7 @@ function normalizeEnv(
 		if (typeof val === "string" || typeof val === "number" || typeof val === "boolean") {
 			result[key] = { default: val };
 		} else {
-			result[key] = {
-				default: val.default,
-				description: val.description,
-				label: val.label,
-				required: val.required,
-				generator: val.generator,
-				sensitive: val.sensitive,
-			};
+			result[key] = { ...val };
 		}
 	}
 	return result;
@@ -196,11 +208,7 @@ function normalizeCommands(
 		if (typeof val === "string") {
 			result[key] = { command: val };
 		} else {
-			result[key] = {
-				command: val.command,
-				timeout: val.timeout,
-				capture: val.capture,
-			};
+			result[key] = { ...val };
 		}
 	}
 	return result;
@@ -209,14 +217,7 @@ function normalizeCommands(
 function normalizeHealth(health: string | Health | undefined): NormalizedHealth | undefined {
 	if (health === undefined) return undefined;
 	if (typeof health === "string") return { path: health };
-	return {
-		path: health.path,
-		command: health.command,
-		interval: health.interval,
-		timeout: health.timeout,
-		retries: health.retries,
-		start_period: health.start_period,
-	};
+	return { ...health };
 }
 
 function normalizeDependsOn(
@@ -225,6 +226,6 @@ function normalizeDependsOn(
 	if (!deps) return undefined;
 	return deps.map((d) => {
 		if (typeof d === "string") return { component: d };
-		return { component: d.component, condition: d.condition };
+		return { ...d };
 	});
 }
