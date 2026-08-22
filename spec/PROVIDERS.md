@@ -102,7 +102,7 @@ A specialization makes a matching provider more faithful; it never makes the app
 
 ### Source acquisition (D-43)
 
-Any build or source-mode operation needs the app's source tree. A **local** provider has it for free — the checkout the Launchfile sits in. Every other provider MUST resolve the tree through this precedence:
+Any build or source-mode operation needs the app's source tree. Every provider resolves the tree through this precedence — a **local** provider trivially lands on rule 2, the checkout the Launchfile sits in:
 
 1. **Orchestrator-supplied source.** A source the orchestrator hands the provider — a repo URL + ref, a tarball, or a local tree — MUST take precedence over everything below. This is the home-#2 channel (D-36): forks, private mirrors, and per-environment ref choices (`main` to staging, a tag to prod) all arrive here, never in the file.
 2. **Attached context.** A Launchfile is **attached** iff it was read from within the app's own source tree — the checkout of the app it describes. That tree *is* the source; a remote provider MAY package and ship it as its build context. A file fetched standalone (a catalog entry, a URL) into a cache or temporary directory is **detached**, even though it momentarily sits in some directory.
