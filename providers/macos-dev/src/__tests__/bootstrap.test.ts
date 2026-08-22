@@ -11,7 +11,8 @@ describe("extractCaptures (D-34)", () => {
 				sensitive: true,
 			},
 		};
-		const stdout = "Admin created.\nInvite URL: https://example.com/invite/abc123\n";
+		const stdout =
+			"Admin created.\nInvite URL: https://example.com/invite/abc123\n";
 		expect(extractCaptures(stdout, captures)).toEqual({
 			invite_link: "https://example.com/invite/abc123",
 		});
@@ -41,7 +42,8 @@ describe("extractCaptures (D-34)", () => {
 			url: { pattern: "https?://\\S+" },
 		};
 		// Simulates colorized output from a CLI tool that detects a TTY
-		const stdout = "\x1b[32mSuccess:\x1b[0m visit \x1b[4mhttps://example.com/admin\x1b[0m to continue";
+		const stdout =
+			"\x1b[32mSuccess:\x1b[0m visit \x1b[4mhttps://example.com/admin\x1b[0m to continue";
 		expect(extractCaptures(stdout, captures)).toEqual({
 			url: "https://example.com/admin",
 		});
@@ -89,12 +91,13 @@ describe("parseDuration", () => {
 		expect(parseDuration("2h")).toBe(7_200_000);
 	});
 
-	it("tolerates whitespace", () => {
-		expect(parseDuration(" 10s ")).toBe(10_000);
+	it("rejects whitespace forms (ratified grammar, D-47)", () => {
+		expect(() => parseDuration(" 10s ")).toThrow(/invalid duration/);
+		expect(() => parseDuration("5 m")).toThrow(/invalid duration/);
 	});
 
-	it("falls back to default for invalid input", () => {
-		expect(parseDuration("bogus")).toBe(120_000);
-		expect(parseDuration("")).toBe(120_000);
+	it("throws on invalid input instead of substituting a default (PROVIDERS.md 10.9)", () => {
+		expect(() => parseDuration("bogus")).toThrow(/invalid duration/);
+		expect(() => parseDuration("")).toThrow(/invalid duration/);
 	});
 });

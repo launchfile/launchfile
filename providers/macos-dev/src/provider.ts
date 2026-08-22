@@ -25,6 +25,21 @@ export function sourceRunCommand(component: NormalizedComponent): string | undef
 	if (component.image) return undefined; // image, no `dev` override → artifact
 	return component.commands?.start?.command;
 }
+
+/**
+ * Parse a declared timeout, adding the stage/component label to the error.
+ * An unparseable duration is surfaced — it fails the stage that declared it
+ * (PROVIDERS.md §10.9) — never silently replaced with a default. Undefined
+ * passes through so callers keep their own default budgets.
+ */
+function declaredTimeout(timeout: string | undefined, label: string): number | undefined {
+	if (timeout === undefined) return undefined;
+	try {
+		return parseDuration(timeout);
+	} catch (err) {
+		throw new Error(`${label}: ${err instanceof Error ? err.message : String(err)}`);
+	}
+}
 import { checkPrereqs } from "./prereqs.js";
 import { loadState, initState, saveState, ensureDirs } from "./state.js";
 import {
@@ -382,7 +397,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 					env: allEnvs[name],
 					// Installs/compiles routinely exceed the 2-minute shell default;
 					// honor a declared timeout, else allow 10 minutes.
-					timeout: prepare?.timeout ? parseDuration(prepare.timeout) : 600_000,
+					timeout: declaredTimeout(prepare?.timeout, `prepare [${name}]`) ?? 600_000,
 				});
 			}
 		}
@@ -396,7 +411,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 			await shell(release.command, {
 				cwd: join(projectDir, component.source ?? component.build?.context ?? "."),
 				env: allEnvs[name],
-				timeout: release.timeout ? parseDuration(release.timeout) : undefined,
+				timeout: declaredTimeout(release.timeout, `release [${name}]`),
 			});
 		}
 	}

@@ -409,6 +409,8 @@ export interface ComposeResult {
 	secrets: Record<string, string>;
 	/** Map of component name → exposed host port */
 	ports: Record<string, number>;
+	/** Map of component name → generated compose service name (skipped components absent) */
+	services: Record<string, string>;
 }
 
 export function launchToCompose(
@@ -422,6 +424,7 @@ export function launchToCompose(
 	const volumes: Record<string, Record<string, unknown>> = {};
 	const secrets = opts.secrets ?? {};
 	const ports: Record<string, number> = {};
+	const componentServices: Record<string, string> = {};
 
 	const backingServices = createBackingServices(secrets);
 
@@ -678,6 +681,7 @@ export function launchToCompose(
 		}
 
 		services[serviceName] = service;
+		componentServices[componentName] = serviceName;
 	}
 
 	// Add network
@@ -701,6 +705,7 @@ export function launchToCompose(
 		builds,
 		secrets,
 		ports,
+		services: componentServices,
 	};
 }
 

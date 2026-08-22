@@ -9,10 +9,21 @@ A Launchfile provider that runs apps via Docker Compose. Generates a docker-comp
 ## Philosophy
 
 - **Image-first, build-capable** — uses `image:` when present; components with `build:` are built via `docker compose build` (contexts resolve against the project directory; git-URL contexts pass through). Building in Docker is the sandboxed path for untrusted sources — nothing from the repo executes on the host
-- **Artifact-context commands only** — runs `commands.start`/`bootstrap`; ignores source-mode commands (`install`, `dev` — D-38)
+- **Artifact-context commands only** — runs `commands.release` (one-shot `compose run --rm` before `up`, deploy-failing), `commands.start`, and `bootstrap`; ignores source-mode commands (`install`, `dev` — D-38)
 - **Zero-install** — works via `npx launchfile up ghost`
 - **100% cleanable** — `down --destroy` removes all containers, volumes, and networks
 - **Catalog-friendly** — accepts app slugs, URLs, or local Launchfile paths
+
+## Timeout defaults (PROVIDERS.md §10.9)
+
+Budgets applied when a command declares no `timeout:`:
+
+| Command     | Default |
+|-------------|---------|
+| `release`   | 10m     |
+| `bootstrap` | 2m      |
+
+An unparseable declared `timeout` is surfaced, never silently replaced: `release` fails the deploy, `bootstrap` reports the failure to the invoker.
 
 ## Commands
 
@@ -29,6 +40,7 @@ This package is a library consumed by the unified `launchfile` CLI (`packages/la
 - `cli.ts` — CLI entry point, parses commands and flags
 - `provider.ts` — Main orchestration (up, down, status, logs, list)
 - `compose-generator.ts` — Launchfile → docker-compose.yml translation
+- `release.ts` — Pre-`up` release one-shots via `compose run --rm` (deploy-failing)
 - `source-resolver.ts` — Resolves slugs, URLs, or paths to Launchfile YAML
 - `port-allocator.ts` — Finds available host ports for container bindings
 - `state.ts` — Persists state at `~/.launchfile/docker/{slug}/`

@@ -13,6 +13,18 @@ A Launchfile provider that runs apps natively on macOS for local development. Us
 - **Brew-first** — shared database services, app-specific databases namespaced by app name
 - **Supports skip by default** — use `--with-optional` for optional resources
 
+## Timeout defaults (PROVIDERS.md §10.9)
+
+Budgets applied when a command declares no `timeout:`:
+
+| Command                        | Default |
+|--------------------------------|---------|
+| prepare (`install` ?? `build`) | 10m     |
+| `release`                      | 2m      |
+| `bootstrap`                    | 2m      |
+
+An unparseable declared `timeout` is surfaced, never silently replaced: prepare/`release` fail the launch, `bootstrap` reports the failure to the invoker.
+
 ## Commands
 
 ```bash

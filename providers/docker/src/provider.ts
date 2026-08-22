@@ -19,6 +19,7 @@ import {
 } from "./state.js";
 import { allocatePorts } from "./port-allocator.js";
 import { launchToCompose } from "./compose-generator.js";
+import { planReleases, runReleases } from "./release.js";
 import { shell, shellStream } from "./shell.js";
 import { getLogger, withSpan } from "./logger.js";
 import { readdir } from "node:fs/promises";
@@ -259,6 +260,27 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// Wire env vars (if any resources)
 		if (resources.length > 0) {
 			console.log(`  \u2193 Wiring environment variables... done`);
+		}
+
+		// Run declared release commands as one-shot containers before any app
+		// service starts (SPEC.md § Failure semantics: resources ready →
+		// release → start). `compose run --rm` brings each component's
+		// `depends_on` up first (backing resources gate on service_healthy);
+		// a non-zero exit throws and aborts the deploy here.
+		const releasePlan = planReleases(launch, {
+			services: result.services,
+			hostPorts: result.ports,
+			secrets: state.secrets,
+			only: summaryOnly,
+		});
+		if (releasePlan.length > 0) {
+			await withSpan(
+				"up:release",
+				{ project, components: releasePlan.map((r) => r.component) },
+				async () => {
+					await runReleases(releasePlan, { project, composeFile });
+				},
+			);
 		}
 
 		// Start services

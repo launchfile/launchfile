@@ -64,8 +64,13 @@ describe("parseDuration (docker provider)", () => {
 		expect(parseDuration("1h")).toBe(3_600_000);
 	});
 
-	it("falls back to 120s on invalid input", () => {
-		expect(parseDuration("???")).toBe(120_000);
-		expect(parseDuration("")).toBe(120_000);
+	it("throws on invalid input instead of substituting a default (PROVIDERS.md 10.9)", () => {
+		expect(() => parseDuration("???")).toThrow(/invalid duration/);
+		expect(() => parseDuration("")).toThrow(/invalid duration/);
+	});
+
+	it("rejects whitespace forms (ratified grammar, D-47)", () => {
+		expect(() => parseDuration("5 m")).toThrow(/invalid duration/);
+		expect(() => parseDuration(" 10s ")).toThrow(/invalid duration/);
 	});
 });
