@@ -22,8 +22,8 @@ Stable host mappings for every published endpoint, and D-27-correct publication.
   endpoint, matching its documented contract — for apps whose first
   provides-bearing component was internal (e.g. a database), `$app.url` now
   points at the actual public component. `@launchfile/macos-dev` adopts the
-  same rule, so both providers resolve `$app.url` to the same component for
-  the same Launchfile.
+  same rule, so both providers select the same component as the app's public
+  address.
 - An app where no endpoint anywhere sets `exposed: true` now warns that
   nothing is published and the app is not reachable, instead of starting
   silently with `$app.url` empty. Individual internal components stay quiet —
