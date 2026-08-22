@@ -358,7 +358,7 @@ function emitGenerator(
 		return `\${random_integer.${tf}.result}`;
 	}
 	// "secret" — spec-defined output: 32 bytes of cryptographically random
-	// data, hex-encoded (64 characters). See spec/DESIGN.md D-46.
+	// data, hex-encoded (64 characters). See spec/DESIGN.md D-47.
 	// random_bytes (hashicorp/random >= 3.6) marks its outputs sensitive in
 	// state and plan; random_id's .hex would be stored and shown in plain.
 	blocks.push(block("resource", ["random_bytes", tf], [attr("length", 32)]));
