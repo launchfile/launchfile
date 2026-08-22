@@ -72,9 +72,9 @@ jobs:
       # changesets/action runs `publish-script:` from the repo root, so builds must
       # happen beforehand — there is no per-package build hook.
       - run: cd sdk && bun install --frozen-lockfile && bun run build
-      - run: cd providers/docker && bun install && bun run build
-      - run: cd providers/macos-dev && bun install && bun run build
-      - run: cd packages/launchfile && bun install && bun run build
+      - run: cd providers/docker && bun install --frozen-lockfile && bun run build
+      - run: cd providers/macos-dev && bun install --frozen-lockfile && bun run build
+      - run: cd packages/launchfile && bun install --frozen-lockfile && bun run build
 
       # Phase selector. See the header comment at the top of this file for
       # the full explanation of why `version-script:` and `publish-script:` are

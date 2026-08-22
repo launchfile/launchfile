@@ -1,8 +1,13 @@
 version: 2
 updates:
-  # SDK
-  - package-ecosystem: npm
-    directory: /sdk
+  # Bun workspace root — covers sdk/, providers/*, and packages/*.
+  # One entry, not one per member: bun keeps a single lockfile at the workspace
+  # root, and that is the only lockfile it reads for any member. The bun
+  # ecosystem (not npm) is required so dependabot regenerates ./bun.lock — an
+  # npm-ecosystem PR bumps package.json alone, which fails CI's frozen-lockfile
+  # install. Same reason the www-* entries below use bun.
+  - package-ecosystem: bun
+    directory: /
     schedule:
       interval: weekly
       day: monday
@@ -12,28 +17,6 @@ updates:
         dependency-type: development
       production-dependencies:
         dependency-type: production
-
-  # Docker provider
-  - package-ecosystem: npm
-    directory: /providers/docker
-    schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
-    groups:
-      all-dependencies:
-        patterns: ["*"]
-
-  # macOS dev provider
-  - package-ecosystem: npm
-    directory: /providers/macos-dev
-    schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
-    groups:
-      all-dependencies:
-        patterns: ["*"]
 
   # www-dev (launchfile.dev)
   # bun ecosystem so dependabot regenerates bun.lock — npm-ecosystem PRs only

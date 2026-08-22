@@ -22,5 +22,7 @@ packages/*/package/
 # Cloudflare Wrangler local state
 .wrangler/
 
-# Bun lockfiles (each package manages its own)
-bun.lock
+# Bun lockfiles are committed. The workspace root lockfile at ./bun.lock is the
+# only one bun reads for sdk/, providers/*, and packages/* — a lockfile inside a
+# workspace member is never consulted, so `bun install --frozen-lockfile` there
+# silently installs from the registry unless the root lockfile is present.
