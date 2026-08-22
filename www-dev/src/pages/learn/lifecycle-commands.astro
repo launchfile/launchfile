@@ -57,21 +57,43 @@ const captureYaml = captureYamlRaw.replace(/^#.*\n/gm, "").trim();
 <h2 id="failure-semantics">When a command fails</h2>
 
 <p>
-  Every stage has exactly one failure disposition, so you never have to guess whether a failed command stops a deploy:
+  Every command has exactly one failure disposition, decided by the <em>slot</em> it fills rather than its name — because
+  one command can fill a slot in either mode. Source mode resolves prepare as <code>install ?? build</code> and run as
+  <code>dev ?? start</code>, so <code>build</code> and <code>start</code> each show up in two modes.
 </p>
 
 <table>
   <thead>
-    <tr><th>Stage</th><th>On failure</th></tr>
+    <tr><th>Slot</th><th>Filled by</th><th>On failure</th></tr>
   </thead>
   <tbody>
-    <tr><td><code>build</code></td><td><strong>Fails the deploy</strong> — there's no artifact to run.</td></tr>
-    <tr><td><code>release</code></td><td><strong>Fails the deploy.</strong> Runs after resources are ready and before <code>start</code>, so a failed migration never serves traffic.</td></tr>
-    <tr><td><code>start</code></td><td><strong>Fails the deploy</strong> — the component didn't come up.</td></tr>
-    <tr><td><code>install</code>, <code>dev</code></td><td><strong>Fail your dev session</strong> — source-mode commands are never a deployed-state concern.</td></tr>
-    <tr><td><code>bootstrap</code>, <code>seed</code>, <code>test</code>, custom</td><td><strong>Reported to whoever invoked them</strong> — on-demand commands never affect deploy status.</td></tr>
+    <tr><td><strong>prepare</strong></td><td>artifact: <code>build</code><br />source: <code>install ?? build</code></td><td><strong>Fails the invocation</strong> — your deploy if you're deploying, your session if you're running from source. Nothing to run either way.</td></tr>
+    <tr><td><strong>release</strong></td><td><code>release</code></td><td><strong>Fails the deploy.</strong> Runs after resources are ready and before the run slot, so a failed migration never serves traffic.</td></tr>
+    <tr><td><strong>run</strong></td><td>artifact: <code>start</code><br />source: <code>dev ?? start</code></td><td><strong>Fails the invocation</strong> — the component didn't come up.</td></tr>
+    <tr><td><strong>bootstrap</strong></td><td><code>bootstrap</code></td><td><strong>Reported to whoever invoked it</strong> — never affects deploy status.</td></tr>
+    <tr><td><strong>on-demand</strong></td><td><code>seed</code>, <code>test</code>, custom</td><td><strong>Reported to whoever invoked it</strong> — never affects deploy status.</td></tr>
   </tbody>
 </table>
+
+<p>
+  "Fails the invocation" is what keeps this unambiguous. If you declare only <code>start:</code> — no <code>dev</code>,
+  no <code>image</code> — it fills the run slot in source mode, and it's covered exactly once.
+</p>
+
+<h2 id="command-interpretation">Commands run in a shell</h2>
+
+<p>
+  A command string is handed to a POSIX shell, so <code>&&</code>, pipes, redirection and variable expansion all work
+  the way you'd write them at a terminal:
+</p>
+
+<pre><code>{`commands:
+  release: "rails db:migrate && rails db:seed"`}</code></pre>
+
+<p>
+  A provider that can't offer a shell has to say the command went unhonored rather than guess at it — splitting on
+  whitespace and running the first word would quietly execute half of what you wrote.
+</p>
 
 <h2 id="timeouts">Timeouts and durations</h2>
 
