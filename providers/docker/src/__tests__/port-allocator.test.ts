@@ -130,6 +130,68 @@ describe("allocatePorts", () => {
 		expect(result["default:https"]).toBe(23456);
 	});
 
+	it("lets a tcp and a udp endpoint share one host port (the DNS shape)", async () => {
+		const components = {
+			dns: {
+				provides: [
+					{ name: "dns-tcp", port: 45123, protocol: "tcp", exposed: true },
+					{ name: "dns-udp", port: 45123, protocol: "udp", exposed: true },
+				],
+			},
+		};
+
+		const result = await allocatePorts(components, "resolver");
+
+		// A port number is claimed per wire protocol, so the udp twin gets the
+		// same host port as the tcp side instead of being pushed to a hash.
+		expect(result.dns).toBe(result["dns:dns-udp"]);
+	});
+
+	it("round-trips saved state where a tcp/udp twin shares a port", async () => {
+		const components = {
+			dns: {
+				provides: [
+					{ name: "dns-tcp", port: 45123, protocol: "tcp", exposed: true },
+					{ name: "dns-udp", port: 45123, protocol: "udp", exposed: true },
+				],
+			},
+		};
+		const saved = { dns: 45123, "dns:dns-udp": 45123 };
+
+		const result = await allocatePorts(components, "resolver", saved);
+
+		// Regression: a protocol-blind `taken` set rejected the udp twin's
+		// saved port because the tcp side had already claimed the number,
+		// silently moving the udp endpoint on every restart.
+		expect(result).toEqual(saved);
+	});
+
+	it("probes udp endpoints with a udp socket, not a tcp listener", async () => {
+		const { createSocket } = await import("node:dgram");
+		const blocker = createSocket("udp4");
+		const port = 45777;
+		await new Promise<void>((resolve, reject) => {
+			blocker.once("error", reject);
+			blocker.bind(port, "127.0.0.1", resolve);
+		});
+
+		try {
+			const components = {
+				vpn: {
+					provides: [{ name: "wg", port, protocol: "udp", exposed: true }],
+				},
+			};
+
+			const result = await allocatePorts(components, "vpn-app");
+
+			// The port is free on TCP but occupied on UDP; a tcp-only probe
+			// would wrongly hand it out.
+			expect(result.vpn).not.toBe(port);
+		} finally {
+			await new Promise<void>((resolve) => blocker.close(resolve));
+		}
+	});
+
 	it("gives same-port endpoints distinct host ports instead of colliding", async () => {
 		const components = {
 			default: {
