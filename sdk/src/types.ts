@@ -320,6 +320,16 @@ export interface Launch {
 	/** Brief description */
 	description?: string;
 
+	// --- Metadata ---
+	/** Canonical source origin URL. On a git-hosted URL, a '#' fragment names the baseline ref (branch/tag/SHA) — see parseRepository() */
+	repository?: string;
+	/** Project homepage URL */
+	website?: string;
+	/** Logo image URL */
+	logo?: string;
+	/** Discovery tags for catalog listings */
+	keywords?: string[];
+
 	// --- App-wide secrets (shared across components) ---
 	/** Named secrets generated once and referenced via $secrets.name */
 	secrets?: Record<string, Secret>;
@@ -428,6 +438,14 @@ export interface NormalizedLaunch {
 	generator?: string;
 	name: string;
 	description?: string;
+	/** Canonical source origin URL, with optional '#' baseline-ref fragment — see parseRepository() */
+	repository?: string;
+	/** Project homepage URL */
+	website?: string;
+	/** Logo image URL */
+	logo?: string;
+	/** Discovery tags for catalog listings */
+	keywords?: string[];
 	/** App-wide secrets shared across components */
 	secrets?: Record<string, Secret>;
 	/** All components (single-component apps are normalized to a "default" component) */

@@ -215,6 +215,12 @@ export const LaunchSchema = z.object({
 	name: NameSchema,
 	description: z.string().max(4096).optional(),
 
+	// Metadata
+	repository: z.string().max(1024).optional(),
+	website: z.string().max(1024).optional(),
+	logo: z.string().max(1024).optional(),
+	keywords: z.array(z.string().max(128)).max(64).optional(),
+
 	// App-wide secrets
 	secrets: z.record(z.string(), SecretSchema).optional(),
 

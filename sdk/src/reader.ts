@@ -60,6 +60,10 @@ function normalizeLaunch(launch: Launch): NormalizedLaunch {
 		generator: launch.generator,
 		name: launch.name,
 		description: launch.description,
+		repository: launch.repository,
+		website: launch.website,
+		logo: launch.logo,
+		keywords: launch.keywords,
 		secrets: launch.secrets,
 		components: {},
 	};

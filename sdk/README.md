@@ -128,6 +128,7 @@ isExpression("$$escaped");      // false (literal $)
 | `resolveExpression(value, context)` | Resolve expression against a context → string |
 | `isExpression(value)` | Check if a string contains `$` references |
 | `parseDotPath(path)` | Parse `"a.b.c"` → `["a", "b", "c"]` |
+| `parseRepository(repository)` | Split a `repository` value at its `#` fragment → `{ url, ref }` |
 | `LaunchSchema` | Zod schema for direct validation |
 
 ## Types
