@@ -460,21 +460,7 @@ Source-mode resolution is **per component**, with precedence **`dev` > `image` >
 
 **Why**: Honors D-16 so a selected component can actually start. One shared `selectionClosure` definition closes the provider divergence at the source (Docker's compose default is already correct under this rule; macOS adopts the same helper). Downward-only keeps the set minimal — you get what you asked for and what it needs, never what needs it. Purely additive ([P-13](#p-13-additive-extensibility)): no schema or parser change; with no selector, behavior is unchanged. Extends D-37. See [#97](https://github.com/launchfile/launchfile/pull/97).
 
-
-
 ---
-
-### D-43: Unexecuted `schedule` is reported loudly, not silently accepted
-
----
-
-### D-50: Unexecuted `schedule` is reported loudly, not silently accepted
-
----
-
----
-
-
 
 ### D-42: Deprecation metadata model — the P-14 mechanism
 
@@ -594,7 +580,7 @@ The rule fires only when the file itself yields nothing: no `generator:`, no `de
 
 **Scope**: this closes the *fabrication* path only. A `required` variable whose `default:` is an expression the provider cannot resolve — or whose `set_env:` binding resolves to `""` — still arrives empty under conformance rule 6 and [L-4](#l-4-resource-property-vocabulary-is-implicit), counts as supplied, and reaches the same "launch looks fine, app is broken" outcome by a different route. Both are the same mechanism and both belong to L-4; neither is addressed here.
 
-**Conformance at adoption**: unlike [D-51](#d-51-unexecuted-schedule-is-reported-loudly-not-silently-accepted), which merged with every runtime provider already satisfying it, **no deploying provider implements the hard-fail branch when this decision lands.** The aws provider adopts the `translate` branch in the same change; docker and macos-dev are **not** conformant. Bringing docker into conformance additionally requires a catalog pass, because three tested catalog entries (`flowise`, `outline`, `posthog`) currently depend on the fabricated values to launch at all — as does `catalog/test/src/launch-to-compose.ts`, which carries the same heuristic and is what lets those entries pass their health checks. That gap is recorded here as a present fact rather than a promise, since this decision's own subject is not papering over an unmet precondition. It is not what D-51 rejected as *"requiring execution for conformance"*: that objection was to prescribing a **capability** a provider must build — a cron runner — which would have ejected translation-only providers outright. Failing on a value one was never given is not a capability; every provider can already do it, and the `translate` and inspection branches keep non-deploying providers conformant. What is deferred here is the work, not the obligation.
+**Conformance at adoption**: unlike [D-51](#d-51-unexecuted-schedule-is-reported-loudly-not-silently-accepted), which merged with every runtime provider already satisfying it, **no deploying provider implements the hard-fail branch when this decision lands.** The aws provider adopts the `translate` branch in the same change; docker and macos-dev are **not** conformant. Bringing docker into conformance additionally requires a catalog pass, because three tested catalog entries (`flowise`, `outline`, `posthog`) currently depend on the fabricated values to launch at all — as does `catalog/test/src/launch-to-compose.ts`, which carries the same heuristic and is what lets those entries pass their health checks. That gap is recorded here as a present fact rather than a promise, since this decision's own subject is not papering over an unmet precondition. It is not what D-51 rejected as *"requiring execution for conformance"*: that objection was to prescribing a **capability** a provider must build — a cron runner — which would have ejected translation-only providers outright. Failing on a value one was never given is not a capability; every provider can already do it, and the `translate` and inspection branches keep non-deploying providers conformant. What is deferred here is the work, not the obligation — and it is tracked, not merely asserted: closing it is [#192](https://github.com/launchfile/launchfile/issues/192), which covers the Docker hard-fail, macos-dev on both its `up` and `env` branches, the catalog and `spec/examples/` pass, and the catalog harness's independent copy of the same heuristic.
 
 ---
 
