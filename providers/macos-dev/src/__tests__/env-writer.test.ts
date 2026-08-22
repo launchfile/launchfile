@@ -3,8 +3,10 @@ import {
 	buildResolverContext,
 	computeAppProperties,
 	resolveComponentEnv,
+	resolveGenerators,
 	generateSecrets,
 } from "../env-writer.js";
+import { readLaunch } from "@launchfile/sdk";
 import type { NormalizedComponent, NormalizedLaunch, Secret } from "@launchfile/sdk";
 import type { ResourceProperties } from "../resources/types.js";
 import { storagePaths } from "../storage.js";
@@ -284,5 +286,36 @@ describe("generateSecrets", () => {
 		const secrets = await generateSecrets(defs, existing);
 
 		expect(secrets["jwt-secret"]).toBe("keep-this");
+	});
+});
+
+describe("provenance precedence — generator outranks default (D-49)", () => {
+	const ctx = () => buildResolverContext({}, {}, {}, {});
+	const comp = (envYaml: string) =>
+		readLaunch(`version: launch/v1\nname: p\ncommands:\n  start: run\nenv:\n${envYaml}`)
+			.components.default!;
+
+	it("mints when both a generator and a default are declared", async () => {
+		// docker and aws both resolve generator first. Resolving the default here
+		// would give the same file two different values across providers (P-5).
+		const c = comp("  FOO:\n    default: author-literal\n    generator: secret\n");
+		const env = resolveComponentEnv(c, ctx());
+		await resolveGenerators(c, env);
+		expect(env.FOO).not.toBe("author-literal");
+		expect(env.FOO).toMatch(/^[0-9a-f]{64}$/);
+	});
+
+	it("still uses the default when no generator is declared", async () => {
+		const c = comp("  FOO:\n    default: author-literal\n");
+		const env = resolveComponentEnv(c, ctx());
+		await resolveGenerators(c, env);
+		expect(env.FOO).toBe("author-literal");
+	});
+
+	it("leaves a bare required declaration unset for the operator", async () => {
+		const c = comp("  FOO:\n    required: true\n");
+		const env = resolveComponentEnv(c, ctx());
+		await resolveGenerators(c, env);
+		expect(env.FOO).toBeUndefined();
 	});
 });

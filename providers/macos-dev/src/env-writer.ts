@@ -160,6 +160,12 @@ export function resolveComponentEnv(
 		for (const [key, envVar] of Object.entries(component.env)) {
 			if (env[key] !== undefined) continue; // set_env takes precedence
 
+			// A generator outranks a default (D-49 provenance precedence). Filling
+			// the default here would win by arriving first — resolveGenerators
+			// skips any key already set — and this provider would mint nothing
+			// where docker and aws mint a secret, for the same file.
+			if (envVar.generator) continue;
+
 			if (envVar.default !== undefined) {
 				const defaultStr = String(envVar.default);
 				if (isExpression(defaultStr)) {
