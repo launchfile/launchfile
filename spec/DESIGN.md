@@ -560,7 +560,7 @@ Composition rule: a *derived* expression over a *minted* input — the `APP_KEY:
 
 ### D-50: Reserved — no decision recorded
 
-**Status**: Reserved; no decision recorded. No proposal claims this number — it was vacated while this branch was open, when the decision now recorded as D-51 was renumbered twice (D-43 → D-50 → D-51) to clear numbers taken on `main` and to match the number [#197](https://github.com/launchfile/launchfile/pull/197) carries for it. The number is held rather than reused so the published list stays stable.
+**Status**: Reserved; no decision recorded. No proposal claims this number — it was vacated while [#196](https://github.com/launchfile/launchfile/pull/196) was open, when the decision now recorded as D-51 was renumbered twice (D-43 → D-50 → D-51) to clear numbers already claimed by other decisions and to match the number [#197](https://github.com/launchfile/launchfile/pull/197) carries for it. The number is held rather than reused so the published list stays stable.
 
 ---
 
