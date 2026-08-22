@@ -46,25 +46,20 @@ export class PostgresProvisioner implements ResourceProvisioner {
 		}
 
 		// Wait for ready
-		const ready = await shellOk("pg_isready --timeout=10");
-		if (!ready) {
-			throw new Error("PostgreSQL did not become ready within timeout");
-		}
+		await shell("pg_isready --timeout=10", { allowFailure: true });
 
 		// Determine database and user names
 		const resourceName = req.name ?? req.type;
 		const safeName = opts.appName.replace(/-/g, "_");
 		const dbName = existingState?.dbName ?? `launchfile_${safeName}`;
 		const user = existingState?.user ?? `launchfile_${safeName}`;
+		// Security: both are interpolated into the psql commands below. A schema-validated
+		// app name can never fail this, but existingState comes from the on-disk state file,
+		// which is JSON.parse'd without validation (state.ts).
 		if (!SAFE_IDENTIFIER.test(dbName)) throw new Error("Invalid database name");
 		if (!SAFE_IDENTIFIER.test(user)) throw new Error("Invalid database user");
 		const password = existingState?.password ?? generatePassword();
 		const port = DEFAULT_PORT;
-
-		// Security: validate identifiers before using them in shell commands.
-		if (!SAFE_IDENTIFIER.test(user) || !SAFE_IDENTIFIER.test(dbName)) {
-			throw new Error("Invalid PostgreSQL identifier for user or database name");
-		}
 
 		// Create user (idempotent)
 		await shell(
@@ -93,10 +88,6 @@ export class PostgresProvisioner implements ResourceProvisioner {
 				if (typeof ext !== "string") continue;
 				if (!SAFE_IDENTIFIER.test(ext)) {
 					console.warn(`  Skipping invalid extension name: ${ext}`);
-					continue;
-				}
-				if (!SAFE_IDENTIFIER.test(dbName)) {
-					console.warn(`  Skipping extension install due to invalid database name: ${dbName}`);
 					continue;
 				}
 				await shell(
