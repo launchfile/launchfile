@@ -224,7 +224,7 @@
         },
         "set_env": {
           "type": "object",
-          "description": "Maps granted capability properties (e.g. $socket, $host, $api for container_runtime) to app env vars. Use $prop for references, plain strings for literals.",
+          "description": "Maps granted capability properties (e.g. $socket, $url, $api for container_runtime) to app env vars. Use $prop for references, plain strings for literals.",
           "additionalProperties": { "type": "string" }
         }
       },

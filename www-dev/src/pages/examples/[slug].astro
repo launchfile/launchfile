@@ -172,7 +172,7 @@ export function getStaticPaths() {
         "A `host:`-marked entry in `requires`/`supports` requests a host capability — granted or refused, never provisioned",
         "The value names an interface, not a product: `container_runtime: docker` means the Docker Engine API (a Podman-compatible socket satisfies it); `any` is runtime-agnostic",
         "`requires` = must be granted or the provider refuses to deploy; `supports` = optional — deploy, probe, degrade",
-        "A granted capability exposes `$socket`, `$host`, and `$api`, wired into env vars with `set_env`",
+        "A granted capability exposes `$socket`, `$url`, and `$api`, wired into env vars with `set_env`",
         "The required `host:` marker makes the app's privilege surface machine-extractable — `launchfile validate` prints it",
       ],
       guidance: "Container managers, monitoring agents, and update watchers that talk to the host's container runtime — anything that needs the Docker socket.",
@@ -182,7 +182,7 @@ export function getStaticPaths() {
       ],
       annotations: [
         { line: "host: { container_runtime: docker }", text: "The capability entry — the host: marker flags it as privileged; the value names the interface the app speaks." },
-        { line: "DOCKER_HOST: $host", text: "Wires the granted coordinate — a DOCKER_HOST-style connection string like unix:///var/run/docker.sock — into the app's environment." },
+        { line: "DOCKER_HOST: $url", text: "Wires the granted coordinate — a DOCKER_HOST-style connection string like unix:///var/run/docker.sock — into the app's environment." },
       ],
     },
     {
