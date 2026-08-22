@@ -78,6 +78,28 @@ function sources(examplesOnly: boolean): Source[] {
 	return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+const INIT_ATTEMPTS = 3;
+
+/** Provider downloads come off the network, so a reset connection says nothing
+ * about the emitted HCL. Retry with backoff; only a repeated failure is real. */
+async function init(dir: string): Promise<void> {
+	for (let attempt = 1; ; attempt += 1) {
+		try {
+			// Array-based exec: arguments bypass the shell entirely (CWE-78 safe).
+			await run(BIN, ["init", "-backend=false", "-input=false", "-no-color"], {
+				cwd: dir,
+			});
+			return;
+		} catch (err) {
+			if (attempt >= INIT_ATTEMPTS) throw err;
+			process.stdout.write(
+				`retry ${BIN} init (attempt ${attempt}/${INIT_ATTEMPTS} failed)\n`,
+			);
+			await new Promise((r) => setTimeout(r, attempt * 3000));
+		}
+	}
+}
+
 async function validateOne(
 	src: Source,
 	workRoot: string,
@@ -87,10 +109,8 @@ async function validateOne(
 	const dir = mkdtempSync(join(workRoot, `${src.name}-`));
 	writeFileSync(join(dir, "main.tf"), hcl);
 	try {
+		await init(dir);
 		// Array-based exec: arguments bypass the shell entirely (CWE-78 safe).
-		await run(BIN, ["init", "-backend=false", "-input=false", "-no-color"], {
-			cwd: dir,
-		});
 		await run(BIN, ["validate", "-no-color"], { cwd: dir });
 		return { ok: true, detail: "" };
 	} catch (err) {
