@@ -532,7 +532,7 @@ Each limitation includes the problem, current stance, and future considerations.
 
 **Problem**: The standard properties (`url`, `host`, `port`, `user`, `password`, `name`) are convention, not enforced by the schema. A typo like `$hoost` passes validation and silently resolves to an empty string.
 **Current stance**: The resolver returns empty string for unknown properties, which usually causes a clear app error. The GAPS.md tracks this.
-**Future**: Delivered by [D-45](#d-45-resource-property-registry--vocabulary-is-standard-but-open) — the registry is `spec/schema/resource-properties.json` and SDK lint warns (advisory, never an error) on properties outside a known type's standard vocabulary.
+**Future**: Delivered by [D-46](#d-46-resource-property-registry--vocabulary-is-standard-but-open) — the registry is `spec/schema/resource-properties.json` and SDK lint warns (advisory, never an error) on properties outside a known type's standard vocabulary.
 
 ### L-5: `set_env` co-location vs. flat visibility trade-off
 
