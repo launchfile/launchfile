@@ -4,7 +4,7 @@
 #
 # The `host:` marker on a requires/supports entry requests a host
 # CAPABILITY: the provider grants it (mounts/forwards the runtime socket
-# and populates $socket / $host / $api) or refuses with a clear message.
+# and populates $socket / $url / $api) or refuses with a clear message.
 # It never provisions anything — unlike a backing service (`type:` entry).
 #
 # The value names an interface, not a product: `container_runtime: docker`
@@ -19,7 +19,7 @@ image: louislam/dockge:1
 requires:
   - host: { container_runtime: docker }   # capability → grant or refuse
     set_env:
-      DOCKER_HOST: $host                  # e.g. unix:///var/run/docker.sock
+      DOCKER_HOST: $url                  # e.g. unix:///var/run/docker.sock
 
 provides:
   - protocol: http

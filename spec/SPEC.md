@@ -261,7 +261,7 @@ requires:
   - postgres                              # backing service → provision + wire
   - host: { container_runtime: docker }   # capability      → grant or refuse
     set_env:
-      DOCKER_HOST: $host
+      DOCKER_HOST: $url
 supports:
   - host: { container_runtime: any }      # optional — deploy, probe, degrade
 ```
@@ -285,7 +285,7 @@ Like [resource properties](#resource-property-vocabulary), a granted capability 
 | Capability | Property | Meaning |
 |---|---|---|
 | `container_runtime` | `$socket` | Filesystem path of the runtime socket (e.g. `/var/run/docker.sock`) |
-| `container_runtime` | `$host` | `DOCKER_HOST`-style connection string (e.g. `unix:///var/run/docker.sock`, `tcp://10.0.0.5:2376`) |
+| `container_runtime` | `$url` | `DOCKER_HOST`-style connection string (e.g. `unix:///var/run/docker.sock`, `tcp://10.0.0.5:2376`) |
 | `container_runtime` | `$api` | HTTP(S) API endpoint URL, when the runtime is reachable over the network |
 
 Properties a provider cannot supply resolve to the empty string, matching unknown resource properties.

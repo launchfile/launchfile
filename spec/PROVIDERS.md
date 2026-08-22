@@ -223,7 +223,7 @@ A **translation-only** provider (IaC/manifest emitter) satisfies the contract by
 
 `requires`/`supports` entries marked `host:` (SPEC [Host capabilities](SPEC.md#host-capabilities)) are **not provisioned** — they are **granted or refused**. This is a distinct fulfillment mode from provisioning backing services (§10 item 5). A provider MUST do one of:
 
-- **Grant** — mount or forward the capability's underlying coordinate (e.g. bind-mount `/var/run/docker.sock`, or forward a TCP endpoint) and populate the capability's properties — `$socket`, `$host`, `$api` for `container_runtime` — so the entry's `set_env` wiring resolves.
+- **Grant** — mount or forward the capability's underlying coordinate (e.g. bind-mount `/var/run/docker.sock`, or forward a TCP endpoint) and populate the capability's properties — `$socket`, `$url`, `$api` for `container_runtime` — so the entry's `set_env` wiring resolves.
 - **Refuse** — decline to deploy the component, with a **clear, surfaced message** naming the capability it cannot grant (§10 item 8: report gaps, not silent drops). A refusal is user-visible output, not a line buried in a warnings array.
 
 Required vs optional follows the entry's home: a `requires` capability MUST be granted or the component refused; a `supports` capability MAY be left ungranted — the component still deploys, its capability `set_env` vars are simply absent, and the provider SHOULD note the un-granted capability so the degradation is visible.
