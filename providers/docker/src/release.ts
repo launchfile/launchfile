@@ -2,7 +2,7 @@
  * Release command execution for the Docker provider.
  *
  * Implements the `release` lifecycle stage per SPEC.md § Failure semantics
- * and PROVIDERS.md §10.9: a declared `release` runs after the component's
+ * and PROVIDERS.md §10.11: a declared `release` runs after the component's
  * required resources are ready and before `start`, and a failure fails the
  * deploy. Each release runs as a one-shot container via
  * `docker compose run --rm <service> <argv...>` — compose brings the
@@ -72,7 +72,7 @@ export function dependencyOrder(launch: NormalizedLaunch): string[] {
  * Build the ordered release plan for a deploy. Pure — no I/O — so ordering,
  * selection, expression resolution, and timeout handling are unit-testable.
  *
- * Throws on an unparseable `timeout` (PROVIDERS.md §10.9: surface the
+ * Throws on an unparseable `timeout` (PROVIDERS.md §10.11: surface the
  * error, never substitute a default) and on a release command that
  * resolves to nothing — release failures fail the deploy, and a plan that
  * cannot be built is such a failure.

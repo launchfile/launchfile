@@ -14,7 +14,7 @@ A Launchfile provider that runs apps via Docker Compose. Generates a docker-comp
 - **100% cleanable** — `down --destroy` removes all containers, volumes, and networks
 - **Catalog-friendly** — accepts app slugs, URLs, or local Launchfile paths
 
-## Timeout defaults (PROVIDERS.md §10.9)
+## Timeout defaults (PROVIDERS.md §10.11)
 
 Budgets applied when a command declares no `timeout:`:
 

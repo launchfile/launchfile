@@ -29,7 +29,7 @@ export function sourceRunCommand(component: NormalizedComponent): string | undef
 /**
  * Parse a declared timeout, adding the stage/component label to the error.
  * An unparseable duration is surfaced — it fails the stage that declared it
- * (PROVIDERS.md §10.9) — never silently replaced with a default. Undefined
+ * (PROVIDERS.md §10.11) — never silently replaced with a default. Undefined
  * passes through so callers keep their own default budgets.
  */
 function declaredTimeout(timeout: string | undefined, label: string): number | undefined {

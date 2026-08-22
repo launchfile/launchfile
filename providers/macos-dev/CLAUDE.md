@@ -13,7 +13,7 @@ A Launchfile provider that runs apps natively on macOS for local development. Us
 - **Brew-first** — shared database services, app-specific databases namespaced by app name
 - **Supports skip by default** — use `--with-optional` for optional resources
 
-## Timeout defaults (PROVIDERS.md §10.9)
+## Timeout defaults (PROVIDERS.md §10.11)
 
 Budgets applied when a command declares no `timeout:`:
 
