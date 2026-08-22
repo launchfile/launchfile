@@ -51,7 +51,15 @@ export function clearRegisteredSecrets(): void {
 // `scheme://user:password@host` — the password group is everything between the
 // first `:` after the userinfo and the `@`. Userinfo cannot contain `/`, `@`,
 // or whitespace, which bounds the match to a single URL.
-const CREDENTIAL_URL = /([a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^\s/:@]+:)([^\s/@]+)(@)/g;
+//
+// The scheme repetition is bounded rather than `*`: unbounded, every starting
+// offset in a long run of scheme-legal characters rescans that whole run
+// looking for `://`, which is quadratic in the input and lets a log line DoS
+// the redactor that is supposed to protect it (CWE-1333). RFC 3986 schemes are
+// ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ); the longest IANA-registered one
+// is well under this bound, so nothing real is excluded.
+const CREDENTIAL_URL =
+	/([a-zA-Z][a-zA-Z0-9+.-]{0,31}:\/\/[^\s/:@]+:)([^\s/@]+)(@)/g;
 
 /**
  * Scrub registered secrets and URL-embedded credentials out of `text`.
