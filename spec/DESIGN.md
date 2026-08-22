@@ -460,7 +460,7 @@ Source-mode resolution is **per component**, with precedence **`dev` > `image` >
 
 **Why**: Honors D-16 so a selected component can actually start. One shared `selectionClosure` definition closes the provider divergence at the source (Docker's compose default is already correct under this rule; macOS adopts the same helper). Downward-only keeps the set minimal — you get what you asked for and what it needs, never what needs it. Purely additive ([P-13](#p-13-additive-extensibility)): no schema or parser change; with no selector, behavior is unchanged. Extends D-37. See [#97](https://github.com/launchfile/launchfile/pull/97).
 
-### D-50: Unexecuted `schedule` is reported loudly, not silently accepted
+### D-51: Unexecuted `schedule` is reported loudly, not silently accepted
 
 **Decision**: A provider that does not execute a component's `schedule` MUST surface that gap with a launch-time warning naming the component and the field. The normative requirement lives in the provider contract (PROVIDERS.md §10, conformance rule 8 — the hard form of "report gaps, not silent drops"); this entry records the format-level decision behind it: `schedule` **stays in the spec** even though no reference provider currently executes it. Execution is ordinary provider roadmap work (launchd under macos-dev, a cron runner under docker — each provider chooses its own mechanism, [P-11](#p-11-separate-intent-from-execution)).
 
