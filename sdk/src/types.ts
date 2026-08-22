@@ -93,7 +93,7 @@ export interface Requirement {
 }
 
 /**
- * A host-capability request in `requires`/`supports` (D-43).
+ * A host-capability request in `requires`/`supports` (D-44).
  *
  * The `host:` marker distinguishes a capability (granted or refused by the
  * provider) from a backing service (`type:` entry, provisioned and wired).
@@ -296,9 +296,9 @@ export interface Component {
 	source?: string;
 	/** What this component exposes */
 	provides?: Provides[];
-	/** Required resource dependencies and host-capability requests (D-43) */
+	/** Required resource dependencies and host-capability requests (D-44) */
 	requires?: Array<string | Requirement | HostCapability>;
-	/** Optional resource enhancements and host-capability requests (D-43) */
+	/** Optional resource enhancements and host-capability requests (D-44) */
 	supports?: Array<string | Support | HostCapability>;
 	/** App-owned environment variables */
 	env?: Record<string, string | EnvVar>;
@@ -400,7 +400,7 @@ export interface NormalizedRequirement {
 	config?: Record<string, unknown>;
 	set_env?: Record<string, string>;
 	/**
-	 * Present when this entry is a host-capability request (D-43); `type` is
+	 * Present when this entry is a host-capability request (D-44); `type` is
 	 * the synthetic `"host"` for such entries. Providers grant (populate the
 	 * capability's properties) or refuse (surfaced message) — never provision.
 	 */

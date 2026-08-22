@@ -56,7 +56,7 @@ const RequirementObjectSchema = z.object({
 	set_env: z.record(z.string(), z.string()).optional(),
 });
 
-// --- Host capability entry (D-43) ---
+// --- Host capability entry (D-44) ---
 
 /**
  * A `host:`-marked capability entry in requires/supports. The marker

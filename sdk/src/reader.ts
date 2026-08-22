@@ -149,7 +149,7 @@ function normalizeRequirements(
 	return reqs.map((r) => {
 		if (typeof r === "string") return { type: r };
 		if ("host" in r) {
-			// Host-capability entry (D-43): the `host:` marker is the kind
+			// Host-capability entry (D-44): the `host:` marker is the kind
 			// discriminator; `type` is synthesized as "host" so consumers that
 			// key on type keep working. The `host` field stays authoritative.
 			return { type: "host", host: r.host, set_env: r.set_env };

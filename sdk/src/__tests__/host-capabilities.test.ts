@@ -4,7 +4,7 @@ import { lintLaunch } from "../lint.js";
 import { readLaunch } from "../reader.js";
 import { writeLaunch } from "../writer.js";
 
-describe("host-capability entries (D-43)", () => {
+describe("host-capability entries (D-44)", () => {
 	describe("parsing and normalization", () => {
 		it("parses a required container_runtime capability with set_env", () => {
 			const launch = readLaunch(`
@@ -120,7 +120,7 @@ requires:
 			expect(warnings).toHaveLength(1);
 			expect(warnings[0]).toContain("host:");
 			expect(warnings[0]).toContain("container_runtime");
-			expect(warnings[0]).toContain("D-43");
+			expect(warnings[0]).toContain("D-44");
 		});
 
 		it("does not warn on properly marked capability entries", () => {

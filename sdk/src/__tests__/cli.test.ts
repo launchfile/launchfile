@@ -78,7 +78,7 @@ describe("launchfile CLI", () => {
 			expect(exitCode).toBe(0);
 		});
 
-		it("emits the host-capabilities summary for the new entry form (D-43)", () => {
+		it("emits the host-capabilities summary for the new entry form (D-44)", () => {
 			const { stdout, exitCode } = run([
 				"validate",
 				`${EXAMPLES}/host-container-runtime.yaml`,
@@ -88,7 +88,7 @@ describe("launchfile CLI", () => {
 			expect(stdout).toContain("container_runtime=docker (required)");
 		});
 
-		it("emits the host-capabilities summary for the legacy host block (D-43)", () => {
+		it("emits the host-capabilities summary for the legacy host block (D-44)", () => {
 			const { stdout, exitCode } = run([
 				"validate",
 				`${EXAMPLES}/host-orchestrator.yaml`,

@@ -47,7 +47,7 @@ function collectRequires(launch: NormalizedLaunch): string[] {
 	for (const comp of Object.values(launch.components)) {
 		if (comp.requires) {
 			for (const req of comp.requires) {
-				if (req.host) continue; // capability, not a backing service (D-43)
+				if (req.host) continue; // capability, not a backing service (D-44)
 				types.add(req.type);
 			}
 		}
@@ -56,7 +56,7 @@ function collectRequires(launch: NormalizedLaunch): string[] {
 }
 
 /**
- * Collect the app's requested host capabilities (D-43) — the privilege
+ * Collect the app's requested host capabilities (D-44) — the privilege
  * surface `launchfile validate` must always surface. Reads BOTH spellings:
  * `host:`-marked capability entries in requires/supports, and the legacy
  * top-level `host:` block (reported in the capability vocabulary).
@@ -131,7 +131,7 @@ export interface ValidateResult {
 	name?: string;
 	components?: string[];
 	requires?: string[];
-	/** Requested host capabilities (D-43) — the app's privilege surface. */
+	/** Requested host capabilities (D-44) — the app's privilege surface. */
 	hostCapabilities?: string[];
 	errors?: string[];
 	/** Non-fatal lint advisories (do not affect `valid`). */
@@ -175,7 +175,7 @@ export function cmdValidate(path: string, opts: ValidateOpts = {}): ValidateResu
 				console.log(`  ${fmt.dim("requires:")}   ${allRequires.join(", ")}`);
 			}
 			if (hostCapabilities.length > 0) {
-				// The D-43 privilege-surface audit line — always emitted when any
+				// The D-44 privilege-surface audit line — always emitted when any
 				// capability is requested, in either spelling (entry or legacy block).
 				console.log(
 					`  ${fmt.dim("host capabilities requested:")} ${hostCapabilities.join(", ")}`,

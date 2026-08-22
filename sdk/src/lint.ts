@@ -36,7 +36,7 @@ function resourceName(req: NormalizedRequirement): string {
 }
 
 /**
- * Capability names a host-capability entry can carry (D-43). Used only for
+ * Capability names a host-capability entry can carry (D-44). Used only for
  * the marker-enforcement advisory: a backing-service entry whose `type` is
  * one of these almost certainly meant to be a `host:`-marked capability.
  * The real vocabulary is open (L-4) — this set only powers the warning.
@@ -58,8 +58,8 @@ const KNOWN_HOST_CAPABILITIES = new Set([
  *   `type`, `version`, or `config`, a single warning per conflicting resource
  *   names the field(s) that diverge. Same name + identical definition is
  *   normal resource sharing and is not warned about. Host-capability entries
- *   (D-43) are not resources and are excluded from this grouping.
- * - (D-43 marker enforcement, advisory) a backing-service entry whose `type`
+ *   (D-44) are not resources and are excluded from this grouping.
+ * - (D-44 marker enforcement, advisory) a backing-service entry whose `type`
  *   names a known host capability is warned about: host capabilities require
  *   the `host:` marker so the privilege surface stays machine-extractable.
  */
@@ -74,11 +74,11 @@ export function lintLaunch(launch: NormalizedLaunch): string[] {
 			...(component.requires ?? []),
 			...(component.supports ?? []),
 		]) {
-			if (req.host) continue; // capability entry, not a resource (D-43)
+			if (req.host) continue; // capability entry, not a resource (D-44)
 			if (KNOWN_HOST_CAPABILITIES.has(req.type)) {
 				warnings.push(
 					`${where}: "${req.type}" looks like a host capability — the host: marker is ` +
-						`required on privileged entries (D-43): use \`- host: { ${req.type}: ... }\``,
+						`required on privileged entries (D-44): use \`- host: { ${req.type}: ... }\``,
 				);
 				continue;
 			}
