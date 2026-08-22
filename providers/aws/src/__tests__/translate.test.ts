@@ -222,6 +222,79 @@ commands:
 	});
 });
 
+describe("translate — unsupplied required env (PROVIDERS.md rule 8, D-44)", () => {
+	const required = `
+version: launch/v1
+name: app
+runtime: node
+env:
+  API_KEY:
+    required: true
+    sensitive: true
+  SITE_URL:
+    required: true
+  HAS_DEFAULT:
+    default: fine
+  GENERATED:
+    generator: secret
+commands:
+  start: "node server.js"
+`;
+
+	it("emits no SSM parameter for a required var the file does not supply", () => {
+		const { hcl } = tf(required);
+		expect(hcl).not.toContain("app_default_API_KEY");
+		expect(hcl).not.toContain("app_default_SITE_URL");
+	});
+
+	it("never invents a value for it", () => {
+		const { hcl } = tf(required);
+		expect(hcl).not.toContain("PLACEHOLDER");
+		expect(hcl).not.toContain("http://localhost");
+	});
+
+	it("reports each one as a gap, blocker when sensitive", () => {
+		const { conformance } = tf(required);
+		const apiKey = conformance.gaps.find((g) => g.field === "env.API_KEY");
+		const siteUrl = conformance.gaps.find((g) => g.field === "env.SITE_URL");
+		expect(apiKey?.severity).toBe("blocker");
+		expect(siteUrl?.severity).toBe("workaround");
+	});
+
+	it("still emits vars the file supplies via default or generator", () => {
+		const { hcl, conformance } = tf(required);
+		expect(hcl).toContain('resource "aws_ssm_parameter" "app_default_HAS_DEFAULT"');
+		expect(hcl).toContain('resource "aws_ssm_parameter" "app_default_GENERATED"');
+		expect(
+			conformance.gaps.some((g) => g.field.startsWith("env.HAS_DEFAULT")),
+		).toBe(false);
+		expect(
+			conformance.gaps.some((g) => g.field.startsWith("env.GENERATED")),
+		).toBe(false);
+	});
+
+	it("treats a set_env binding as supplying the value", () => {
+		const { hcl, conformance } = tf(`
+version: launch/v1
+name: app
+runtime: node
+requires:
+  - type: postgres
+    set_env:
+      DATABASE_URL: $url
+env:
+  DATABASE_URL:
+    required: true
+commands:
+  start: "node server.js"
+`);
+		expect(hcl).toContain('resource "aws_ssm_parameter" "app_default_DATABASE_URL"');
+		expect(
+			conformance.gaps.some((g) => g.field === "env.DATABASE_URL"),
+		).toBe(false);
+	});
+});
+
 describe("translate — RFC C / D-40 (specialization ignored, not errored)", () => {
 	it("records the Dockerfile as ignored and still builds from the contract", () => {
 		const { hcl, conformance } = tf(`

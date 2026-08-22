@@ -913,6 +913,21 @@ function emitComponent(
 		}
 	}
 
+	// PROVIDERS.md §10 rule 8 (D-44): a `required` var that no generator, default,
+	// or set_env binding supplied is unsupplied. This probe is translation-only, so
+	// the conformant response is to emit nothing for it and list it as unmapped —
+	// never to invent a value. Checked after set_env, which resolves last.
+	for (const [key, envVar] of Object.entries(comp.env ?? {})) {
+		if (!envVar.required || resolvedEnv[key]) continue;
+		c.gap(
+			`env.${key}`,
+			envVar.sensitive === true ? "blocker" : "workaround",
+			"required env var with no default, generator, or set_env binding — the operator must supply the value",
+			"supply it at apply time (SSM parameter or TF variable), or give the Launchfile a `default:` or `generator:`",
+			name,
+		);
+	}
+
 	for (const [key, { value, sensitive }] of Object.entries(resolvedEnv)) {
 		const paramTf = `${instanceTf}_${tfName(key)}`;
 		blocks.push(
@@ -964,14 +979,10 @@ function resolveEnvVar(
 		const value = isExpression(raw) ? resolveExpression(raw, context) : raw;
 		return { value, sensitive: envVar.sensitive === true };
 	}
-	if (envVar.required) {
-		const lower = key.toLowerCase();
-		const placeholder =
-			lower.includes("url") || lower.includes("origin")
-				? "http://localhost"
-				: "PLACEHOLDER";
-		return { value: placeholder, sensitive: envVar.sensitive === true };
-	}
+	// PROVIDERS.md §10 rule 8 (D-44): an unsupplied `required` value is a gap to
+	// report, never a value to invent. Returning undefined leaves it out of the
+	// emitted SSM parameters; the gap is recorded by the caller, after `set_env`
+	// has had its chance to supply the key.
 	return undefined;
 }
 
