@@ -64,7 +64,6 @@ const RequirementSchema = z.union([
 
 // --- Support (same shape as Requirement) ---
 
-const SupportObjectSchema = RequirementObjectSchema;
 const SupportSchema = RequirementSchema;
 
 // --- EnvVar ---
