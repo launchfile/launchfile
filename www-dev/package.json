@@ -17,14 +17,14 @@
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.3.3",
     "astro": "7.2.3",
-    "marked": "^18.0.2",
-    "shiki": "^4.3.0",
+    "marked": "^18.0.10",
+    "shiki": "^4.4.3",
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
-    "@types/node": "^26.0.0",
+    "@types/node": "^26.2.0",
     "pagefind": "^1.5.2",
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.2"
   }
 }
