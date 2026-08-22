@@ -234,8 +234,10 @@ env:
   SITE_URL:
     required: true
   HAS_DEFAULT:
+    required: true
     default: fine
   GENERATED:
+    required: true
     generator: secret
 commands:
   start: "node server.js"
@@ -292,6 +294,29 @@ commands:
 		expect(
 			conformance.gaps.some((g) => g.field === "env.DATABASE_URL"),
 		).toBe(false);
+	});
+
+	it("does NOT treat a binding on an unmappable resource as supplying the value", () => {
+		// The injection loop skips resources absent from the context, so a binding
+		// on a type this probe cannot provision declares the key without yielding it.
+		const { hcl, conformance } = tf(`
+version: launch/v1
+name: app
+runtime: node
+requires:
+  - type: clickhouse
+    set_env:
+      CH_URL: $url
+env:
+  CH_URL:
+    required: true
+    sensitive: true
+commands:
+  start: "node server.js"
+`);
+		expect(hcl).not.toContain("CH_URL");
+		const gap = conformance.gaps.find((g) => g.field === "env.CH_URL");
+		expect(gap?.severity).toBe("blocker");
 	});
 
 	it("does NOT treat a supports-only binding as supplying the value", () => {

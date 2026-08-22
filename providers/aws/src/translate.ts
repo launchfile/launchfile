@@ -697,6 +697,7 @@ function emitComponent(
 	// need to wait for values to resolve — and `supports:` keys are deliberately not
 	// counted, since they inject only when the optional resource is provisioned
 	// (SPEC.md §Supports), which this probe never does.
+	reportUnsuppliedRequired(comp, name, c, baseContext);
 	reportUnsuppliedRequired(comp, name, c);
 	// host capabilities a bare-EC2 target can't honor. Both spellings are
 	// graded identically (PROVIDERS.md §11): the D-44 entry form below, and the
@@ -960,18 +961,23 @@ function emitComponent(
  * Record a conformance gap for each `required` env var the Launchfile supplies no
  * value for — PROVIDERS.md §10 rule 8 / D-44.
  *
- * A variable is unsupplied when no `generator:`, no `default:`, and no `requires`
- * `set_env:` binding yields it. `supports:` bindings do not count: they inject only
- * when the optional resource is provisioned (SPEC.md §Supports) and this probe
- * gaps `supports` rather than provisioning it.
+ * A variable is unsupplied when no `generator:`, no `default:`, and no `set_env:`
+ * binding *yields* it. The test is arrival, not declaration, so a binding counts
+ * only when the resource behind it resolved: the injection loop skips any resource
+ * absent from the context, and `supports:` resources are never provisioned by this
+ * probe at all (SPEC.md §Supports). A binding on an unmappable type therefore
+ * declares the key without ever supplying it.
  */
 function reportUnsuppliedRequired(
 	comp: NormalizedComponent,
 	name: string,
 	c: Conformance,
+	baseContext: ResolverContext,
 ): void {
 	const boundBySetEnv = new Set(
-		(comp.requires ?? []).flatMap((req) => Object.keys(req.set_env ?? {})),
+		(comp.requires ?? [])
+			.filter((req) => baseContext.resources?.[req.name ?? req.type])
+			.flatMap((req) => Object.keys(req.set_env ?? {})),
 	);
 	for (const [key, envVar] of Object.entries(comp.env ?? {})) {
 		if (!envVar.required) continue;
