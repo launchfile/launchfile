@@ -2,10 +2,9 @@ import { describe, it, expect } from "vitest";
 import { generateValue, generatePassword } from "../secret-generator.js";
 
 describe("generateValue", () => {
-	it("generates a base64url secret", async () => {
+	it("generates 32 bytes hex-encoded (64 hex chars) per the spec definition", async () => {
 		const value = await generateValue("secret");
-		expect(value).toMatch(/^[A-Za-z0-9_-]+$/);
-		expect(value.length).toBeGreaterThan(20);
+		expect(value).toMatch(/^[0-9a-f]{64}$/);
 	});
 
 	it("generates a UUID", async () => {

@@ -216,7 +216,7 @@ export function translate(
 			secretValues[name] = emitGenerator(blocks, tf, secret.generator);
 			c.map(
 				`secrets.${name}`,
-				secret.generator === "uuid" ? "random_uuid" : "random_password",
+				secret.generator === "uuid" ? "random_uuid" : "random_bytes",
 			);
 		}
 	}
@@ -357,15 +357,12 @@ function emitGenerator(
 		);
 		return `\${random_integer.${tf}.result}`;
 	}
-	// "secret"
-	blocks.push(
-		block(
-			"resource",
-			["random_password", tf],
-			[attr("length", 32), attr("special", false)],
-		),
-	);
-	return `\${random_password.${tf}.result}`;
+	// "secret" — spec-defined output: 32 bytes of cryptographically random
+	// data, hex-encoded (64 characters). See spec/DESIGN.md D-47.
+	// random_bytes (hashicorp/random >= 3.6) marks its outputs sensitive in
+	// state and plan; random_id's .hex would be stored and shown in plain.
+	blocks.push(block("resource", ["random_bytes", tf], [attr("length", 32)]));
+	return `\${random_bytes.${tf}.hex}`;
 }
 
 function emitFoundation(
@@ -386,7 +383,7 @@ function emitFoundation(
 					[],
 					[
 						attr("aws", { source: "hashicorp/aws", version: "~> 5.0" }),
-						attr("random", { source: "hashicorp/random", version: "~> 3.0" }),
+						attr("random", { source: "hashicorp/random", version: "~> 3.6" }),
 					],
 				),
 			],

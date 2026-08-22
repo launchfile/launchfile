@@ -94,10 +94,11 @@ Each gap includes the apps that exposed it and a severity rating.
 **Issue**: No way to say "import env vars from this file." Apps with many env vars (Supabase has 30+) become verbose.
 **Assessment**: Verbosity is acceptable — Launchfile is the source of truth. YAML anchors help with reuse.
 
-### G-16: `generator: secret` configuration 🟢
+### G-16: `generator: secret` configuration 🟢 *(length/format half addressed in spec — D-47)*
 **Apps**: Various
 **Issue**: No way to configure the generated secret (length, character set, format). All secrets are the same format.
-**Assessment**: Low priority — a 32-char hex string works for most cases.
+**Status**: The default output is now normatively defined — 32 bytes of cryptographically random data, hex-encoded (64 characters), matching the reference docker provider (spec D-47). What remains is the configuration half: per-secret `length`/`encoding` fields, demand-gated and fenced by D-32's rejected field-level-encoding alternative.
+**Assessment**: Low priority — the defined 64-character hex output (32 bytes) satisfies every current catalog app. The live demand signal for configurability is human-typed admin passwords (WEBPASSWORD, PHOTOPRISM_ADMIN_PASSWORD), where 64 hex chars is unwieldy.
 
 ---
 

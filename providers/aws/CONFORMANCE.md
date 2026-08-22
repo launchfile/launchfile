@@ -217,7 +217,7 @@
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
-| `secrets.app-key` | `random_password` | — |
+| `secrets.app-key` | `random_bytes` | — |
 | `requires:postgres` | `aws_db_instance` | — |
 | `provides.exposed` | `aws_lb (ALB)` | — |
 
@@ -543,7 +543,7 @@
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
-| `secrets.app-key` | `random_password` | — |
+| `secrets.app-key` | `random_bytes` | — |
 | `requires:mysql` | `aws_db_instance` | — |
 | `provides.exposed` | `aws_lb (ALB)` | — |
 
@@ -776,7 +776,7 @@
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
-| `secrets.app-key` | `random_password` | — |
+| `secrets.app-key` | `random_bytes` | — |
 | `requires:mariadb` | `aws_db_instance` | — |
 | `provides.exposed` | `aws_lb (ALB)` | — |
 
@@ -953,7 +953,7 @@
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
-| `secrets.app_secret` | `random_password` | — |
+| `secrets.app_secret` | `random_bytes` | — |
 | `provides:http:9999` | `aws_security_group ingress` | default |
 | `runtime:bun` | `aws_instance (cloud-init)` | default |
 | `env` | `aws_ssm_parameter` | default |

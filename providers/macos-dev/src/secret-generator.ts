@@ -16,7 +16,9 @@ export async function generateValue(
 ): Promise<string> {
 	switch (generator) {
 		case "secret": {
-			const secret = randomBytes(32).toString("base64url");
+			// Spec-defined output: 32 bytes of cryptographically random data,
+			// hex-encoded (64 characters). See spec/DESIGN.md D-47.
+			const secret = randomBytes(32).toString("hex");
 			registerSecret(secret);
 			return secret;
 		}

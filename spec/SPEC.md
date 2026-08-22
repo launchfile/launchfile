@@ -332,7 +332,7 @@ Generator strategies:
 
 | Generator | Produces | Example |
 |---|---|---|
-| `secret` | Cryptographically random hex string (suitable for signing keys, tokens). Use `\|base64` pipe for base64 encoding. | `a3f8b2c1d9e7...` |
+| `secret` | 32 bytes of cryptographically random data, hex-encoded as 64 **lowercase** hexadecimal characters — suitable for signing keys, tokens. Use `\|base64` pipe for base64 encoding. | `a3f8b2c1d9e7...` (64 hex chars) |
 | `uuid` | UUID v4 | `550e8400-e29b-41d4-a716-446655440000` |
 | `port` | Allocates an available port on the host | `8432` |
 
@@ -379,6 +379,8 @@ env:
   # Base64 with Laravel's required prefix
   APP_KEY: "base64:${secrets.app-key|base64}"
 ```
+
+Because `generator: secret` produces exactly 32 bytes, the `APP_KEY` above decodes to the 32-byte key Laravel's default AES-256-CBC encrypter requires.
 
 The `|` is unambiguous — dots navigate paths, pipes apply transforms. This distinction matters for future extensibility (e.g., key pair properties like `$secrets.key.private` are navigation, not transforms).
 
