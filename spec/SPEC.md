@@ -1103,6 +1103,6 @@ Generated secrets (from `generator: secret|uuid`) and connection credentials sho
 The format is designed for additive evolution:
 
 - New fields can be added at any level without breaking existing files
-- Unknown fields are ignored by parsers that do not support them — and "ignored" means *preserved*: an unknown field never invalidates a file, and a tool that rewrites a file re-emits unknown fields unchanged (D-44)
+- Unknown fields are ignored by parsers that do not support them — and "ignored" means *preserved*: an unknown field never invalidates a file, and a tool that rewrites a file re-emits unknown fields unchanged (D-45)
 - No custom YAML tags (`!tag`) are used or required
 - The `version` field enables future breaking changes via versioned schemas
