@@ -136,7 +136,7 @@ Each gap includes the apps that exposed it and a severity rating.
 | Severity | Count | Gaps |
 |----------|-------|------|
 | 🔴 Blocks real apps | 0 | *(G-2 shared secrets and G-8 UDP now addressed in spec)* |
-| 🟡 Workaround exists | 12 | G-1, G-3, G-4, G-5, G-9, G-9b, G-10, G-11, G-12, G-13, G-17, G-19, G-20 *(G-6 property registry now addressed in spec — D-45)* |
+| 🟡 Workaround exists | 12 | G-1, G-3, G-4, G-5, G-9, G-9b, G-10, G-11, G-12, G-13, G-17, G-19, G-20 *(G-6 property registry now addressed in spec — D-46)* |
 | 🟢 Nice-to-have | 4 | G-14, G-15, G-16, G-18 |
 
 ## Apps per Gap
