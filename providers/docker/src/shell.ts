@@ -4,6 +4,7 @@
 
 import { execFile as cpExecFile, spawn, type ExecFileOptions } from "node:child_process";
 import { getLogger } from "./logger.js";
+import { redactSecrets } from "./redact.js";
 
 export interface ShellResult {
 	exitCode: number;
@@ -25,7 +26,7 @@ export async function shell(
 ): Promise<ShellResult> {
 	const display = [cmd, ...args].join(" ");
 	if (!opts.silent) {
-		console.log(`  $ ${display}`);
+		console.log(`  $ ${redactSecrets(display)}`);
 	}
 
 	const log = getLogger();
@@ -56,7 +57,7 @@ export async function shell(
 
 			if (error && !opts.allowFailure) {
 				reject(
-					Object.assign(new Error(`Command failed: ${display}`), {
+					Object.assign(new Error(`Command failed: ${redactSecrets(display)}`), {
 						result,
 					}),
 				);
@@ -84,7 +85,7 @@ export async function shellStream(
 ): Promise<number> {
 	const display = [cmd, ...args].join(" ");
 	if (!opts.silent) {
-		console.log(`  $ ${display}`);
+		console.log(`  $ ${redactSecrets(display)}`);
 	}
 
 	const log = getLogger();
@@ -115,7 +116,7 @@ export async function shellStream(
 				"shell stream complete",
 			);
 			if (exitCode !== 0 && !opts.allowFailure) {
-				reject(new Error(`Command failed: ${display} (exit ${exitCode})`));
+				reject(new Error(`Command failed: ${redactSecrets(display)} (exit ${exitCode})`));
 			} else {
 				resolvePromise(exitCode);
 			}
