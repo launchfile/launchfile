@@ -332,7 +332,7 @@ Generator strategies:
 
 | Generator | Produces | Example |
 |---|---|---|
-| `secret` | 32 bytes of cryptographically random data, hex-encoded (64 characters) — suitable for signing keys, tokens. Use `\|base64` pipe for base64 encoding. | `a3f8b2c1d9e7...` (64 hex chars) |
+| `secret` | 32 bytes of cryptographically random data, hex-encoded as 64 **lowercase** hexadecimal characters — suitable for signing keys, tokens. Use `\|base64` pipe for base64 encoding. | `a3f8b2c1d9e7...` (64 hex chars) |
 | `uuid` | UUID v4 | `550e8400-e29b-41d4-a716-446655440000` |
 | `port` | Allocates an available port on the host | `8432` |
 
