@@ -110,6 +110,8 @@ Any build or source-mode operation needs the app's source tree. A **local** prov
 
 The in-file origin — URL and fragment alike — is a **baseline default, never a lock**: rule 1 always wins when the orchestrator supplies a source. A provider MUST NOT treat the fragment as pinning a deployment to that ref.
 
+When no step resolves a source — detached, nothing supplied, no `repository:` — the operation fails with a clear error naming the missing origin; the D-43 `validate` diagnostic exists to surface exactly this case ahead of time.
+
 A **translation-only** provider (§2) cannot ship a tree or perform a fetch; it MUST instead record the origin it *would* acquire (the resolved URL + ref, or "orchestrator-supplied" / "attached tree") in its emitted artifacts or conformance report, so the acquisition step is explicit rather than silently out of band.
 
 ---
