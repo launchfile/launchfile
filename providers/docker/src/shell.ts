@@ -29,8 +29,14 @@ export async function shell(
 		console.log(`  $ ${redactSecrets(display)}`);
 	}
 
+	// A release command arrives here with `$secrets.*` already resolved, so an
+	// argument can be a live credential. pino's REDACT_PATHS cannot reach it --
+	// fast-redact matches key paths, and the value is a string inside an array --
+	// so the scrub has to happen before the log call (D-18, CWE-532).
+	const safeArgs = args.map(redactSecrets);
+
 	const log = getLogger();
-	log.debug({ cmd, args, cwd: opts.cwd }, "shell exec");
+	log.debug({ cmd, args: safeArgs, cwd: opts.cwd }, "shell exec");
 	const t0 = performance.now();
 
 	const execOpts: ExecFileOptions = {
@@ -53,7 +59,10 @@ export async function shell(
 			}
 
 			const durationMs = Math.round(performance.now() - t0);
-			log.debug({ cmd, args, exitCode: result.exitCode, durationMs }, "shell complete");
+			log.debug(
+				{ cmd, args: safeArgs, exitCode: result.exitCode, durationMs },
+				"shell complete",
+			);
 
 			if (error && !opts.allowFailure) {
 				reject(
@@ -88,8 +97,11 @@ export async function shellStream(
 		console.log(`  $ ${redactSecrets(display)}`);
 	}
 
+	// Same reason as in `shell` above: an argument may be a resolved credential.
+	const safeArgs = args.map(redactSecrets);
+
 	const log = getLogger();
-	log.debug({ cmd, args, cwd: opts.cwd }, "shell stream exec");
+	log.debug({ cmd, args: safeArgs, cwd: opts.cwd }, "shell stream exec");
 	const t0 = performance.now();
 
 	return new Promise((resolvePromise, reject) => {
@@ -112,7 +124,7 @@ export async function shellStream(
 			if (timer) clearTimeout(timer);
 			const exitCode = code ?? 1;
 			log.debug(
-				{ cmd, args, exitCode, durationMs: Math.round(performance.now() - t0) },
+				{ cmd, args: safeArgs, exitCode, durationMs: Math.round(performance.now() - t0) },
 				"shell stream complete",
 			);
 			if (exitCode !== 0 && !opts.allowFailure) {
