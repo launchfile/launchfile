@@ -213,8 +213,24 @@ A provider claiming Launchfile support MUST:
 6. **Resolve the reserved expression namespaces it supports** — `$app.*`, `$storage.<name>.path`, resource properties, `$secrets.*`, `$components.*`; unknown reserved keys resolve to `""` (L-4). A provider that provisions storage MUST inject `$storage.<name>.path` so the path never appears in a command (D-36/D-39, §7).
 7. **Persist resolved deployment state** and resolve cross-component references by consumer vantage (§8). Providers SHOULD interoperate via the shared state file so invocations compose.
 8. **Report gaps, not silent drops** — if a field can't be honored, surface it (the AWS probe's conformance report is the model).
+9. **Grant or refuse `host:` capability entries** — mount/forward the capability's coordinate and populate its properties, or refuse the component with a clear surfaced message; never deploy a component whose required capability was silently dropped (§11).
 
 A **translation-only** provider (IaC/manifest emitter) satisfies the contract by mapping the fields above to its target and listing what it cannot map — it need not implement `up`/`down`.
+
+---
+
+## 11. Host capabilities — the grant/refuse fulfillment mode ✅ (D-43)
+
+`requires`/`supports` entries marked `host:` (SPEC [Host capabilities](SPEC.md#host-capabilities)) are **not provisioned** — they are **granted or refused**. This is a distinct fulfillment mode from provisioning backing services (§10 item 5). A provider MUST do one of:
+
+- **Grant** — mount or forward the capability's underlying coordinate (e.g. bind-mount `/var/run/docker.sock`, or forward a TCP endpoint) and populate the capability's properties — `$socket`, `$host`, `$api` for `container_runtime` — so the entry's `set_env` wiring resolves.
+- **Refuse** — decline to deploy the component, with a **clear, surfaced message** naming the capability it cannot grant (§10 item 8: report gaps, not silent drops). A refusal is user-visible output, not a line buried in a warnings array.
+
+Required vs optional follows the entry's home: a `requires` capability MUST be granted or the component refused; a `supports` capability MAY be left ungranted — the component still deploys, its capability `set_env` vars are simply absent, and the provider SHOULD note the un-granted capability so the degradation is visible.
+
+The legacy top-level `host:` block carries the same semantics (its keys are the same capabilities in block spelling) and MUST be honored equivalently — a file using the new entry form and a file using the legacy block get the same grant/refuse outcome.
+
+**Reference refuse behavior — `@launchfile/docker`.** The Docker provider *refuses* required host capabilities: a component with a required `container_runtime` (or legacy `host.docker: required`), `network: host`, or `privileged: true` capability is excluded from the generated compose project with a surfaced `refused: …` message — it declines rather than attempting Docker-in-Docker. Optional (`supports`) capabilities are left ungranted with a note. A provider that can safely grant (e.g. a VM-per-app provider mounting the runtime socket into an isolated guest) grants and populates the coordinates instead.
 
 ---
 

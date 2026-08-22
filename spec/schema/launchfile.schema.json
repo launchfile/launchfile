@@ -203,8 +203,32 @@
     "requirementOrString": {
       "oneOf": [
         { "type": "string", "minLength": 1 },
-        { "$ref": "#/$defs/requirement" }
+        { "$ref": "#/$defs/requirement" },
+        { "$ref": "#/$defs/hostCapability" }
       ]
+    },
+    "hostCapability": {
+      "type": "object",
+      "required": ["host"],
+      "description": "Host capability entry (D-43): a privileged grant the provider grants or refuses, marked by the required 'host' field. Distinct from a backing service ('type' entry).",
+      "properties": {
+        "host": {
+          "type": "object",
+          "description": "Capability name → interface value (e.g. container_runtime: docker — the Docker Engine API, never a product name). Open vocabulary: unknown capabilities are tolerated.",
+          "additionalProperties": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "boolean" }
+            ]
+          }
+        },
+        "set_env": {
+          "type": "object",
+          "description": "Maps granted capability properties (e.g. $socket, $host, $api for container_runtime) to app env vars. Use $prop for references, plain strings for literals.",
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
     },
     "envVar": {
       "type": "object",

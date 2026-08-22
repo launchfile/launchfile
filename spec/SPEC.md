@@ -177,6 +177,8 @@ Declares required resource dependencies. The app will not start without them. Va
 
 A string shorthand (`requires: [postgres]`) expands to `[{ type: "postgres" }]`.
 
+An object entry is one of two kinds, distinguished by its marker field: a **backing service** (has `type:`) that the provider provisions and wires, or a **host capability** (has `host:`) that the provider grants or refuses — see [Host capabilities](#host-capabilities).
+
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `name` | `string` | no | Resource name for expression references (defaults to `type`) |
@@ -250,6 +252,55 @@ Values in `set_env` use the [expression syntax](#expression-syntax). Inside a `r
 
 > **Real-world examples:** See how [Ghost](https://launchfile.io/apps/ghost/), [Metabase](https://launchfile.io/apps/metabase/), and [Miniflux](https://launchfile.io/apps/miniflux/) declare their database requirements. [Browse all apps →](https://launchfile.io/apps/)
 
+### Host capabilities
+
+A `requires`/`supports` entry can request a **host capability** — a privileged grant from the machine the app runs on — instead of a backing service. A capability entry is marked with `host:`. The provider **grants** it (mounts or forwards the underlying coordinate and populates the capability's properties) or **refuses** the deployment with a clear message; it never provisions anything. See [PROVIDERS.md](PROVIDERS.md) for the provider-side contract.
+
+```yaml
+requires:
+  - postgres                              # backing service → provision + wire
+  - host: { container_runtime: docker }   # capability      → grant or refuse
+    set_env:
+      DOCKER_HOST: $host
+supports:
+  - host: { container_runtime: any }      # optional — deploy, probe, degrade
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `host` | `map<string, string \| bool>` | **yes** | Capability name → interface value (see [Capability vocabulary](#capability-vocabulary)) |
+| `set_env` | `map<string, string>` | no | Maps capability properties to app env vars using `$` expressions |
+
+Rules:
+
+- **The `host:` marker is required on every privileged entry.** An entry's kind is machine-extractable from the file itself: a bare string or `type:` entry is a backing service; a `host:` entry is a capability. Anyone — tooling or a human reviewer — can list an app's full privilege surface with zero extra tooling. `launchfile validate` prints it as `host capabilities requested: […]`.
+- **The value names an interface, never a product.** `container_runtime: docker` means "the Docker Engine API" — a Podman-compatible socket satisfies it — exactly as `requires: postgres` names a wire protocol, not a vendor. `container_runtime: any` is runtime-agnostic. The vocabulary is open: unknown capability names and values are tolerated by parsers; a provider that cannot grant a required capability it does not understand refuses.
+- **Required vs optional is `requires` vs `supports`.** A capability in `requires` must be granted or the provider refuses to deploy the component. A capability in `supports` is optional: the app deploys without it, probes its env vars at startup, and degrades gracefully.
+- **Wiring uses `set_env`,** exactly as for backing services. A granted capability exposes provider-supplied properties (below); bare `$prop` references inside the entry resolve against the enclosing capability's properties.
+
+#### Capability properties
+
+Like [resource properties](#resource-property-vocabulary), a granted capability exposes a standard set of properties the provider computes from how it granted the capability:
+
+| Capability | Property | Meaning |
+|---|---|---|
+| `container_runtime` | `$socket` | Filesystem path of the runtime socket (e.g. `/var/run/docker.sock`) |
+| `container_runtime` | `$host` | `DOCKER_HOST`-style connection string (e.g. `unix:///var/run/docker.sock`, `tcp://10.0.0.5:2376`) |
+| `container_runtime` | `$api` | HTTP(S) API endpoint URL, when the runtime is reachable over the network |
+
+Properties a provider cannot supply resolve to the empty string, matching unknown resource properties.
+
+#### Capability vocabulary
+
+| Capability | Values | Meaning |
+|---|---|---|
+| `container_runtime` | `docker`, `any` | Access to a container-runtime control API. `docker` = the Docker Engine API (any compatible socket satisfies it, including Podman's); `any` = runtime-agnostic. |
+| `network` | `host` | Must share the host network stack |
+| `filesystem` | `read-write`, `read-only` | Host filesystem access |
+| `privileged` | `true` | Elevated privileges (e.g. device access) |
+
+`network`, `filesystem`, and `privileged` are the entry-form spelling of the legacy [`host` block](#host) keys — they are grant/refuse capabilities like any other. The legacy top-level `host:` block remains valid; its deprecation is a separate governed step ([#120](https://github.com/launchfile/launchfile/issues/120)).
+
 ## Supports
 
 Declares optional resources that enhance the app when available. Same schema as `requires`. Env vars from `set_env` are only injected when the resource is actually provisioned.
@@ -263,6 +314,8 @@ supports:
 ```
 
 The literal `"1"` is injected alongside the dynamic `$url` -- `set_env` values without `$` are passed through verbatim.
+
+`supports` entries can also request [host capabilities](#host-capabilities). The capability is optional: when the provider grants it, the entry's `set_env` vars are injected; when it doesn't, they are simply absent and the app degrades gracefully.
 
 The expected app-side pattern: the app checks for the env var at startup and enables the feature if present. In this example, the app checks `CACHE_URL` — if it's set, caching is enabled; if Redis wasn't provisioned, the variable is simply absent and the app runs without caching. No conditional logic in the Launchfile.
 
@@ -627,6 +680,8 @@ host:
 ```
 
 When `host.docker` is `required`, the deployer must ensure the app runs with access to the Docker daemon socket (e.g. `/var/run/docker.sock`). If the deployer's execution strategy is container-based, it should either refuse or warn that Docker-in-Docker is unreliable.
+
+These keys are also expressible as [host capability](#host-capabilities) entries in `requires`/`supports` — `- host: { container_runtime: docker }` is the capability spelling of `docker: required`, with `set_env` wiring of the granted coordinates. This block remains valid; its deprecation in favor of the entry form is a separate governed step ([#120](https://github.com/launchfile/launchfile/issues/120)).
 
 ## Runtime
 
@@ -1037,7 +1092,7 @@ Guidance for providers:
 
 ### Host capabilities require user consent
 
-`host.privileged`, `host.docker`, and `host.filesystem` declare elevated capabilities. Providers should either refuse or require explicit user confirmation before granting these.
+`host.privileged`, `host.docker`, and `host.filesystem` — and equivalently the `host:`-marked capability entries in `requires`/`supports` (see [Host capabilities](#host-capabilities)) — declare elevated capabilities. Providers should either refuse or require explicit user confirmation before granting these. The required `host:` marker makes the full privilege surface extractable from the file itself; `launchfile validate` surfaces it as a `host capabilities requested:` summary.
 
 ### Secrets and state
 
