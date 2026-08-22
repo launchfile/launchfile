@@ -462,7 +462,6 @@ Source-mode resolution is **per component**, with precedence **`dev` > `image` >
 
 ---
 
-
 ### D-42: Deprecation metadata model — the P-14 mechanism
 
 **Decision**: Every deprecation the spec declares carries machine-readable metadata with four semantic parts: the version the field or value was **deprecated in**, the version that **removes it** (always a major version, per [P-14](#p-14-legible-evolution)), its **replacement**, and a **migration hint**. The metadata MUST be sufficient for tooling to (a) report which parts of a given file are deprecated or scheduled for removal, (b) preview what a target version breaks before an upgrade, and (c) drive or automate the migration. These three capabilities are the normative tooling contract; the CLI surface that delivers them (`lint`, `doctor`, `upgrade --dry-run`, `migrate`, or anything else) is SDK/CLI UX, not spec. Exact schema field names are settled by the first implementing schema PR — the semantics, not the spellings, are the precedent.
