@@ -113,7 +113,7 @@ The `depends_on` field ensures `frontend` waits for `backend` to become healthy 
 | `generator` | `string` | no | Tool that produced this file |
 | `name` | `string` | **yes** | App name (lowercase kebab-case, `^[a-z][a-z0-9-]*$`) |
 | `description` | `string` | no | Brief human description |
-| `repository` | `string` | no | Source code URL (e.g. GitHub) |
+| `repository` | `string` | no | Canonical source origin URL (e.g. GitHub) — see [Repository](#repository) |
 | `website` | `string` | no | Project homepage URL |
 | `logo` | `string` | no | Logo image URL |
 | `keywords` | `string[]` | no | Discovery tags (e.g. `[blog, cms]`) |
@@ -685,6 +685,30 @@ image: ghcr.io/hedgedoc/hedgedoc:1.9.9
 ```
 
 See [Relationship to `image` and `build`](#runtime) for how `image` interacts with `runtime` and `build`.
+
+## Repository
+
+The app's **canonical source origin** — the URL of the repository the app is developed in.
+
+```yaml
+repository: https://github.com/hedgedoc/hedgedoc
+```
+
+Beyond identifying the project (catalog listings, tooling links), `repository` is the origin a provider falls back to when it needs the source tree and was not handed one — the **detached** case in the source-acquisition precedence defined in [PROVIDERS.md § Source acquisition](PROVIDERS.md#source-acquisition-d-43). A Launchfile read from within the app's own source tree is **attached**: that tree is the source, and `repository` is not consulted for acquisition. An orchestrator-supplied source (a different repo, ref, or local tree) always takes precedence over both.
+
+### Baseline ref fragment
+
+For a git-hosted URL, everything after the first `#` is a git ref — a branch, tag, or commit SHA:
+
+```yaml
+repository: https://github.com/hedgedoc/hedgedoc#develop
+```
+
+A bare URL means the repository's default branch. The fragment is the **baseline** the declaration describes, not a deployment choice: it lets one app ship multiple Launchfiles as distinct variants (a stable release and an edge build), each ref-stable across every deployment target. Which ref a given *deployment* uses remains orchestrator knowledge — an orchestrator-supplied source **always overrides** the fragment, so the baseline is a default, never a lock.
+
+The fragment rule is defined for git-hosted URLs only; on any other URL a fragment has no defined meaning and providers ignore it. The fragment names *which ref of the origin*, never a directory within it — the working directory inside the tree is [`source`](#source). Tools that display `repository` as a link should strip the fragment.
+
+Fetching and building a remote origin executes code from that origin — the per-source confirmation rules in [Execution modes and source trust](#execution-modes-and-source-trust) apply.
 
 ## Other Fields
 

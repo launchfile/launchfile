@@ -98,7 +98,19 @@ Resources (`requires`) have **no source form** — provisioned identically in bo
 
 A specialization makes a matching provider more faithful; it never makes the app deployable only on that provider.
 
-**Reduced-portability diagnostic (D-40):** a `validate`-only, non-fatal, **suppressible** warning that fires when an app's only build path is a provider-specific recipe (a Dockerfile) *or* a prebuilt `image:` with no portable `runtime`/`commands` contract. It is **never** emitted by operational commands (`up`/`down`/`logs`/…), so the image-first catalog is unaffected in normal flows — only an explicit `validate` surfaces it.
+**Reduced-portability diagnostic (D-40):** a `validate`-only, non-fatal, **suppressible** warning that fires when an app's only build path is a provider-specific recipe (a Dockerfile) *or* a prebuilt `image:` with no portable `runtime`/`commands` contract. It is **never** emitted by operational commands (`up`/`down`/`logs`/…), so the image-first catalog is unaffected in normal flows — only an explicit `validate` surfaces it. A second case (D-43): a **source-needing app with no reachable origin** — no `image:`, evaluated detached, and no `repository:` to fall back to. Same treatment: `validate`-only, non-fatal, suppressible.
+
+### Source acquisition (D-43)
+
+Any build or source-mode operation needs the app's source tree. A **local** provider has it for free — the checkout the Launchfile sits in. Every other provider MUST resolve the tree through this precedence:
+
+1. **Orchestrator-supplied source.** A source the orchestrator hands the provider — a repo URL + ref, a tarball, or a local tree — MUST take precedence over everything below. This is the home-#2 channel (D-36): forks, private mirrors, and per-environment ref choices (`main` to staging, a tag to prod) all arrive here, never in the file.
+2. **Attached context.** A Launchfile is **attached** iff it was read from within the app's own source tree — the checkout of the app it describes. That tree *is* the source; a remote provider MAY package and ship it as its build context. A file fetched standalone (a catalog entry, a URL) into a cache or temporary directory is **detached**, even though it momentarily sits in some directory.
+3. **Detached fallback — `repository:`.** For a detached file, the `repository` field ([SPEC.md § Repository](SPEC.md#repository)) is the canonical origin the provider MAY fetch, at the ref named by its `#` fragment (default: the repository's default branch). Fetching and building a remote origin falls under the per-source confirmation rules (SPEC.md § Execution modes and source trust).
+
+The in-file origin — URL and fragment alike — is a **baseline default, never a lock**: rule 1 always wins when the orchestrator supplies a source. A provider MUST NOT treat the fragment as pinning a deployment to that ref.
+
+A **translation-only** provider (§2) cannot ship a tree or perform a fetch; it MUST instead record the origin it *would* acquire (the resolved URL + ref, or "orchestrator-supplied" / "attached tree") in its emitted artifacts or conformance report, so the acquisition step is explicit rather than silently out of band.
 
 ---
 
