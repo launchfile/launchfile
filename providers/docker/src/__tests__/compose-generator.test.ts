@@ -343,6 +343,26 @@ provides:
 		expect(result.yaml).not.toContain("1025");
 		expect(result.ports).toEqual({ default: 18025 });
 		expect(Object.keys(result.endpoints)).toEqual(["default"]);
+		// Something *is* published, so the publish-nothing warning must stay quiet
+		expect(result.warnings.some((w) => w.includes("nothing published to the host"))).toBe(false);
+	});
+
+	it("warns when a component declares provides but publishes nothing", () => {
+		const launch = readLaunch(`
+name: internal-only
+image: postgres-like
+provides:
+  - port: 5432
+    protocol: tcp
+`);
+		const result = launchToCompose(launch);
+		expect(result.ports).toEqual({});
+		expect(result.yaml).not.toContain("ports:");
+		const warning = result.warnings.find((w) => w.includes("nothing published to the host"));
+		expect(warning).toBeDefined();
+		expect(warning).toContain("default:");
+		expect(warning).toContain("exposed: true");
+		expect(warning).toContain("D-27");
 	});
 
 	it("publishes nothing for a component with no exposed:true entry, but still registers $components.*", () => {
@@ -369,6 +389,10 @@ components:
 		expect(result.yaml).not.toContain(":5432");
 		// … but the in-network reference still resolves (independent of D-27)
 		expect(result.yaml).toContain('DB_PORT: "5432"');
+		// … and the user is told which component went unpublished, and only that one
+		const unpublished = result.warnings.filter((w) => w.includes("nothing published to the host"));
+		expect(unpublished).toHaveLength(1);
+		expect(unpublished[0]).toContain("db:");
 	});
 
 	it("emits /udp for udp endpoints", () => {

@@ -761,7 +761,11 @@ export function launchToCompose(
 			// port on every recreate — so the endpoint moves and cannot be
 			// linked to. Entries without `exposed: true` are never published.
 			const published = publishedEndpoints(componentName, component.provides);
-			if (published.length > 0) {
+			if (published.length === 0) {
+				warnings.push(
+					`${componentName}: declares provides but no endpoint sets \`exposed: true\` — nothing published to the host (D-27)`,
+				);
+			} else {
 				const seen = new Set<string>();
 				const mappings: string[] = [];
 				for (const endpoint of published) {
