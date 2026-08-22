@@ -20,7 +20,7 @@ graph TD
 
 ## 1. Design Principles
 
-Thirteen principles organized in three categories govern every decision in the format.
+Fourteen principles organized in three categories govern every decision in the format.
 
 ### Format Philosophy
 
@@ -80,6 +80,10 @@ The format's structure naturally guides apps toward 12-factor compliance. Config
 
 The format evolves by adding new fields, never new syntax. A v1 parser ignores unknown fields gracefully. No existing field changes meaning across versions. The `version` header enables breaking changes if absolutely necessary, but the design minimizes the need.
 
+#### P-14: Legible evolution
+
+New capability is additive ([P-13](#p-13-additive-extensibility)). When a field or value must be sunset, the deprecation is *machine-readable* — it carries the version it was deprecated in, the version that removes it, its replacement, and a migration hint — sufficient for tooling to report which parts of a given file are deprecated or scheduled for removal, preview what a target version breaks before an upgrade, and drive the migration. No upgrade silently breaks a file; removal happens only at a major version. Deprecation may warn; removal must migrate; never break.
+
 ---
 
 ## 1b. Governance Heuristics
@@ -90,7 +94,7 @@ These heuristics support the [governance model](GOVERNANCE.md) by making the des
 
 When principles conflict, higher-tier principles take priority:
 
-- **Tier 1 (inviolable):** P-1 (app-focused, not infra-focused), P-13 (additive extensibility), P-6 (it's just YAML)
+- **Tier 1 (inviolable):** P-1 (app-focused, not infra-focused), P-13 (additive extensibility), P-14 (legible evolution), P-6 (it's just YAML)
 - **Tier 2 (strong):** P-11 (separate intent from execution), P-5 (provider-translatable), P-12 (12-factor by default)
 - **Tier 3 (guiding):** P-2 (incrementally adoptable), P-3 (machine-generatable), P-4 (human-writable), P-7 (simple things simple), P-8 (familiar idioms), P-9 (unambiguous by convention), P-10 (source of truth co-located)
 
@@ -455,6 +459,16 @@ Source-mode resolution is **per component**, with precedence **`dev` > `image` >
 **Rejected**: *Satisfy-not-expand* (start only the named components; fail if a `depends_on` target is not already running) — contradicts [D-16](#d-16-depends_on-for-startup-ordering), which makes `depends_on` a hard startup prerequisite (SPEC.md: *"`depends_on` ensures `frontend` waits for `backend` to become healthy before starting"*); a selected component whose prerequisite is down is non-functional by the file's own declaration, so the headline `up <component>` would fail by default. It also pulled the two reference providers apart — Docker's `compose up <service>` starts the closure while a hand-narrowed macOS started only the named component — a [P-5](#p-5-provider-translatable) violation (same file, two running topologies). *Total/upward closure* (also starting reverse-deps) — starts components the operator neither asked for nor needs.
 
 **Why**: Honors D-16 so a selected component can actually start. One shared `selectionClosure` definition closes the provider divergence at the source (Docker's compose default is already correct under this rule; macOS adopts the same helper). Downward-only keeps the set minimal — you get what you asked for and what it needs, never what needs it. Purely additive ([P-13](#p-13-additive-extensibility)): no schema or parser change; with no selector, behavior is unchanged. Extends D-37. See [#97](https://github.com/launchfile/launchfile/pull/97).
+
+---
+
+### D-42: Deprecation metadata model — the P-14 mechanism
+
+**Decision**: Every deprecation the spec declares carries machine-readable metadata with four semantic parts: the version the field or value was **deprecated in**, the version that **removes it** (always a major version, per [P-14](#p-14-legible-evolution)), its **replacement**, and a **migration hint**. The metadata MUST be sufficient for tooling to (a) report which parts of a given file are deprecated or scheduled for removal, (b) preview what a target version breaks before an upgrade, and (c) drive or automate the migration. These three capabilities are the normative tooling contract; the CLI surface that delivers them (`lint`, `doctor`, `upgrade --dry-run`, `migrate`, or anything else) is SDK/CLI UX, not spec. Exact schema field names are settled by the first implementing schema PR — the semantics, not the spellings, are the precedent.
+
+**Rejected**: *Normative CLI command names in the principle* (binds the spec to one reference implementation's UX — against [P-1](#p-1-app-focused-not-infra-focused)/[P-11](#p-11-separate-intent-from-execution); the capability contract is what matters). *Minor-with-notice removal* (an Author value call, answered strict: removal only at a major version — a minor-version escape hatch reintroduces the silent-ish break the principle exists to forbid; flexibility is expressed as the length of the deprecation window, never as which version may remove). *Ad-hoc prose deprecation* (the pre-P-14 status quo — a one-off removal justified by 0.x semver, invisible to tooling, is exactly the illegible evolution this forecloses).
+
+**Why**: [P-14](#p-14-legible-evolution) is the subtractive complement of [D-14](#d-14-additive-extensibility----new-fields-never-new-syntax)'s additive path and gives the [D-17](#d-17-version-header-for-spec-versioning)/[P-13](#p-13-additive-extensibility) `version`-header escape hatch the discipline it lacked. Structured metadata serves [P-3](#p-3-machine-generatable) (tooling tracks the lifecycle) and [P-4](#p-4-human-writable) (an author writes nothing — the metadata lives in the schema — and is warned with a migration, never surprised). Carries the #113 invariant verbatim: deprecation may warn, removal must migrate, never break. First application: the `host.docker → container_runtime` deprecation ([#120](https://github.com/launchfile/launchfile/issues/120)). See [#117](https://github.com/launchfile/launchfile/issues/117).
 
 ---
 
