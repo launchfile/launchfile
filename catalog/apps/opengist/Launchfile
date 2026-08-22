@@ -14,6 +14,7 @@ provides:
   - name: ssh
     protocol: tcp
     port: 2222
+    exposed: true
 storage:
   data:
     path: /opengist

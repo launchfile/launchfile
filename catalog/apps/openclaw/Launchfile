@@ -12,6 +12,7 @@ provides:
   - protocol: http
     port: 18790
     name: bridge
+    exposed: true
 env:
   OPENCLAW_GATEWAY_TOKEN:
     generator: secret
