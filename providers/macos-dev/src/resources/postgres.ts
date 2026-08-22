@@ -56,6 +56,11 @@ export class PostgresProvisioner implements ResourceProvisioner {
 		const password = existingState?.password ?? generatePassword();
 		const port = DEFAULT_PORT;
 
+		// Security: validate identifiers before using them in shell commands.
+		if (!SAFE_IDENTIFIER.test(user) || !SAFE_IDENTIFIER.test(dbName)) {
+			throw new Error("Invalid PostgreSQL identifier for user or database name");
+		}
+
 		// Create user (idempotent)
 		await shell(
 			`psql -h ${DEFAULT_HOST} -p ${port} postgres -c "DO \\$\\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${user}') THEN CREATE ROLE ${user} WITH LOGIN PASSWORD '${password}' CREATEDB; END IF; END \\$\\$;"`,
