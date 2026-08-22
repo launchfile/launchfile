@@ -17,12 +17,12 @@
     "@astrojs/cloudflare": "14.1.7",
     "@astrojs/markdown-satteri": "^0.3.5",
     "@tailwindcss/typography": "^0.5.20",
-    "@tailwindcss/vite": "^4.3.1",
+    "@tailwindcss/vite": "^4.3.3",
     "astro": "7.1.6",
     "marked": "^18.0.2",
     "satteri": "^0.9.3",
     "shiki": "^4.2.0",
-    "tailwindcss": "^4.3.1"
+    "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
