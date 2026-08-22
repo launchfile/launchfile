@@ -30,5 +30,6 @@ env:
     generator: secret
     sensitive: true
   AP_FRONTEND_URL:
+    description: Public URL Activepieces uses for webhooks and redirects
     default: $app.url
 restart: always
