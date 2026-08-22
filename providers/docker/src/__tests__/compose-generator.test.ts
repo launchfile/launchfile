@@ -393,6 +393,34 @@ components:
 		expect(result.warnings.filter((w) => w.includes("published to the host"))).toEqual([]);
 	});
 
+	it("resolves $components.* for an explicitly exposed: false endpoint", () => {
+		// `exposed` governs the host boundary only — an endpoint marked
+		// `exposed: false` is still on the container network, so a sibling must
+		// reach it. Same answer as omitting the field entirely.
+		const launch = readLaunch(`
+name: stack
+components:
+  db:
+    image: postgres-like
+    provides:
+      - port: 5432
+        protocol: tcp
+        exposed: false
+  web:
+    image: nginx
+    provides:
+      - port: 3000
+        protocol: http
+        exposed: true
+    env:
+      DB_PORT: $components.db.port
+`);
+		const result = launchToCompose(launch, { hostPorts: { web: 13000 } });
+		expect(result.yaml).toContain('DB_PORT: "5432"');
+		// … while staying unpublished on the host
+		expect(result.ports).toEqual({ web: 13000 });
+	});
+
 	it("does not warn about publication when the app declares no provides at all", () => {
 		// A worker/cron app has nothing to publish; silence is correct.
 		const launch = readLaunch(`

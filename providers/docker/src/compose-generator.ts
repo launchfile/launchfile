@@ -747,17 +747,16 @@ export function launchToCompose(
 		if (component.provides?.length) {
 			// Register component in resolver context for $components.name.prop
 			// refs. This is the in-network address (compose service name +
-			// container port), deliberately independent of D-27 host exposure —
-			// an internal endpoint is still reachable by sibling components.
-			const inNetwork = component.provides.filter((p) => p.exposed !== false);
-			if (inNetwork.length > 0) {
-				const containerPort = inNetwork[0]!.port;
-				componentMap[componentName] = {
-					url: `http://${serviceName}:${containerPort}`,
-					host: serviceName,
-					port: containerPort,
-				};
-			}
+			// container port), independent of D-27 host exposure — every declared
+			// endpoint is reachable by sibling components, including one marked
+			// `exposed: false`, which speaks to the host boundary and not to the
+			// container network.
+			const containerPort = component.provides[0]!.port;
+			componentMap[componentName] = {
+				url: `http://${serviceName}:${containerPort}`,
+				host: serviceName,
+				port: containerPort,
+			};
 
 			// Host publication: every endpoint marked `exposed: true` (D-27)
 			// gets an explicit host:container mapping. A bare container port
