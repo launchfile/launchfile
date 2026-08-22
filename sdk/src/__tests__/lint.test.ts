@@ -142,3 +142,36 @@ components:
 		expect(warnings[0]).toContain('"redis"');
 	});
 });
+
+describe("host-capability marker advisory — product spellings (D-44)", () => {
+	const lint = (body: string) =>
+		lintLaunch(readLaunch(`version: launch/v1\nname: p\nimage: x\n${body}`));
+
+	it("flags an unmarked `type: docker` entry", () => {
+		expect(lint("requires:\n  - type: docker\n").join()).toContain(
+			"looks like a host capability",
+		);
+	});
+
+	it("suggests the interface name, not the product name", () => {
+		// `host: { docker: ... }` would keep the marker but re-break P-1, which
+		// is the half of D-44 that matters most.
+		const w = lint("requires:\n  - type: docker\n").join();
+		expect(w).toContain("container_runtime: docker");
+		expect(w).not.toContain("{ docker: ...");
+	});
+
+	it("maps podman to the same interface", () => {
+		expect(lint("requires:\n  - type: podman\n").join()).toContain(
+			"container_runtime: docker",
+		);
+	});
+
+	it("stays silent for a properly marked capability entry", () => {
+		expect(lint("requires:\n  - host: { container_runtime: docker }\n")).toEqual([]);
+	});
+
+	it("stays silent for an ordinary backing service", () => {
+		expect(lint("requires:\n  - postgres\n")).toEqual([]);
+	});
+});

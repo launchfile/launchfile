@@ -49,6 +49,18 @@ const KNOWN_HOST_CAPABILITIES = new Set([
 ]);
 
 /**
+ * Product-named spellings a pre-D-44 file actually writes, mapped to the
+ * interface that replaces them. Suggesting `host: { docker: … }` would trade
+ * one P-1 violation for another — the marker is only half the fix; naming an
+ * interface rather than a product is the other half.
+ */
+const PRODUCT_SPELLINGS: Record<string, string> = {
+	docker: "container_runtime: docker",
+	"docker.sock": "container_runtime: docker",
+	podman: "container_runtime: docker",
+};
+
+/**
  * Lint a normalized Launch, returning non-fatal warning strings (empty = clean).
  *
  * Checks:
@@ -75,10 +87,12 @@ export function lintLaunch(launch: NormalizedLaunch): string[] {
 			...(component.supports ?? []),
 		]) {
 			if (req.host) continue; // capability entry, not a resource (D-44)
-			if (KNOWN_HOST_CAPABILITIES.has(req.type)) {
+			const productSpelling = PRODUCT_SPELLINGS[req.type];
+			if (productSpelling || KNOWN_HOST_CAPABILITIES.has(req.type)) {
+				const suggestion = productSpelling ?? `${req.type}: ...`;
 				warnings.push(
 					`${where}: "${req.type}" looks like a host capability — the host: marker is ` +
-						`required on privileged entries (D-44): use \`- host: { ${req.type}: ... }\``,
+						`required on privileged entries (D-44): use \`- host: { ${suggestion} }\``,
 				);
 				continue;
 			}
