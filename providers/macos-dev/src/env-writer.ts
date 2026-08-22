@@ -43,7 +43,11 @@ export function computeAppProperties(
 ): Record<string, string | number> {
 	let primaryPort = 0;
 	for (const [name, component] of Object.entries(launch.components)) {
-		const hasExposed = component.provides?.some((p) => p.exposed !== false) ?? false;
+		// Only endpoints explicitly marked `exposed: true` are reachable from
+		// outside the host (D-27), so only they can be the app's public address.
+		// The docker provider derives `$app.*` by the same rule — `$app.url` is a
+		// portable value and the two providers must not disagree on it (P-5).
+		const hasExposed = component.provides?.some((p) => p.exposed === true) ?? false;
 		if (hasExposed && componentPorts[name]) {
 			primaryPort = componentPorts[name]!;
 			break;
