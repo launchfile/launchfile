@@ -492,6 +492,18 @@ Source-mode resolution is **per component**, with precedence **`dev` > `image` >
 
 ---
 
+### D-45: Unknown fields are preserved — "ignore" means preserve
+
+**Decision**: The "ignore" in [P-13](#p-13-additive-extensibility)'s *"a v1 parser ignores unknown fields gracefully"* means **preserve**. An unknown field never invalidates a Launchfile at **any** level — top level, component, or any nested object — and a tool that parses and re-emits a file carries every unknown field through unchanged. Concretely: the JSON Schema keeps every `$defs` object open (no `additionalProperties: false` anywhere, matching the root object, which was always open); the reference SDK validates with passthrough schemas, carries unknown keys through its normalized types, and re-emits them on serialize (a shorthand collapse is suppressed for any object holding unknown keys, so collapsing never drops one). Validation never flags an unknown key; linters MAY warn on unrecognized keys — typo-catching is lint's home, not the parser's.
+
+**Rejected**:
+- **Strict validation** (`additionalProperties: false` in the schema, strict Zod objects in the SDK) — foreclosed by the spec's own Extensibility text: *"new fields can be added at any level without breaking existing files"* and *"unknown fields are ignored by parsers that do not support them"*. Strictness anywhere makes the documented top-level `x-` anchor convention invalid the moment it appears one level down, and makes every future additive field a breaking change for deployed validators.
+- **Silent stripping** (Zod's default object behavior) — a v1 rewriter (formatter, migrator, the [P-14](#p-14-legible-evolution)/[D-42](#d-42-deprecation-metadata-model--the-p-14-mechanism) `migrate` tooling) that strips what it doesn't recognize destroys v2 fields on every round-trip. "Ignore" that eats data is worse than rejection: the loss is invisible.
+
+**Why**: This ratifies one behavior where three had drifted apart — the schema's root *allowed* unknown fields, `$defs.component` *rejected* them, and the SDK *stripped* them; "ignore" as allow, reject, and strip are three different contracts for the same input, which [P-5](#p-5-provider-translatable) (every parser and provider translates the same file the same way) cannot tolerate. Preservation is P-13's wording made testable and the operational half of [D-14](#d-14-additive-extensibility----new-fields-never-new-syntax): additive evolution only works if older tooling passes newer fields through intact. [P-6](#p-6-its-just-yaml) — preserving unknown keys is standard YAML round-trip behavior; no new syntax, no schema surface. [P-3](#p-3-machine-generatable)/[P-4](#p-4-human-writable) — a machine- or human-authored field that a rewriting tool silently loses violates both: what was written must survive. Preservation is tolerance, not endorsement — [D-40](#d-40-portable-contract-vs-provider-specialization--the-appprovider-build-line)'s rejection of a general `x-<provider>:` config block stands; unknown fields ride along without acquiring meaning. The cost — a typo like `commmands:` now passes validation — is the same trade [L-4](#l-4-resource-property-vocabulary-is-implicit) already accepts for resource properties, and lands in the same home: lint. The implementing sweep also restored the SDK's `StorageVolumeSchema` to the [D-30](#d-30-storage-size-hint) shape (`size` was present in the JSON Schema but dropped by the SDK — the same class of drift).
+
+---
+
 ## 4. Known Limitations
 
 Each limitation includes the problem, current stance, and future considerations.

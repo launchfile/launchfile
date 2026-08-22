@@ -136,8 +136,7 @@
       "properties": {
         "generator": { "$ref": "#/$defs/generator" },
         "description": { "type": "string" }
-      },
-      "additionalProperties": false
+      }
     },
     "provides": {
       "type": "object",
@@ -168,8 +167,7 @@
           "type": "object",
           "additionalProperties": { "type": "string" }
         }
-      },
-      "additionalProperties": false
+      }
     },
     "requirement": {
       "type": "object",
@@ -197,8 +195,7 @@
           "description": "Maps resource properties to app env vars. Use $prop for references, plain strings for literals.",
           "additionalProperties": { "type": "string" }
         }
-      },
-      "additionalProperties": false
+      }
     },
     "requirementOrString": {
       "oneOf": [
@@ -262,8 +259,7 @@
           "type": "boolean",
           "description": "Store in secrets manager"
         }
-      },
-      "additionalProperties": false
+      }
     },
     "envVarOrScalar": {
       "oneOf": [
@@ -288,8 +284,7 @@
           "items": { "type": "string" },
           "description": "Secrets available during build (never in image)"
         }
-      },
-      "additionalProperties": false
+      }
     },
     "buildOrString": {
       "oneOf": [
@@ -306,8 +301,7 @@
         "timeout": { "type": "string", "description": "Timeout per check" },
         "retries": { "type": "integer", "minimum": 1, "description": "Failures before unhealthy" },
         "start_period": { "type": "string", "description": "Grace period before failures count" }
-      },
-      "additionalProperties": false
+      }
     },
     "healthOrString": {
       "oneOf": [
@@ -326,8 +320,7 @@
           "description": "Named captures extracted from this command's stdout via regex (D-34). Supersedes the top-level outputs: placement from D-23.",
           "additionalProperties": { "$ref": "#/$defs/output" }
         }
-      },
-      "additionalProperties": false
+      }
     },
     "commandOrString": {
       "oneOf": [
@@ -361,8 +354,7 @@
         "pattern": { "type": "string", "description": "Regex with one capture group, matched against release command stdout" },
         "description": { "type": "string", "description": "Human-readable description of this output" },
         "sensitive": { "type": "boolean", "default": false, "description": "If true, value is masked in API/UI unless explicitly revealed" }
-      },
-      "additionalProperties": false
+      }
     },
     "storageVolume": {
       "type": "object",
@@ -371,8 +363,7 @@
         "path": { "type": "string", "description": "Mount path inside the container" },
         "size": { "type": "string", "description": "Minimum size hint (e.g. '512MB', '10GB')" },
         "persistent": { "type": "boolean", "description": "Data survives restarts", "default": true }
-      },
-      "additionalProperties": false
+      }
     },
     "dependsOnEntry": {
       "type": "object",
@@ -383,8 +374,7 @@
           "type": "string",
           "enum": ["started", "healthy"]
         }
-      },
-      "additionalProperties": false
+      }
     },
     "dependsOnOrString": {
       "oneOf": [
@@ -438,8 +428,7 @@
           ]
         },
         "host": { "$ref": "#/$defs/host" }
-      },
-      "additionalProperties": false
+      }
     },
     "host": {
       "type": "object",
@@ -467,8 +456,7 @@
           "description": "Requires elevated privileges (e.g., device access)",
           "default": false
         }
-      },
-      "additionalProperties": false
+      }
     }
   }
 }

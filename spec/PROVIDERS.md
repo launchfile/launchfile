@@ -139,6 +139,8 @@ The file declares *intent*; the provider supplies *values* (P-11). Beyond runnin
 
 The same Launchfile is therefore correct under both, and an author never hardcodes a path only one provider understands — the exact failure D-36/D-39 close. A provider that does not provision storage leaves `$storage.*` unresolved (→ `""`).
 
+> **Note — command captures (`$outputs.*`) are surfaced, not resolvable in-file.** When a provider executes an expanded-form command carrying `capture:` (D-34), the captured values land under a `$outputs.*` namespace that the provider surfaces through its state/API/UI (SPEC.md §Command Capture). `$outputs.*` is deliberately **not** an in-file expression namespace — it has no row in the table above and no position in L-1's resolver order, because capture values exist only after a command has run. Making them referenceable from `env:`/`set_env:` would be a separate RFC.
+
 > **Why resolution is the provider's job, not the file's:** a path, URL, or secret that varies by provider is home #3 — if the app embedded it, the file would stop being portable (P-1, P-5). Resolution is the mechanism that keeps "same file, every provider" honest, and is the concrete enforcement point for the [D-36](DESIGN.md#d-36-the-three-homes-of-a-varying-value-p-1-litmus-refinement) litmus.
 
 ---
@@ -212,8 +214,9 @@ A provider claiming Launchfile support MUST:
 5. **Provision `requires` resources** as a precondition of any selected component, and **start the selected components' downward `depends_on` closure** (the declared dependency targets, transitively); never start unrelated components or reverse-dependencies (§5).
 6. **Resolve the reserved expression namespaces it supports** — `$app.*`, `$storage.<name>.path`, resource properties, `$secrets.*`, `$components.*`; unknown reserved keys resolve to `""` (L-4). A provider that provisions storage MUST inject `$storage.<name>.path` so the path never appears in a command (D-36/D-39, §7).
 7. **Persist resolved deployment state** and resolve cross-component references by consumer vantage (§8). Providers SHOULD interoperate via the shared state file so invocations compose.
-8. **Report gaps, not silent drops** — if a field can't be honored, surface it (the AWS probe's conformance report is the model).
-9. **Grant or refuse `host:` capability entries** — mount/forward the capability's coordinate and populate its properties, or refuse the component with a clear surfaced message; never deploy a component whose required capability was silently dropped (§11).
+8. **Execute `capture:` on expanded-form commands and surface the captured values under `$outputs.*`** through the provider's state/API/UI (D-34, SPEC.md §Command Capture) — masking `sensitive` captures unless explicitly revealed. A non-matching pattern yields an absent capture, not an error. `$outputs.*` is a surfacing namespace only, not an in-file expression namespace (§7 note).
+9. **Report gaps, not silent drops** — if a field can't be honored, surface it (the AWS probe's conformance report is the model).
+10. **Grant or refuse `host:` capability entries** — mount/forward the capability's coordinate and populate its properties, or refuse the component with a clear surfaced message; never deploy a component whose required capability was silently dropped (§11).
 
 A **translation-only** provider (IaC/manifest emitter) satisfies the contract by mapping the fields above to its target and listing what it cannot map — it need not implement `up`/`down`.
 
@@ -224,7 +227,7 @@ A **translation-only** provider (IaC/manifest emitter) satisfies the contract by
 `requires`/`supports` entries marked `host:` (SPEC [Host capabilities](SPEC.md#host-capabilities)) are **not provisioned** — they are **granted or refused**. This is a distinct fulfillment mode from provisioning backing services (§10 item 5). A provider MUST do one of:
 
 - **Grant** — mount or forward the capability's underlying coordinate (e.g. bind-mount `/var/run/docker.sock`, or forward a TCP endpoint) and populate the capability's properties — `$socket`, `$host`, `$api` for `container_runtime` — so the entry's `set_env` wiring resolves.
-- **Refuse** — decline to deploy the component, with a **clear, surfaced message** naming the capability it cannot grant (§10 item 8: report gaps, not silent drops). A refusal is user-visible output, not a line buried in a warnings array.
+- **Refuse** — decline to deploy the component, with a **clear, surfaced message** naming the capability it cannot grant (§10 item 9: report gaps, not silent drops). A refusal is user-visible output, not a line buried in a warnings array.
 
 Required vs optional follows the entry's home: a `requires` capability MUST be granted or the component refused; a `supports` capability MAY be left ungranted — the component still deploys, its capability `set_env` vars are simply absent, and the provider SHOULD note the un-granted capability so the degradation is visible.
 
