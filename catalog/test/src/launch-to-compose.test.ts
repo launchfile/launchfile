@@ -185,3 +185,40 @@ components:
     expect(env.MISSING).toBe("");
   });
 });
+
+describe("host capabilities — refused, not silently deployed (D-44)", () => {
+  const mk = (extra: string) =>
+    readLaunch(
+      `version: launch/v1\nname: dockge\nimage: louislam/dockge:1\n${extra}`,
+    );
+  const run = (extra: string) => {
+    const { yaml: composeYaml, warnings } = launchToCompose(mk(extra));
+    const compose = parse(composeYaml) as { services?: Record<string, unknown> };
+    return { deployed: Object.keys(compose.services ?? {}).length > 0, warnings };
+  };
+
+  it("refuses a component whose required capability cannot be granted", () => {
+    const { deployed, warnings } = run(
+      "requires:\n  - host: { container_runtime: docker }\n",
+    );
+    expect(deployed).toBe(false);
+    expect(warnings.join(" ")).toContain("container_runtime=docker");
+  });
+
+  it("treats the entry form and the legacy block identically", () => {
+    // The harness gates catalog PRs. Knowing only the legacy block would deploy
+    // an app whose required socket was never granted, then stamp it healthy.
+    expect(run("requires:\n  - host: { container_runtime: docker }\n").deployed).toBe(
+      run("host:\n  docker: required\n").deployed,
+    );
+  });
+
+  it("does not provision a capability entry as a backing service", () => {
+    const { warnings } = run("requires:\n  - host: { container_runtime: docker }\n");
+    expect(warnings.join(" ")).not.toContain("Unknown backing service type");
+  });
+
+  it("still deploys a component with no host capabilities", () => {
+    expect(run("requires:\n  - postgres\n").deployed).toBe(true);
+  });
+});

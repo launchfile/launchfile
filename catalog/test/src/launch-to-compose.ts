@@ -265,6 +265,23 @@ export function launchToCompose(launch: NormalizedLaunch): ComposeResult {
       continue;
     }
 
+    // Refuse components whose host capabilities this harness cannot grant.
+    // Both spellings are checked: the D-44 `host:` entry form and the legacy
+    // block. Checking only the block would deploy a component whose required
+    // capability was never granted, and then stamp it healthy.
+    const refusedCapabilities = (component.requires ?? [])
+      .filter((r) => r.host)
+      .flatMap((r) =>
+        Object.entries(r.host ?? {}).map(([cap, val]) => `${cap}=${String(val)}`),
+      );
+    if (refusedCapabilities.length > 0) {
+      warnings.push(
+        `${componentName}: requires host capabilities this harness cannot grant ` +
+          `(${refusedCapabilities.join("; ")}) — skipped`,
+      );
+      continue;
+    }
+
     // Skip components with host requirements
     if (component.host?.docker === "required") {
       warnings.push(`${componentName}: requires Docker socket — skipped`);
@@ -367,6 +384,7 @@ export function launchToCompose(launch: NormalizedLaunch): ComposeResult {
 
     if (component.requires?.length) {
       for (const req of component.requires) {
+        if (req.host) continue; // capability, not a backing service (D-44)
         const backingResult = addBackingService(
           launch.name,
           serviceName,
