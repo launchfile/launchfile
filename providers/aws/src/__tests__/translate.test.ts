@@ -222,7 +222,7 @@ commands:
 	});
 });
 
-describe("translate — unsupplied required env (PROVIDERS.md rule 8, D-51)", () => {
+describe("translate — unsupplied required env (PROVIDERS.md rule 8, D-52)", () => {
 	const required = `
 version: launch/v1
 name: app

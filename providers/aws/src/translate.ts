@@ -689,7 +689,7 @@ function emitComponent(
 		);
 	}
 
-	// PROVIDERS.md §10 rule 8 (D-51): report unsupplied `required` env vars before
+	// PROVIDERS.md §10 rule 8 (D-52): report unsupplied `required` env vars before
 	// the mode gaps below can return. A component this probe cannot translate still
 	// has an environment contract the operator must satisfy, and dropping it because
 	// the component gapped for an unrelated reason is the silent drop the rule
@@ -957,7 +957,7 @@ function emitComponent(
 
 /**
  * Record a conformance gap for each `required` env var the Launchfile supplies no
- * value for — PROVIDERS.md §10 rule 8 / D-51.
+ * value for — PROVIDERS.md §10 rule 8 / D-52.
  *
  * A variable is unsupplied when no `generator:`, no `default:`, and no `set_env:`
  * binding *yields* it. The test is arrival, not declaration, so a binding counts
@@ -1010,7 +1010,7 @@ function resolveEnvVar(
 		const value = isExpression(raw) ? resolveExpression(raw, context) : raw;
 		return { value, sensitive: envVar.sensitive === true };
 	}
-	// PROVIDERS.md §10 rule 8 (D-51): an unsupplied `required` value is a gap to
+	// PROVIDERS.md §10 rule 8 (D-52): an unsupplied `required` value is a gap to
 	// report, never a value to invent. Returning undefined leaves it out of the
 	// emitted SSM parameters; the gap is recorded by the caller, after `set_env`
 	// has had its chance to supply the key.
