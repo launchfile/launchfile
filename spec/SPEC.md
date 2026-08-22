@@ -473,6 +473,8 @@ Every command has exactly one failure disposition, keyed on the **slot** it fill
 
 Timeout expiry is a failure with the same disposition as any other failure of that slot: a prepare or release that exceeds its `timeout` fails the invocation; a `bootstrap` that exceeds its `timeout` is reported.
 
+A **health check** is not a command slot, but it has durations and therefore a disposition: a component that never becomes healthy **fails the invocation**, and an **unparseable health duration** fails it too — the provider surfaces the error rather than substituting a default, as it does for any other duration.
+
 ### Command interpretation
 
 A command string is interpreted by a **POSIX shell**. Shell features — `&&`, `||`, `;`, pipes, redirection, variable expansion, grouping — are available and are what authors write today; `catalog/apps/paperclip`'s `bootstrap` is a multi-statement script and depends on it.
