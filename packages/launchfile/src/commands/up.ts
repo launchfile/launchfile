@@ -11,7 +11,6 @@ import {
 	addDeployment,
 	updateDeployment,
 	findBySource,
-	deploymentDir,
 	generateDeploymentId,
 	type DeploymentEntry,
 } from "../state/index.js";
