@@ -173,5 +173,115 @@ describe("host-capability marker advisory — product spellings (D-44)", () => {
 
 	it("stays silent for an ordinary backing service", () => {
 		expect(lint("requires:\n  - postgres\n")).toEqual([]);
+describe("lintLaunch — non-standard resource properties (D-45)", () => {
+	it("warns on a typo'd property with the type's known property list", () => {
+		const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    requires:
+      - type: postgres
+        set_env:
+          DB_HOST: $hoost
+`);
+		const warnings = lintLaunch(launch);
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toBe(
+			'"$hoost" is not in the standard vocabulary for postgres ' +
+				"(known: url, host, port, user, password, name)",
+		);
+	});
+
+	it("stays silent for known properties, templates, and fallbacks", () => {
+		const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    requires:
+      - type: postgres
+        set_env:
+          DATABASE_URL: $url
+          DB_ADDR: "\${host}:\${port:-5432}"
+      - type: redis
+        set_env:
+          REDIS_PASSWORD: $password
+`);
+		expect(lintLaunch(launch)).toEqual([]);
+	});
+
+	it("stays silent for unknown resource types (L-4: types stay open)", () => {
+		const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    requires:
+      - type: mariadb
+        set_env:
+          DB_SOCKET: $socket
+`);
+		expect(lintLaunch(launch)).toEqual([]);
+	});
+
+	it("stays silent for reserved namespaces and cross-resource references", () => {
+		const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    requires:
+      - type: postgres
+        set_env:
+          PUBLIC_URL: $app.url
+          API_KEY: $secrets.api-key
+          CACHE_URL: $redis.url
+`);
+		expect(lintLaunch(launch)).toEqual([]);
+	});
+
+	it("warns per occurrence across multiple components", () => {
+		const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    requires:
+      - type: postgres
+        set_env:
+          DB_HOST: $hoost
+  worker:
+    image: worker:latest
+    requires:
+      - type: redis
+        set_env:
+          REDIS_URL: $uri
+`);
+		const warnings = lintLaunch(launch);
+		expect(warnings).toHaveLength(2);
+		expect(warnings.join("\n")).toContain(
+			'"$hoost" is not in the standard vocabulary for postgres',
+		);
+		expect(warnings.join("\n")).toContain(
+			'"$uri" is not in the standard vocabulary for redis ' +
+				"(known: url, host, port, password)",
+		);
+	});
+
+	it("warns inside template expressions on a supports entry", () => {
+		const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    supports:
+      - type: redis
+        set_env:
+          CACHE_ADDR: "\${hostt}:\${port}"
+`);
+		const warnings = lintLaunch(launch);
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toContain('"$hostt"');
 	});
 });
