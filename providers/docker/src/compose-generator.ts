@@ -615,6 +615,10 @@ export function launchToCompose(
 	const componentServices: Record<string, string> = {};
 	const unsuppliedRequired: UnsuppliedRequiredVar[] = [];
 	const endpoints: Record<string, StateEndpoint> = {};
+	// Set by any component that declares `provides` and is actually translated,
+	// so a component skipped earlier (refused capability, non-local build
+	// context) can't be mistaken for a missing `exposed: true`.
+	let declaredProvides = false;
 
 	const backingServices = createBackingServices(secrets);
 
@@ -760,12 +764,14 @@ export function launchToCompose(
 			// would hand the choice to Docker, which picks a fresh random host
 			// port on every recreate — so the endpoint moves and cannot be
 			// linked to. Entries without `exposed: true` are never published.
+			// A component that publishes nothing is the normal shape for an
+			// internal service (D-27: "Only the frontend or API gateway should be
+			// publicly reachable"), so it is not worth a warning on its own. The
+			// app-level check after this loop catches the case that actually
+			// leaves the user stranded.
+			declaredProvides = true;
 			const published = publishedEndpoints(componentName, component.provides);
-			if (published.length === 0) {
-				warnings.push(
-					`${componentName}: declares provides but no endpoint sets \`exposed: true\` — nothing published to the host (D-27)`,
-				);
-			} else {
+			if (published.length > 0) {
 				const seen = new Set<string>();
 				const mappings: string[] = [];
 				for (const endpoint of published) {
@@ -923,6 +929,16 @@ export function launchToCompose(
 
 		services[serviceName] = service;
 		componentServices[componentName] = serviceName;
+	}
+
+	// Nothing anywhere in the app reaches the host, so `launchfile up` would
+	// report success on an app the user cannot open and `$app.url` resolves to
+	// "". Per-component silence is correct (internal services are the norm);
+	// this is the case that needs saying out loud (P-4, D-27).
+	if (declaredProvides && Object.keys(ports).length === 0) {
+		warnings.push(
+			`${launch.name}: no endpoint sets \`exposed: true\` — nothing is published to the host, so the app is not reachable (D-27)`,
+		);
 	}
 
 	// Add network

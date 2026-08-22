@@ -343,11 +343,11 @@ provides:
 		expect(result.yaml).not.toContain("1025");
 		expect(result.ports).toEqual({ default: 18025 });
 		expect(Object.keys(result.endpoints)).toEqual(["default"]);
-		// Something *is* published, so the publish-nothing warning must stay quiet
-		expect(result.warnings.some((w) => w.includes("nothing published to the host"))).toBe(false);
+		// Something *is* published, so the unreachable-app warning must stay quiet
+		expect(result.warnings.filter((w) => w.includes("published to the host"))).toEqual([]);
 	});
 
-	it("warns when a component declares provides but publishes nothing", () => {
+	it("warns when nothing in the whole app is published", () => {
 		const launch = readLaunch(`
 name: internal-only
 image: postgres-like
@@ -358,11 +358,52 @@ provides:
 		const result = launchToCompose(launch);
 		expect(result.ports).toEqual({});
 		expect(result.yaml).not.toContain("ports:");
-		const warning = result.warnings.find((w) => w.includes("nothing published to the host"));
+		const warning = result.warnings.find((w) => w.includes("nothing is published to the host"));
 		expect(warning).toBeDefined();
-		expect(warning).toContain("default:");
+		expect(warning).toContain("internal-only:");
 		expect(warning).toContain("exposed: true");
 		expect(warning).toContain("D-27");
+	});
+
+	it("stays silent about internal components when the app publishes something", () => {
+		// The supabase shape: five internal services behind one gateway. D-27's
+		// rationale calls this the norm, so it must not produce a diagnostic.
+		const launch = readLaunch(`
+name: gatewayed
+components:
+  postgres:
+    image: postgres-like
+    provides:
+      - port: 5432
+        protocol: tcp
+  studio:
+    image: studio-like
+    provides:
+      - port: 3000
+        protocol: http
+  kong:
+    image: kong-like
+    provides:
+      - port: 8000
+        protocol: http
+        exposed: true
+`);
+		const result = launchToCompose(launch, { hostPorts: { kong: 18000 } });
+		expect(result.ports).toEqual({ kong: 18000 });
+		expect(result.warnings.filter((w) => w.includes("published to the host"))).toEqual([]);
+	});
+
+	it("does not warn about publication when the app declares no provides at all", () => {
+		// A worker/cron app has nothing to publish; silence is correct.
+		const launch = readLaunch(`
+name: worker-only
+image: worker-like
+commands:
+  start: "./worker"
+`);
+		const result = launchToCompose(launch);
+		expect(result.ports).toEqual({});
+		expect(result.warnings.filter((w) => w.includes("published to the host"))).toEqual([]);
 	});
 
 	it("publishes nothing for a component with no exposed:true entry, but still registers $components.*", () => {
@@ -389,10 +430,8 @@ components:
 		expect(result.yaml).not.toContain(":5432");
 		// … but the in-network reference still resolves (independent of D-27)
 		expect(result.yaml).toContain('DB_PORT: "5432"');
-		// … and the user is told which component went unpublished, and only that one
-		const unpublished = result.warnings.filter((w) => w.includes("nothing published to the host"));
-		expect(unpublished).toHaveLength(1);
-		expect(unpublished[0]).toContain("db:");
+		// … and db being internal is not itself worth a warning — web is published
+		expect(result.warnings.filter((w) => w.includes("published to the host"))).toEqual([]);
 	});
 
 	it("emits /udp for udp endpoints", () => {
