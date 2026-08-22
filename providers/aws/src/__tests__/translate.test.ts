@@ -215,7 +215,10 @@ commands:
   start: "node server.js"
 `);
 		expect(hcl).toContain('type = "SecureString"');
-		expect(hcl).toContain("random_password");
+		// D-46: generator: secret → 32 random bytes, hex-encoded (64 chars).
+		// random_bytes keeps the value sensitive in state; .hex is the output.
+		expect(hcl).toMatch(/resource "random_bytes" "\w+" \{\s*\n\s*length = 32/);
+		expect(hcl).toContain(".hex}");
 	});
 });
 
