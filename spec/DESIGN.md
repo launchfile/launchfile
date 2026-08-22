@@ -82,7 +82,7 @@ The format evolves by adding new fields, never new syntax. A v1 parser ignores u
 
 #### P-14: Legible evolution
 
-New capability is additive ([P-13](#p-13-additive-extensibility)). When a field or value must be sunset, the deprecation is *machine-readable* — it carries the version it was deprecated in, the version that removes it, its replacement, and a migration hint — sufficient for tooling to report which parts of a given file are deprecated or scheduled for removal, preview what a target version breaks before an upgrade, and drive the migration. No upgrade silently breaks a file; removal happens only at a major version. Deprecation may warn; removal must migrate; never break.
+New capability is additive ([P-13](#p-13-additive-extensibility)). When a field or value must be sunset, the deprecation is *machine-readable* — it carries the version it was deprecated in, the version that removes it, its replacement, and a migration hint — sufficient for tooling to report which parts of a given file are deprecated or scheduled for removal, preview what a target version breaks before an upgrade, and drive the migration. No upgrade silently breaks a file; removal happens only at a major version of the format — a `launch/vN` bump ([D-17](#d-17-version-header-for-spec-versioning)), never a package release. Deprecation may warn; removal must migrate; never break.
 
 ---
 
