@@ -457,6 +457,32 @@ commands:
     timeout: "5m"
 ```
 
+### Failure semantics
+
+Every stage has exactly one failure disposition. The table is complete and non-overlapping — a platform never has to guess whether a failed command should stop a deploy:
+
+| Stage | On failure |
+|---|---|
+| `build` | **Fails the deploy** — there is no artifact to run. |
+| `release` | **Fails the deploy.** `release` runs after the component's required resources are provisioned and ready, and before `start` — so a failed migration never serves traffic. |
+| `start` | **Fails the deploy** — the component did not come up. |
+| `install`, `dev` | **Fail the invoking session or workflow** (source mode, [D-38](DESIGN.md#d-38-install--dev-source-mode-commands-and-the-source-field)) — never a deployed-state concern. |
+| `bootstrap`, `seed`, `test`, custom commands | **On-demand: failure is reported to the invoker** — it never affects deploy status. |
+
+Timeout expiry is a failure with the same disposition as any other failure of that stage: a `build` or `release` that exceeds its `timeout` fails the deploy; a `bootstrap` that exceeds its `timeout` is reported.
+
+### Durations
+
+Every duration in a Launchfile uses one grammar:
+
+```
+^(\d+)(ms|s|m|h)$
+```
+
+An integer immediately followed by exactly one unit — `"500ms"`, `"30s"`, `"5m"`, `"2h"`. No internal whitespace, no compound values (`"1m30s"`), no fractions. The grammar governs `commands.*.timeout` and the [Health](#health) durations (`interval`, `timeout`, `start_period`).
+
+An unparseable duration is surfaced as a non-fatal warning by `validate`. A provider MUST NOT silently substitute a default for an unparseable duration — it surfaces the error (see [PROVIDERS.md §10](PROVIDERS.md)). Numeric *defaults* for absent durations are provider-side: the spec does not mandate execution budgets, and each provider documents its own.
+
 ### Source-mode commands
 
 Lifecycle commands run **in the context of the built artifact** — `start` is what the production image runs, `build` produces that artifact. Running the app **from source** on a developer machine is a different execution context: the artifact's entrypoint may be a compiled binary absent from the source tree, and the source tree has dev affordances (hot reload, unbundled assets) the artifact doesn't. Execution mode — source vs. artifact — is a *distinct* axis from deployment environment (DESIGN.md [D-37](DESIGN.md) / L-3): "dev" is a **mode**, not an environment.
@@ -562,10 +588,10 @@ A string shorthand (`health: /health`) expands to `{ path: "/health" }`.
 |---|---|---|
 | `path` | `string` | HTTP path to check |
 | `command` | `string` | Shell command for non-HTTP checks |
-| `interval` | `string` | Check interval (e.g. `30s`, `1m`) |
-| `timeout` | `string` | Timeout per check attempt |
+| `interval` | `string` | Check interval — a [duration](#durations) (e.g. `30s`, `1m`) |
+| `timeout` | `string` | Timeout per check attempt — a [duration](#durations) |
 | `retries` | `integer` | Consecutive failures before unhealthy (min: 1) |
-| `start_period` | `string` | Grace period before failures count |
+| `start_period` | `string` | Grace period before failures count — a [duration](#durations) |
 
 Use `path` for HTTP checks or `command` for exec checks. If both are present, `path` takes precedence.
 
