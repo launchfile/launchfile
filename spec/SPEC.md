@@ -427,7 +427,7 @@ env:
 
 Every declared env value has exactly one provenance class, determined by precedence: **`generator:` → expression `default:` → literal `default:` → user-supplied**. A `generator:` or a supplied `default:` satisfies `required:` — `required: true` alongside either asserts the value is non-empty at runtime; it does not change the class. Platform obligations follow the class:
 
-- **Minted** (`generator:` present) — generated **once**, then preserved across redeploys and identity changes.
+- **Minted** (`generator:` present) — generated **once**, then preserved across redeploys and identity changes. `generator: port` is exempt: a port is an allocation, not an identity, so it is re-allocated rather than preserved.
 - **Derived** (expression `default:` over platform-resolved inputs like `$app.url` or resource properties) — recomputed when its inputs change, unless an operator has overridden the deployed value.
 - **Author default** (literal `default:`) — a starting value chosen by the file author; ordinary per-environment config the orchestrator may override.
 - **User-supplied** (no generator, no default) — never supplied or altered by the platform, whether `required: true` or a bare declaration whose presence activates a feature.
