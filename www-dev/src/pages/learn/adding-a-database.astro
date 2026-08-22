@@ -103,6 +103,7 @@ health: /health`,
     <li><code>$name</code> — Database name</li>
   </ul>
   <p>These are <GlossaryTip term="expression" definition="A $-prefixed placeholder that the provider resolves to a real value at deploy time.">expressions</GlossaryTip> that resolve to real values at deploy time. Use <code>$url</code> when your framework expects a single connection string, or individual fields when it expects them separately.</p>
+  <p>Typos are easy to make and would otherwise resolve to an empty string — so <code>launchfile validate</code> warns when a property isn't in the standard vocabulary for the resource type (e.g. <code>$hoost</code> on postgres) and lists the properties that are. It's a warning, not an error: providers may expose extra properties beyond the standard set.</p>
 </Callout>
 
 <h2 id="in-the-wild">In the wild</h2>
