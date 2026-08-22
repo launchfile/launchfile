@@ -4,9 +4,9 @@
 
 ## Summary
 
-- **83** Launchfile(s) translated
-- **161** field mappings
-- **91** gaps logged (never silently dropped)
+- **84** Launchfile(s) translated
+- **162** field mappings
+- **92** gaps logged (never silently dropped)
 - **8** specializations safely ignored
 
 ### Distinct gaps
@@ -23,7 +23,7 @@
 | `env.SITE_URL` | 🟡 workaround | required env var with no default, generator, or set_env binding — the operator must supply the value | supply it at apply time (SSM parameter or TF variable), or give the Launchfile a `default:` or `generator:` |
 | `runtime` | 🔴 blocker | no runtime and no commands.start — nothing to build or run on EC2 | — |
 | `schedule` | 🟢 nice-to-have | cron schedule not mapped (no EventBridge Scheduler in this probe) | map to aws_scheduler_schedule |
-| `requires:docker` | 🟡 workaround | no managed AWS service mapping for resource type 'docker' | model as a self-hosted component, or extend MANAGED_RESOURCES |
+| `requires:host.container_runtime` | 🔴 blocker | component requires host capability container_runtime=docker; a bare EC2 target cannot grant it | use an ECS/container provider |
 | `env.ANTHROPIC_API_KEY` | 🟡 workaround | required env var with no default, generator, or set_env binding — the operator must supply the value | supply it at apply time (SSM parameter or TF variable), or give the Launchfile a `default:` or `generator:` |
 | `host.docker` | 🔴 blocker | component requires a Docker socket; bare EC2 has none | use an ECS/container provider |
 | `supports:redis` | 🟢 nice-to-have | optional resources (supports) are not provisioned by this probe | provision behind a Terraform variable toggle |
@@ -223,7 +223,7 @@
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
-| `secrets.app-key` | `random_password` | — |
+| `secrets.app-key` | `random_bytes` | — |
 | `requires:postgres` | `aws_db_instance` | — |
 | `provides.exposed` | `aws_lb (ALB)` | — |
 
@@ -551,7 +551,7 @@
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
-| `secrets.app-key` | `random_password` | — |
+| `secrets.app-key` | `random_bytes` | — |
 | `requires:mysql` | `aws_db_instance` | — |
 | `provides.exposed` | `aws_lb (ALB)` | — |
 
@@ -786,7 +786,7 @@
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
-| `secrets.app-key` | `random_password` | — |
+| `secrets.app-key` | `random_bytes` | — |
 | `requires:mariadb` | `aws_db_instance` | — |
 | `provides.exposed` | `aws_lb (ALB)` | — |
 
@@ -963,7 +963,7 @@
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
-| `secrets.app_secret` | `random_password` | — |
+| `secrets.app_secret` | `random_bytes` | — |
 | `provides:http:9999` | `aws_security_group ingress` | default |
 | `runtime:bun` | `aws_instance (cloud-init)` | default |
 | `env` | `aws_ssm_parameter` | default |
@@ -976,9 +976,22 @@
 - `build.dockerfile/target/args` _(default)_: OCI specialization ignored — EC2 builds from the portable runtime+commands contract (D-40 / RFC C)
 - `source/install/dev` _(default)_: source-mode fields ignored — provider runs in artifact mode (D-38)
 
+### dockge
+
+> Source: `spec/examples/host-container-runtime.yaml` — 1 mapped, 2 gap(s), 0 ignored
+
+| Launchfile field | → Terraform | Component |
+|---|---|---|
+| `provides.exposed` | `aws_lb (ALB)` | — |
+
+**Gaps**
+
+- 🔴 `requires:host.container_runtime` _(default)_: component requires host capability container_runtime=docker; a bare EC2 target cannot grant it — use an ECS/container provider
+- 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+
 ### launchpad
 
-> Source: `spec/examples/host-orchestrator.yaml` — 8 mapped, 3 gap(s), 1 ignored
+> Source: `spec/examples/host-orchestrator.yaml` — 8 mapped, 2 gap(s), 1 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -993,7 +1006,6 @@
 
 **Gaps**
 
-- 🟡 `requires:docker`: no managed AWS service mapping for resource type 'docker' — model as a self-hosted component, or extend MANAGED_RESOURCES
 - 🟡 `env.ANTHROPIC_API_KEY` _(default)_: required env var with no default, generator, or set_env binding — the operator must supply the value — supply it at apply time (SSM parameter or TF variable), or give the Launchfile a `default:` or `generator:`
 - 🔴 `host.docker` _(default)_: component requires a Docker socket; bare EC2 has none — use an ECS/container provider
 
