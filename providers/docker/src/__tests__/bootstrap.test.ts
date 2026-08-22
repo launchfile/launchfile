@@ -64,7 +64,7 @@ describe("parseDuration (docker provider)", () => {
 		expect(parseDuration("1h")).toBe(3_600_000);
 	});
 
-	it("throws on invalid input instead of substituting a default (PROVIDERS.md 10.11)", () => {
+	it("throws on invalid input instead of substituting a default (PROVIDERS.md 10.10)", () => {
 		expect(() => parseDuration("???")).toThrow(/invalid duration/);
 		expect(() => parseDuration("")).toThrow(/invalid duration/);
 	});

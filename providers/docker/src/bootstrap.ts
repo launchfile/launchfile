@@ -60,7 +60,7 @@ export function extractCaptures(
 
 /**
  * Parse a duration string like "5m" into milliseconds using the ratified
- * grammar (D-48). Throws on an unparseable value — PROVIDERS.md §10.11
+ * grammar (D-48). Throws on an unparseable value — PROVIDERS.md §10.10
  * forbids silently substituting a default. Re-exported for unit testing.
  */
 export const parseDuration = parseDurationMs;
@@ -223,7 +223,7 @@ export async function dockerBootstrap(opts: {
 
 		// Bootstrap failures are reported, not thrown (SPEC.md \u00a7 Failure
 		// semantics) \u2014 an unparseable timeout is surfaced the same way,
-		// never silently replaced with a default (PROVIDERS.md \u00a710.11).
+		// never silently replaced with a default (PROVIDERS.md \u00a710.10).
 		let timeoutMs = 120_000;
 		if (bootstrap.timeout !== undefined) {
 			try {
