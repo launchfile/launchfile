@@ -228,7 +228,7 @@ env:
 <Quiz
   question="What does exposed: true mean on a provides entry?"
   options={[
-    { text: "The port is publicly accessible from the internet", correct: true, explanation: "Correct! An exposed port is reachable from outside the deployment — routing, load balancing, and TLS are configured for you." },
+    { text: "The port is publicly accessible from the internet", correct: true, explanation: "Correct! exposed: true declares that the internet should reach this port — how that happens (routing, domains, TLS) is the platform's decision." },
     { text: "The port is logged for debugging", correct: false, explanation: "Not quite. Exposed controls network visibility, not logging." },
     { text: "The container port is mapped to the host", correct: false, explanation: "That's an implementation detail of how a specific provider works. Exposed is a higher-level declaration about intent — should the internet be able to reach this port?" },
     { text: "The health check is enabled", correct: false, explanation: "Health checks are configured separately via the health field. Exposed is about network access." },
