@@ -299,7 +299,7 @@ describe("provenance precedence — generator outranks default (D-49)", () => {
 		// docker and aws both resolve generator first. Resolving the default here
 		// would give the same file two different values across providers (P-5).
 		const c = comp("  FOO:\n    default: author-literal\n    generator: secret\n");
-		const env = resolveComponentEnv(c, ctx());
+		const env = resolveComponentEnv(c, ctx(), {});
 		await resolveGenerators(c, env);
 		expect(env.FOO).not.toBe("author-literal");
 		expect(env.FOO).toMatch(/^[0-9a-f]{64}$/);
@@ -307,14 +307,14 @@ describe("provenance precedence — generator outranks default (D-49)", () => {
 
 	it("still uses the default when no generator is declared", async () => {
 		const c = comp("  FOO:\n    default: author-literal\n");
-		const env = resolveComponentEnv(c, ctx());
+		const env = resolveComponentEnv(c, ctx(), {});
 		await resolveGenerators(c, env);
 		expect(env.FOO).toBe("author-literal");
 	});
 
 	it("leaves a bare required declaration unset for the operator", async () => {
 		const c = comp("  FOO:\n    required: true\n");
-		const env = resolveComponentEnv(c, ctx());
+		const env = resolveComponentEnv(c, ctx(), {});
 		await resolveGenerators(c, env);
 		expect(env.FOO).toBeUndefined();
 	});
