@@ -1,5 +1,6 @@
 ---
 "@launchfile/docker": minor
+"@launchfile/macos-dev": minor
 ---
 
 Stable host mappings for every published endpoint, and D-27-correct publication.
@@ -20,4 +21,10 @@ Stable host mappings for every published endpoint, and D-27-correct publication.
 - `$app.*` now derives from the first component with an `exposed: true`
   endpoint, matching its documented contract — for apps whose first
   provides-bearing component was internal (e.g. a database), `$app.url` now
-  points at the actual public component.
+  points at the actual public component. `@launchfile/macos-dev` adopts the
+  same rule, so both providers resolve `$app.url` to the same component for
+  the same Launchfile.
+- An app where no endpoint anywhere sets `exposed: true` now warns that
+  nothing is published and the app is not reachable, instead of starting
+  silently with `$app.url` empty. Individual internal components stay quiet —
+  they are the normal shape for a service behind a gateway.
