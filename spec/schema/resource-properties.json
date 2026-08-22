@@ -1,0 +1,84 @@
+{
+  "$comment": "Machine-readable registry of the standard resource property vocabulary (D-45, closes G-6). The canonical prose form is SPEC.md § Resource Property Vocabulary; an SDK test (sdk/src/__tests__/resource-properties.test.ts) keeps the two consistent, so drift fails CI. Semantics notes are descriptive only: they record the documented meaning and existing provider latitude, and never settle a semantic the spec leaves undefined. Known-type vocabularies are OPEN — providers MAY expose extension properties; tooling warns (never errors) on properties outside this registry. Unknown resource types have no vocabulary here and stay fully open (L-4).",
+  "types": {
+    "postgres": {
+      "url": "Fully-formed connection string (e.g. postgresql://user:pass@host:5432/dbname); TLS mode is provider latitude",
+      "host": "Hostname or address the database is reachable at",
+      "port": "Port the database listens on",
+      "user": "Username credential for connecting",
+      "password": "Password credential for connecting",
+      "name": "Name of the provisioned database"
+    },
+    "mysql": {
+      "url": "Fully-formed connection string; TLS mode is provider latitude",
+      "host": "Hostname or address the database is reachable at",
+      "port": "Port the database listens on",
+      "user": "Username credential for connecting",
+      "password": "Password credential for connecting",
+      "name": "Name of the provisioned database"
+    },
+    "sqlite": {
+      "url": "Fully-formed connection string for the database file",
+      "path": "Filesystem path of the database file"
+    },
+    "mongodb": {
+      "url": "Fully-formed connection string; TLS mode is provider latitude",
+      "host": "Hostname or address the database is reachable at",
+      "port": "Port the database listens on",
+      "user": "Username credential for connecting",
+      "password": "Password credential for connecting",
+      "name": "Name of the provisioned database"
+    },
+    "redis": {
+      "url": "Fully-formed connection string; TLS mode is provider latitude",
+      "host": "Hostname or address the server is reachable at",
+      "port": "Port the server listens on",
+      "password": "Password credential for connecting"
+    },
+    "memcache": {
+      "url": "Fully-formed connection string",
+      "host": "Hostname or address the server is reachable at",
+      "port": "Port the server listens on"
+    },
+    "rabbitmq": {
+      "url": "Fully-formed connection string; TLS mode is provider latitude",
+      "host": "Hostname or address the broker is reachable at",
+      "port": "Port the broker listens on",
+      "user": "Username credential for connecting",
+      "password": "Password credential for connecting"
+    },
+    "elasticsearch": {
+      "url": "Fully-formed connection string; TLS mode is provider latitude",
+      "host": "Hostname or address the cluster is reachable at",
+      "port": "Port the cluster listens on"
+    },
+    "minio": {
+      "url": "Fully-formed endpoint connection string; TLS mode is provider latitude",
+      "host": "Hostname or address the object store is reachable at",
+      "port": "Port the object store listens on",
+      "access_key": "Access key ID credential",
+      "secret_key": "Secret access key credential",
+      "bucket": "Name of the provisioned bucket"
+    },
+    "clickhouse": {
+      "url": "Fully-formed connection string; TLS mode is provider latitude",
+      "host": "Hostname or address the database is reachable at",
+      "port": "Port the database listens on",
+      "user": "Username credential for connecting",
+      "password": "Password credential for connecting",
+      "name": "Name of the provisioned database"
+    },
+    "kafka": {
+      "url": "Fully-formed connection string; TLS mode is provider latitude",
+      "host": "Hostname or address the broker is reachable at",
+      "port": "Port the broker listens on"
+    },
+    "s3": {
+      "url": "Fully-formed endpoint connection string; TLS mode is provider latitude",
+      "access_key": "Access key ID credential",
+      "secret_key": "Secret access key credential",
+      "bucket": "Name of the provisioned bucket",
+      "region": "Region identifier of the provisioned bucket"
+    }
+  }
+}

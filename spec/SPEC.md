@@ -970,6 +970,8 @@ Each resource type exposes well-known properties for use in `set_env` expression
 
 The `url` property is always a fully-formed connection string (e.g. `postgresql://user:pass@host:5432/dbname`). Other properties provide individual components for apps that require them separately.
 
+This vocabulary is also published in machine-readable form as [`schema/resource-properties.json`](schema/resource-properties.json), which adds a one-line semantic per property and is what tooling reads for advisory typo warnings (see [DESIGN.md D-45](DESIGN.md#d-45-resource-property-registry--vocabulary-is-standard-but-open)).
+
 Resource types are extensible -- any string is accepted. Unknown types have no predefined property vocabulary; their properties are platform-defined.
 
 ## YAML Compatibility
