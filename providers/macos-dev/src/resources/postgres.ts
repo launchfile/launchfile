@@ -53,6 +53,8 @@ export class PostgresProvisioner implements ResourceProvisioner {
 		const safeName = opts.appName.replace(/-/g, "_");
 		const dbName = existingState?.dbName ?? `launchfile_${safeName}`;
 		const user = existingState?.user ?? `launchfile_${safeName}`;
+		if (!SAFE_IDENTIFIER.test(dbName)) throw new Error("Invalid database name");
+		if (!SAFE_IDENTIFIER.test(user)) throw new Error("Invalid database user");
 		const password = existingState?.password ?? generatePassword();
 		const port = DEFAULT_PORT;
 
