@@ -22,7 +22,7 @@ import {
 	resolveExpression,
 	type CaptureEntry,
 } from "@launchfile/sdk";
-import { loadState } from "./state.js";
+import { loadState, saveState } from "./state.js";
 import {
 	buildResolverContext,
 	computeAppProperties,
@@ -226,9 +226,13 @@ export async function launchBootstrap(
 		const resolvedCommand = resolveExpression(bootstrap.command, context);
 
 		// Resolve env vars so the subprocess gets the same environment as
-		// the running component.
+		// the running component. Minted generator values come from the store
+		// `up` persists (D-49); a value minted here (a generator declared
+		// after the last `up`) is persisted before the command runs, so
+		// `up`/`env`/`bootstrap` keep agreeing on it.
 		const env = resolveComponentEnv(component, context, resourceMap);
-		await resolveGenerators(component, env);
+		const minted = await resolveGenerators(component, env, name, (state.generatedEnv ??= {}));
+		if (minted) await saveState(projectDir, state);
 		const port = state.ports[name];
 		if (port && !env.PORT) env.PORT = String(port);
 

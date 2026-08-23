@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { parse } from "yaml";
 import { readLaunch } from "@launchfile/sdk";
 import { launchToCompose } from "../compose-generator.js";
 
@@ -426,6 +427,131 @@ secrets:
 		expect(result.secrets["session-id"]).toMatch(
 			/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
 		);
+	});
+});
+
+describe("env-level generator preservation (D-49, #186)", () => {
+	const appYaml = `
+name: envgen
+image: nginx
+env:
+  APP_KEY:
+    generator: secret
+`;
+
+	function envOf(yamlText: string, service: string): Record<string, string> {
+		const doc = parse(yamlText) as {
+			services: Record<string, { environment?: Record<string, string> }>;
+		};
+		return doc.services[service]?.environment ?? {};
+	}
+
+	it("reuses the persisted value instead of re-minting when state holds one", () => {
+		const launch = readLaunch(appYaml);
+		const generatedEnv = { "default.APP_KEY": "a".repeat(64) };
+
+		const result = launchToCompose(launch, { generatedEnv });
+
+		expect(envOf(result.yaml, "envgen").APP_KEY).toBe("a".repeat(64));
+		expect(result.generatedEnv).toEqual({ "default.APP_KEY": "a".repeat(64) });
+	});
+
+	it("mints and returns the value for persistence when state holds none", () => {
+		const launch = readLaunch(appYaml);
+
+		const result = launchToCompose(launch, {});
+
+		const value = envOf(result.yaml, "envgen").APP_KEY!;
+		expect(value).toMatch(/^[0-9a-f]{64}$/);
+		// result.generatedEnv is what provider.ts writes back to state before
+		// saveState — the write-back is the invariant, not just the env value.
+		expect(result.generatedEnv["default.APP_KEY"]).toBe(value);
+	});
+
+	it("does not persist `generator: port` and does not read a stale port from the store", () => {
+		const launch = readLaunch(`
+name: envgen
+image: nginx
+env:
+  APP_PORT:
+    generator: port
+`);
+		// Even a (never-written-by-us) port entry in the store is ignored —
+		// the port branch re-allocates unconditionally.
+		const generatedEnv: Record<string, string> = { "default.APP_PORT": "1" };
+
+		const result = launchToCompose(launch, { generatedEnv });
+
+		const value = envOf(result.yaml, "envgen").APP_PORT!;
+		expect(String(value)).toMatch(/^\d+$/);
+		expect(String(value)).not.toBe("1");
+		expect(result.generatedEnv["default.APP_PORT"]).toBe("1"); // untouched, never re-written
+	});
+
+	it("preserves `generator: uuid` values across calls", () => {
+		const launch = readLaunch(`
+name: envgen
+image: nginx
+env:
+  INSTANCE_ID:
+    generator: uuid
+`);
+		const generatedEnv: Record<string, string> = {};
+
+		const first = envOf(launchToCompose(launch, { generatedEnv }).yaml, "envgen").INSTANCE_ID!;
+		expect(first).toMatch(/^[0-9a-f-]{36}$/);
+
+		const second = envOf(launchToCompose(launch, { generatedEnv }).yaml, "envgen").INSTANCE_ID!;
+		expect(second).toBe(first);
+	});
+
+	it("does not leak env-level values into $secrets.*", () => {
+		const launch = readLaunch(`
+name: envgen
+image: nginx
+env:
+  APP_KEY:
+    generator: secret
+  LEAK_CHECK:
+    default: "$secrets.APP_KEY"
+`);
+		const result = launchToCompose(launch, {});
+
+		const env = envOf(result.yaml, "envgen");
+		expect(env.APP_KEY).toMatch(/^[0-9a-f]{64}$/);
+		// APP_KEY is declared only under env:, so it is not a secrets name —
+		// the reference resolves to empty, and result.secrets stays clean.
+		expect(env.LEAK_CHECK ?? "").toBe("");
+		expect(result.secrets.APP_KEY).toBeUndefined();
+	});
+
+	it("keys per component: same variable name on two components stays independent and stable", () => {
+		const launch = readLaunch(`
+name: envgen2
+components:
+  web:
+    image: nginx
+    env:
+      SHARED_KEY:
+        generator: secret
+  worker:
+    image: nginx
+    env:
+      SHARED_KEY:
+        generator: secret
+`);
+		const generatedEnv: Record<string, string> = {};
+
+		const r1 = launchToCompose(launch, { generatedEnv });
+		const web1 = envOf(r1.yaml, "envgen2-web").SHARED_KEY!;
+		const worker1 = envOf(r1.yaml, "envgen2-worker").SHARED_KEY!;
+		expect(web1).not.toBe(worker1); // two declarations, two mintings (D-25)
+		expect(r1.generatedEnv["web.SHARED_KEY"]).toBe(web1);
+		expect(r1.generatedEnv["worker.SHARED_KEY"]).toBe(worker1);
+
+		const r2 = launchToCompose(launch, { generatedEnv });
+		expect(envOf(r2.yaml, "envgen2-web").SHARED_KEY).toBe(web1);
+		expect(envOf(r2.yaml, "envgen2-worker").SHARED_KEY).toBe(worker1);
 	});
 });
 
