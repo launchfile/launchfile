@@ -421,20 +421,20 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// never becomes healthy FAILS THE INVOCATION. A health check is not a
 		// command slot, but D-48 gives it a disposition, and reporting the timeout
 		// as a warning while returning success contradicts it. Containers are left
-		// running so the user can inspect what never came up.
+		// running so the user can inspect what never came up, and the CLI records
+		// the deployment on this path so `status`/`logs`/`down` reach them.
 		await inPhase("health", withLogs(), () =>
 			withSpan("up:health", { project }, async () => {
-				const healthy = await waitForHealth(project, composeFile);
-				if (!healthy) {
-					log.warn(
-						{ project },
-						"health check timed out — some services never became healthy",
+				const health = await waitForHealth(project, composeFile);
+				if (!health.ok) {
+					const message = healthFailureMessage(
+						health.stuck,
+						HEALTH_TIMEOUT_MS / 1000,
 					);
-					console.error("  ! Containers are up but never became healthy.");
-					console.error("    Inspect them with: launchfile status / launchfile logs");
-					throw new Error(
-						`no component became healthy within ${HEALTH_TIMEOUT_MS / 1000}s`,
-					);
+					log.warn({ project, stuck: health.stuck }, "health check timed out");
+					console.error(`  ! ${message}`);
+					console.error("    Containers are left running. Inspect them with: launchfile status / launchfile logs");
+					throw new Error(message);
 				}
 				console.log(`  ✓ Health check passed`);
 			}),
@@ -576,11 +576,53 @@ export async function dockerList(): Promise<void> {
  */
 export const HEALTH_TIMEOUT_MS = 120_000;
 
-async function waitForHealth(project: string, composeFile: string): Promise<boolean> {
+/**
+ * What the health poll saw when it stopped waiting.
+ *
+ * `stuck` holds the compose service names that never reached
+ * healthy-and-running, taken from the last poll that saw any container at all.
+ * It is empty when the gate passed, and also when no container ever reported —
+ * the two are told apart by `ok`.
+ */
+export interface HealthOutcome {
+	ok: boolean;
+	stuck: readonly string[];
+}
+
+/**
+ * What a health-gate timeout says, in the record and on stderr.
+ *
+ * The stuck services are named. "No component became healthy" is untrue whenever
+ * four of five are healthy and one is stuck — the ordinary case — and this is
+ * the record built to hold the useful facts about a failure.
+ */
+export function healthFailureMessage(
+	stuck: readonly string[],
+	seconds: number,
+): string {
+	return stuck.length > 0
+		? `component(s) ${stuck.join(", ")} did not become healthy within ${seconds}s`
+		: `no container was running after ${seconds}s`;
+}
+
+/** A container is healthy when it is running and either passes or declares no check. */
+export function isContainerHealthy(container: { State: string; Health: string }): boolean {
+	const declaresNoCheck = container.Health === "";
+	return (
+		container.State === "running" &&
+		(container.Health === "healthy" || declaresNoCheck)
+	);
+}
+
+async function waitForHealth(
+	project: string,
+	composeFile: string,
+): Promise<HealthOutcome> {
 	const log = getLogger();
 	const maxWait = HEALTH_TIMEOUT_MS;
 	const pollInterval = 3_000;
 	const start = Date.now();
+	let stuck: string[] = [];
 
 	while (Date.now() - start < maxWait) {
 		const elapsed = Date.now() - start;
@@ -598,34 +640,30 @@ async function waitForHealth(project: string, composeFile: string): Promise<bool
 
 		// Parse container status — each line is a JSON object
 		const lines = result.stdout.trim().split("\n").filter(Boolean);
-		let allHealthy = true;
+		const unhealthy: string[] = [];
 		let hasContainers = false;
 
 		for (const line of lines) {
 			try {
 				const container = JSON.parse(line) as { State: string; Health: string; Name: string; Service: string };
 				hasContainers = true;
-				if (container.Health === "healthy" || container.Health === "") {
-					// Healthy or no health check defined
-					if (container.State !== "running") {
-						allHealthy = false;
-					}
-				} else {
-					allHealthy = false;
+				if (!isContainerHealthy(container)) {
+					unhealthy.push(container.Service || container.Name);
 				}
 			} catch {
 				// Skip unparseable lines
 			}
 		}
 
-		if (hasContainers && allHealthy) {
-			return true;
+		if (hasContainers) {
+			if (unhealthy.length === 0) return { ok: true, stuck: [] };
+			stuck = unhealthy;
 		}
 
 		await new Promise((r) => setTimeout(r, pollInterval));
 	}
 
-	return false;
+	return { ok: false, stuck };
 }
 
 /** The component a ports-map key belongs to (`caddy:https` → `caddy`). */
