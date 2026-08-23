@@ -114,7 +114,7 @@ describe("computeAppProperties (D-33)", () => {
 		});
 		const app = computeAppProperties(launch, { default: 10042 });
 		const ctx = buildResolverContext({}, { default: 10042 }, {}, app);
-		const env = resolveComponentEnv(launch.components.default!, ctx, {});
+		const { env } = resolveComponentEnv(launch.components.default!, ctx, {});
 		expect(env.PUBLIC_URL).toBe("http://localhost:10042");
 	});
 });
@@ -141,7 +141,7 @@ describe("resolveComponentEnv", () => {
 		};
 		const context = buildResolverContext(resourceMap, {}, {}, NO_APP);
 
-		const env = resolveComponentEnv(component, context, resourceMap);
+		const { env } = resolveComponentEnv(component, context, resourceMap);
 
 		expect(env.DATABASE_URL).toBe("postgresql://user:pass@localhost:5432/mydb");
 		expect(env.DB_HOST).toBe("localhost");
@@ -156,7 +156,7 @@ describe("resolveComponentEnv", () => {
 		};
 		const context = buildResolverContext({}, {}, {}, NO_APP);
 
-		const env = resolveComponentEnv(component, context, {});
+		const { env } = resolveComponentEnv(component, context, {});
 
 		expect(env.PORT).toBe("8080");
 		expect(env.LOG_LEVEL).toBe("info");
@@ -170,7 +170,7 @@ describe("resolveComponentEnv", () => {
 		};
 		const context = buildResolverContext({}, { backend: 3000 }, {}, NO_APP);
 
-		const env = resolveComponentEnv(component, context, {});
+		const { env } = resolveComponentEnv(component, context, {});
 
 		expect(env.BACKEND_URL).toBe("http://localhost:3000");
 	});
@@ -183,7 +183,7 @@ describe("resolveComponentEnv", () => {
 		};
 		const context = buildResolverContext({}, {}, { "my-key": "super-secret" }, NO_APP);
 
-		const env = resolveComponentEnv(component, context, {});
+		const { env } = resolveComponentEnv(component, context, {});
 
 		expect(env.SECRET_KEY).toBe("super-secret");
 	});
@@ -209,7 +209,7 @@ describe("resolveComponentEnv", () => {
 		};
 		const context = buildResolverContext(resourceMap, {}, {}, NO_APP);
 
-		const env = resolveComponentEnv(component, context, resourceMap);
+		const { env } = resolveComponentEnv(component, context, resourceMap);
 
 		expect(env.DATABASE_URL).toBe("postgresql://real-url");
 	});
@@ -226,7 +226,7 @@ describe("resolveComponentEnv", () => {
 		const context = buildResolverContext({}, {}, {}, NO_APP);
 		const storage = { data: { path: "/proj/.launchfile/storage/default/data" } };
 
-		const env = resolveComponentEnv(component, context, {}, storage);
+		const { env } = resolveComponentEnv(component, context, {}, storage);
 
 		expect(env.STORAGE_DIR).toBe("/proj/.launchfile/storage/default/data");
 		expect(env.MP_DATABASE).toBe("/proj/.launchfile/storage/default/data/mailpit.db");
@@ -238,7 +238,7 @@ describe("resolveComponentEnv", () => {
 		};
 		const context = buildResolverContext({}, {}, {}, NO_APP);
 
-		const env = resolveComponentEnv(component, context, {});
+		const { env } = resolveComponentEnv(component, context, {});
 
 		expect(env.STORAGE_DIR).toBe("");
 	});
@@ -299,7 +299,7 @@ describe("provenance precedence — generator outranks default (D-49)", () => {
 		// docker and aws both resolve generator first. Resolving the default here
 		// would give the same file two different values across providers (P-5).
 		const c = comp("  FOO:\n    default: author-literal\n    generator: secret\n");
-		const env = resolveComponentEnv(c, ctx(), {});
+		const { env } = resolveComponentEnv(c, ctx(), {});
 		await resolveGenerators(c, env);
 		expect(env.FOO).not.toBe("author-literal");
 		expect(env.FOO).toMatch(/^[0-9a-f]{64}$/);
@@ -307,14 +307,14 @@ describe("provenance precedence — generator outranks default (D-49)", () => {
 
 	it("still uses the default when no generator is declared", async () => {
 		const c = comp("  FOO:\n    default: author-literal\n");
-		const env = resolveComponentEnv(c, ctx(), {});
+		const { env } = resolveComponentEnv(c, ctx(), {});
 		await resolveGenerators(c, env);
 		expect(env.FOO).toBe("author-literal");
 	});
 
 	it("leaves a bare required declaration unset for the operator", async () => {
 		const c = comp("  FOO:\n    required: true\n");
-		const env = resolveComponentEnv(c, ctx(), {});
+		const { env } = resolveComponentEnv(c, ctx(), {});
 		await resolveGenerators(c, env);
 		expect(env.FOO).toBeUndefined();
 	});

@@ -57,7 +57,7 @@ describe("dry-run against catalog", () => {
 		const ports = await allocatePorts(launch.components, "miniflux");
 		const context = buildResolverContext(resourceMap, ports, {}, {});
 
-		const env = resolveComponentEnv(component, context, resourceMap);
+		const { env } = resolveComponentEnv(component, context, resourceMap);
 		await resolveGenerators(component, env);
 
 		// DATABASE_URL should be resolved from postgres $url
@@ -127,7 +127,7 @@ describe("dry-run against catalog", () => {
 
 		// Resolve env for each component — should not throw
 		for (const [name, component] of Object.entries(launch.components)) {
-			const env = resolveComponentEnv(component, context, resourceMap);
+			const { env } = resolveComponentEnv(component, context, resourceMap);
 			await resolveGenerators(component, env);
 			// Every component should have at least some env vars
 			expect(Object.keys(env).length, `${name} should have env vars`).toBeGreaterThan(0);

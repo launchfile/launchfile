@@ -17,6 +17,7 @@ import {
 	type NormalizedRequirement,
 	type NormalizedEnvVar,
 	type NormalizedHealth,
+	unsuppliedRequiredEnv,
 } from "@launchfile/sdk";
 import { registerSecret } from "./redact.js";
 
@@ -401,6 +402,21 @@ export interface ComposeOpts {
 	networkName?: string;
 	/** Project directory for local sources — relative `build:` contexts resolve against this */
 	projectDir?: string;
+	/**
+	 * This provider's operator channel for `required:` variables the Launchfile
+	 * itself supplies no value for (PROVIDERS.md §10 rule 8 — "obtain the value
+	 * from its own operator-facing channel, or fail"). `dockerUp` passes
+	 * `process.env`. Consulted ONLY for an otherwise-unsupplied required key:
+	 * it never overrides a `default:`, a `generator:`, or a `set_env:` binding.
+	 */
+	operatorEnv?: Record<string, string | undefined>;
+}
+
+/** A `required:` variable neither the Launchfile nor the operator supplied. */
+export interface UnsuppliedRequiredVar {
+	component: string;
+	key: string;
+	sensitive: boolean;
 }
 
 export interface ComposeResult {
@@ -416,6 +432,18 @@ export interface ComposeResult {
 	ports: Record<string, number>;
 	/** Map of component name → generated compose service name (skipped components absent) */
 	services: Record<string, string>;
+	/**
+	 * `required:` variables that arrived from neither the Launchfile nor
+	 * `opts.operatorEnv` (D-52, PROVIDERS.md §10 rule 8). Their keys are ABSENT
+	 * from the emitted compose — never `""`, never a substitute.
+	 *
+	 * Deliberately NOT folded into `warnings`: `dockerUp` prints warnings and
+	 * proceeds, which is precisely the warn-then-fail-anyway behavior D-52's
+	 * *Rejected* block forbids. A deploying verb reads this field and fails.
+	 * `launchToCompose` itself never throws — it is exported public API and a
+	 * pure generator.
+	 */
+	unsuppliedRequired: UnsuppliedRequiredVar[];
 }
 
 export function launchToCompose(
@@ -430,6 +458,7 @@ export function launchToCompose(
 	const secrets = opts.secrets ?? {};
 	const ports: Record<string, number> = {};
 	const componentServices: Record<string, string> = {};
+	const unsuppliedRequired: UnsuppliedRequiredVar[] = [];
 
 	const backingServices = createBackingServices(secrets);
 
@@ -596,7 +625,7 @@ export function launchToCompose(
 
 		if (component.env) {
 			for (const [key, envVar] of Object.entries(component.env)) {
-				const value = resolveEnvVar(envVar, componentContext, key);
+				const value = resolveEnvVar(envVar, componentContext);
 				if (value !== undefined) {
 					env[key] = value;
 				}
@@ -637,6 +666,22 @@ export function launchToCompose(
 					};
 				}
 			}
+		}
+
+		// Unsupplied `required:` variables (D-52, PROVIDERS.md §10 rule 8). This
+		// runs AFTER the `set_env` injection above because the test is arrival:
+		// a binding counts only when the resource behind it resolved. `supports:`
+		// resources are never provisioned by this provider, and a binding on an
+		// unknown backing type never injects, so neither reaches `env` here.
+		// Whatever is still missing gets one look at the operator channel, then
+		// is recorded — absent from the artifact, never substituted.
+		for (const { key, sensitive } of unsuppliedRequiredEnv(component, Object.keys(env))) {
+			const supplied = opts.operatorEnv?.[key];
+			if (supplied !== undefined) {
+				env[key] = supplied;
+				continue;
+			}
+			unsuppliedRequired.push({ component: componentName, key, sensitive });
 		}
 
 		// Inter-component depends_on
@@ -713,6 +758,7 @@ export function launchToCompose(
 		secrets,
 		ports,
 		services: componentServices,
+		unsuppliedRequired,
 	};
 }
 
@@ -721,7 +767,6 @@ export function launchToCompose(
 function resolveEnvVar(
 	envVar: NormalizedEnvVar,
 	context: ResolverContext,
-	key?: string,
 ): string | undefined {
 	if (envVar.generator) {
 		if (envVar.generator === "secret") return generateSecret();
@@ -737,17 +782,10 @@ function resolveEnvVar(
 		return val;
 	}
 
-	if (envVar.required) {
-		const lowerKey = key?.toLowerCase() ?? "";
-		if (lowerKey.includes("url") || lowerKey.includes("domain") || lowerKey.includes("origin")) {
-			return "http://localhost";
-		}
-		if (lowerKey.includes("email") || lowerKey.includes("mail")) {
-			return "test@localhost";
-		}
-		return "PLACEHOLDER";
-	}
-
+	// A `required:` var the file supplies no value for gets NO value here — the
+	// key stays absent from the service's `environment:` map (D-52, PROVIDERS.md
+	// §10 rule 8). `launchToCompose` records it in `unsuppliedRequired` and
+	// `dockerUp` fails on it by name.
 	return undefined;
 }
 

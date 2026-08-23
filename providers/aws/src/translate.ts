@@ -21,6 +21,7 @@ import {
 	type NormalizedRequirement,
 	type ResolverContext,
 	resolveExpression,
+	unsuppliedRequiredEnv,
 } from "@launchfile/sdk";
 import { Conformance } from "./gaps.js";
 import {
@@ -971,19 +972,17 @@ function reportUnsuppliedRequired(
 	c: Conformance,
 	baseContext: ResolverContext,
 ): void {
-	const boundBySetEnv = new Set(
-		(comp.requires ?? [])
-			.filter((req) => baseContext.resources?.[req.name ?? req.type])
-			.flatMap((req) => Object.keys(req.set_env ?? {})),
-	);
-	for (const [key, envVar] of Object.entries(comp.env ?? {})) {
-		if (!envVar.required) continue;
-		if (envVar.generator || envVar.default !== undefined) continue;
-		if (boundBySetEnv.has(key)) continue;
+	// The keys that really arrive: a binding counts only when the resource behind
+	// it resolved. The predicate itself is the SDK's, shared with every other
+	// provider and the catalog harness (D-52).
+	const boundBySetEnv = (comp.requires ?? [])
+		.filter((req) => baseContext.resources?.[req.name ?? req.type])
+		.flatMap((req) => Object.keys(req.set_env ?? {}));
+	for (const { key, sensitive } of unsuppliedRequiredEnv(comp, boundBySetEnv)) {
 		c.gap(
 			`env.${key}`,
-			envVar.sensitive === true ? "blocker" : "workaround",
-			envVar.sensitive === true
+			sensitive ? "blocker" : "workaround",
+			sensitive
 				? "required sensitive env var with no default, generator, or set_env binding — substituting a value would make this a publicly known constant credential (D-18), so it must be supplied out of band"
 				: "required env var with no default, generator, or set_env binding — the operator must supply the value",
 			"supply it at apply time (SSM parameter or TF variable), or give the Launchfile a `default:` or `generator:`",

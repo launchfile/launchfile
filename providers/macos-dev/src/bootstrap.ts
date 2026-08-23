@@ -227,8 +227,14 @@ export async function launchBootstrap(
 
 		// Resolve env vars so the subprocess gets the same environment as
 		// the running component.
-		const env = resolveComponentEnv(component, context, resourceMap);
+		const { env, unsupplied } = resolveComponentEnv(component, context, resourceMap);
 		await resolveGenerators(component, env);
+		// `up` took its `required:` values from the launching environment; read the
+		// same channel so bootstrap really does see the running component's env.
+		for (const { key } of unsupplied) {
+			const supplied = process.env[key];
+			if (supplied !== undefined) env[key] = supplied;
+		}
 		const port = state.ports[name];
 		if (port && !env.PORT) env.PORT = String(port);
 

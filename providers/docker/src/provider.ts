@@ -18,7 +18,7 @@ import {
 	stateBaseDir,
 } from "./state.js";
 import { allocatePorts } from "./port-allocator.js";
-import { launchToCompose } from "./compose-generator.js";
+import { launchToCompose, type UnsuppliedRequiredVar } from "./compose-generator.js";
 import { planReleases, runReleases } from "./release.js";
 import { shell, shellStream } from "./shell.js";
 import { getLogger, withSpan } from "./logger.js";
@@ -39,6 +39,37 @@ export interface DockerUpOpts {
 	 * all components.
 	 */
 	components?: string[];
+}
+
+/**
+ * A deploy refused because a `required:` variable arrived from neither the
+ * Launchfile nor the operator (D-52, PROVIDERS.md §10 rule 8, deploying branch).
+ *
+ * The message names every offending component and variable in one go, and never
+ * prints a value — for a `sensitive: true` var it would be a credential, and for
+ * the rest it would be noise the operator already knows.
+ */
+export class UnsuppliedRequiredEnvError extends Error {
+	/** An operator-fixable precondition, not a crash — see `ExpectedRefusal`. */
+	readonly expectedRefusal = true as const;
+	readonly vars: UnsuppliedRequiredVar[];
+
+	constructor(vars: UnsuppliedRequiredVar[]) {
+		const lines = vars.map(
+			({ component, key, sensitive }) =>
+				`  - ${component}: ${key}${sensitive ? " (sensitive)" : ""}`,
+		);
+		super(
+			`Cannot launch: ${vars.length} required environment variable${vars.length === 1 ? "" : "s"} ` +
+				"had no value.\n" +
+				`${lines.join("\n")}\n` +
+				"The Launchfile declares them `required:` with no `default:`, `generator:`, or resource\n" +
+				"binding, so you supply them. Set them in the environment and run `up` again, e.g.\n" +
+				`  ${vars[0]!.key}=<value> launchfile up`,
+		);
+		this.name = "UnsuppliedRequiredEnvError";
+		this.vars = vars;
+	}
 }
 
 /** component name → compose service name (mirrors compose-generator). */
@@ -153,17 +184,39 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 			state.sourcePath = sourceInfo.sourcePath;
 			state.sourceUrl = sourceInfo.sourceUrl;
 		}
-		await ensureStateDir(resolved.slug);
 
 		// Allocate host ports
 		const hostPorts = await allocatePorts(launch.components, launch.name, state.ports);
 
-		// Generate compose
+		// Generate compose. `process.env` is this provider's operator channel for
+		// `required:` variables the Launchfile supplies no value for (PROVIDERS.md
+		// §10 rule 8) — `URL=https://wiki.example.com launchfile up` supplies one.
 		const result = launchToCompose(launch, {
 			secrets: state.secrets,
 			hostPorts,
 			projectDir: resolved.dir,
+			operatorEnv: process.env,
 		});
+
+		// Fail on whatever the operator channel did not cover — before the compose
+		// file is written and before any image, network, or container exists
+		// (D-52; a fail branch that leaves half a stack up is worse than the
+		// fabrication it replaces). Bounded by what is actually being launched:
+		// a component outside the start-set, or one this provider skipped, is not
+		// a launch-blocking gap (§5 rule 4). No prompt — a non-interactive
+		// invocation must fail by name rather than hang on stdin. No values are
+		// printed, sensitive or not.
+		const launching = new Set(
+			Object.keys(result.services).filter((name) => !selectorActive || selection.start.includes(name)),
+		);
+		const blocking = result.unsuppliedRequired.filter((v) => launching.has(v.component));
+		if (blocking.length > 0) {
+			throw new UnsuppliedRequiredEnvError(blocking);
+		}
+
+		// Past the refusal gate — from here the provider starts leaving things on
+		// disk, so the state directory is created here rather than earlier.
+		await ensureStateDir(resolved.slug);
 
 		// Log warnings; refusals (un-grantable host capabilities, D-44) are
 		// surfaced distinctly — a refusal is user-visible output, not a line
