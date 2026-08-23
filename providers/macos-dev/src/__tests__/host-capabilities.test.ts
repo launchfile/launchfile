@@ -1,10 +1,6 @@
-import { readLaunch } from "@launchfile/sdk";
+import { readLaunch, resolveSourceRunCommand } from "@launchfile/sdk";
 import { describe, expect, it } from "vitest";
-import {
-	applyHostCapabilityRefusals,
-	refusedHostCapabilities,
-	sourceRunCommand,
-} from "../provider.js";
+import { applyHostCapabilityRefusals, refusedHostCapabilities } from "../provider.js";
 
 /**
  * This provider grants no host capabilities (D-44, PROVIDERS.md §11), so a
@@ -86,7 +82,7 @@ describe("applyHostCapabilityRefusals — the refusal is the removal", () => {
 	/** The names launchUp would hand to the process manager. */
 	const wouldStart = (launch: ReturnType<typeof readLaunch>) =>
 		Object.entries(launch.components)
-			.filter(([, c]) => sourceRunCommand(c) !== undefined)
+			.filter(([, c]) => resolveSourceRunCommand(c) !== undefined)
 			.map(([n]) => n);
 
 	const twoComponents = () =>

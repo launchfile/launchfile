@@ -7,7 +7,14 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { readLaunch, selectionClosure, type NormalizedLaunch, type NormalizedComponent } from "@launchfile/sdk";
+import {
+	readLaunch,
+	resolveSourcePrepareCommand,
+	resolveSourceRunCommand,
+	selectionClosure,
+	type NormalizedLaunch,
+	type NormalizedComponent,
+} from "@launchfile/sdk";
 
 import { checkPrereqs } from "./prereqs.js";
 import { loadState, initState, saveState, ensureDirs } from "./state.js";
@@ -30,20 +37,13 @@ import { shell } from "./shell.js";
 import { parseDuration } from "./bootstrap.js";
 
 /**
- * Source-mode run resolution (D-38, precedence `dev` > `image` > `start`).
- * This provider runs apps from source. A component is source-runnable when it
- * declares `dev`, or a `start` with no `image` — an `image` without a `dev`
- * override stays artifact-mode, which this source-only provider can't launch.
+ * This provider runs apps from source. A component is source-runnable when
+ * {@link resolveSourceRunCommand} (D-38) resolves a command — declares `dev`,
+ * or a `start` with no `image`. An `image` without a `dev` override stays
+ * artifact-mode, which this source-only provider can't launch.
  */
-export function isSourceRunnable(component: NormalizedComponent): boolean {
-	return Boolean(component.commands?.dev || (component.commands?.start && !component.image));
-}
-
-/** The command run from source, or undefined if the component resolves to its artifact. */
-export function sourceRunCommand(component: NormalizedComponent): string | undefined {
-	if (component.commands?.dev?.command) return component.commands.dev.command;
-	if (component.image) return undefined; // image, no `dev` override → artifact
-	return component.commands?.start?.command;
+function isSourceRunnable(component: NormalizedComponent): boolean {
+	return resolveSourceRunCommand(component) !== undefined;
 }
 
 /**
@@ -435,7 +435,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	// 14. Run source-mode prepare \u2014 `install ?? build` (D-38), on demand
 	if (!opts.noBuild) {
 		for (const [name, component] of Object.entries(launch.components)) {
-			const prepare = component.commands?.install ?? component.commands?.build;
+			const prepare = resolveSourcePrepareCommand(component);
 			const cmd = prepare?.command ?? pm?.installCommand;
 			if (cmd) {
 				console.log(`  \u2193 Preparing${componentNames.length > 1 ? ` [${name}]` : ""}...`);
@@ -471,7 +471,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		// Resolve the source-mode run command (D-38 precedence `dev` > `image` >
 		// `start`). Artifact components (image, no `dev` override) resolve to
 		// undefined — they were warned by the guard; skip them.
-		const startCmd = sourceRunCommand(component);
+		const startCmd = resolveSourceRunCommand(component)?.command;
 		if (!startCmd) continue;
 
 		pm2.register(name, {
