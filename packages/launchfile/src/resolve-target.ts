@@ -72,11 +72,16 @@ export interface ResolvedDeployment {
 /**
  * Resolve the target for `launchfile down/status/logs [target]`.
  * No target = find by pwd. Otherwise: ID → name → slug (error if ambiguous).
+ *
+ * `dir` is the deployment index directory; tests pass a temp one. Every one of
+ * those three commands funnels through here, so a deployment missing from the
+ * index is a deployment none of them can reach.
  */
 export async function resolveDeploymentTarget(
 	target: string | undefined,
+	dir?: string,
 ): Promise<ResolvedDeployment> {
-	const index = await loadIndex();
+	const index = await loadIndex(dir);
 
 	// No target → find by pwd
 	if (!target) {
