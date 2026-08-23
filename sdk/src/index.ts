@@ -5,6 +5,10 @@ export {
 	lintDurations,
 	parseDurationMs,
 } from "./durations.js";
+export {
+	type UnsuppliedRequiredEnv,
+	unsuppliedRequiredEnv,
+} from "./env.js";
 export { lintLaunch } from "./lint.js";
 export { readLaunch, validateLaunch } from "./reader.js";
 export { parseRepository } from "./repository.js";
