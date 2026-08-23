@@ -566,7 +566,9 @@ Composition rule: a *derived* expression over a *minted* input — the `APP_KEY:
 
 ### D-50: Reserved — no decision recorded
 
-**Status**: Reserved; no decision recorded. No proposal claims this number — it was vacated while [#196](https://github.com/launchfile/launchfile/pull/196) was open, when the decision now recorded as D-51 was renumbered twice (D-43 → D-50 → D-51) to clear numbers already claimed by other decisions and to match the number [#197](https://github.com/launchfile/launchfile/pull/197) carries for it. The number is held rather than reused so the published list stays stable.
+**Status**: Reserved; no decision recorded. The proposal that would occupy this slot — host mounts for operator-supplied storage content — was **rejected as shaped**: it declared a host path (`storage.<name>.source`) in the file, which fails [P-1](#p-1-app-focused-not-infra-focused)'s portability test and places a home-#2 value ([D-36](#d-36-the-three-homes-of-a-varying-value-p-1-litmus-refinement)) in the app's own file. A reshaped successor — declaring *intent* that content is operator-provided, with the path bound by the orchestrator and refusal when unbound — is tracked in [#207](https://github.com/launchfile/launchfile/issues/207) and is intended for this number.
+
+The number was also transiently held by the decision now recorded as [D-51](#d-51-unexecuted-schedule-is-reported-loudly-not-silently-accepted), which was renumbered twice (D-43 → D-50 → D-51) to clear numbers other decisions had already claimed. It is held rather than reused so the published list stays stable.
 
 ---
 
