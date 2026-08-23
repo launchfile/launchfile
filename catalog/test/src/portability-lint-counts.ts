@@ -7,8 +7,8 @@
  * Usage: bun run src/portability-lint-counts.ts
  */
 
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { readLaunch } from "../../../sdk/src/reader.ts";
 import { lintLaunch } from "../../../sdk/src/lint.ts";
 
@@ -31,13 +31,21 @@ export interface CorpusCounts {
 	warningsWithSuppression: number;
 }
 
-/** Read every `*.yaml`/`Launchfile` file matching `glob` under `root`. */
-function readCorpus(root: string, glob: string): string[] {
-	const paths: string[] = [];
-	for (const entry of new Bun.Glob(glob).scanSync({ cwd: root, absolute: true })) {
-		paths.push(entry);
-	}
-	return paths.sort();
+/** Every `<root>/<dir>/<app>/Launchfile` that exists, sorted. */
+function readAppCorpus(root: string, dir: string): string[] {
+	const base = resolve(root, dir);
+	return readdirSync(base)
+		.map((entry) => join(base, entry, "Launchfile"))
+		.filter((p) => existsSync(p))
+		.sort();
+}
+
+/** Every `*.yaml` directly under `root`, sorted. */
+function readYamlCorpus(root: string): string[] {
+	return readdirSync(root)
+		.filter((f) => f.endsWith(".yaml"))
+		.map((f) => resolve(root, f))
+		.sort();
 }
 
 export function countCorpus(paths: string[]): CorpusCounts {
@@ -83,14 +91,11 @@ export function countCorpus(paths: string[]): CorpusCounts {
 }
 
 export function catalogPaths(catalogRoot: string): string[] {
-	return [
-		...readCorpus(catalogRoot, "apps/*/Launchfile"),
-		...readCorpus(catalogRoot, "drafts/*/Launchfile"),
-	];
+	return [...readAppCorpus(catalogRoot, "apps"), ...readAppCorpus(catalogRoot, "drafts")];
 }
 
 export function specExamplesPaths(specExamplesRoot: string): string[] {
-	return readCorpus(specExamplesRoot, "*.yaml");
+	return readYamlCorpus(specExamplesRoot);
 }
 
 function formatRow(label: string, counts: CorpusCounts): string {
