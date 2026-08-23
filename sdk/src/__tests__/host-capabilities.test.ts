@@ -116,7 +116,7 @@ image: app:1
 requires:
   - type: container_runtime
 `);
-			const warnings = lintLaunch(launch);
+			const warnings = lintLaunch(launch, { suppressPortabilityWarnings: true });
 			expect(warnings).toHaveLength(1);
 			expect(warnings[0]).toContain("host:");
 			expect(warnings[0]).toContain("container_runtime");
@@ -132,7 +132,7 @@ requires:
 supports:
   - host: { container_runtime: any }
 `);
-			expect(lintLaunch(launch)).toEqual([]);
+			expect(lintLaunch(launch, { suppressPortabilityWarnings: true })).toEqual([]);
 		});
 
 		it("does not report capability entries as conflicting resources", () => {
@@ -148,7 +148,7 @@ components:
     supports:
       - host: { network: host }
 `);
-			expect(lintLaunch(launch)).toEqual([]);
+			expect(lintLaunch(launch, { suppressPortabilityWarnings: true })).toEqual([]);
 		});
 	});
 

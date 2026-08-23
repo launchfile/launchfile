@@ -16,7 +16,7 @@ components:
     requires:
       - { type: postgres, version: ">=16" }
 `);
-		const warnings = lintLaunch(launch);
+		const warnings = lintLaunch(launch, { suppressPortabilityWarnings: true });
 		expect(warnings).toHaveLength(1);
 		expect(warnings[0]).toContain('"postgres"');
 		expect(warnings[0]).toContain("version");
@@ -35,7 +35,7 @@ components:
     requires:
       - { type: postgres, config: { storage: "20Gi" } }
 `);
-		const warnings = lintLaunch(launch);
+		const warnings = lintLaunch(launch, { suppressPortabilityWarnings: true });
 		expect(warnings).toHaveLength(1);
 		expect(warnings[0]).toContain("config");
 	});
@@ -53,7 +53,7 @@ components:
     requires:
       - { name: cache, type: memcache }
 `);
-		const warnings = lintLaunch(launch);
+		const warnings = lintLaunch(launch, { suppressPortabilityWarnings: true });
 		expect(warnings).toHaveLength(1);
 		expect(warnings[0]).toContain('"cache"');
 		expect(warnings[0]).toContain("type");
@@ -72,7 +72,7 @@ components:
     requires:
       - { type: postgres, version: ">=15" }
 `);
-		expect(lintLaunch(launch)).toEqual([]);
+		expect(lintLaunch(launch, { suppressPortabilityWarnings: true })).toEqual([]);
 	});
 
 	it("treats config with reordered keys as identical (no warning)", () => {
@@ -88,7 +88,7 @@ components:
     requires:
       - { type: postgres, config: { b: "2", a: "1" } }
 `);
-		expect(lintLaunch(launch)).toEqual([]);
+		expect(lintLaunch(launch, { suppressPortabilityWarnings: true })).toEqual([]);
 	});
 
 	it("does NOT warn when different names share a type", () => {
@@ -104,7 +104,7 @@ components:
     requires:
       - { name: analytics-db, type: postgres, version: ">=16" }
 `);
-		expect(lintLaunch(launch)).toEqual([]);
+		expect(lintLaunch(launch, { suppressPortabilityWarnings: true })).toEqual([]);
 	});
 
 	it("reports multiple divergent fields together", () => {
@@ -120,7 +120,7 @@ components:
     requires:
       - { type: postgres, version: ">=16", config: { storage: "20Gi" } }
 `);
-		const warnings = lintLaunch(launch);
+		const warnings = lintLaunch(launch, { suppressPortabilityWarnings: true });
 		expect(warnings).toHaveLength(1);
 		expect(warnings[0]).toContain("config");
 		expect(warnings[0]).toContain("version");
@@ -137,7 +137,7 @@ components:
     supports:
       - { type: redis, version: ">=6" }
 `);
-		const warnings = lintLaunch(launch);
+		const warnings = lintLaunch(launch, { suppressPortabilityWarnings: true });
 		expect(warnings).toHaveLength(1);
 		expect(warnings[0]).toContain('"redis"');
 	});
@@ -145,7 +145,7 @@ components:
 
 describe("host-capability marker advisory — product spellings (D-44)", () => {
 	const lint = (body: string) =>
-		lintLaunch(readLaunch(`version: launch/v1\nname: p\nimage: x\n${body}`));
+		lintLaunch(readLaunch(`version: launch/v1\nname: p\nimage: x\n${body}`), { suppressPortabilityWarnings: true });
 
 	it("flags an unmarked `type: docker` entry", () => {
 		expect(lint("requires:\n  - type: docker\n").join()).toContain(
@@ -188,7 +188,7 @@ components:
         set_env:
           DB_HOST: $hoost
 `);
-		const warnings = lintLaunch(launch);
+		const warnings = lintLaunch(launch, { suppressPortabilityWarnings: true });
 		expect(warnings).toHaveLength(1);
 		expect(warnings[0]).toBe(
 			'"$hoost" is not in the standard vocabulary for postgres ' +
@@ -211,7 +211,7 @@ components:
         set_env:
           REDIS_PASSWORD: $password
 `);
-		expect(lintLaunch(launch)).toEqual([]);
+		expect(lintLaunch(launch, { suppressPortabilityWarnings: true })).toEqual([]);
 	});
 
 	it("stays silent for unknown resource types (L-4: types stay open)", () => {
@@ -225,7 +225,7 @@ components:
         set_env:
           DB_SOCKET: $socket
 `);
-		expect(lintLaunch(launch)).toEqual([]);
+		expect(lintLaunch(launch, { suppressPortabilityWarnings: true })).toEqual([]);
 	});
 
 	it("stays silent for reserved namespaces and cross-resource references", () => {
@@ -241,7 +241,7 @@ components:
           API_KEY: $secrets.api-key
           CACHE_URL: $redis.url
 `);
-		expect(lintLaunch(launch)).toEqual([]);
+		expect(lintLaunch(launch, { suppressPortabilityWarnings: true })).toEqual([]);
 	});
 
 	it("warns per occurrence across multiple components", () => {
@@ -261,7 +261,7 @@ components:
         set_env:
           REDIS_URL: $uri
 `);
-		const warnings = lintLaunch(launch);
+		const warnings = lintLaunch(launch, { suppressPortabilityWarnings: true });
 		expect(warnings).toHaveLength(2);
 		expect(warnings.join("\n")).toContain(
 			'"$hoost" is not in the standard vocabulary for postgres',
@@ -283,7 +283,7 @@ components:
         set_env:
           CACHE_ADDR: "\${hostt}:\${port}"
 `);
-		const warnings = lintLaunch(launch);
+		const warnings = lintLaunch(launch, { suppressPortabilityWarnings: true });
 		expect(warnings).toHaveLength(1);
 		expect(warnings[0]).toContain('"$hostt"');
 	});
@@ -318,7 +318,166 @@ components:
         set_env:
           X: $host
 `);
-			expect(lintLaunch(launch)).toEqual([]);
+			expect(lintLaunch(launch, { suppressPortabilityWarnings: true })).toEqual([]);
 		});
 	}
+});
+
+describe("lintLaunch — reduced-portability diagnostics (D-40, D-43)", () => {
+	describe("D-40 — no portable build path", () => {
+		it("fires for a prebuilt image: with no runtime/commands.build/commands.install", () => {
+			const launch = readLaunch(`
+name: acme
+image: acme:1
+commands:
+  start: acme serve
+`);
+			const warnings = lintLaunch(launch);
+			expect(warnings).toHaveLength(1);
+			expect(warnings[0]).toContain("(top-level)");
+			expect(warnings[0]).toContain("image:");
+			expect(warnings[0]).toContain("D-40");
+		});
+
+		it("fires for an in-repo build recipe with no runtime/commands.build/commands.install", () => {
+			const launch = readLaunch(`
+name: acme
+build:
+  dockerfile: Dockerfile
+commands:
+  start: acme serve
+`);
+			const warnings = lintLaunch(launch);
+			expect(warnings).toHaveLength(1);
+			expect(warnings[0]).toContain("in-repo build recipe");
+			expect(warnings[0]).toContain("D-40");
+		});
+
+		it("does not fire for a runtime with no build step (interpreted app)", () => {
+			const launch = readLaunch(`
+name: acme
+runtime: node
+commands:
+  start: node index.js
+`);
+			expect(lintLaunch(launch)).toEqual([]);
+		});
+
+		it("does not fire for a component with commands.build", () => {
+			const launch = readLaunch(`
+name: acme
+image: acme:1
+commands:
+  build: make build
+  start: acme serve
+`);
+			expect(lintLaunch(launch)).toEqual([]);
+		});
+
+		it("does not fire for a component with commands.install", () => {
+			const launch = readLaunch(`
+name: acme
+image: acme:1
+commands:
+  install: npm install
+  start: acme serve
+`);
+			expect(lintLaunch(launch)).toEqual([]);
+		});
+
+		it("resolves per component: warns only for the non-portable one, by name", () => {
+			const launch = readLaunch(`
+name: acme
+components:
+  api:
+    runtime: node
+    commands:
+      start: node index.js
+  worker:
+    image: worker:1
+    commands:
+      start: worker run
+`);
+			const warnings = lintLaunch(launch);
+			expect(warnings).toHaveLength(1);
+			expect(warnings[0]).toMatch(/^worker:/);
+		});
+	});
+
+	describe("D-43 — source-needing with no repository:, evaluated detached", () => {
+		it("fires for a source-needing component with no repository:, evaluated detached", () => {
+			const launch = readLaunch(`
+name: acme
+build:
+  dockerfile: Dockerfile
+commands:
+  start: acme serve
+`);
+			const warnings = lintLaunch(launch, { detached: true });
+			expect(warnings).toHaveLength(2); // D-40 also fires: no runtime/commands.build/install
+			expect(warnings.some((w) => w.includes("D-43"))).toBe(true);
+			expect(warnings.some((w) => w.includes("repository:"))).toBe(true);
+		});
+
+		it("stays silent when the same file is evaluated attached (default)", () => {
+			const launch = readLaunch(`
+name: acme
+build:
+  dockerfile: Dockerfile
+commands:
+  start: acme serve
+`);
+			const warnings = lintLaunch(launch, { detached: false });
+			expect(warnings.some((w) => w.includes("D-43"))).toBe(false);
+		});
+
+		it("stays silent when the app declares repository:, even detached", () => {
+			const launch = readLaunch(`
+name: acme
+repository: https://github.com/acme/acme
+build:
+  dockerfile: Dockerfile
+commands:
+  start: acme serve
+`);
+			const warnings = lintLaunch(launch, { detached: true });
+			expect(warnings.some((w) => w.includes("D-43"))).toBe(false);
+		});
+
+		it("stays silent when the component declares image:, even detached", () => {
+			const launch = readLaunch(`
+name: acme
+image: acme:1
+commands:
+  start: acme serve
+`);
+			const warnings = lintLaunch(launch, { detached: true });
+			expect(warnings.some((w) => w.includes("D-43"))).toBe(false);
+		});
+	});
+
+	describe("suppression (LAUNCHFILE_NO_PORTABILITY_WARNINGS)", () => {
+		it("silences D-40 and D-43 but not other checks", () => {
+			const launch = readLaunch(`
+name: acme
+components:
+  api:
+    build:
+      dockerfile: Dockerfile
+    commands:
+      start: acme serve
+    requires:
+      - type: postgres
+        set_env:
+          DB_HOST: $hoost
+`);
+			const warnings = lintLaunch(launch, {
+				detached: true,
+				suppressPortabilityWarnings: true,
+			});
+			expect(warnings.some((w) => w.includes("D-40"))).toBe(false);
+			expect(warnings.some((w) => w.includes("D-43"))).toBe(false);
+			expect(warnings.some((w) => w.includes("not in the standard vocabulary"))).toBe(true);
+		});
+	});
 });

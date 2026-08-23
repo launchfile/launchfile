@@ -25,6 +25,10 @@ launchfile validate --json
 # Silent mode — just the exit code
 launchfile validate --quiet
 
+# Evaluate as if fetched standalone rather than read from the app's own
+# checkout — enables the D-43 reduced-portability check (PROVIDERS.md §6)
+launchfile validate --detached
+
 # Print the normalized form (after shorthand expansion) as JSON
 launchfile inspect path/to/Launchfile
 
@@ -37,6 +41,15 @@ launchfile schema
 - `--no-color` — Disable colored output (also respects `NO_COLOR` env var)
 - `--version` — Print version
 - `--help` — Show usage
+
+### Reduced-portability warnings (D-40, D-43)
+
+`validate` warns, non-fatally, when a component has no portable build path
+(`runtime` and/or `commands.build`/`commands.install`) or — with `--detached`
+— is source-needing with no `repository:` to fall back to. Set
+`LAUNCHFILE_NO_PORTABILITY_WARNINGS` to silence both; every other `validate`
+warning keeps firing. The `lintLaunch(launch, opts?)` SDK export takes the
+same two options (`detached`, `suppressPortabilityWarnings`) directly.
 
 ### Validate in CI
 

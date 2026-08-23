@@ -6,11 +6,14 @@ const SDK_ROOT = resolve(import.meta.dirname ?? __dirname, "..", "..");
 const CLI = resolve(SDK_ROOT, "dist", "cli.js");
 const EXAMPLES = resolve(SDK_ROOT, "..", "spec", "examples");
 
-function run(cliArgs: string[]): { stdout: string; exitCode: number } {
+function run(
+	cliArgs: string[],
+	extraEnv: Record<string, string> = {},
+): { stdout: string; exitCode: number } {
 	try {
 		const stdout = execFileSync("node", [CLI, ...cliArgs], {
 			encoding: "utf-8",
-			env: { ...process.env, NO_COLOR: "1" },
+			env: { ...process.env, NO_COLOR: "1", ...extraEnv },
 		});
 		return { stdout, exitCode: 0 };
 	} catch (err) {
@@ -141,6 +144,58 @@ describe("launchfile CLI", () => {
 		it("produces no output with --quiet on failure", () => {
 			const { exitCode } = run(["validate", resolve(SDK_ROOT, "tsconfig.json"), "--quiet"]);
 			expect(exitCode).toBe(1);
+		});
+
+		describe("reduced-portability diagnostics (D-40, D-43)", () => {
+			it("D-40 warns but stays non-fatal: exit 0, valid: true", () => {
+				const { stdout, exitCode } = run([
+					"validate",
+					`${EXAMPLES}/prebuilt-image.yaml`,
+					"--json",
+				]);
+				expect(exitCode).toBe(0);
+				const result = JSON.parse(stdout);
+				expect(result.valid).toBe(true);
+				expect(result.warnings.join(" ")).toContain("D-40");
+			});
+
+			it("D-43 stays silent by default (attached read)", () => {
+				const { stdout } = run(["validate", `${EXAMPLES}/minimal.yaml`, "--json"]);
+				const result = JSON.parse(stdout);
+				expect((result.warnings ?? []).join(" ")).not.toContain("D-43");
+			});
+
+			it("--detached surfaces D-43 for a source-needing file with no repository:", () => {
+				const { stdout, exitCode } = run([
+					"validate",
+					`${EXAMPLES}/minimal.yaml`,
+					"--detached",
+					"--json",
+				]);
+				expect(exitCode).toBe(0);
+				const result = JSON.parse(stdout);
+				expect(result.valid).toBe(true);
+				expect(result.warnings.join(" ")).toContain("D-43");
+			});
+
+			it("LAUNCHFILE_NO_PORTABILITY_WARNINGS silences both diagnostics", () => {
+				const { stdout, exitCode } = run(
+					["validate", `${EXAMPLES}/prebuilt-image.yaml`, "--detached", "--json"],
+					{ LAUNCHFILE_NO_PORTABILITY_WARNINGS: "1" },
+				);
+				expect(exitCode).toBe(0);
+				const result = JSON.parse(stdout);
+				expect(result.warnings ?? []).toEqual([]);
+			});
+
+			it("an unset/empty LAUNCHFILE_NO_PORTABILITY_WARNINGS leaves the diagnostics on", () => {
+				const { stdout } = run(
+					["validate", `${EXAMPLES}/prebuilt-image.yaml`, "--json"],
+					{ LAUNCHFILE_NO_PORTABILITY_WARNINGS: "" },
+				);
+				const result = JSON.parse(stdout);
+				expect(result.warnings.join(" ")).toContain("D-40");
+			});
 		});
 	});
 
