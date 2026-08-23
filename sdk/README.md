@@ -47,8 +47,8 @@ launchfile schema
 `validate` warns, non-fatally, when a component has no portable build path
 (`runtime` and/or `commands.build`/`commands.install`) or — with `--detached`
 — is source-needing with no `repository:` to fall back to. Set
-`LAUNCHFILE_NO_PORTABILITY_WARNINGS` to silence both; every other `validate`
-warning keeps firing. The `lintLaunch(launch, opts?)` SDK export takes the
+`LAUNCHFILE_NO_PORTABILITY_WARNINGS` (to any value except `0`/`false`) to
+silence both; every other `validate` warning keeps firing. The `lintLaunch(launch, opts?)` SDK export takes the
 same two options (`detached`, `suppressPortabilityWarnings`) directly.
 
 ### Validate in CI
