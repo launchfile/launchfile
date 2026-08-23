@@ -4,7 +4,6 @@ name: diun
 description: "Docker image update notifier"
 
 image: crazymax/diun:latest
-schedule: "0 */6 * * *"
 env:
   DIUN_WATCH_SCHEDULE:
     default: "0 */6 * * *"
