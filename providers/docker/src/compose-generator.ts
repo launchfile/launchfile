@@ -69,6 +69,9 @@ function generatePort(): string {
 /**
  * Create a backing service factory with pre-generated or cached passwords.
  * Passwords are per-app to ensure consistency across restarts.
+ *
+ * Each factory's `properties` map is this provider's answer to SPEC.md
+ * § Resource Property Vocabulary; `resourcePropertyKeys()` reads it back.
  */
 function createBackingServices(
 	savedSecrets: Record<string, string>,
@@ -168,6 +171,10 @@ function createBackingServices(
 			properties: {
 				host: `${_name}-redis`,
 				port: "6379",
+				// The image ships with no `requirepass`, so the honest value is empty.
+				// The property is still exposed: SPEC.md § Resource Property Vocabulary
+				// makes it a MUST for every provider that supports redis.
+				password: "",
 				url: `redis://${_name}-redis:6379`,
 			},
 			healthcheck: {
@@ -207,6 +214,10 @@ function createBackingServices(
 			image: "clickhouse/clickhouse-server:latest",
 			environment: {},
 			properties: {
+				// The image's shipped defaults: the `default` user with an empty
+				// password. Reported as-is so the values match the deployment.
+				user: "default",
+				password: "",
 				host: `${name}-clickhouse`,
 				port: "8123",
 				url: `http://${name}-clickhouse:8123`,
@@ -237,7 +248,6 @@ function createBackingServices(
 					user: "elastic",
 					password: pw,
 					url: `http://elastic:${encodeURIComponent(pw)}@${name}-elasticsearch:9200`,
-					name: name,
 				},
 				healthcheck: {
 					test: ["CMD-SHELL", `curl -sf -u elastic:$ELASTIC_PASSWORD http://localhost:9200/_cluster/health || exit 1`],
@@ -352,6 +362,26 @@ function createBackingServices(
 			};
 		},
 	};
+}
+
+/**
+ * The property keys each supported backing-service type exposes, keyed by type.
+ *
+ * Derived by running the factories, not hand-listed: the conformance test
+ * (`__tests__/resource-conformance.test.ts`) compares these against
+ * `spec/schema/resource-properties.json`, and a hand-maintained copy would
+ * drift from the factories, which is the drift the check exists to catch.
+ *
+ * Calling this generates throwaway passwords into a local secrets map. They are
+ * never returned and never reach a compose file.
+ */
+export function resourcePropertyKeys(): Record<string, string[]> {
+	const factories = createBackingServices({});
+	const keys: Record<string, string[]> = {};
+	for (const [type, factory] of Object.entries(factories)) {
+		keys[type] = Object.keys(factory("probe").properties);
+	}
+	return keys;
 }
 
 /**

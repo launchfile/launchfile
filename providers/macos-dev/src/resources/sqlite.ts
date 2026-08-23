@@ -26,10 +26,10 @@ export class SqliteProvisioner implements ResourceProvisioner {
 
 		const dbPath = join(dataDir, `${safeName}.db`);
 
+		// SPEC.md § Resource Property Vocabulary gives sqlite `url` and `path`
+		// only. A file has no host and no port, so neither is exposed.
 		const properties: ResourceProperties = {
 			url: `sqlite://${dbPath}`,
-			host: "",
-			port: 0,
 			path: dbPath,
 		};
 

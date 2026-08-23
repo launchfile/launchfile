@@ -5,16 +5,28 @@
 import type { NormalizedRequirement } from "@launchfile/sdk";
 import { shell, shellOk } from "../shell.js";
 import type { ResourceState } from "../state.js";
-import type { ProvisionOpts, ResourceProperties, ResourceProvisioner } from "./types.js";
+import type {
+	ProvisionOpts,
+	ResourceProperties,
+	ResourceProvisioner,
+	ShellRunner,
+} from "./types.js";
 
 const DEFAULT_PORT = 6379;
 const DEFAULT_HOST = "localhost";
 
 export class RedisProvisioner implements ResourceProvisioner {
 	readonly type = "redis";
+	readonly #shell: ShellRunner["shell"];
+	readonly #shellOk: ShellRunner["shellOk"];
+
+	constructor(deps: Partial<ShellRunner> = {}) {
+		this.#shell = deps.shell ?? shell;
+		this.#shellOk = deps.shellOk ?? shellOk;
+	}
 
 	async isRunning(): Promise<boolean> {
-		return shellOk("redis-cli ping");
+		return this.#shellOk("redis-cli ping");
 	}
 
 	async provision(
@@ -24,10 +36,10 @@ export class RedisProvisioner implements ResourceProvisioner {
 	): Promise<{ properties: ResourceProperties; state: ResourceState }> {
 		if (!(await this.isRunning())) {
 			console.log("  Starting Redis via brew...");
-			const started = await shellOk("brew services start redis");
+			const started = await this.#shellOk("brew services start redis");
 			if (!started) {
-				await shell("brew install redis");
-				await shell("brew services start redis");
+				await this.#shell("brew install redis");
+				await this.#shell("brew services start redis");
 			}
 		}
 

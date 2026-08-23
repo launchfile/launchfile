@@ -12,7 +12,14 @@ import type { NormalizedRequirement } from "@launchfile/sdk";
 import { shell, shellOk } from "../shell.js";
 import { generatePassword } from "../secret-generator.js";
 import type { ResourceState } from "../state.js";
-import type { ProvisionOpts, ResourceProperties, ResourceProvisioner } from "./types.js";
+import type {
+	ProvisionOpts,
+	ResourceProperties,
+	ResourceProvisioner,
+	ShellRunner,
+} from "./types.js";
+
+export type { ShellRunner };
 
 const DEFAULT_PORT = 5432;
 const DEFAULT_HOST = "localhost";
@@ -21,15 +28,6 @@ const READY_TIMEOUT_SECONDS = 10;
 // Security: validate identifiers before interpolating into shell/SQL commands.
 // Only alphanumeric + underscore — safe for SQL identifiers and shell args.
 const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
-
-/**
- * The shell surface this provisioner runs against. Injecting it lets tests
- * drive the provisioning sequence without a live Postgres or Homebrew.
- */
-export interface ShellRunner {
-	shell: typeof shell;
-	shellOk: typeof shellOk;
-}
 
 export class PostgresProvisioner implements ResourceProvisioner {
 	readonly type = "postgres";
