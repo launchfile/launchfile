@@ -6,6 +6,7 @@
   "scripts": {
     "test-app": "bun run src/test-app.ts",
     "test-all": "bun run src/test-all.ts",
+    "portability-lint-counts": "bun run src/portability-lint-counts.ts",
     "test": "vitest run"
   },
   "dependencies": {
