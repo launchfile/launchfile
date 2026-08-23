@@ -13,6 +13,17 @@ import { RESOURCE_PROPERTY_VOCABULARY } from "./resource-properties.js";
 import { lintDurations } from "./durations.js";
 import type { NormalizedLaunch, NormalizedRequirement } from "./types.js";
 
+export type { Deprecation, DeprecationRecord } from "./deprecations.js";
+// Deprecation reporting is a lint check, but its findings are structured
+// (D-42 requires machine-readable, and a prose string is not), so it has its
+// own return type and its own channel out of `validate` — see deprecations.ts.
+export {
+	DEPRECATED_IN,
+	DEPRECATION_REGISTRY,
+	lintDeprecations,
+	REMOVED_IN,
+} from "./deprecations.js";
+
 /** Reserved expression namespaces — never resource properties. */
 const RESERVED_NAMESPACES = new Set([
 	"app",
