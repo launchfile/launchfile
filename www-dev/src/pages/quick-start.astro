@@ -104,6 +104,8 @@ npx launchfile up --native
 
   <p><code>--json</code> writes the raw record to stdout and nothing else, so it pipes cleanly. Records live at <code>~/.launchfile/errors/</code>, one per app, and are cleared by the next successful <code>up</code>.</p>
 
+  <p>One failure has its own phase: <code>health</code>. A component that never becomes healthy fails the launch, so <code>up</code> exits non-zero and names the components that never passed. Their containers stay running so you can look at them, and the deployment is listed as <code>unhealthy</code> — <code>launchfile status</code>, <code>launchfile logs</code>, and <code>launchfile down</code> all reach it. A component that declares no health check counts as healthy once its container is running.</p>
+
   <h2 id="next-steps">Next steps</h2>
 
   <ul>
