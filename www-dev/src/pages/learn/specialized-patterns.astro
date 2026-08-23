@@ -52,7 +52,7 @@ commands:
   },
   {
     yaml: cronJobYaml,
-    note: "The full example adds a Postgres dependency. On schedule, the task is started with the database URL injected, runs the script, and shuts down.",
+    note: "The full example adds a Postgres dependency. The declared intent: on schedule, start the task with the database URL injected, run the script, shut down. No reference provider executes <code>schedule</code> yet — a provider that doesn't must warn at launch, so a declared job is never silently skipped.",
   },
 ]} />
 

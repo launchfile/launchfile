@@ -107,6 +107,23 @@ export function refusedHostCapabilities(
 }
 
 /**
+ * The launch-time notice a provider without a scheduler owes for a declared
+ * `schedule` (D-51, PROVIDERS.md §10 item 8).
+ *
+ * States what *this provider* does, not what will happen to the app: a
+ * component may schedule itself — `catalog/drafts/diun` sets its own
+ * `DIUN_WATCH_SCHEDULE`, and nextcloud's `cron.sh` is a foreground `crond` —
+ * so claiming the job will not run would be false about those apps, and a
+ * warning that misstates the user's app is worse than the silence it replaces.
+ */
+export function scheduleWarning(component: string, schedule: string): string {
+	return (
+		`[${component}] declares \`schedule: ${schedule}\` — this provider will not ` +
+		"run it on a timer. If the component does not schedule itself, the job will not run."
+	);
+}
+
+/**
  * Remove every component this provider must refuse, and say so on stderr.
  *
  * The removal is the refusal (D-44, PROVIDERS.md §11): a component left in the
@@ -235,6 +252,15 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 				`  ! [${name}] has an image and no \`dev\` override — runs as an artifact, ` +
 					"skipped in source mode; use `launchfile up` to run it.",
 			);
+		}
+		// PROVIDERS.md conformance rule 8 (D-51): a provider that does not
+		// execute `schedule` MUST say so at launch. Staying silent leaves an
+		// author believing a declared cron job is running — the one outcome
+		// worse than not supporting it. Wording stays start-agnostic: artifact
+		// components with a schedule reach this loop too, and they are skipped
+		// entirely in source mode.
+		if (c.schedule) {
+			console.warn(`  ! ${scheduleWarning(name, c.schedule)}`);
 		}
 	}
 

@@ -564,6 +564,22 @@ Composition rule: a *derived* expression over a *minted* input — the `APP_KEY:
 
 ---
 
+### D-50: Reserved — no decision recorded
+
+**Status**: Reserved; no decision recorded. No proposal claims this number — it was vacated while [#196](https://github.com/launchfile/launchfile/pull/196) was open, when the decision now recorded as D-51 was renumbered twice (D-43 → D-50 → D-51) to clear numbers already claimed by other decisions and to match the number [#197](https://github.com/launchfile/launchfile/pull/197) carries for it. The number is held rather than reused so the published list stays stable.
+
+---
+
+### D-51: Unexecuted `schedule` is reported loudly, not silently accepted
+
+**Decision**: A provider that does not execute a component's `schedule` MUST surface that gap with a launch-time warning naming the component and the field. The normative requirement lives in the provider contract (PROVIDERS.md §10, conformance rule 8 — the hard form of "report gaps, not silent drops"); this entry records the format-level decision behind it: `schedule` **stays in the spec** even though no reference provider currently executes it. Execution is ordinary provider roadmap work (launchd under macos-dev, a cron runner under docker — each provider chooses its own mechanism, [P-11](#p-11-separate-intent-from-execution)).
+
+**Rejected**: *Demoting or removing `schedule` from the spec* — the field passes the [P-1](#p-1-app-focused-not-infra-focused) litmus (a nightly job is a property of the app, not of any deployment target), removal churns published files (`spec/examples/cron-job.yaml`, catalog entries) against the stability [P-13](#p-13-additive-extensibility) exists to protect, and with a mandatory warning in place the motivation for removal mostly evaporates. *Silent acceptance* (macos-dev's prior behavior) — an author who declares a nightly job and sees a clean start has no reason to doubt it is scheduled; they find out when the job's work has not happened. A spec that promises a capability no implementation provides is worse than one that never mentioned it — unless the gap is loud. *Requiring execution for conformance* — would prescribe an execution capability the format deliberately leaves to providers ([P-11](#p-11-separate-intent-from-execution)) and eject every current provider, including translation-only ones, from conformance.
+
+**Why**: The failure this closes is invisible by construction — an unexecuted `schedule` produces no error and no missing endpoint. The component is started once at launch, which reads as a successful first run; nothing afterwards distinguishes a scheduled component from an unscheduled one; the warning makes the gap visible at the one moment the author can still act on it. Concretizes PROVIDERS.md's general rule 8 on the field where it matters most, following the operational surfacing precedent of rule 9 ([D-44](#d-44-host-capability-entries--container_runtime-syntax-and-coordinates)), which likewise reports at launch rather than at `validate`. Deliberately **not** [D-40](#d-40-portable-contract-vs-provider-specialization--the-appprovider-build-line)'s pattern: D-40 fences its diagnostic to `validate` *only — never operational commands*, because it fires across the whole image-first catalog. This one fires on under 1% of apps, and its whole value is being seen at the moment of deploy. Purely additive ([P-13](#p-13-additive-extensibility)): no schema, parser, or field change; every existing file stays valid.
+
+---
+
 ## 4. Known Limitations
 
 Each limitation includes the problem, current stance, and future considerations.
