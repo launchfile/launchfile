@@ -1,4 +1,4 @@
-import type { NormalizedComponent, NormalizedCommand } from "./types.js";
+import type { NormalizedCommand, NormalizedComponent } from "./types.js";
 
 /**
  * D-38 source-mode run resolution: precedence `dev` > `image` > `start`.

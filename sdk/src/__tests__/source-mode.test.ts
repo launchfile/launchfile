@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { readLaunch } from "../reader.js";
-import { resolveSourcePrepareCommand, resolveSourceRunCommand } from "../source-mode.js";
+import {
+	resolveSourcePrepareCommand,
+	resolveSourceRunCommand,
+} from "../source-mode.js";
 
 function defaultComponent(launch: ReturnType<typeof readLaunch>) {
 	const component = launch.components.default;
@@ -15,7 +18,9 @@ name: acme
 commands:
   dev: "bun run dev"
 `);
-		expect(resolveSourceRunCommand(defaultComponent(launch))?.command).toBe("bun run dev");
+		expect(resolveSourceRunCommand(defaultComponent(launch))?.command).toBe(
+			"bun run dev",
+		);
 	});
 
 	it("image + dev → dev overrides the image", () => {
@@ -26,7 +31,9 @@ commands:
   dev: "bun src/index.ts"
   start: "node dist/server.js"
 `);
-		expect(resolveSourceRunCommand(defaultComponent(launch))?.command).toBe("bun src/index.ts");
+		expect(resolveSourceRunCommand(defaultComponent(launch))?.command).toBe(
+			"bun src/index.ts",
+		);
 	});
 
 	it("image + start, no dev → artifact mode, undefined", () => {
@@ -45,7 +52,9 @@ name: acme
 commands:
   start: "node server.js"
 `);
-		expect(resolveSourceRunCommand(defaultComponent(launch))?.command).toBe("node server.js");
+		expect(resolveSourceRunCommand(defaultComponent(launch))?.command).toBe(
+			"node server.js",
+		);
 	});
 
 	it("neither dev, image, nor start → undefined", () => {
@@ -78,7 +87,9 @@ commands:
   install: "bun install"
   build: "bun run build"
 `);
-		expect(resolveSourcePrepareCommand(defaultComponent(launch))?.command).toBe("bun install");
+		expect(resolveSourcePrepareCommand(defaultComponent(launch))?.command).toBe(
+			"bun install",
+		);
 	});
 
 	it("no install → falls back to build", () => {
@@ -87,7 +98,9 @@ name: acme
 commands:
   build: "bun run build"
 `);
-		expect(resolveSourcePrepareCommand(defaultComponent(launch))?.command).toBe("bun run build");
+		expect(resolveSourcePrepareCommand(defaultComponent(launch))?.command).toBe(
+			"bun run build",
+		);
 	});
 
 	it("neither install nor build → undefined", () => {
@@ -95,7 +108,9 @@ commands:
 name: acme
 runtime: node
 `);
-		expect(resolveSourcePrepareCommand(defaultComponent(launch))).toBeUndefined();
+		expect(
+			resolveSourcePrepareCommand(defaultComponent(launch)),
+		).toBeUndefined();
 	});
 
 	it("preserves timeout on the resolved prepare command", () => {
