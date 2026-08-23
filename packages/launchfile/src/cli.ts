@@ -82,8 +82,13 @@ Options:
   --follow, -f     Stream logs continuously
   --name <name>    Name this deployment
   --component <n>  Limit bootstrap to a single component
+  --detached       (validate) Evaluate as fetched standalone, not read from the
+                    app's own checkout — enables the D-43 reduced-portability check
   --help           Show this help
   --version        Show version
+
+Environment:
+  LAUNCHFILE_NO_PORTABILITY_WARNINGS   Set to silence validate's D-40/D-43 reduced-portability warnings
 
 Examples:
   launchfile up ghost                Run Ghost from the catalog
@@ -156,7 +161,12 @@ async function main(): Promise<void> {
 
 		case "validate": {
 			const path = resolve(target ?? "./Launchfile");
-			cmdValidate(path, { json: hasFlag("json"), quiet: hasFlag("quiet"), noColor });
+			cmdValidate(path, {
+				json: hasFlag("json"),
+				quiet: hasFlag("quiet"),
+				detached: hasFlag("detached"),
+				noColor,
+			});
 			break;
 		}
 
