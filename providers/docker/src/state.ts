@@ -9,6 +9,7 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
+import { registerSecrets } from "./redact.js";
 
 /** Where the Launchfile that produced this state came from. */
 export type DockerSourceType = "local" | "catalog" | "url";
@@ -66,7 +67,11 @@ function hashContent(content: string): string {
 export async function loadState(slug: string): Promise<DockerState | null> {
 	try {
 		const raw = await readFile(statePath(slug), "utf8");
-		return JSON.parse(raw) as DockerState;
+		const state = JSON.parse(raw) as DockerState;
+		// Persisted secrets are reused across runs, so a value generated in an
+		// earlier process still has to be scrubbable in this one (D-18).
+		registerSecrets(Object.values(state.secrets ?? {}));
+		return state;
 	} catch {
 		return null;
 	}

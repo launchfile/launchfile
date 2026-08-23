@@ -18,6 +18,7 @@ import {
 	type NormalizedLaunch,
 	type ResolverContext,
 } from "@launchfile/sdk";
+import { redactSecrets } from "./redact.js";
 import { loadState, composeProject } from "./state.js";
 
 /** Result of running one bootstrap command against a compose service. */
@@ -247,7 +248,9 @@ export async function dockerBootstrap(opts: {
 		}
 
 		console.log(`\n  \u2193 Bootstrap [${name}] via docker compose exec ${service}`);
-		console.log(`    $ ${resolvedCommand}`);
+		// `$secrets.*` / `$<resource>.password` / `$<resource>.url` resolve to
+		// live credentials here, so the echoed command is scrubbed (CWE-532).
+		console.log(`    $ ${redactSecrets(resolvedCommand)}`);
 
 		const { exitCode, stdout, stderr } = await runDockerExec(
 			project,
@@ -282,7 +285,7 @@ export async function dockerBootstrap(opts: {
 
 		if (exitCode !== 0) {
 			console.error(`  \u2717 Bootstrap [${name}] failed with exit code ${exitCode}`);
-			if (stderr) console.error(stderr);
+			if (stderr) console.error(redactSecrets(stderr));
 		} else {
 			console.log(`  \u2713 Bootstrap [${name}] complete`);
 		}
