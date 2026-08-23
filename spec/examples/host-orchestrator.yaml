@@ -2,20 +2,27 @@
 # This pattern applies to deployment tools, CI runners, monitoring agents,
 # and anything that needs direct access to host infrastructure.
 #
-# The `host` field tells the deployer that this app cannot run inside
-# a standard container — it needs Docker daemon access and host-level
-# filesystem access. A deployer should refuse or warn rather than
-# attempting Docker-in-Docker, which is fragile.
+# Host access is declared as CAPABILITY ENTRIES in `requires` (D-44): each
+# `- host: { … }` entry is a privileged grant the provider either grants or
+# refuses with a clear message. Together they tell the deployer that this
+# app cannot run inside a standard container — a deployer should refuse or
+# warn rather than attempting Docker-in-Docker, which is fragile.
+#
+# The legacy top-level `host:` block spells the same needs, but it is
+# deprecated in launch/v1 and removed in launch/v2 (D-58). See
+# spec/SPEC.md § Host for the per-key migration table.
 
 version: launch/v1
 name: launchpad
 description: DevOps agent — give it a GitHub URL, get a running app
 runtime: bun
 
-host:
-  docker: required        # Needs Docker daemon (not Docker-in-Docker)
-  network: host           # Shares host network to manage container ports
-  filesystem: read-write  # Persistent state in ~/.launchpad/
+requires:
+  - host: { container_runtime: docker }  # the real Docker Engine API
+    set_env:
+      DOCKER_HOST: $url                  # e.g. unix:///var/run/docker.sock
+  - host: { network: host }              # manages container ports directly
+  - host: { filesystem: read-write }     # persistent state in ~/.launchpad/
 
 provides:
   - protocol: http
