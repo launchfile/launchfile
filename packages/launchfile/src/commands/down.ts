@@ -4,6 +4,7 @@
 
 import { dockerDown } from "@launchfile/docker";
 import { resolveDeploymentTarget } from "../resolve-target.js";
+import { clearLaunchErrorRecord } from "../state/errors.js";
 import { updateDeployment, removeDeployment, deploymentDir, dockerSlugFor } from "../state/index.js";
 
 export interface DownFlags {
@@ -26,6 +27,9 @@ export async function handleDown(target: string | undefined, flags: DownFlags): 
 			await removeDeployment(deployment.id);
 			const { rm } = await import("node:fs/promises");
 			await rm(deploymentDir(deployment.id), { recursive: true, force: true });
+			// A failure record holds redacted-but-still-sensitive log tails. It goes
+			// with the rest of the app's state, not after it (#44 §H).
+			await clearLaunchErrorRecord(slug);
 		} else {
 			await updateDeployment(deployment.id, { status: "down" });
 		}

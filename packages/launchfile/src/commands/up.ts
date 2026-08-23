@@ -4,8 +4,10 @@
 
 import { resolve } from "node:path";
 import { dockerUp, UnsuppliedRequiredEnvError } from "@launchfile/docker";
+import { isLaunchError } from "@launchfile/sdk";
 import { detectProvider } from "../detect-provider.js";
 import { resolveUpTarget } from "../resolve-target.js";
+import { clearLaunchErrorRecord, writeLaunchErrorRecord } from "../state/errors.js";
 import {
 	loadIndex,
 	addDeployment,
@@ -57,10 +59,12 @@ export async function handleUp(target: string | undefined, flags: UpFlags): Prom
 
 		let result: Awaited<ReturnType<typeof dockerUp>>;
 		try {
-			result = await dockerUp(dockerSource, {
-				detach: flags.detach,
-				dryRun: flags.dryRun,
-			});
+			result = await withFailureRecord(() =>
+				dockerUp(dockerSource, {
+					detach: flags.detach,
+					dryRun: flags.dryRun,
+				}),
+			);
 		} catch (err) {
 			// An unsupplied `required:` variable (D-52) is an operator's problem to
 			// fix, not a bug — it gets the provider's own message, not a stack trace.
@@ -70,6 +74,11 @@ export async function handleUp(target: string | undefined, flags: UpFlags): Prom
 			}
 			throw err;
 		}
+
+		// Retention (#44 §H): the previous failure record for this key described a
+		// launch that no longer exists. Supersede it rather than leaving stale log
+		// tails on disk for `diagnose` to present as current.
+		if (!flags.dryRun) await clearLaunchErrorRecord(result.slug);
 
 		if (!flags.dryRun) {
 			// Identity (#48): key the index entry by the SAME slug the docker
@@ -99,39 +108,70 @@ export async function handleUp(target: string | undefined, flags: UpFlags): Prom
 			console.log(`\n  Deployment: ${deployId}`);
 		}
 	} else if (provider === "macos") {
-		// macOS native provider
-		try {
-			const { launchUp } = await import("@launchfile/macos-dev");
-			const projectDir = upTarget.dir ?? process.cwd();
-			await launchUp({ projectDir, dryRun: flags.dryRun, detach: flags.detach });
+		// The import is what "provider not available" describes, so only the
+		// import is caught here. Wrapping the launch in the same try reported
+		// every genuine launch failure — a failed Postgres provision, a failed
+		// release — as a missing npm package, which `diagnose` cannot correct.
+		const { launchUp } = await loadMacosProvider();
 
-			if (!flags.dryRun) {
-				const entry: DeploymentEntry = {
-					appName: inferAppName(upTarget.value),
-					provider: "macos",
-					source: sourceKey,
-					sourceType: upTarget.type,
-					name: flags.name ?? null,
-					port: null,
-					status: "up",
-					createdAt: existingDeployment?.entry.createdAt ?? new Date().toISOString(),
-					updatedAt: new Date().toISOString(),
-				};
+		const projectDir = upTarget.dir ?? process.cwd();
+		await withFailureRecord(() =>
+			launchUp({ projectDir, dryRun: flags.dryRun, detach: flags.detach }),
+		);
 
-				if (existingDeployment) {
-					await updateDeployment(deployId, entry);
-				} else {
-					await addDeployment(deployId, entry);
-				}
+		if (!flags.dryRun) {
+			const entry: DeploymentEntry = {
+				appName: inferAppName(upTarget.value),
+				provider: "macos",
+				source: sourceKey,
+				sourceType: upTarget.type,
+				name: flags.name ?? null,
+				port: null,
+				status: "up",
+				createdAt: existingDeployment?.entry.createdAt ?? new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			};
 
-				console.log(`\n  Deployment: ${deployId}`);
+			if (existingDeployment) {
+				await updateDeployment(deployId, entry);
+			} else {
+				await addDeployment(deployId, entry);
 			}
-		} catch (err) {
-			console.error("macOS native provider not available.");
-			console.error("Install: npm install -g @launchfile/macos-dev");
-			console.error(`Error: ${(err as Error).message}`);
-			process.exit(1);
+
+			console.log(`\n  Deployment: ${deployId}`);
 		}
+	}
+}
+
+/** Load the optional native provider, or explain how to install it and stop. */
+async function loadMacosProvider(): Promise<typeof import("@launchfile/macos-dev")> {
+	try {
+		return await import("@launchfile/macos-dev");
+	} catch (err) {
+		console.error("macOS native provider not available.");
+		console.error("Install: npm install -g @launchfile/macos-dev");
+		console.error(`Error: ${(err as Error).message}`);
+		process.exit(1);
+	}
+}
+
+/**
+ * Persist the structured context of a launch failure, then re-throw (#44).
+ *
+ * The provider builds and redacts the context inside the failing process, where
+ * its secret registry is still live; this only writes what it was handed. A
+ * failure carrying no context — anything not a `LaunchError` — propagates
+ * unchanged rather than being recorded as a guess.
+ */
+export async function withFailureRecord<T>(run: () => Promise<T>): Promise<T> {
+	try {
+		return await run();
+	} catch (err) {
+		if (isLaunchError(err)) {
+			await writeLaunchErrorRecord(err.context).catch(() => undefined);
+			console.error("\n  Captured. Run `launchfile diagnose` for the full context.");
+		}
+		throw err;
 	}
 }
 

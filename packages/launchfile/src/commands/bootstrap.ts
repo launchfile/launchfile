@@ -10,9 +10,16 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { dockerBootstrap, loadDockerSource } from "@launchfile/docker";
-import { readLaunch } from "@launchfile/sdk";
+import {
+	type BootstrapResult,
+	declaredEnvKeys,
+	dockerBootstrap,
+	dockerLaunchError,
+	loadDockerSource,
+} from "@launchfile/docker";
+import { type NormalizedLaunch, readLaunch } from "@launchfile/sdk";
 import { resolveDeploymentTarget } from "../resolve-target.js";
+import { writeLaunchErrorRecord } from "../state/errors.js";
 import { dockerSlugFor, type DeploymentEntry } from "../state/index.js";
 
 export interface BootstrapFlags {
@@ -56,8 +63,9 @@ export async function handleBootstrap(
 		});
 
 		if (results.length === 0) process.exit(0);
-		const anyFailed = results.some((r) => !r.ok);
-		process.exit(anyFailed ? 1 : 0);
+		const failed = results.find((r) => !r.ok);
+		if (failed) await recordBootstrapFailure(launch, slug, failed);
+		process.exit(failed ? 1 : 0);
 	}
 
 	if (deployment.entry.provider === "macos") {
@@ -78,6 +86,39 @@ export async function handleBootstrap(
 
 	console.error(`Unsupported provider: ${deployment.entry.provider}`);
 	process.exit(1);
+}
+
+/**
+ * Capture a failed bootstrap so `launchfile diagnose` can show it (#44).
+ *
+ * `dockerBootstrap` reports failures instead of throwing, which is what D-48
+ * requires — a bootstrap failure never affects deploy status. The record is
+ * written with `disposition: "reported"` so `diagnose` says so out loud rather
+ * than presenting it as a launch failure.
+ *
+ * Redaction runs here because this is still the process that ran the command:
+ * `dockerLaunchError` scrubs against the docker provider's live registry.
+ */
+async function recordBootstrapFailure(
+	launch: NormalizedLaunch,
+	slug: string,
+	failed: BootstrapResult,
+): Promise<void> {
+	const error = dockerLaunchError({
+		phase: "bootstrap",
+		key: slug,
+		slug,
+		app: launch.name,
+		component: failed.component,
+		message: `bootstrap [${failed.component}] failed with exit code ${failed.exitCode}`,
+		command: failed.command,
+		exitCode: failed.exitCode,
+		stdout: failed.stdout,
+		stderr: failed.stderr,
+		env: declaredEnvKeys(launch, failed.component),
+	});
+	await writeLaunchErrorRecord(error.context).catch(() => undefined);
+	console.error("  Captured. Run `launchfile diagnose` for the full context.");
 }
 
 /**
