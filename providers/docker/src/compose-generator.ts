@@ -63,19 +63,18 @@ function generateUuid(): string {
 }
 
 function generatePort(): string {
-	const min = 10000;
-	const range = 55000; // 10000..64999
-	const maxUint32 = 0x100000000;
-	const limit = maxUint32 - (maxUint32 % range); // avoid modulo bias
-
+	// A `generator: port` value can be declared under `secrets:`, where it is
+	// persisted to state and redacted like any other secret. Math.random() is
+	// seeded predictably and is not a security primitive, so the port comes
+	// from the same CSPRNG as every other generated value here.
+	const range = 55_000;
 	const buf = new Uint32Array(1);
-	let n: number;
-	do {
-		crypto.getRandomValues(buf);
-		n = buf[0]!;
-	} while (n >= limit);
-
-	return String(min + (n % range));
+	crypto.getRandomValues(buf);
+	// Reject the short final bucket so every port in the range is equally
+	// likely — plain modulo would bias the low end.
+	const limit = Math.floor(0x1_0000_0000 / range) * range;
+	while (buf[0]! >= limit) crypto.getRandomValues(buf);
+	return String(10_000 + (buf[0]! % range));
 }
 
 /**

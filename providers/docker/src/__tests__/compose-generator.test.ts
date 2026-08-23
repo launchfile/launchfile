@@ -513,3 +513,28 @@ build:
 		expect(result.yaml).toContain("NODE_ENV: production");
 	});
 });
+
+describe("generator: port", () => {
+	const LAUNCH = `
+name: port-app
+image: api:latest
+secrets:
+  admin_port:
+    generator: port
+`;
+
+	it("stays inside the 10000-64999 range across many draws", () => {
+		const ports = new Set<number>();
+		for (let i = 0; i < 2000; i++) {
+			const { secrets } = launchToCompose(readLaunch(LAUNCH), { secrets: {} });
+			const port = Number(secrets.admin_port);
+			expect(Number.isInteger(port)).toBe(true);
+			expect(port).toBeGreaterThanOrEqual(10_000);
+			expect(port).toBeLessThanOrEqual(64_999);
+			ports.add(port);
+		}
+		// A constant or a tiny cycle would collapse this; 2000 draws over 55000
+		// values should land well clear of any plausible degenerate case.
+		expect(ports.size).toBeGreaterThan(1500);
+	});
+});
