@@ -30,6 +30,7 @@ env:
     sensitive: true
     description: "Django secret key for session signing and CSRF"
   SITE_URL:
+    default: $app.url
     required: true
     description: "Public-facing URL of the PostHog instance"
   IS_BEHIND_PROXY:

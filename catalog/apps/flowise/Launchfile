@@ -21,11 +21,13 @@ supports:
       DATABASE_PASSWORD: $password
 env:
   FLOWISE_USERNAME:
+    default: "admin"
     required: true
     description: "Admin username"
   FLOWISE_PASSWORD:
     required: true
     sensitive: true
+    generator: secret
     description: "Admin password"
   APIKEY_PATH:
     default: /root/.flowise

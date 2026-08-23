@@ -58,7 +58,45 @@ try {
   process.exit(1);
 }
 
-const result = launchToCompose(launch);
+// The harness is an OPERATOR, not a provider: rule 8 lets it supply values for
+// `required:` variables the Launchfile does not, and forbids inventing them
+// inside the resolver. The channel is a `test_env:` block in the app's
+// metadata.yaml — declared test inputs, reviewable in the catalog PR.
+const metadataPath = resolve(appDir, "metadata.yaml");
+let metadata: Record<string, unknown> = {};
+if (existsSync(metadataPath)) {
+  metadata = parse(readFileSync(metadataPath, "utf-8")) ?? {};
+}
+const testEnv: Record<string, string> = Object.fromEntries(
+  Object.entries((metadata.test_env as Record<string, unknown>) ?? {}).map(([k, v]) => [
+    k,
+    String(v),
+  ]),
+);
+
+const result = launchToCompose(launch, { testEnv });
+
+// A required variable with no fixture entry is a hard failure naming the app and
+// the variable — never a silent pass. Passing here would let this app's
+// metadata.yaml record `health_check_passed: true` for a configuration the
+// shipped Docker provider refuses to deploy (D-52). Fails before any pull,
+// container, or volume exists.
+if (result.unsuppliedRequired.length > 0) {
+  console.error(`\n=== ${appName}: FAIL — unsupplied required environment variables ===`);
+  for (const { component, key, sensitive } of result.unsuppliedRequired) {
+    console.error(`  - ${appName} [${component}]: ${key}${sensitive ? " (sensitive)" : ""}`);
+  }
+  console.error(
+    "\nThe Launchfile declares these `required:` with no `default:`, `generator:`, or",
+  );
+  console.error("resource binding. Give the app a value source, or declare the test input in");
+  console.error(`${metadataPath}:\n`);
+  console.error("  test_env:");
+  for (const { key } of result.unsuppliedRequired) {
+    console.error(`    ${key}: "<value>"`);
+  }
+  process.exit(1);
+}
 
 if (result.warnings.length > 0) {
   console.log(`\nWarnings:`);
@@ -195,12 +233,6 @@ console.log(`  Startup time: ${startupTimeSeconds}s`);
 console.log(`  Disk usage:   ${totalDiskMb} MB`);
 
 // --- Write/update metadata.yaml ---
-
-const metadataPath = resolve(appDir, "metadata.yaml");
-let metadata: Record<string, unknown> = {};
-if (existsSync(metadataPath)) {
-  metadata = parse(readFileSync(metadataPath, "utf-8")) ?? {};
-}
 
 metadata.test_results = {
   last_tested: new Date().toISOString().split("T")[0],
