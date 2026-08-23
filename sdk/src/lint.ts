@@ -110,7 +110,11 @@ function checkResourceProperties(
 			...(component.requires ?? []),
 			...(component.supports ?? []),
 		]) {
-			const vocabulary = RESOURCE_PROPERTY_VOCABULARY[req.type];
+			// req.type is arbitrary user input (L-4). A bare index would resolve
+			// Object.prototype keys (constructor, toString, …) to inherited values.
+			const vocabulary = Object.hasOwn(RESOURCE_PROPERTY_VOCABULARY, req.type)
+				? RESOURCE_PROPERTY_VOCABULARY[req.type]
+				: undefined;
 			if (!vocabulary || !req.set_env) continue;
 			for (const value of Object.values(req.set_env)) {
 				for (const prop of bareReferences(value)) {
@@ -156,7 +160,10 @@ export function lintLaunch(launch: NormalizedLaunch): string[] {
 			...(component.supports ?? []),
 		]) {
 			if (req.host) continue; // capability entry, not a resource (D-44)
-			const productSpelling = PRODUCT_SPELLINGS[req.type];
+			// Guarded for the same reason as the vocabulary lookup above.
+			const productSpelling = Object.hasOwn(PRODUCT_SPELLINGS, req.type)
+				? PRODUCT_SPELLINGS[req.type]
+				: undefined;
 			if (productSpelling || KNOWN_HOST_CAPABILITIES.has(req.type)) {
 				const suggestion = productSpelling ?? `${req.type}: ...`;
 				warnings.push(

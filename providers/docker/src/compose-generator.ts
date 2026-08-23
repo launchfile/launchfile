@@ -18,6 +18,7 @@ import {
 	type NormalizedEnvVar,
 	type NormalizedHealth,
 } from "@launchfile/sdk";
+import { registerSecret } from "./redact.js";
 
 // --- Backing service definitions ---
 
@@ -41,16 +42,20 @@ function randomPassword(): string {
 	const bytes = new Uint8Array(24);
 	crypto.getRandomValues(bytes);
 	// Base64url encoding — safe for URLs and env vars
-	return btoa(String.fromCharCode(...bytes))
+	const password = btoa(String.fromCharCode(...bytes))
 		.replace(/\+/g, "-")
 		.replace(/\//g, "_")
 		.replace(/=+$/, "");
+	registerSecret(password);
+	return password;
 }
 
 function generateSecret(): string {
 	const bytes = new Uint8Array(32);
 	crypto.getRandomValues(bytes);
-	return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+	const secret = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+	registerSecret(secret);
+	return secret;
 }
 
 function generateUuid(): string {

@@ -254,7 +254,7 @@ commands:
   <div class="takeaways-title">Key takeaways</div>
   <ul>
     <li>The <strong>deployment lifecycle</strong> is: build, release, start. Seed, test, and bootstrap are on-demand.</li>
-    <li><strong>Failure semantics</strong>: build/release/start fail the deploy; install/dev fail your dev session; on-demand commands are reported. Timeout expiry counts as a failure of its stage.</li>
+    <li><strong>Failure semantics</strong>: the <strong>prepare</strong> and <strong>run</strong> slots fail the invocation — your deploy when deploying, your session when running from source; <code>release</code> fails the deploy; <code>bootstrap</code> and on-demand commands are reported. Timeout expiry counts as a failure of its slot.</li>
     <li><strong>Durations</strong> are an integer plus one unit (<code>30s</code>, <code>5m</code>) — for <code>timeout</code> and the health check timings. <code>validate</code> warns on anything else.</li>
     <li><strong><code>install</code></strong> / <strong><code>dev</code></strong> run the app <strong>from source</strong> (<code>launchfile dev</code>) — the source-mode pair of <code>build</code> / <code>start</code>. Only these two are mode-aware.</li>
     <li><strong><code>release</code></strong> runs once per deploy (migrations). <strong><code>bootstrap</code></strong> runs once ever (initial setup).</li>

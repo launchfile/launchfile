@@ -26,6 +26,7 @@ import {
 	resolveExpression,
 } from "@launchfile/sdk";
 import { computeAppProperties, extractCaptures } from "./bootstrap.js";
+import { redactSecrets, registerSecrets } from "./redact.js";
 import { shell } from "./shell.js";
 
 /** Default budget for a release one-shot when no `timeout` is declared. */
@@ -93,6 +94,11 @@ export function planReleases(
 		only?: ReadonlySet<string>;
 	},
 ): ReleasePlanItem[] {
+	// `$secrets.*` resolves to live credentials below, and the resolved string
+	// is echoed and can be echoed back by the container. Register the values
+	// before any of them can reach a sink (D-18, CWE-532).
+	registerSecrets(Object.values(opts.secrets));
+
 	const resolverContext: ResolverContext = {
 		secrets: opts.secrets,
 		app: computeAppProperties(launch, opts.hostPorts),
@@ -162,7 +168,9 @@ export async function runReleases(
 		console.log(
 			`  ↓ Release [${item.component}] via docker compose run --rm ${item.service}`,
 		);
-		console.log(`    $ ${item.command}`);
+		// The command is $-resolved, so `$secrets.*` is a live credential by
+		// this point — scrub before echo (D-18, CWE-532).
+		console.log(`    $ ${redactSecrets(item.command)}`);
 
 		const { exitCode, stdout, stderr } = await exec(
 			"docker",
@@ -182,8 +190,9 @@ export async function runReleases(
 		);
 
 		if (exitCode !== 0) {
-			if (stdout.trim()) console.error(stdout.trim());
-			if (stderr.trim()) console.error(stderr.trim());
+			// The child can echo a credential back in its own diagnostics.
+			if (stdout.trim()) console.error(redactSecrets(stdout.trim()));
+			if (stderr.trim()) console.error(redactSecrets(stderr.trim()));
 			throw new Error(
 				`release [${item.component}] failed with exit code ${exitCode} — deploy aborted`,
 			);
