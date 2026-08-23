@@ -88,7 +88,7 @@ Options:
   --version        Show version
 
 Environment:
-  LAUNCHFILE_NO_PORTABILITY_WARNINGS   Set to silence validate's D-40/D-43 reduced-portability warnings
+  LAUNCHFILE_NO_PORTABILITY_WARNINGS   Set (to any value except "0"/"false") to silence validate's D-40/D-43 reduced-portability warnings
 
 Examples:
   launchfile up ghost                Run Ghost from the catalog

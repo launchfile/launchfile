@@ -54,7 +54,7 @@ launchfile down --destroy        # Remove everything
 
 # Reduced-portability warnings (D-40, D-43) — validate-only, non-fatal
 launchfile validate --detached   # also flag source-needing apps with no repository:
-LAUNCHFILE_NO_PORTABILITY_WARNINGS=1 launchfile validate   # silence both diagnostics
+LAUNCHFILE_NO_PORTABILITY_WARNINGS=1 launchfile validate   # silence both (any value except "0"/"false")
 ```
 
 ## Architecture
