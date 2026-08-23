@@ -118,7 +118,7 @@ A **translation-only** provider (§2) cannot ship a tree or perform a fetch; it 
 
 ## 7. Expression resolution — provider-supplied values ✅
 
-The file declares *intent*; the provider supplies *values* (P-11). Beyond running commands, a provider MUST resolve the `$`-expressions in `env`, `set_env`, and command strings into concrete strings before the app sees them — a contract **ratified and implemented today** (D-33/D-35/D-36/D-39): the reference resolver and both reference providers resolve every namespace below.
+The file declares *intent*; the provider supplies *values* (P-11). Beyond running commands, a provider MUST resolve the `$`-expressions in `env` values and `set_env` values into concrete strings before the app sees them — a contract **ratified and implemented today** (D-33/D-35/D-36/D-39), covering every namespace in the table below. Whether the same syntax resolves inside a **command string** is a separate and currently unsettled question; see *Command strings* below before writing one.
 
 **The three homes (D-36).** Every value in a Launchfile has exactly one home. The provider owns **home #3** — values it *computes* from its own routing, storage, provisioning, and `PATH` strategy. The app names the need; the provider resolves the value, the *same* expression yielding a different concrete string per provider. (Home #1 is the app's command/intent; home #2 is per-environment config the orchestrator supplies — neither is the provider's to invent.)
 
@@ -131,6 +131,21 @@ The file declares *intent*; the provider supplies *values* (P-11). Beyond runnin
 | `$components.<name>.*` | a sibling component's endpoint, resolved by **consumer vantage** (§8) | — |
 | `$storage.<name>.path` | the filesystem path the provider provisioned for the named volume | **D-39** |
 | `$<resource>.<prop>` / enclosing `$url`, `$host`, … | a provisioned resource's connection properties | D-7 |
+
+**Command strings — unsettled, and divergent in practice.** Whether a `$`-expression inside a `commands.*` string is a Launchfile reference at all is **not decided**. Two ratified passages point opposite ways: `SPEC.md` § Expression Syntax scopes the `$` system to `set_env` values and `env` defaults, while `SPEC.md` § Command interpretation and §10 rule 11 below hand the command string to a POSIX shell — which owns `$` too, and for which `$VAR` and `${VAR:-default}` are its own syntax. Nothing resolves the overlap, so the reference providers each answer it differently:
+
+| Slot                | `@launchfile/docker`                               | `@launchfile/macos-dev`                                               | `@launchfile/aws`                         |
+|---------------------|----------------------------------------------------|-----------------------------------------------------------------------|-------------------------------------------|
+| `bootstrap`         | resolves `$app.*` and `$secrets.*` only            | resolves `$app.*`, `$secrets.*`, `$components.*`, resource properties | not implemented                           |
+| `release`           | resolves `$app.*` and `$secrets.*` only            | no resolution — raw string to the shell                               | no resolution — raw into cloud-init       |
+| `build` / `install` | not implemented (source builds in the image build) | no resolution — raw string to the shell                               | no resolution — raw into cloud-init       |
+| `start` / `dev`     | no resolution — raw into the compose `command:`    | no resolution — raw to the process manager                            | no resolution — raw into the systemd unit |
+
+`$storage.*` is populated for **no** command string, on **any** slot, on **either** deploying reference provider. Where resolution does run it covers the whole string, so an unresolvable reference — including a shell variable the resolver does not recognize — becomes `""` (L-4) rather than reaching the shell.
+
+**What to do meanwhile.** Do not read this section as licensing `$` in a command: the same expression resolves on one provider and slot and vanishes on another, which is exactly the P-5 breakage this document exists to prevent. An author who needs a home-#3 value inside a command should declare an `env:` variable with an expression default (D-49) and read it as a shell variable in the command — the one route every provider and every slot honors identically today.
+
+**Tracked, not promised.** Settling this — and reconciling the four passages that disagree — is [#205](https://github.com/launchfile/launchfile/issues/205). The table above records the present state as fact, not as a target; it is not a decision, and a new provider should implement to whatever #205 lands, not to the divergence described here.
 
 **Storage paths (D-39) — the home-#3 obligation made concrete.** The declared `storage.<name>.path` is the *canonical / container* path. A provider that provisions a volume MUST resolve `$storage.<name>.path` to the path it **actually used** and inject it wherever the app references it, so the path never has to appear in a command:
 
