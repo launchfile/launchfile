@@ -6,11 +6,12 @@
  * stdout via regex patterns, re-runnable, and reports failures rather than
  * deploy-failing. Spec: /spec/SPEC.md § Bootstrap stage.
  *
- * The command is split into argv via whitespace and run through spawn()
- * with shell:false to avoid shell-injection exposure. This means shell
- * metacharacters (pipes, redirects, &&, quoted args with spaces) are not
- * supported — apps that need shell features should wrap them in an
- * image-level script and invoke that script.
+ * The command runs through a POSIX shell (SPEC.md § Command interpretation,
+ * PROVIDERS.md §10 item 11), so `&&`, `;`, pipes, redirection, grouping and
+ * variable expansion behave as authors write them. It is passed as a single
+ * argv element to `/bin/sh -c` via spawn({ shell: false }) — it is never
+ * interpolated into a command string on this side, so the only interpreter
+ * that sees it is the `sh` this provider spawns.
  */
 
 import { readFile } from "node:fs/promises";
@@ -21,6 +22,8 @@ import {
 	readLaunch,
 	resolveExpression,
 	type CaptureEntry,
+	type NormalizedLaunch,
+	type ResolverContext,
 } from "@launchfile/sdk";
 import { loadState, saveState } from "./state.js";
 import {
@@ -31,6 +34,15 @@ import {
 } from "./env-writer.js";
 import { redactSecrets } from "./redact.js";
 import { getProvisioner, type ResourceProperties } from "./resources/index.js";
+
+/** Default budget for a bootstrap command when no `timeout` is declared. */
+export const DEFAULT_BOOTSTRAP_TIMEOUT_MS = 120_000;
+
+/**
+ * The interpreter every bootstrap command runs under. `/bin/sh` is the POSIX
+ * shell guaranteed present on macOS.
+ */
+export const BOOTSTRAP_SHELL = "/bin/sh";
 
 /**
  * Result of running one bootstrap command. Captures may be empty even on
@@ -94,22 +106,105 @@ export function extractCaptures(
  */
 export const parseDuration = parseDurationMs;
 
+/** One planned bootstrap execution, in component declaration order. */
+export interface BootstrapPlanItem {
+	component: string;
+	/** The $-resolved command string. */
+	command: string;
+	/** `["/bin/sh", "-c", command]` — the command as a single argv element. */
+	argv: string[];
+	timeoutMs: number;
+	capture?: Record<string, CaptureEntry>;
+	/**
+	 * Set when the item cannot run at all (empty command, unparseable
+	 * timeout). Bootstrap failures are reported, never thrown
+	 * (SPEC.md § Failure semantics), so a bad item stays in the plan and
+	 * carries its own diagnosis.
+	 */
+	error?: string;
+}
+
 /**
- * Run one command using argv-split (no-shell) execution. Returns the
+ * Build the bootstrap plan for a launch. Pure — no I/O — so selection,
+ * expression resolution, argv shape and timeout handling are unit-testable.
+ */
+export function planBootstraps(
+	launch: NormalizedLaunch,
+	context: ResolverContext,
+	opts: { component?: string } = {},
+): BootstrapPlanItem[] {
+	const plan: BootstrapPlanItem[] = [];
+
+	for (const [name, component] of Object.entries(launch.components)) {
+		if (opts.component && name !== opts.component) continue;
+
+		// `bootstrap` is mode-invariant (D-38): the same command runs from
+		// source or artifact. A path or binary that differs by mode belongs in
+		// storage:/env/PATH, not a separate command.
+		const bootstrap = component.commands?.bootstrap;
+		if (!bootstrap) continue;
+
+		// Resolve $-expressions in the command string (e.g. $app.url) at
+		// invocation time. Bootstrap runs after start, so the resolved URL
+		// already reflects the actual allocated port. A `$$` escape becomes a
+		// literal `$` here and reaches the shell intact (SPEC.md § References).
+		const command = resolveExpression(bootstrap.command, context);
+		const base = {
+			component: name,
+			command,
+			// `/bin/sh -c <command>` — one argv element, so the shell interprets
+			// the command and nothing else (SPEC.md § Command interpretation).
+			argv: [BOOTSTRAP_SHELL, "-c", command],
+			capture: bootstrap.capture,
+		};
+
+		if (command.trim() === "") {
+			plan.push({
+				...base,
+				timeoutMs: DEFAULT_BOOTSTRAP_TIMEOUT_MS,
+				error: "empty command",
+			});
+			continue;
+		}
+
+		let timeoutMs = DEFAULT_BOOTSTRAP_TIMEOUT_MS;
+		if (bootstrap.timeout !== undefined) {
+			try {
+				timeoutMs = parseDuration(bootstrap.timeout);
+			} catch (err) {
+				// An unparseable timeout is surfaced, never silently replaced
+				// with a default (PROVIDERS.md §10.10).
+				plan.push({
+					...base,
+					timeoutMs: DEFAULT_BOOTSTRAP_TIMEOUT_MS,
+					error: err instanceof Error ? err.message : String(err),
+				});
+				continue;
+			}
+		}
+
+		plan.push({ ...base, timeoutMs });
+	}
+
+	return plan;
+}
+
+/** Minimal exec contract so tests can inject a fake runner. */
+export type BootstrapExec = (
+	cmd: string,
+	args: string[],
+	opts: { cwd: string; env: Record<string, string>; timeoutMs: number },
+) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
+
+/**
+ * Run one command. `cmd`/`args` cross the process boundary as an argv vector
+ * with shell:false — the command string is a single element of it, never
+ * interpolated into a string another shell would re-parse. Returns the
  * structured result; does not throw on command failure.
  */
-async function runOnce(
-	command: string,
-	opts: { cwd: string; env: Record<string, string>; timeoutMs: number },
-): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-	const parts = command.trim().split(/\s+/).filter(Boolean);
-	if (parts.length === 0) {
-		return { exitCode: 1, stdout: "", stderr: "empty command" };
-	}
-	const [file, ...args] = parts;
-
-	return new Promise((resolveP) => {
-		const child = spawn(file!, args, {
+const defaultExec: BootstrapExec = (cmd, args, opts) =>
+	new Promise((resolveP) => {
+		const child = spawn(cmd, args, {
 			cwd: opts.cwd,
 			env: { ...process.env as Record<string, string>, ...opts.env },
 			shell: false,
@@ -155,7 +250,6 @@ async function runOnce(
 			}
 		});
 	});
-}
 
 /**
  * Public entry point for `launch bootstrap`. Loads the Launchfile, rebuilds
@@ -169,7 +263,7 @@ async function runOnce(
  * semantics in SPEC.md § Bootstrap stage.
  */
 export async function launchBootstrap(
-	opts: { component?: string; projectDir?: string } = {},
+	opts: { component?: string; projectDir?: string; exec?: BootstrapExec } = {},
 ): Promise<BootstrapResult[]> {
 	const projectDir = opts.projectDir ?? process.cwd();
 
@@ -209,89 +303,73 @@ export async function launchBootstrap(
 		appProperties,
 	);
 
+	const exec = opts.exec ?? defaultExec;
+	const plan = planBootstraps(launch, context, { component: opts.component });
 	const results: BootstrapResult[] = [];
 
-	for (const [name, component] of Object.entries(launch.components)) {
-		if (opts.component && name !== opts.component) continue;
+	for (const item of plan) {
+		const name = item.component;
 
-		// `bootstrap` is mode-invariant (D-38): the same command runs from
-		// source or artifact. A path or binary that differs by mode belongs in
-		// storage:/env/PATH, not a separate command.
-		const bootstrap = component.commands?.bootstrap;
-		if (!bootstrap) continue;
-
-		// Resolve $-expressions in the command string (e.g. $app.url) at
-		// invocation time. Bootstrap runs after start, so the resolved URL
-		// already reflects the actual allocated port.
-		const resolvedCommand = resolveExpression(bootstrap.command, context);
+		// Bootstrap failures are reported, not thrown (SPEC.md \u00a7 Failure
+		// semantics) \u2014 an unparseable timeout is surfaced the same way,
+		// never silently replaced with a default (PROVIDERS.md \u00a710.10).
+		if (item.error) {
+			console.error(`  \u2717 Bootstrap [${name}]: ${item.error}`);
+			results.push({
+				component: name,
+				command: item.command,
+				ok: false,
+				exitCode: 1,
+				captures: {},
+				captureMeta: item.capture ?? {},
+				stdout: "",
+				stderr: item.error,
+			});
+			continue;
+		}
 
 		// Resolve env vars so the subprocess gets the same environment as
 		// the running component. Minted generator values come from the store
 		// `up` persists (D-49); a value minted here (a generator declared
 		// after the last `up`) is persisted before the command runs, so
 		// `up`/`env`/`bootstrap` keep agreeing on it.
+		const component = launch.components[name]!;
 		const env = resolveComponentEnv(component, context, resourceMap);
 		const minted = await resolveGenerators(component, env, name, (state.generatedEnv ??= {}));
 		if (minted) await saveState(projectDir, state);
 		const port = state.ports[name];
 		if (port && !env.PORT) env.PORT = String(port);
 
-		// Bootstrap failures are reported, not thrown (SPEC.md \u00a7 Failure
-		// semantics) \u2014 an unparseable timeout is surfaced the same way,
-		// never silently replaced with a default (PROVIDERS.md \u00a710.10).
-		let timeoutMs = 120_000;
-		if (bootstrap.timeout !== undefined) {
-			try {
-				timeoutMs = parseDuration(bootstrap.timeout);
-			} catch (err) {
-				const message = err instanceof Error ? err.message : String(err);
-				console.error(`  \u2717 Bootstrap [${name}]: ${message}`);
-				results.push({
-					component: name,
-					command: resolvedCommand,
-					ok: false,
-					exitCode: 1,
-					captures: {},
-					captureMeta: bootstrap.capture ?? {},
-					stdout: "",
-					stderr: message,
-				});
-				continue;
-			}
-		}
-
 		console.log(`\n  \u2193 Bootstrap [${name}]`);
 		// `$secrets.*` / `$<resource>.password` / `$<resource>.url` resolve to live
 		// credentials here, so the echoed command is scrubbed (CWE-532).
-		console.log(`    $ ${redactSecrets(resolvedCommand)}`);
+		console.log(`    $ ${redactSecrets(item.command)}`);
 
-		const { exitCode, stdout, stderr } = await runOnce(resolvedCommand, {
+		const [file, ...args] = item.argv;
+		const { exitCode, stdout, stderr } = await exec(file!, args, {
 			cwd: projectDir,
 			env,
-			timeoutMs,
+			timeoutMs: item.timeoutMs,
 		});
 
-		const captures = bootstrap.capture
-			? extractCaptures(stdout, bootstrap.capture)
-			: {};
+		const captures = item.capture ? extractCaptures(stdout, item.capture) : {};
 
-		const result: BootstrapResult = {
+		results.push({
 			component: name,
-			command: resolvedCommand,
+			command: item.command,
 			ok: exitCode === 0,
 			exitCode,
 			captures,
-			captureMeta: bootstrap.capture ?? {},
+			captureMeta: item.capture ?? {},
 			stdout,
 			stderr,
-		};
-		results.push(result);
+		});
 
 		// Print captures inline so the user sees them immediately.
 		if (Object.keys(captures).length > 0) {
 			console.log("\n  Captured:");
 			for (const [key, value] of Object.entries(captures)) {
-				const meta = bootstrap.capture?.[key];
+				const meta = item.capture?.[key];
 				const displayValue = meta?.sensitive ? "***" : value;
 				const desc = meta?.description ? ` — ${meta.description}` : "";
 				console.log(`    ${key}: ${displayValue}${desc}`);
