@@ -23,6 +23,14 @@ import { launchToCompose, type UnsuppliedRequiredVar } from "./compose-generator
 import { planReleases, runReleases } from "./release.js";
 import { shell, shellStream } from "./shell.js";
 import { getLogger, withSpan } from "./logger.js";
+import {
+	captureComposeLogs,
+	declaredEnvKeys,
+	dockerErrorKey,
+	dockerLaunchError,
+	inPhase,
+	type PhaseContext,
+} from "./errors.js";
 import { readdir } from "node:fs/promises";
 
 export interface DockerUpOpts {
@@ -94,10 +102,22 @@ export interface DockerUpResult {
 }
 
 export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise<DockerUpResult> {
-	// Resolve source before the span so we have the slug for span context
-	const resolved = await resolveSource(source);
+	// Every throw below is tagged with the phase it happened in, at the throw
+	// site where the phase is known, and carries an already-redacted context the
+	// CLI persists for `launchfile diagnose` (#44). Phases are the D-48 slot
+	// names plus the pre-slot failure points, never command names.
+	const sourceContext: PhaseContext = { key: dockerErrorKey({ source }) };
 
-	return withSpan("up", { source, slug: resolved.slug }, async () => {
+	// Resolve source before the span so we have the slug for span context
+	const resolved = await inPhase("resolve", sourceContext, () => resolveSource(source));
+
+	const key = dockerErrorKey({ slug: resolved.slug });
+
+	// Anything that escapes without a phase still gets a record, tagged
+	// `unknown` rather than guessed at — an untagged failure would leave
+	// `diagnose` with nothing to show for a run that visibly failed.
+	return inPhase("unknown", { key, slug: resolved.slug }, () =>
+	withSpan("up", { source, slug: resolved.slug }, async () => {
 		const log = getLogger();
 
 		// Check prerequisites
@@ -106,13 +126,31 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 			if (!prereqs.ok) {
 				console.error("\nMissing prerequisites:");
 				for (const m of prereqs.missing) console.error(`  - ${m}`);
-				process.exit(1);
+				throw dockerLaunchError({
+					phase: "prereq",
+					key,
+					slug: resolved.slug,
+					message: `Missing prerequisites: ${prereqs.missing.join("; ")}`,
+				});
 			}
 		}
 
 		// Parse Launchfile
-		const launch = readLaunch(resolved.yaml);
+		const launch = await inPhase("parse", { key, slug: resolved.slug }, async () =>
+			readLaunch(resolved.yaml),
+		);
 		const componentNames = Object.keys(launch.components);
+
+		// Identity + declared env names, shared by every phase context below.
+		// `declaredEnvKeys` reads names from the Launchfile — no resolved value is
+		// ever in scope here, so none can reach a record.
+		const failure = (extra: Partial<PhaseContext> = {}): PhaseContext => ({
+			key,
+			slug: resolved.slug,
+			app: launch.name,
+			env: declaredEnvKeys(launch),
+			...extra,
+		});
 
 		// Resolve component selector (#77) into its D-41 start-set: selected
 		// components + their transitive downward `depends_on` closure. Empty = all.
@@ -187,18 +225,22 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		}
 
 		// Allocate host ports
-		const hostPorts = await allocatePorts(launch.components, launch.name, state.ports);
+		const hostPorts = await inPhase("provision", failure(), () =>
+			allocatePorts(launch.components, launch.name, state.ports),
+		);
 
 		// Generate compose. `process.env` is this provider's operator channel for
 		// `required:` variables the Launchfile supplies no value for (PROVIDERS.md
 		// §10 rule 8) — `URL=https://wiki.example.com launchfile up` supplies one.
-		const result = launchToCompose(launch, {
-			secrets: state.secrets,
-			generatedEnv: state.generatedEnv,
-			hostPorts,
-			projectDir: resolved.dir,
-			operatorEnv: process.env,
-		});
+		const result = await inPhase("provision", failure(), async () =>
+			launchToCompose(launch, {
+				secrets: state.secrets,
+				generatedEnv: state.generatedEnv,
+				hostPorts,
+				projectDir: resolved.dir,
+				operatorEnv: process.env,
+			}),
+		);
 
 		// Fail on whatever the operator channel did not cover — before the compose
 		// file is written and before any image, network, or container exists
@@ -255,22 +297,33 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 			return upResult;
 		}
 
+		// Carry what the launch reported (compose warnings, including the D-51
+		// unexecuted-`schedule` note) alongside whatever kills it.
+		const warnings = result.warnings;
+
 		// Write compose file
-		await withSpan("up:compose", { slug: resolved.slug }, async () => {
-			// Security: compose file contains passwords in environment variables
-			const file = composePath(resolved.slug);
-			await writeFile(file, result.yaml, { mode: 0o600 });
-		});
+		await inPhase("provision", failure({ warnings }), () =>
+			withSpan("up:compose", { slug: resolved.slug }, async () => {
+				// Security: compose file contains passwords in environment variables
+				const file = composePath(resolved.slug);
+				await writeFile(file, result.yaml, { mode: 0o600 });
+			}),
+		);
 
 		// Save state
-		await saveState(resolved.slug, state);
+		await inPhase("provision", failure({ warnings }), () =>
+			saveState(resolved.slug, state),
+		);
 
 		const project = composeProject(resolved.slug);
 		const composeFile = composePath(resolved.slug);
+		const withLogs = (extra: Partial<PhaseContext> = {}): PhaseContext =>
+			failure({ warnings, logs: () => captureComposeLogs(project, composeFile), ...extra });
 
 		// Pull images for services that don't build from source
 		if (result.images.length > 0) {
-			await withSpan("up:pull", { images: result.images }, async () => {
+			await inPhase("prepare", failure({ warnings }), () =>
+			withSpan("up:pull", { images: result.images }, async () => {
 				const t0 = Date.now();
 				process.stdout.write(`  \u2193 Pulling ${result.images.join(", ")}...`);
 				const pullArgs = ["compose", "-p", project, "-f", composeFile, "pull", "--quiet"];
@@ -286,13 +339,15 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 				});
 				const sec = Math.round((Date.now() - t0) / 1000);
 				console.log(` done (${sec}s)`);
-			});
+			}),
+			);
 		}
 
 		// Build images for services with a build: config. Source builds run
 		// inside docker build — nothing from the repo executes on the host.
 		if (result.builds.length > 0) {
-			await withSpan("up:build", { services: result.builds }, async () => {
+			await inPhase("prepare", failure({ warnings }), () =>
+			withSpan("up:build", { services: result.builds }, async () => {
 				const t0 = Date.now();
 				console.log(`  \u2193 Building from source: ${result.builds.join(", ")} (this can take a few minutes)`);
 				// One invocation builds all services concurrently under BuildKit
@@ -303,7 +358,8 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 				});
 				const sec = Math.round((Date.now() - t0) / 1000);
 				console.log(`  \u2713 Built ${result.builds.join(", ")} (${sec}s)`);
-			});
+			}),
+			);
 		}
 
 		// Configure resources (if any)
@@ -333,17 +389,22 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 			only: summaryOnly,
 		});
 		if (releasePlan.length > 0) {
-			await withSpan(
-				"up:release",
-				{ project, components: releasePlan.map((r) => r.component) },
-				async () => {
-					await runReleases(releasePlan, { project, composeFile });
-				},
+			// D-48: a release failure fails the DEPLOY — a different disposition
+			// from the prepare and run slots either side of it.
+			await inPhase("release", withLogs(), () =>
+				withSpan(
+					"up:release",
+					{ project, components: releasePlan.map((r) => r.component) },
+					async () => {
+						await runReleases(releasePlan, { project, composeFile });
+					},
+				),
 			);
 		}
 
 		// Start services
-		await withSpan("up:start", { project }, async () => {
+		await inPhase("run", withLogs(), () =>
+			withSpan("up:start", { project }, async () => {
 			process.stdout.write(`  \u2193 Starting services...`);
 			// The closure's services start with their compose `depends_on` (resources)
 			// pulled in automatically; components outside the closure stay down (#77).
@@ -353,24 +414,38 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 				{ silent: true },
 			);
 			console.log("");
-		});
+			}),
+		);
 
-		// Wait for health
-		await withSpan("up:health", { project }, async () => {
-			const healthy = await waitForHealth(project, composeFile);
-			if (healthy) {
-				console.log(`  \u2713 Health check passed`);
-			} else {
-				log.warn({ project }, "health check timed out — some services may not be healthy");
-				console.warn("  ! Some services may not be healthy yet. Check with: launchfile status");
-			}
-		});
+		// Wait for health. SPEC.md § Failure semantics: a component that
+		// never becomes healthy FAILS THE INVOCATION. A health check is not a
+		// command slot, but D-48 gives it a disposition, and reporting the timeout
+		// as a warning while returning success contradicts it. Containers are left
+		// running so the user can inspect what never came up.
+		await inPhase("health", withLogs(), () =>
+			withSpan("up:health", { project }, async () => {
+				const healthy = await waitForHealth(project, composeFile);
+				if (!healthy) {
+					log.warn(
+						{ project },
+						"health check timed out — some services never became healthy",
+					);
+					console.error("  ! Containers are up but never became healthy.");
+					console.error("    Inspect them with: launchfile status / launchfile logs");
+					throw new Error(
+						`no component became healthy within ${HEALTH_TIMEOUT_MS / 1000}s`,
+					);
+				}
+				console.log(`  ✓ Health check passed`);
+			}),
+		);
 
 		// Print summary
 		printSummary(launch.name, result.ports, summaryOnly, result.endpoints);
 
 		return upResult;
-	});
+	}),
+	);
 }
 
 export async function dockerDown(opts: { destroy?: boolean; slug?: string } = {}): Promise<void> {
@@ -494,9 +569,16 @@ export async function dockerList(): Promise<void> {
 
 // --- Helpers ---
 
+/**
+ * How long `up` waits for every container to report healthy before it fails the
+ * invocation. A provider-side budget: D-48 binds the *disposition* of the
+ * failure, not the number of seconds (P-11).
+ */
+export const HEALTH_TIMEOUT_MS = 120_000;
+
 async function waitForHealth(project: string, composeFile: string): Promise<boolean> {
 	const log = getLogger();
-	const maxWait = 120_000; // 2 minutes
+	const maxWait = HEALTH_TIMEOUT_MS;
 	const pollInterval = 3_000;
 	const start = Date.now();
 

@@ -21,6 +21,7 @@ import {
 	type NormalizedHealth,
 	unsuppliedRequiredEnv,
 } from "@launchfile/sdk";
+import { registerSensitiveEnv, registerSuppliedEnv } from "./env-secrets.js";
 import { registerSecret } from "./redact.js";
 
 // --- Backing service definitions ---
@@ -552,6 +553,12 @@ export interface ComposeOpts {
 	 * it never overrides a `default:`, a `generator:`, or a `set_env:` binding.
 	 */
 	operatorEnv?: Record<string, string | undefined>;
+	/**
+	 * Operator-supplied env values, keyed by component name then variable name
+	 * (D-52). Every value is registered with the redactor before anything is
+	 * generated, so an operator's credential cannot survive into captured output.
+	 */
+	supplied?: Record<string, Record<string, string>>;
 }
 
 /** A `required:` variable neither the Launchfile nor the operator supplied. */
@@ -619,6 +626,11 @@ export function launchToCompose(
 	// so a component skipped earlier (refused capability, non-local build
 	// context) can't be mistaken for a missing `exposed: true`.
 	let declaredProvides = false;
+
+	// Before anything resolves: every operator-supplied value is credential
+	// material this provider never minted, so nothing else can have registered it
+	// (D-52). Registering here covers components the generator later skips too.
+	for (const values of Object.values(opts.supplied ?? {})) registerSuppliedEnv(values);
 
 	const backingServices = createBackingServices(secrets);
 
@@ -890,6 +902,12 @@ export function launchToCompose(
 				};
 			}
 		}
+
+		// Register the credential-bearing values this provider did not mint —
+		// author-declared `sensitive: true` literals (D-18) and anything the
+		// operator supplied (D-52) — before any of them can reach a log line, an
+		// echoed command, or a captured failure record (CWE-532).
+		registerSensitiveEnv(component.env, env);
 
 		if (Object.keys(env).length > 0) {
 			service.environment = env;
