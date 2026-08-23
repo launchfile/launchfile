@@ -19,7 +19,8 @@ export async function handleList(): Promise<void> {
 	const appW = 16;
 	const provW = 8;
 	const portW = 6;
-	const statusW = 8;
+	// Wide enough for the longest status ("unhealthy") plus a separating space.
+	const statusW = 11;
 
 	console.log(
 		`${"ID".padEnd(idW)}${"APP".padEnd(appW)}${"PROVIDER".padEnd(provW)}${"PORT".padEnd(portW)}${"STATUS".padEnd(statusW)}SOURCE`,
