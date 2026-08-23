@@ -629,7 +629,7 @@ covers:
   - underscores and digits behave the same in all three positions
   - bracket index notation parses to the same path in all three positions
   - a pipe transform applies the same in all three positions
-tags: [launch-spec, resolver, expression-parity, d-18]
+tags: [launch-spec, resolver, expression-parity, d-11]
 ---*/
 describe("reference grammar parity across positions", () => {
 	const ctx = {
