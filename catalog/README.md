@@ -2,6 +2,16 @@
 
 Community-maintained Launchfiles for popular open-source applications. Each Launchfile describes what an app needs to run — its components, services, environment, and health checks — so any Launchfile-compatible platform can deploy it.
 
+## What this catalog is
+
+A community-maintained index of Launchfiles for third-party apps, with the `apps/`
+entries verified to launch. It follows each upstream project's own release channel; it
+is not a distribution and does not re-publish, freeze, or vouch for upstream images.
+Platforms that deploy from this catalog own their own supply-chain controls — image
+admission, scanning, pull-through caching. That boundary is deliberate: the risk
+originates with the upstream publishers, and it is defended where the image is pulled
+and run, not in the index that names it.
+
 ## Structure
 
 ```
@@ -10,16 +20,6 @@ drafts/     Proposed — Launchfile written, not yet verified
 ```
 
 Tested apps have screenshots, test results, and metadata in their directory. The source of truth is the `apps/` directory itself.
-
-### What this catalog is
-
-A community-maintained index of Launchfiles for third-party apps, verified to launch.
-It follows each upstream project's own release channel; it is not a distribution and
-does not re-publish, freeze, or vouch for upstream images. Platforms that deploy from
-this catalog own their own supply-chain controls — image admission, scanning,
-pull-through caching. That boundary is deliberate: the risk originates with the
-upstream publishers, and it is defended where the image is pulled and run, not in the
-index that names it.
 
 ## Tested Apps
 
