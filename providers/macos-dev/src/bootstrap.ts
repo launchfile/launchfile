@@ -17,6 +17,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import {
+	parseDurationMs,
 	readLaunch,
 	resolveExpression,
 	type CaptureEntry,
@@ -85,19 +86,13 @@ export function extractCaptures(
 	return result;
 }
 
-/** Parse a simple duration string like "5m", "30s", "1h" into milliseconds. Exported for unit testing. */
-export function parseDuration(s: string): number {
-	const match = /^(\d+)\s*(ms|s|m|h)$/.exec(s.trim());
-	if (!match) return 120_000;
-	const n = Number.parseInt(match[1]!, 10);
-	switch (match[2]) {
-		case "ms": return n;
-		case "s": return n * 1000;
-		case "m": return n * 60 * 1000;
-		case "h": return n * 60 * 60 * 1000;
-		default: return 120_000;
-	}
-}
+/**
+ * Parse a simple duration string like "5m", "30s", "1h" into milliseconds
+ * using the ratified grammar (D-48). Throws on an unparseable value —
+ * PROVIDERS.md §10.10 forbids silently substituting a default. Re-exported
+ * for unit testing.
+ */
+export const parseDuration = parseDurationMs;
 
 /**
  * Run one command using argv-split (no-shell) execution. Returns the
@@ -237,6 +232,30 @@ export async function launchBootstrap(
 		const port = state.ports[name];
 		if (port && !env.PORT) env.PORT = String(port);
 
+		// Bootstrap failures are reported, not thrown (SPEC.md \u00a7 Failure
+		// semantics) \u2014 an unparseable timeout is surfaced the same way,
+		// never silently replaced with a default (PROVIDERS.md \u00a710.10).
+		let timeoutMs = 120_000;
+		if (bootstrap.timeout !== undefined) {
+			try {
+				timeoutMs = parseDuration(bootstrap.timeout);
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				console.error(`  \u2717 Bootstrap [${name}]: ${message}`);
+				results.push({
+					component: name,
+					command: resolvedCommand,
+					ok: false,
+					exitCode: 1,
+					captures: {},
+					captureMeta: bootstrap.capture ?? {},
+					stdout: "",
+					stderr: message,
+				});
+				continue;
+			}
+		}
+
 		console.log(`\n  \u2193 Bootstrap [${name}]`);
 		// `$secrets.*` / `$<resource>.password` / `$<resource>.url` resolve to live
 		// credentials here, so the echoed command is scrubbed (CWE-532).
@@ -245,7 +264,7 @@ export async function launchBootstrap(
 		const { exitCode, stdout, stderr } = await runOnce(resolvedCommand, {
 			cwd: projectDir,
 			env,
-			timeoutMs: bootstrap.timeout ? parseDuration(bootstrap.timeout) : 120_000,
+			timeoutMs,
 		});
 
 		const captures = bootstrap.capture

@@ -175,7 +175,7 @@ local watcher ← emit ← diff() ← fs change ────┘
 - **Translation:** Launchfile → `docker-compose.yml` (compose-generator); one compose project per deployment, keyed by `slug`.
 - **Ports:** host-port allocation, persisted and collision-avoided across deployments (UC3 worktrees get distinct ports).
 - **Build:** components with `build:` are built from source **inside `docker compose build`** (BuildKit — nothing from the repo runs on the host); `image:` services are pulled.
-- **Flow:** build (from source) → start (`compose up`) → bootstrap.
+- **Flow:** build (from source) → release (one-shot `docker compose run --rm` per declaring component, in `depends_on` order; compose brings that component's backing resources up healthy first, and a non-zero exit fails the deploy) → start (`compose up`) → bootstrap.
 - **Sources:** local path, catalog slug, remote URL (with a confirmation prompt for remote, bypassable via `yes`).
 - **Storage:** resolves `$storage.<name>.path` to the bind-mounted container path (D-39).
 - **State:** `DockerState` per slug (compose project/path, allocated ports, source info) under the provider state dir.
@@ -214,6 +214,8 @@ A provider claiming Launchfile support MUST:
 7. **Persist resolved deployment state** and resolve cross-component references by consumer vantage (§8). Providers SHOULD interoperate via the shared state file so invocations compose.
 8. **Report gaps, not silent drops** — if a field can't be honored, surface it (the AWS probe's conformance report is the model).
 9. **Grant or refuse `host:` capability entries** — mount/forward the capability's coordinate and populate its properties, or refuse the component with a clear surfaced message; never deploy a component whose required capability was silently dropped (§11).
+10. **Honor the failure semantics** (SPEC.md § Failure semantics) — a provider executing a deploy MUST run a declared `release` after the component's required resources are ready and before `start`, and MUST fail the deploy on its error. A provider that cannot run one-shot commands says so (item 8), never skips `release` silently. A provider MUST NOT silently substitute a default for an unparseable duration — it surfaces the error with the disposition of the slot or health check the duration belongs to. Numeric timeout *defaults* for absent durations remain provider-side; a provider MUST document its defaults.
+11. **Interpret command strings with a POSIX shell** (SPEC.md § Command interpretation) — or report the command unhonored per item 8. A provider MUST NOT split a command on whitespace and execute the first token: any command using `&&`, a pipe, a redirection or variable expansion is silently mangled, and the failure names a binary the author never wrote.
 
 A **translation-only** provider (IaC/manifest emitter) satisfies the contract by mapping the fields above to its target and listing what it cannot map — it need not implement `up`/`down`.
 

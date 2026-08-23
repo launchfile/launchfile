@@ -18,6 +18,7 @@ import {
 	type NormalizedEnvVar,
 	type NormalizedHealth,
 } from "@launchfile/sdk";
+import { registerSecret } from "./redact.js";
 
 // --- Backing service definitions ---
 
@@ -41,16 +42,20 @@ function randomPassword(): string {
 	const bytes = new Uint8Array(24);
 	crypto.getRandomValues(bytes);
 	// Base64url encoding — safe for URLs and env vars
-	return btoa(String.fromCharCode(...bytes))
+	const password = btoa(String.fromCharCode(...bytes))
 		.replace(/\+/g, "-")
 		.replace(/\//g, "_")
 		.replace(/=+$/, "");
+	registerSecret(password);
+	return password;
 }
 
 function generateSecret(): string {
 	const bytes = new Uint8Array(32);
 	crypto.getRandomValues(bytes);
-	return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+	const secret = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+	registerSecret(secret);
+	return secret;
 }
 
 function generateUuid(): string {
@@ -409,6 +414,8 @@ export interface ComposeResult {
 	secrets: Record<string, string>;
 	/** Map of component name → exposed host port */
 	ports: Record<string, number>;
+	/** Map of component name → generated compose service name (skipped components absent) */
+	services: Record<string, string>;
 }
 
 export function launchToCompose(
@@ -422,6 +429,7 @@ export function launchToCompose(
 	const volumes: Record<string, Record<string, unknown>> = {};
 	const secrets = opts.secrets ?? {};
 	const ports: Record<string, number> = {};
+	const componentServices: Record<string, string> = {};
 
 	const backingServices = createBackingServices(secrets);
 
@@ -678,6 +686,7 @@ export function launchToCompose(
 		}
 
 		services[serviceName] = service;
+		componentServices[componentName] = serviceName;
 	}
 
 	// Add network
@@ -701,6 +710,7 @@ export function launchToCompose(
 		builds,
 		secrets,
 		ports,
+		services: componentServices,
 	};
 }
 

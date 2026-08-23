@@ -457,6 +457,44 @@ commands:
     timeout: "5m"
 ```
 
+### Failure semantics
+
+Every command has exactly one failure disposition, keyed on the **slot** it fills — not on its name. Keying on the name would be ambiguous, because [D-38](DESIGN.md#d-38-install--dev-source-mode-commands-and-the-source-field) lets one command fill a slot in either mode: source prepare resolves `install ?? build`, and source run resolves `dev ?? start`, so `build` and `start` each appear in two modes.
+
+| Slot | Filled by | On failure |
+|---|---|---|
+| **prepare** | artifact mode: `build` · source mode: `install ?? build` | **Fails the invocation** — the deploy when deploying, the session when running from source. There is nothing to run either way. |
+| **release** | `release` | **Fails the deploy.** `release` runs after the component's required resources are provisioned and ready, and before the run slot — so a failed migration never serves traffic. |
+| **run** | artifact mode: `start` · source mode: `dev ?? start` | **Fails the invocation** — the component did not come up. |
+| **bootstrap** | `bootstrap` | **Reported to the invoker** — never affects deploy status. |
+| **on-demand** | `seed`, `test`, custom commands | **Reported to the invoker** — never affects deploy status. |
+
+"Fails the invocation" is what makes the table non-overlapping: the prepare and run slots fail whatever asked for them. A deploy (`up`) fails; a source-mode session (`dev`) fails that session and leaves deployed state untouched. A component declaring only `start:` — no `dev`, no `image` — fills the run slot in source mode and is covered exactly once.
+
+Timeout expiry is a failure with the same disposition as any other failure of that slot: a prepare or release that exceeds its `timeout` fails the invocation; a `bootstrap` that exceeds its `timeout` is reported.
+
+A **health check** is not a command slot, but it has durations and therefore a disposition: a component that never becomes healthy **fails the invocation**, and an **unparseable health duration** fails it too — the provider surfaces the error rather than substituting a default, as it does for any other duration.
+
+### Command interpretation
+
+A command string is interpreted by a **POSIX shell**. Shell features — `&&`, `||`, `;`, pipes, redirection, variable expansion, grouping — are available and are what authors write today; `catalog/apps/paperclip`'s `bootstrap` is a multi-statement script and depends on it.
+
+This is stated because it was ambiguous and the reference providers diverged on it: a provider that splits the string on whitespace and executes `argv[0]` directly will fail on any command using those features, and will fail confusingly — attempting to execute a binary whose name is the first token.
+
+A provider that cannot offer a shell MUST report the command as unhonored (§10.8) rather than attempt a best-effort split.
+
+### Durations
+
+Every duration in a Launchfile uses one grammar:
+
+```
+^(\d+)(ms|s|m|h)$
+```
+
+An integer immediately followed by exactly one unit — `"500ms"`, `"30s"`, `"5m"`, `"2h"`. No internal whitespace, no compound values (`"1m30s"`), no fractions. The grammar governs `commands.*.timeout` and the [Health](#health) durations (`interval`, `timeout`, `start_period`).
+
+An unparseable duration is surfaced as a non-fatal warning by `validate`. A provider MUST NOT silently substitute a default for an unparseable duration — it surfaces the error (see [PROVIDERS.md §10](PROVIDERS.md)). Numeric *defaults* for absent durations are provider-side: the spec does not mandate execution budgets, and each provider documents its own.
+
 ### Source-mode commands
 
 Lifecycle commands run **in the context of the built artifact** — `start` is what the production image runs, `build` produces that artifact. Running the app **from source** on a developer machine is a different execution context: the artifact's entrypoint may be a compiled binary absent from the source tree, and the source tree has dev affordances (hot reload, unbundled assets) the artifact doesn't. Execution mode — source vs. artifact — is a *distinct* axis from deployment environment (DESIGN.md [D-37](DESIGN.md) / L-3): "dev" is a **mode**, not an environment.
@@ -562,10 +600,10 @@ A string shorthand (`health: /health`) expands to `{ path: "/health" }`.
 |---|---|---|
 | `path` | `string` | HTTP path to check |
 | `command` | `string` | Shell command for non-HTTP checks |
-| `interval` | `string` | Check interval (e.g. `30s`, `1m`) |
-| `timeout` | `string` | Timeout per check attempt |
+| `interval` | `string` | Check interval — a [duration](#durations) (e.g. `30s`, `1m`) |
+| `timeout` | `string` | Timeout per check attempt — a [duration](#durations) |
 | `retries` | `integer` | Consecutive failures before unhealthy (min: 1) |
-| `start_period` | `string` | Grace period before failures count |
+| `start_period` | `string` | Grace period before failures count — a [duration](#durations) |
 
 Use `path` for HTTP checks or `command` for exec checks. If both are present, `path` takes precedence.
 

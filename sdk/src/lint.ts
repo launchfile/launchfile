@@ -10,6 +10,7 @@
 
 import { parseExpression } from "./resolver.js";
 import { RESOURCE_PROPERTY_VOCABULARY } from "./resource-properties.js";
+import { lintDurations } from "./durations.js";
 import type { NormalizedLaunch, NormalizedRequirement } from "./types.js";
 
 /** Reserved expression namespaces — never resource properties. */
@@ -143,9 +144,12 @@ function checkResourceProperties(
  *   names a known host capability is warned about: host capabilities require
  *   the `host:` marker so the privilege surface stays machine-extractable.
  * - Non-standard resource properties (D-46): see {@link checkResourceProperties}.
+ *
+ * Also checks every duration-valued field against the ratified duration
+ * grammar — see {@link lintDurations}.
  */
 export function lintLaunch(launch: NormalizedLaunch): string[] {
-	const warnings: string[] = [];
+	const warnings: string[] = [...lintDurations(launch)];
 
 	// Collect every requires/supports declaration grouped by resolved name.
 	const byName = new Map<string, ResourceDecl[]>();

@@ -9,22 +9,6 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { readLaunch, selectionClosure, type NormalizedLaunch, type NormalizedComponent } from "@launchfile/sdk";
 
-/**
- * Source-mode run resolution (D-38, precedence `dev` > `image` > `start`).
- * This provider runs apps from source. A component is source-runnable when it
- * declares `dev`, or a `start` with no `image` — an `image` without a `dev`
- * override stays artifact-mode, which this source-only provider can't launch.
- */
-export function isSourceRunnable(component: NormalizedComponent): boolean {
-	return Boolean(component.commands?.dev || (component.commands?.start && !component.image));
-}
-
-/** The command run from source, or undefined if the component resolves to its artifact. */
-export function sourceRunCommand(component: NormalizedComponent): string | undefined {
-	if (component.commands?.dev?.command) return component.commands.dev.command;
-	if (component.image) return undefined; // image, no `dev` override → artifact
-	return component.commands?.start?.command;
-}
 import { checkPrereqs } from "./prereqs.js";
 import { loadState, initState, saveState, ensureDirs } from "./state.js";
 import {
@@ -44,6 +28,38 @@ import { ProcessManager } from "./process-manager.js";
 import { stopRecordedProcesses } from "./process-stopper.js";
 import { shell } from "./shell.js";
 import { parseDuration } from "./bootstrap.js";
+
+/**
+ * Source-mode run resolution (D-38, precedence `dev` > `image` > `start`).
+ * This provider runs apps from source. A component is source-runnable when it
+ * declares `dev`, or a `start` with no `image` — an `image` without a `dev`
+ * override stays artifact-mode, which this source-only provider can't launch.
+ */
+export function isSourceRunnable(component: NormalizedComponent): boolean {
+	return Boolean(component.commands?.dev || (component.commands?.start && !component.image));
+}
+
+/** The command run from source, or undefined if the component resolves to its artifact. */
+export function sourceRunCommand(component: NormalizedComponent): string | undefined {
+	if (component.commands?.dev?.command) return component.commands.dev.command;
+	if (component.image) return undefined; // image, no `dev` override → artifact
+	return component.commands?.start?.command;
+}
+
+/**
+ * Parse a declared timeout, adding the stage/component label to the error.
+ * An unparseable duration is surfaced — it fails the stage that declared it
+ * (PROVIDERS.md §10.10) — never silently replaced with a default. Undefined
+ * passes through so callers keep their own default budgets.
+ */
+function declaredTimeout(timeout: string | undefined, label: string): number | undefined {
+	if (timeout === undefined) return undefined;
+	try {
+		return parseDuration(timeout);
+	} catch (err) {
+		throw new Error(`${label}: ${err instanceof Error ? err.message : String(err)}`);
+	}
+}
 
 export interface LaunchUpOpts {
 	withOptional?: boolean;
@@ -397,7 +413,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 					env: allEnvs[name],
 					// Installs/compiles routinely exceed the 2-minute shell default;
 					// honor a declared timeout, else allow 10 minutes.
-					timeout: prepare?.timeout ? parseDuration(prepare.timeout) : 600_000,
+					timeout: declaredTimeout(prepare?.timeout, `prepare [${name}]`) ?? 600_000,
 				});
 			}
 		}
@@ -411,7 +427,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 			await shell(release.command, {
 				cwd: join(projectDir, component.source ?? component.build?.context ?? "."),
 				env: allEnvs[name],
-				timeout: release.timeout ? parseDuration(release.timeout) : undefined,
+				timeout: declaredTimeout(release.timeout, `release [${name}]`),
 			});
 		}
 	}

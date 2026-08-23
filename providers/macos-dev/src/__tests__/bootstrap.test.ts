@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { parseDuration as parseHealthDuration } from "../health.js";
 import { extractCaptures, parseDuration } from "../bootstrap.js";
 import type { CaptureEntry } from "@launchfile/sdk";
 
@@ -11,7 +12,8 @@ describe("extractCaptures (D-34)", () => {
 				sensitive: true,
 			},
 		};
-		const stdout = "Admin created.\nInvite URL: https://example.com/invite/abc123\n";
+		const stdout =
+			"Admin created.\nInvite URL: https://example.com/invite/abc123\n";
 		expect(extractCaptures(stdout, captures)).toEqual({
 			invite_link: "https://example.com/invite/abc123",
 		});
@@ -41,7 +43,8 @@ describe("extractCaptures (D-34)", () => {
 			url: { pattern: "https?://\\S+" },
 		};
 		// Simulates colorized output from a CLI tool that detects a TTY
-		const stdout = "\x1b[32mSuccess:\x1b[0m visit \x1b[4mhttps://example.com/admin\x1b[0m to continue";
+		const stdout =
+			"\x1b[32mSuccess:\x1b[0m visit \x1b[4mhttps://example.com/admin\x1b[0m to continue";
 		expect(extractCaptures(stdout, captures)).toEqual({
 			url: "https://example.com/admin",
 		});
@@ -89,12 +92,37 @@ describe("parseDuration", () => {
 		expect(parseDuration("2h")).toBe(7_200_000);
 	});
 
-	it("tolerates whitespace", () => {
-		expect(parseDuration(" 10s ")).toBe(10_000);
+	it("rejects whitespace forms (ratified grammar, D-48)", () => {
+		expect(() => parseDuration(" 10s ")).toThrow(/invalid duration/);
+		expect(() => parseDuration("5 m")).toThrow(/invalid duration/);
 	});
 
-	it("falls back to default for invalid input", () => {
-		expect(parseDuration("bogus")).toBe(120_000);
-		expect(parseDuration("")).toBe(120_000);
+	it("throws on invalid input instead of substituting a default (PROVIDERS.md 10.10)", () => {
+		expect(() => parseDuration("bogus")).toThrow(/invalid duration/);
+		expect(() => parseDuration("")).toThrow(/invalid duration/);
+	});
+});
+
+describe("health durations use the ratified grammar (D-48)", () => {
+	it("accepts the hour unit the local parser used to drop", () => {
+		// The old health.ts regex was ^(\d+)(ms|s|m)$ with a silent `return 0`,
+		// so a spec-valid `interval: "1h"` became a zero-length poll that could
+		// never pass — a P-5 divergence from Docker on a value validate accepts.
+		expect(parseHealthDuration("1h")).toBe(3_600_000);
+		expect(parseHealthDuration("2h")).toBe(7_200_000);
+	});
+
+	it("still parses the units it always did", () => {
+		expect(parseHealthDuration("500ms")).toBe(500);
+		expect(parseHealthDuration("30s")).toBe(30_000);
+		expect(parseHealthDuration("5m")).toBe(300_000);
+	});
+
+	it("throws rather than silently substituting a default", () => {
+		// PROVIDERS.md §10.10: a provider MUST NOT substitute for an unparseable
+		// duration. The old parser returned 0 here.
+		expect(() => parseHealthDuration("5 minutes")).toThrow(/invalid duration/);
+		expect(() => parseHealthDuration("1.5h")).toThrow(/invalid duration/);
+		expect(() => parseHealthDuration("30 s")).toThrow(/invalid duration/);
 	});
 });

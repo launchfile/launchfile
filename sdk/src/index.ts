@@ -1,4 +1,10 @@
 export { cmdInspect, cmdSchema, cmdValidate, collectHostCapabilities } from "./commands.js";
+export {
+	DURATION_PATTERN,
+	isValidDuration,
+	lintDurations,
+	parseDurationMs,
+} from "./durations.js";
 export { lintLaunch } from "./lint.js";
 export { readLaunch, validateLaunch } from "./reader.js";
 export { parseRepository } from "./repository.js";

@@ -9,10 +9,21 @@ A Launchfile provider that runs apps via Docker Compose. Generates a docker-comp
 ## Philosophy
 
 - **Image-first, build-capable** — uses `image:` when present; components with `build:` are built via `docker compose build` (contexts resolve against the project directory; git-URL contexts pass through). Building in Docker is the sandboxed path for untrusted sources — nothing from the repo executes on the host
-- **Artifact-context commands only** — runs `commands.start`/`bootstrap`; ignores source-mode commands (`install`, `dev` — D-38)
+- **Artifact-context commands only** — runs `commands.release` (one-shot `compose run --rm` before `up`, deploy-failing), `commands.start`, and `bootstrap`; ignores source-mode commands (`install`, `dev` — D-38)
 - **Zero-install** — works via `npx launchfile up ghost`
 - **100% cleanable** — `down --destroy` removes all containers, volumes, and networks
 - **Catalog-friendly** — accepts app slugs, URLs, or local Launchfile paths
+
+## Timeout defaults (PROVIDERS.md §10.10)
+
+Budgets applied when a command declares no `timeout:`:
+
+| Command     | Default |
+|-------------|---------|
+| `release`   | 10m     |
+| `bootstrap` | 2m      |
+
+An unparseable declared `timeout` is surfaced, never silently replaced: `release` fails the deploy, `bootstrap` reports the failure to the invoker.
 
 ## Commands
 
@@ -29,6 +40,7 @@ This package is a library consumed by the unified `launchfile` CLI (`packages/la
 - `cli.ts` — CLI entry point, parses commands and flags
 - `provider.ts` — Main orchestration (up, down, status, logs, list)
 - `compose-generator.ts` — Launchfile → docker-compose.yml translation
+- `release.ts` — Pre-`up` release one-shots via `compose run --rm` (deploy-failing)
 - `source-resolver.ts` — Resolves slugs, URLs, or paths to Launchfile YAML
 - `port-allocator.ts` — Finds available host ports for container bindings
 - `state.ts` — Persists state at `~/.launchfile/docker/{slug}/`
@@ -51,3 +63,12 @@ This package is a library consumed by the unified `launchfile` CLI (`packages/la
 **pino-pretty trust model:** values from Launchfile YAML (slug, image, component names) are rendered verbatim by pino-pretty to stderr. ANSI escapes or embedded newlines in a crafted value could forge terminal log lines. NDJSON file output is safe (JSON-escaped).
 
 **Redaction depth:** `redact.paths` covers the top level and one level deep via `*.field`. pino/fast-redact has no arbitrary-depth wildcard — `**.field` is a literal key, not a deep match. For secrets nested deeper, enumerate concrete paths (e.g., `config.db.password`) or add a custom censor function. The `REDACT_CONFIG` constant is exported from `logger.ts` and the logger tests import it directly so regressions can't slip past a drifted test-only copy.
+
+## Command interpretation
+
+Release commands run via `docker compose run --rm -T <service> sh -c "<command>"`, so shell
+features work as written (SPEC.md § Command interpretation, PROVIDERS.md §10.11). This
+requires a shell in the image — a release on a distroless or scratch image fails with a
+surfaced `sh: not found`, which is the conformant outcome rather than a silent partial run.
+
+`bootstrap` still argv-splits and does not honor §10.11. Tracked in #185.

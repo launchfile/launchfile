@@ -12,11 +12,13 @@
 
 import { spawn } from "node:child_process";
 import {
+	parseDurationMs,
 	resolveExpression,
 	type CaptureEntry,
 	type NormalizedLaunch,
 	type ResolverContext,
 } from "@launchfile/sdk";
+import { redactSecrets } from "./redact.js";
 import { loadState, composeProject } from "./state.js";
 
 /** Result of running one bootstrap command against a compose service. */
@@ -57,27 +59,20 @@ export function extractCaptures(
 	return result;
 }
 
-/** Parse a duration string like "5m" into milliseconds. Exported for testing. */
-export function parseDuration(s: string): number {
-	const match = /^(\d+)\s*(ms|s|m|h)$/.exec(s.trim());
-	if (!match) return 120_000;
-	const n = Number.parseInt(match[1]!, 10);
-	switch (match[2]) {
-		case "ms": return n;
-		case "s": return n * 1000;
-		case "m": return n * 60 * 1000;
-		case "h": return n * 60 * 60 * 1000;
-		default: return 120_000;
-	}
-}
+/**
+ * Parse a duration string like "5m" into milliseconds using the ratified
+ * grammar (D-48). Throws on an unparseable value — PROVIDERS.md §10.10
+ * forbids silently substituting a default. Re-exported for unit testing.
+ */
+export const parseDuration = parseDurationMs;
 
 /**
  * Compute $app.* properties for the Docker provider. Mirrors the private
- * helper inside compose-generator.ts so bootstrap can resolve $app.url
- * against the same values compose-generator used when writing env vars
- * into the compose file.
+ * helper inside compose-generator.ts so bootstrap (and release) can resolve
+ * $app.url against the same values compose-generator used when writing env
+ * vars into the compose file.
  */
-function computeAppProperties(
+export function computeAppProperties(
 	launch: NormalizedLaunch,
 	hostPorts: Record<string, number>,
 ): Record<string, string | number> {
@@ -226,16 +221,42 @@ export async function dockerBootstrap(opts: {
 		}
 
 		const service = serviceNameFor(opts.launch.name, name);
+
+		// Bootstrap failures are reported, not thrown (SPEC.md \u00a7 Failure
+		// semantics) \u2014 an unparseable timeout is surfaced the same way,
+		// never silently replaced with a default (PROVIDERS.md \u00a710.10).
+		let timeoutMs = 120_000;
+		if (bootstrap.timeout !== undefined) {
+			try {
+				timeoutMs = parseDuration(bootstrap.timeout);
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				console.error(`  \u2717 Bootstrap [${name}]: ${message}`);
+				results.push({
+					component: name,
+					service,
+					command: resolvedCommand,
+					ok: false,
+					exitCode: 1,
+					captures: {},
+					captureMeta: bootstrap.capture ?? {},
+					stdout: "",
+					stderr: message,
+				});
+				continue;
+			}
+		}
+
 		console.log(`\n  \u2193 Bootstrap [${name}] via docker compose exec ${service}`);
-		console.log(`    $ ${resolvedCommand}`);
+		// `$secrets.*` / `$<resource>.password` / `$<resource>.url` resolve to
+		// live credentials here, so the echoed command is scrubbed (CWE-532).
+		console.log(`    $ ${redactSecrets(resolvedCommand)}`);
 
 		const { exitCode, stdout, stderr } = await runDockerExec(
 			project,
 			service,
 			argv,
-			{
-				timeoutMs: bootstrap.timeout ? parseDuration(bootstrap.timeout) : 120_000,
-			},
+			{ timeoutMs },
 		);
 
 		const captures = bootstrap.capture ? extractCaptures(stdout, bootstrap.capture) : {};
@@ -264,7 +285,7 @@ export async function dockerBootstrap(opts: {
 
 		if (exitCode !== 0) {
 			console.error(`  \u2717 Bootstrap [${name}] failed with exit code ${exitCode}`);
-			if (stderr) console.error(stderr);
+			if (stderr) console.error(redactSecrets(stderr));
 		} else {
 			console.log(`  \u2713 Bootstrap [${name}] complete`);
 		}
