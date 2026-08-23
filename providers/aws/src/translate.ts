@@ -689,6 +689,13 @@ function emitComponent(
 		);
 	}
 
+	// PROVIDERS.md §10 rule 8 (D-52): report unsupplied `required` env vars before
+	// the mode gaps below can return. A component this probe cannot translate still
+	// has an environment contract the operator must satisfy, and dropping it because
+	// the component gapped for an unrelated reason is the silent drop the rule
+	// forbids. `resourceMap` is fully populated before this loop, so the arrival
+	// test below is decidable here.
+	reportUnsuppliedRequired(comp, name, c, baseContext);
 	// host capabilities a bare-EC2 target can't honor. Both spellings are
 	// graded identically (PROVIDERS.md §11): the D-44 entry form below, and the
 	// legacy block after it.
@@ -947,6 +954,44 @@ function emitComponent(
 	targetGroupFor[name] = instanceTf;
 }
 
+/**
+ * Record a conformance gap for each `required` env var the Launchfile supplies no
+ * value for — PROVIDERS.md §10 rule 8 / D-52.
+ *
+ * A variable is unsupplied when no `generator:`, no `default:`, and no `set_env:`
+ * binding *yields* it. The test is arrival, not declaration, so a binding counts
+ * only when the resource behind it resolved: the injection loop skips any resource
+ * absent from the context, and `supports:` resources are never provisioned by this
+ * probe at all (SPEC.md §Supports). A binding on an unmappable type therefore
+ * declares the key without ever supplying it.
+ */
+function reportUnsuppliedRequired(
+	comp: NormalizedComponent,
+	name: string,
+	c: Conformance,
+	baseContext: ResolverContext,
+): void {
+	const boundBySetEnv = new Set(
+		(comp.requires ?? [])
+			.filter((req) => baseContext.resources?.[req.name ?? req.type])
+			.flatMap((req) => Object.keys(req.set_env ?? {})),
+	);
+	for (const [key, envVar] of Object.entries(comp.env ?? {})) {
+		if (!envVar.required) continue;
+		if (envVar.generator || envVar.default !== undefined) continue;
+		if (boundBySetEnv.has(key)) continue;
+		c.gap(
+			`env.${key}`,
+			envVar.sensitive === true ? "blocker" : "workaround",
+			envVar.sensitive === true
+				? "required sensitive env var with no default, generator, or set_env binding — substituting a value would make this a publicly known constant credential (D-18), so it must be supplied out of band"
+				: "required env var with no default, generator, or set_env binding — the operator must supply the value",
+			"supply it at apply time (SSM parameter or TF variable), or give the Launchfile a `default:` or `generator:`",
+			name,
+		);
+	}
+}
+
 function resolveEnvVar(
 	blocks: string[],
 	instanceTf: string,
@@ -964,14 +1009,10 @@ function resolveEnvVar(
 		const value = isExpression(raw) ? resolveExpression(raw, context) : raw;
 		return { value, sensitive: envVar.sensitive === true };
 	}
-	if (envVar.required) {
-		const lower = key.toLowerCase();
-		const placeholder =
-			lower.includes("url") || lower.includes("origin")
-				? "http://localhost"
-				: "PLACEHOLDER";
-		return { value: placeholder, sensitive: envVar.sensitive === true };
-	}
+	// PROVIDERS.md §10 rule 8 (D-52): an unsupplied `required` value is a gap to
+	// report, never a value to invent. Returning undefined leaves it out of the
+	// emitted SSM parameters; the gap is recorded by the caller, after `set_env`
+	// has had its chance to supply the key.
 	return undefined;
 }
 

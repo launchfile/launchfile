@@ -253,6 +253,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 					"skipped in source mode; use `launchfile up` to run it.",
 			);
 		}
+
 		// PROVIDERS.md conformance rule 8 (D-51): a provider that does not
 		// execute `schedule` MUST say so at launch. Staying silent leaves an
 		// author believing a declared cron job is running — the one outcome

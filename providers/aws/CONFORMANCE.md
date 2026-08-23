@@ -6,7 +6,7 @@
 
 - **84** Launchfile(s) translated
 - **162** field mappings
-- **86** gaps logged (never silently dropped)
+- **92** gaps logged (never silently dropped)
 - **8** specializations safely ignored
 
 ### Distinct gaps
@@ -15,13 +15,19 @@
 |---|---|---|---|
 | `image` | 🟡 workaround | prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host | add runtime+commands for a portable build path, or target a container provider |
 | `supports:postgres` | 🟢 nice-to-have | optional resources (supports) are not provisioned by this probe | provision behind a Terraform variable toggle |
+| `env.FLOWISE_USERNAME` | 🟡 workaround | required env var with no default, generator, or set_env binding — the operator must supply the value | supply it at apply time (SSM parameter or TF variable), or give the Launchfile a `default:` or `generator:` |
+| `env.FLOWISE_PASSWORD` | 🔴 blocker | required sensitive env var with no default, generator, or set_env binding — substituting a value would make this a publicly known constant credential (D-18), so it must be supplied out of band | supply it at apply time (SSM parameter or TF variable), or give the Launchfile a `default:` or `generator:` |
+| `env.URL` | 🟡 workaround | required env var with no default, generator, or set_env binding — the operator must supply the value | supply it at apply time (SSM parameter or TF variable), or give the Launchfile a `default:` or `generator:` |
 | `requires:clickhouse` | 🟡 workaround | no managed AWS service mapping for resource type 'clickhouse' | model as a self-hosted component, or extend MANAGED_RESOURCES |
 | `requires:kafka` | 🟡 workaround | no managed AWS service mapping for resource type 'kafka' | model as a self-hosted component, or extend MANAGED_RESOURCES |
+| `env.SITE_URL` | 🟡 workaround | required env var with no default, generator, or set_env binding — the operator must supply the value | supply it at apply time (SSM parameter or TF variable), or give the Launchfile a `default:` or `generator:` |
 | `runtime` | 🔴 blocker | no runtime and no commands.start — nothing to build or run on EC2 | — |
 | `schedule` | 🟢 nice-to-have | cron schedule not mapped (no EventBridge Scheduler in this probe) | map to aws_scheduler_schedule |
 | `requires:host.container_runtime` | 🔴 blocker | component requires host capability container_runtime=docker; a bare EC2 target cannot grant it | use an ECS/container provider |
+| `env.ANTHROPIC_API_KEY` | 🟡 workaround | required env var with no default, generator, or set_env binding — the operator must supply the value | supply it at apply time (SSM parameter or TF variable), or give the Launchfile a `default:` or `generator:` |
 | `host.docker` | 🔴 blocker | component requires a Docker socket; bare EC2 has none | use an ECS/container provider |
 | `supports:redis` | 🟢 nice-to-have | optional resources (supports) are not provisioned by this probe | provision behind a Terraform variable toggle |
+| `env.API_KEY` | 🟡 workaround | required env var with no default, generator, or set_env binding — the operator must supply the value | supply it at apply time (SSM parameter or TF variable), or give the Launchfile a `default:` or `generator:` |
 
 ## Per-Launchfile detail
 
@@ -227,7 +233,7 @@
 
 ### flowise
 
-> Source: `catalog/apps/flowise/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
+> Source: `catalog/apps/flowise/Launchfile` — 1 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -236,6 +242,8 @@
 **Gaps**
 
 - 🟢 `supports:postgres`: optional resources (supports) are not provisioned by this probe — provision behind a Terraform variable toggle
+- 🟡 `env.FLOWISE_USERNAME` _(default)_: required env var with no default, generator, or set_env binding — the operator must supply the value — supply it at apply time (SSM parameter or TF variable), or give the Launchfile a `default:` or `generator:`
+- 🔴 `env.FLOWISE_PASSWORD` _(default)_: required sensitive env var with no default, generator, or set_env binding — substituting a value would make this a publicly known constant credential (D-18), so it must be supplied out of band — supply it at apply time (SSM parameter or TF variable), or give the Launchfile a `default:` or `generator:`
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
 
 ### freshrss
@@ -625,7 +633,7 @@
 
 ### outline
 
-> Source: `catalog/apps/outline/Launchfile` — 3 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/outline/Launchfile` — 3 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -635,6 +643,7 @@
 
 **Gaps**
 
+- 🟡 `env.URL` _(default)_: required env var with no default, generator, or set_env binding — the operator must supply the value — supply it at apply time (SSM parameter or TF variable), or give the Launchfile a `default:` or `generator:`
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
 
 ### paperclip
@@ -678,7 +687,7 @@
 
 ### posthog
 
-> Source: `catalog/apps/posthog/Launchfile` — 3 mapped, 3 gap(s), 0 ignored
+> Source: `catalog/apps/posthog/Launchfile` — 3 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -690,6 +699,7 @@
 
 - 🟡 `requires:clickhouse`: no managed AWS service mapping for resource type 'clickhouse' — model as a self-hosted component, or extend MANAGED_RESOURCES
 - 🟡 `requires:kafka`: no managed AWS service mapping for resource type 'kafka' — model as a self-hosted component, or extend MANAGED_RESOURCES
+- 🟡 `env.SITE_URL` _(default)_: required env var with no default, generator, or set_env binding — the operator must supply the value — supply it at apply time (SSM parameter or TF variable), or give the Launchfile a `default:` or `generator:`
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
 
 ### privatebin
@@ -981,7 +991,7 @@
 
 ### launchpad
 
-> Source: `spec/examples/host-orchestrator.yaml` — 8 mapped, 1 gap(s), 1 ignored
+> Source: `spec/examples/host-orchestrator.yaml` — 8 mapped, 2 gap(s), 1 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -996,6 +1006,7 @@
 
 **Gaps**
 
+- 🟡 `env.ANTHROPIC_API_KEY` _(default)_: required env var with no default, generator, or set_env binding — the operator must supply the value — supply it at apply time (SSM parameter or TF variable), or give the Launchfile a `default:` or `generator:`
 - 🔴 `host.docker` _(default)_: component requires a Docker socket; bare EC2 has none — use an ECS/container provider
 
 **Ignored specializations** (contract sufficed — D-40 / RFC C)
@@ -1090,7 +1101,7 @@
 
 ### simple-api
 
-> Source: `spec/examples/single-component.yaml` — 10 mapped, 1 gap(s), 0 ignored
+> Source: `spec/examples/single-component.yaml` — 10 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1108,6 +1119,7 @@
 **Gaps**
 
 - 🟢 `supports:redis`: optional resources (supports) are not provisioned by this probe — provision behind a Terraform variable toggle
+- 🟡 `env.API_KEY` _(default)_: required env var with no default, generator, or set_env binding — the operator must supply the value — supply it at apply time (SSM parameter or TF variable), or give the Launchfile a `default:` or `generator:`
 
 ### notes-app
 
