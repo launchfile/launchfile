@@ -17,6 +17,7 @@ const composeFile = "/tmp/launchfile-required-env/docker-compose.yml";
 
 const calls: string[][] = [];
 const writes: string[] = [];
+const consoleLogs: string[] = [];
 
 let yaml = "";
 
@@ -131,9 +132,12 @@ describe("dockerUp — unsupplied required env (PROVIDERS.md rule 8, D-52)", () 
 	beforeEach(() => {
 		calls.length = 0;
 		writes.length = 0;
+		consoleLogs.length = 0;
 		delete process.env.ADMIN_TOKEN;
 		delete process.env.QUEUE_URL;
-		vi.spyOn(console, "log").mockImplementation(() => {});
+		vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+			consoleLogs.push(args.map(String).join(" "));
+		});
 		vi.spyOn(console, "warn").mockImplementation(() => {});
 		vi.spyOn(console, "error").mockImplementation(() => {});
 		vi.spyOn(process.stdout, "write").mockImplementation(() => true);
@@ -173,7 +177,7 @@ describe("dockerUp — unsupplied required env (PROVIDERS.md rule 8, D-52)", () 
 		await expect(dockerUp("Launchfile", { dryRun: true })).resolves.toMatchObject({
 			slug: "acme",
 		});
-		const printed = vi.mocked(console.log).mock.calls.flat().join("\n");
+		const printed = consoleLogs.join("\n");
 		expect(printed).toContain("ADMIN_TOKEN: s3cret-from-operator");
 	});
 

@@ -19,11 +19,15 @@ let launchfile = "";
 const releaseEnvs: (Record<string, string> | undefined)[] = [];
 const startRegistrations: { name: string; env: Record<string, string> }[] = [];
 const provisioned: string[] = [];
-const writtenEnvFiles: { path: string; env: Record<string, string> }[] = [];
+const writtenEnvFiles: { path: string; content: string }[] = [];
+const consoleLogs: string[] = [];
+const consoleErrors: string[] = [];
 
 vi.mock("node:fs/promises", () => ({
 	readFile: async () => launchfile,
-	writeFile: async () => {},
+	writeFile: async (path: string, content: string) => {
+		writtenEnvFiles.push({ path: String(path), content: String(content) });
+	},
 	mkdir: async () => {},
 }));
 
@@ -99,16 +103,6 @@ vi.mock("../process-manager.js", () => ({
 	},
 }));
 
-vi.mock("../env-writer.js", async (importOriginal) => {
-	const actual = (await importOriginal()) as Record<string, unknown>;
-	return {
-		...actual,
-		writeEnvFile: async (path: string, env: Record<string, string>) => {
-			writtenEnvFiles.push({ path, env });
-		},
-	};
-});
-
 const { launchUp, launchEnv } = await import("../provider.js");
 
 const RELEASE_AND_START = `
@@ -145,12 +139,18 @@ describe("macos-dev up/env — unsupplied required env (rule 8, D-52)", () => {
 		startRegistrations.length = 0;
 		provisioned.length = 0;
 		writtenEnvFiles.length = 0;
+		consoleLogs.length = 0;
+		consoleErrors.length = 0;
 		exitCode = undefined;
 		delete process.env.SITE_URL;
 		delete process.env.ADMIN_TOKEN;
-		vi.spyOn(console, "log").mockImplementation(() => {});
+		vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+			consoleLogs.push(args.map(String).join(" "));
+		});
 		vi.spyOn(console, "warn").mockImplementation(() => {});
-		vi.spyOn(console, "error").mockImplementation(() => {});
+		vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+			consoleErrors.push(args.map(String).join(" "));
+		});
 		vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 		vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
 			exitCode = code;
@@ -164,8 +164,8 @@ describe("macos-dev up/env — unsupplied required env (rule 8, D-52)", () => {
 		delete process.env.ADMIN_TOKEN;
 	});
 
-	const stderr = () => vi.mocked(console.error).mock.calls.flat().join("\n");
-	const stdout = () => vi.mocked(console.log).mock.calls.flat().join("\n");
+	const stderr = () => consoleErrors.join("\n");
+	const stdout = () => consoleLogs.join("\n");
 
 	// 14
 	it("up fails naming the component and the variable", async () => {
@@ -202,7 +202,7 @@ describe("macos-dev up/env — unsupplied required env (rule 8, D-52)", () => {
 		expect(releaseEnvs.at(-1)?.SITE_URL).toBe("https://wiki.example.com");
 		expect(startRegistrations[0]?.env.SITE_URL).toBe("https://wiki.example.com");
 		// And it reaches the written .env file, which is what makes it visible.
-		expect(writtenEnvFiles[0]?.env.SITE_URL).toBe("https://wiki.example.com");
+		expect(writtenEnvFiles[0]?.content).toMatch(/^SITE_URL=https:\/\/wiki\.example\.com$/m);
 	});
 
 	it("does not fail once the operator supplies the value", async () => {
