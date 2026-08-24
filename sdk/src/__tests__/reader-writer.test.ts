@@ -643,3 +643,46 @@ commands:
 		expect(out).toContain("source: ./apps/api");
 	});
 });
+
+describe("legacy host block round-trip (D-58 anti-normalization guard)", () => {
+	// D-58 rejected parse-time normalization: a normalizing parse would make
+	// readLaunch → writeLaunch silently migrate the user's source file. The
+	// deprecation is a report, never a rewrite — so the block must survive the
+	// round-trip as a block, with every key and value intact.
+	const LEGACY = `version: launch/v1
+name: legacy
+image: app:1
+host:
+  docker: required
+  network: host
+  filesystem: read-write
+  privileged: true
+`;
+
+	it("writes the host block back as a block, not as capability entries", () => {
+		const out = writeLaunch(readLaunch(LEGACY));
+		expect(out).toContain("host:");
+		expect(out).toContain("docker: required");
+		expect(out).not.toContain("container_runtime");
+		expect(out).not.toContain("requires:");
+		expect(out).not.toContain("supports:");
+	});
+
+	it("is stable across a second round-trip, key for key", () => {
+		const once = writeLaunch(readLaunch(LEGACY));
+		expect(writeLaunch(readLaunch(once))).toBe(once);
+		expect(readLaunch(once).components.default!.host).toEqual({
+			docker: "required",
+			network: "host",
+			filesystem: "read-write",
+			privileged: true,
+		});
+	});
+
+	it("does not add a host block to a file that has none", () => {
+		const out = writeLaunch(
+			readLaunch("name: modern\nimage: app:1\nrequires:\n  - host: { network: host }\n"),
+		);
+		expect(out).not.toMatch(/^host:/m);
+	});
+});

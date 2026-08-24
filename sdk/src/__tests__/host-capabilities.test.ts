@@ -242,8 +242,8 @@ requires:
 		});
 
 		it("keeps tolerating unrecognized keys on a backing-service entry", () => {
-			// spec/examples/host-orchestrator.yaml carries `description:` here, so
-			// closing this object outright would invalidate a shipped example.
+			// The backing-service object stays open (P-13): closing it outright
+			// would invalidate files carrying documentation keys like `description:`.
 			expect(() =>
 				readLaunch(`
 name: described

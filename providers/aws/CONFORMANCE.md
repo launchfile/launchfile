@@ -6,7 +6,7 @@
 
 - **84** Launchfile(s) translated
 - **162** field mappings
-- **92** gaps logged (never silently dropped)
+- **94** gaps logged (never silently dropped)
 - **8** specializations safely ignored
 
 ### Distinct gaps
@@ -25,7 +25,8 @@
 | `schedule` | 🟢 nice-to-have | cron schedule not mapped (no EventBridge Scheduler in this probe) | map to aws_scheduler_schedule |
 | `requires:host.container_runtime` | 🔴 blocker | component requires host capability container_runtime=docker; a bare EC2 target cannot grant it | use an ECS/container provider |
 | `env.ANTHROPIC_API_KEY` | 🟡 workaround | required env var with no default, generator, or set_env binding — the operator must supply the value | supply it at apply time (SSM parameter or TF variable), or give the Launchfile a `default:` or `generator:` |
-| `host.docker` | 🔴 blocker | component requires a Docker socket; bare EC2 has none | use an ECS/container provider |
+| `requires:host.network` | 🔴 blocker | component requires host capability network=host; a bare EC2 target cannot grant it | use an ECS/container provider |
+| `requires:host.filesystem` | 🔴 blocker | component requires host capability filesystem=read-write; a bare EC2 target cannot grant it | use an ECS/container provider |
 | `supports:redis` | 🟢 nice-to-have | optional resources (supports) are not provisioned by this probe | provision behind a Terraform variable toggle |
 | `env.API_KEY` | 🟡 workaround | required env var with no default, generator, or set_env binding — the operator must supply the value | supply it at apply time (SSM parameter or TF variable), or give the Launchfile a `default:` or `generator:` |
 
@@ -991,7 +992,7 @@
 
 ### launchpad
 
-> Source: `spec/examples/host-orchestrator.yaml` — 8 mapped, 2 gap(s), 1 ignored
+> Source: `spec/examples/host-orchestrator.yaml` — 8 mapped, 4 gap(s), 1 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1007,7 +1008,9 @@
 **Gaps**
 
 - 🟡 `env.ANTHROPIC_API_KEY` _(default)_: required env var with no default, generator, or set_env binding — the operator must supply the value — supply it at apply time (SSM parameter or TF variable), or give the Launchfile a `default:` or `generator:`
-- 🔴 `host.docker` _(default)_: component requires a Docker socket; bare EC2 has none — use an ECS/container provider
+- 🔴 `requires:host.container_runtime` _(default)_: component requires host capability container_runtime=docker; a bare EC2 target cannot grant it — use an ECS/container provider
+- 🔴 `requires:host.network` _(default)_: component requires host capability network=host; a bare EC2 target cannot grant it — use an ECS/container provider
+- 🔴 `requires:host.filesystem` _(default)_: component requires host capability filesystem=read-write; a bare EC2 target cannot grant it — use an ECS/container provider
 
 **Ignored specializations** (contract sufficed — D-40 / RFC C)
 

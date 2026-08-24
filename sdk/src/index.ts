@@ -1,5 +1,13 @@
 export { cmdInspect, cmdSchema, cmdValidate, collectHostCapabilities } from "./commands.js";
 export {
+	DEPRECATED_IN,
+	DEPRECATION_REGISTRY,
+	type Deprecation,
+	type DeprecationRecord,
+	lintDeprecations,
+	REMOVED_IN,
+} from "./deprecations.js";
+export {
 	DURATION_PATTERN,
 	isValidDuration,
 	lintDurations,

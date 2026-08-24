@@ -207,6 +207,36 @@ requires:
 			expect(result.warnings[0]).toContain("privileged=true");
 		});
 
+		// P-13 / PROVIDERS.md § Host capabilities: "a file using the new entry
+		// form and a file using the legacy block get the same grant/refuse
+		// outcome." D-58 deprecates the block without changing that — the
+		// counterpart of translate.test.ts's "grades image-only identically".
+		it("produces the same grant/refuse outcome for both spellings (P-13)", () => {
+			const of = (decl: string) =>
+				launchToCompose(
+					readLaunch(`version: launch/v1\nname: orchestrator\nimage: app:1\n${decl}`),
+				);
+			const legacy = of(
+				"host:\n  docker: required\n  network: host\n  filesystem: read-write\n",
+			);
+			const entries = of(
+				"requires:\n  - host: { container_runtime: docker }\n  - host: { network: host }\n  - host: { filesystem: read-write }\n",
+			);
+
+			// Same emitted compose (both refuse, so the component is skipped).
+			expect(legacy.yaml).toBe(entries.yaml);
+			expect(legacy.yaml).not.toContain("app:1");
+			// Same refusal, naming the same capabilities in the same vocabulary.
+			expect(legacy.warnings).toHaveLength(entries.warnings.length);
+			for (const capability of [
+				"container_runtime=docker",
+				"network=host",
+			]) {
+				expect(legacy.warnings[0]).toContain(capability);
+				expect(entries.warnings[0]).toContain(capability);
+			}
+		});
+
 		it("deploys with a note when an optional (supports) capability is not granted", () => {
 			const launch = readLaunch(`
 name: beszel
