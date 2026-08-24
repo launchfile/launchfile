@@ -34,6 +34,10 @@ export {
 	selectionClosure,
 } from "./select.js";
 export {
+	resolveSourcePrepareCommand,
+	resolveSourceRunCommand,
+} from "./source-mode.js";
+export {
 	type ComponentState,
 	type DeploymentState,
 	diff,
