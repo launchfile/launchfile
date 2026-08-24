@@ -56,8 +56,21 @@ export function composePath(slug: string): string {
 	return join(stateDir(slug), "docker-compose.yml");
 }
 
+const SAFE_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+const MAX_SLUG_LENGTH = 63;
+
+function normalizeSlugForProject(slug: string): string {
+	const normalized = slug.trim().toLowerCase();
+	if (!normalized || normalized.length > MAX_SLUG_LENGTH || !SAFE_SLUG_PATTERN.test(normalized)) {
+		throw new Error(
+			`Invalid slug "${slug}". Expected lowercase letters/digits/hyphens, max ${MAX_SLUG_LENGTH} chars.`,
+		);
+	}
+	return normalized;
+}
+
 export function composeProject(slug: string): string {
-	return `launchfile-${slug}`;
+	return `launchfile-${normalizeSlugForProject(slug)}`;
 }
 
 function hashContent(content: string): string {
