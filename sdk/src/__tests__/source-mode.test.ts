@@ -36,6 +36,18 @@ commands:
 		);
 	});
 
+	it("dev + start, no image → dev wins from source", () => {
+		const launch = readLaunch(`
+name: acme
+commands:
+  dev: "bun src/index.ts"
+  start: "node dist/server.js"
+`);
+		expect(resolveSourceRunCommand(defaultComponent(launch))?.command).toBe(
+			"bun src/index.ts",
+		);
+	});
+
 	it("image + start, no dev → artifact mode, undefined", () => {
 		const launch = readLaunch(`
 name: acme
@@ -72,10 +84,14 @@ commands:
   dev:
     command: "bun run dev"
     timeout: 30s
+    capture:
+      token:
+        pattern: "tok=(\\\\w+)"
 `);
 		const resolved = resolveSourceRunCommand(defaultComponent(launch));
 		expect(resolved?.command).toBe("bun run dev");
 		expect(resolved?.timeout).toBe("30s");
+		expect(resolved?.capture?.token?.pattern).toBe("tok=(\\w+)");
 	});
 });
 

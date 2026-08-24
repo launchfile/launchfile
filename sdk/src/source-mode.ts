@@ -11,6 +11,11 @@ import type { NormalizedCommand, NormalizedComponent } from "./types.js";
  *
  * Returns `undefined` when the component resolves to its artifact (image, no
  * `dev` override) or declares no run command at all.
+ *
+ * The `dev` branch opts in on *presence*, not on a non-empty command — a
+ * declared `dev: ""` still resolves here rather than falling back to
+ * `start`. Callers that pass the result straight to a shell must check for
+ * an empty `command` themselves.
  */
 export function resolveSourceRunCommand(
 	component: NormalizedComponent,
