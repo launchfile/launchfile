@@ -121,6 +121,17 @@ jobs:
       - run: cd ${{ matrix.site }} && bun install --frozen-lockfile
       - run: cd ${{ matrix.site }} && bun run typecheck
       - run: cd ${{ matrix.site }} && bun run build
+      # Chrome for Testing + the headless shell are ~9s of download per job, and
+      # both matrix legs pay it. smoke-tests/bun.lock pins the Playwright
+      # version, so it is the correct cache key: a version bump changes the
+      # hash, misses, and re-downloads the matching browser build. Both legs
+      # start together and miss together on a bump — one wins the save, the
+      # other logs "cache already exists" and moves on.
+      - name: Cache Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('smoke-tests/bun.lock') }}
       # Functional search test against the freshly-built site, BEFORE deploy.
       # Site search broke for ~6 days after the Astro 6→7 bump because nothing
       # exercised it pre-merge — only the post-deploy smoke caught it, live.
@@ -142,7 +153,15 @@ jobs:
           MERMAID_BASE_URL: http://127.0.0.1:8080
         run: |
           bun install --frozen-lockfile
-          bunx playwright install --with-deps chromium
+          # No --with-deps: it spent ~16s per job on apt for nothing. On
+          # ubuntu-latest every library Playwright asks for (libnss3, libcairo2,
+          # libatk*, libasound2t64, …) is already the newest version; the only
+          # packages it added were 21MB of CJK/Cyrillic/Thai fonts. Nothing here
+          # asserts pixels — no toHaveScreenshot, no snapshots — and the one
+          # geometry check is boundingBox().width > 0 on an English mermaid SVG.
+          # If a future runner image drops a library, this fails loudly at
+          # browser launch and the fix is to put the flag back.
+          bunx playwright install chromium
           node serve-build.mjs "../$SEARCH_SITE/dist/client" 8080 &
           for i in $(seq 1 30); do curl -sf "$SEARCH_BASE_URL/" >/dev/null && break; sleep 0.5; done
           bunx playwright test browser/

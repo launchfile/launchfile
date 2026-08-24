@@ -46,6 +46,16 @@ Existing tools describe **how** to build infrastructure. A Launchfile describes 
 
 This is a monorepo containing the specification, reference SDK, catalog, and websites. Components will be split into separate repositories as they develop independent contributor bases or release cadences. The `launchfile/launchfile` repo will remain the canonical home of the specification itself.
 
+## Core architecture
+
+- [SPEC.md](spec/SPEC.md) defines the YAML format.
+- [DESIGN.md](spec/DESIGN.md) records principles and binding decisions.
+- The SDK parses, normalizes, validates, and resolves expressions.
+- Docker, macOS, and AWS providers translate that model into execution.
+- The unified CLI orchestrates providers.
+- The catalog supplies real-app evidence.
+- Steward applies the public rules through the process in [GOVERNANCE.md](governance/GOVERNANCE.md).
+
 ## License
 
 [MIT](LICENSE)
