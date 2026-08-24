@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lintLaunch } from "../lint.js";
+import { lintDeprecations, lintLaunch } from "../lint.js";
 import { readLaunch } from "../reader.js";
 
 describe("lintLaunch — conflicting same-name resources (Q1)", () => {
@@ -321,4 +321,48 @@ components:
 			expect(lintLaunch(launch)).toEqual([]);
 		});
 	}
+});
+
+describe("lintDeprecations — the legacy host block (D-58/D-42)", () => {
+	const LEGACY = `
+name: legacy
+image: app:1
+host:
+  docker: required
+  network: host
+  filesystem: read-write
+`;
+
+	const ENTRY_FORM = `
+name: modern
+image: app:1
+requires:
+  - host: { container_runtime: docker }
+  - host: { network: host }
+  - host: { filesystem: read-write }
+`;
+
+	it("emits a finding per deprecated key present, with all four D-42 parts", () => {
+		const found = lintDeprecations(readLaunch(LEGACY));
+		const byPath = new Map(found.map((d) => [d.path, d]));
+		expect([...byPath.keys()]).toContain("components.default.host.docker");
+		expect([...byPath.keys()]).toContain("components.default.host.network");
+		expect([...byPath.keys()]).toContain("components.default.host.filesystem");
+		const docker = byPath.get("components.default.host.docker")!;
+		expect(docker.deprecated_in).toBe("launch/v1");
+		expect(docker.removed_in).toBe("launch/v2");
+		expect(docker.replacement).toBe("requires[].host.container_runtime");
+		expect(docker.hint).toContain("container_runtime: docker");
+	});
+
+	it("produces zero deprecations for a file using only the entry form", () => {
+		expect(lintDeprecations(readLaunch(ENTRY_FORM))).toEqual([]);
+	});
+
+	it("keeps deprecations out of the prose warnings channel (D-42 is machine-readable)", () => {
+		const warnings = lintLaunch(readLaunch(LEGACY));
+		for (const w of warnings) {
+			expect(w.toLowerCase()).not.toContain("deprecat");
+		}
+	});
 });

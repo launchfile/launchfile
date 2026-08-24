@@ -7,6 +7,8 @@
 
 import { readFileSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
+import { lintDeprecations } from "./deprecations.js";
+import type { Deprecation } from "./deprecations.js";
 import { lintLaunch } from "./lint.js";
 import { readLaunch } from "./reader.js";
 import type { NormalizedLaunch } from "./types.js";
@@ -136,6 +138,12 @@ export interface ValidateResult {
 	errors?: string[];
 	/** Non-fatal lint advisories (do not affect `valid`). */
 	warnings?: string[];
+	/**
+	 * Deprecated fields present in the file (P-14/D-42), one entry per field,
+	 * each carrying D-42's four parts. Machine-readable by contract — never
+	 * prose in `warnings` — and never affects `valid` or the exit code.
+	 */
+	deprecations?: Deprecation[];
 }
 
 /**
@@ -152,6 +160,7 @@ export function cmdValidate(path: string, opts: ValidateOpts = {}): ValidateResu
 		const allRequires = collectRequires(launch);
 		const hostCapabilities = collectHostCapabilities(launch);
 		const warnings = lintLaunch(launch);
+		const deprecations = lintDeprecations(launch);
 
 		const result: ValidateResult = {
 			valid: true,
@@ -161,6 +170,7 @@ export function cmdValidate(path: string, opts: ValidateOpts = {}): ValidateResu
 			requires: allRequires,
 			...(hostCapabilities.length > 0 && { hostCapabilities }),
 			...(warnings.length > 0 && { warnings }),
+			...(deprecations.length > 0 && { deprecations }),
 		};
 
 		if (opts.json) {
@@ -179,6 +189,14 @@ export function cmdValidate(path: string, opts: ValidateOpts = {}): ValidateResu
 				// capability is requested, in either spelling (entry or legacy block).
 				console.log(
 					`  ${fmt.dim("host capabilities requested:")} ${hostCapabilities.join(", ")}`,
+				);
+			}
+			for (const d of deprecations) {
+				// P-14: the deprecation is reported with its migration, never
+				// applied. `valid` and the exit code are untouched.
+				console.error(
+					`  ${fmt.yellow("deprecated:")} ${d.path} — deprecated in ${d.deprecated_in}, ` +
+						`removed in ${d.removed_in}; use ${d.replacement}. ${d.hint}`,
 				);
 			}
 			for (const w of warnings) {

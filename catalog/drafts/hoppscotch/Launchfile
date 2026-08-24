@@ -5,7 +5,7 @@ description: "Open-source API development ecosystem"
 
 components:
   backend:
-    image: hoppscotch/hoppscotch-backend
+    image: hoppscotch/hoppscotch-backend:2026.7.0
     provides:
       - protocol: http
         port: 3170
@@ -24,7 +24,7 @@ components:
     restart: always
 
   frontend:
-    image: hoppscotch/hoppscotch-frontend
+    image: hoppscotch/hoppscotch-frontend:2026.7.0
     provides:
       - protocol: http
         port: 3000
@@ -44,7 +44,7 @@ components:
     restart: always
 
   admin:
-    image: hoppscotch/hoppscotch-admin
+    image: hoppscotch/hoppscotch-admin:2026.7.0
     provides:
       - protocol: http
         port: 3100

@@ -223,21 +223,52 @@ export async function generateSecrets(
 }
 
 /**
- * Generate values for env vars that have generators.
- * Mutates the env record in place.
+ * Resolve values for env vars that declare generators, preserving minted
+ * values across runs (D-49: generate once, then preserve).
+ *
+ * A `secret` or `uuid` value is read from `generatedEnv` when present, and
+ * minted and written into it when absent. The store is keyed
+ * `<component>.<ENV_NAME>` — one entry per declaration (D-25), so two
+ * components declaring the same variable name hold independent values.
+ * `generator: port` is exempt: ports have their own preserved home
+ * (`state.ports`) and allocator, and a preserved port produces a bind
+ * conflict rather than continuity.
+ *
+ * Mutates `env` and `generatedEnv` in place. Returns true when a new value
+ * was minted into `generatedEnv` — the caller must then persist the state
+ * before handing the value to anything, so every site that mints persists.
  */
 export async function resolveGenerators(
 	component: NormalizedComponent,
 	env: Record<string, string>,
-): Promise<void> {
-	if (!component.env) return;
+	componentName: string,
+	generatedEnv: Record<string, string>,
+): Promise<boolean> {
+	if (!component.env) return false;
 
+	let minted = false;
 	for (const [key, envVar] of Object.entries(component.env)) {
 		if (env[key] !== undefined) continue;
-		if (envVar.generator) {
+		if (!envVar.generator) continue;
+
+		if (envVar.generator === "port") {
 			env[key] = await generateValue(envVar.generator);
+			continue;
 		}
+
+		const stateKey = `${componentName}.${key}`;
+		const existing = generatedEnv[stateKey];
+		if (existing !== undefined) {
+			env[key] = existing;
+			continue;
+		}
+
+		const value = await generateValue(envVar.generator);
+		env[key] = value;
+		generatedEnv[stateKey] = value;
+		minted = true;
 	}
+	return minted;
 }
 
 /**
@@ -276,6 +307,7 @@ export async function writeAllEnvFiles(
 	resourceMap: Record<string, ResourceProperties>,
 	componentPorts: Record<string, number>,
 	projectDir: string,
+	generatedEnv: Record<string, string>,
 ): Promise<Record<string, Record<string, string>>> {
 	const allEnvs: Record<string, Record<string, string>> = {};
 	const componentNames = Object.keys(launch.components);
@@ -283,7 +315,7 @@ export async function writeAllEnvFiles(
 
 	for (const [name, component] of Object.entries(launch.components)) {
 		const { env } = resolveComponentEnv(component, context, resourceMap);
-		await resolveGenerators(component, env);
+		await resolveGenerators(component, env, name, generatedEnv);
 
 		// Inject PORT if not already set and component has provides
 		const port = componentPorts[name];

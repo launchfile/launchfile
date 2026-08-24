@@ -146,21 +146,23 @@ export function getStaticPaths() {
     {
       slug: "host-orchestrator",
       title: "Host Orchestrator",
-      description: "Docker daemon access and host networking for deployment tools and CI runners.",
+      description: "Container-runtime, host-network and host-filesystem capabilities for deployment tools and CI runners.",
       catalogLink: 'Browse the <a href="https://launchfile.io/apps/">app catalog</a> for more patterns.',
       concepts: [
-        "The `host` field grants access to host-level resources",
-        "`host.docker: true` enables Docker socket access",
-        "`host.network: true` uses the host network stack",
-        "`host.filesystem` mounts host paths into the container",
+        "Several host capabilities can be requested at once — each is granted or refused on its own",
+        "`container_runtime: docker` names the Docker Engine API, not the Docker product",
+        "`network: host` shares the host network stack; `filesystem: read-write` grants host filesystem access",
+        "The legacy top-level `host:` block spells the same needs, but is deprecated in launch/v1 and removed in launch/v2 (D-58)",
       ],
       guidance: "CI runners, deployment tools, and infrastructure agents that need host access.",
       specLinks: [
+        { label: "Host Capabilities", href: "https://launchfile.org/spec/requires/" },
         { label: "Host", href: "https://launchfile.org/spec/host/" },
       ],
       annotations: [
-        { line: "host:", text: "Declares privileged host access — a security-sensitive capability a deployer may refuse if it can't safely grant it." },
-        { line: "requires: [{type: docker}]", text: "Declares the Docker daemon as a dependency." },
+        { line: "host: { container_runtime: docker }", text: "Declares privileged host access — a security-sensitive capability a deployer may refuse if it can't safely grant it." },
+        { line: "host: { network: host }", text: "Shares the host network stack so the app can manage container ports directly." },
+        { line: "host: { filesystem: read-write }", text: "Grants persistent host filesystem access for the app's own state." },
       ],
     },
     {

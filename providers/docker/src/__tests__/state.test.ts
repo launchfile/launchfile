@@ -10,6 +10,7 @@ import {
 	stateDir,
 	type DockerState,
 } from "../state.js";
+import { clearRegisteredSecrets, redactSecrets, REDACTED } from "../redact.js";
 
 // state.ts keys everything off homedir() → ~/.launchfile/docker/<slug>.
 // node:os.homedir() honors $HOME on POSIX, so redirect it to a temp dir to
@@ -102,5 +103,45 @@ describe("docker state — backward compatibility", () => {
 		expect(src).not.toBeNull();
 		expect(src!.slug).toBe("legacy");
 		expect(src!.sourcePath).toBeUndefined();
+	});
+
+	it("loads a state file without a generatedEnv key and behaves as a first run (D-49)", async () => {
+		const state = initState("older", "older", "name: older\n");
+		expect("generatedEnv" in state).toBe(false);
+		await saveState("older", state);
+
+		const loaded = await loadState("older");
+		expect(loaded).not.toBeNull();
+		expect(loaded!.generatedEnv).toBeUndefined();
+		// launchToCompose defaults with `?? {}` — an empty store means "mint".
+		expect(loaded!.generatedEnv ?? {}).toEqual({});
+	});
+});
+
+describe("docker state — env-level generator values (D-49, #186)", () => {
+	afterEach(() => {
+		clearRegisteredSecrets();
+	});
+
+	it("round-trips the generatedEnv store", async () => {
+		const state = initState("envgen", "envgen", "name: envgen\n");
+		state.generatedEnv = { "default.APP_KEY": "b".repeat(64) };
+		await saveState("envgen", state);
+
+		const loaded = await loadState("envgen");
+		expect(loaded!.generatedEnv).toEqual({ "default.APP_KEY": "b".repeat(64) });
+	});
+
+	it("registers reloaded generatedEnv values with the redactor (D-18)", async () => {
+		const value = "c".repeat(64);
+		const state = initState("envgen", "envgen", "name: envgen\n");
+		state.generatedEnv = { "default.APP_KEY": value };
+		await saveState("envgen", state);
+
+		// A second process reuses (never re-mints) the value, so nothing but
+		// the loader can make it scrubbable in that process.
+		clearRegisteredSecrets();
+		await loadState("envgen");
+		expect(redactSecrets(`token=${value}`)).toBe(`token=${REDACTED}`);
 	});
 });

@@ -193,6 +193,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// §10 rule 8) — `URL=https://wiki.example.com launchfile up` supplies one.
 		const result = launchToCompose(launch, {
 			secrets: state.secrets,
+			generatedEnv: state.generatedEnv,
 			hostPorts,
 			projectDir: resolved.dir,
 			operatorEnv: process.env,
@@ -232,6 +233,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 
 		// Update state
 		state.secrets = result.secrets;
+		state.generatedEnv = result.generatedEnv;
 		state.ports = result.ports;
 
 		const upResult: DockerUpResult = {
