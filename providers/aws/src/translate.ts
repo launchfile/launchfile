@@ -64,6 +64,35 @@ const MANAGED_RESOURCES: Record<
 	redis: { engine: "redis", port: 6379, kind: "elasticache" },
 };
 
+/**
+ * The property keys each managed resource type exposes, keyed by type.
+ *
+ * Derived by running the emitters against a throwaway block list, not
+ * hand-listed: the conformance test (`__tests__/resource-conformance.test.ts`)
+ * compares these against `spec/schema/resource-properties.json`, and a
+ * hand-maintained copy would drift from the emitters, which is the drift the
+ * check exists to catch.
+ */
+export function resourcePropertyKeys(): Record<string, string[]> {
+	const keys: Record<string, string[]> = {};
+	for (const [type, spec] of Object.entries(MANAGED_RESOURCES)) {
+		const discarded: string[] = [];
+		const properties =
+			spec.kind === "rds"
+				? emitRds(
+						discarded,
+						"probe",
+						type,
+						{ type } as NormalizedRequirement,
+						spec.engine,
+						spec.port,
+					)
+				: emitElastiCache(discarded, "probe", type);
+		keys[type] = Object.keys(properties);
+	}
+	return keys;
+}
+
 /** Lowercase, DNS-safe identifier for AWS resource names (RDS identifiers, cache cluster ids). */
 function dnsName(name: string): string {
 	// Linear-time trim (no anchored `-+` ReDoS on untrusted names) — same shape as tfName.
@@ -655,7 +684,10 @@ function emitElastiCache(
 		),
 	);
 	const host = `\${aws_elasticache_cluster.${tf}.cache_nodes[0].address}`;
-	return { host, port: 6379, url: `redis://${host}:6379` };
+	// The cluster runs with no AUTH token, so the honest password is empty. The
+	// property is still exposed: SPEC.md § Resource Property Vocabulary makes it
+	// a MUST for every provider that supports redis.
+	return { host, port: 6379, password: "", url: `redis://${host}:6379` };
 }
 
 function emitComponent(

@@ -6,13 +6,23 @@
  */
 
 import type { NormalizedRequirement } from "@launchfile/sdk";
+import type { shell, shellOk } from "../shell.js";
 import type { ResourceState } from "../state.js";
 
-/** Properties that a provisioned resource exposes for expression resolution */
+/**
+ * Properties that a provisioned resource exposes for expression resolution.
+ *
+ * Only `url` is required. A resource type addressed by something other than a
+ * network endpoint — sqlite is a file — has no host and no port, and fabricating
+ * `host: ""` / `port: 0` to satisfy the type would report a value an app could
+ * act on (PROVIDERS.md §10.8, D-52). Omitted properties resolve to the empty
+ * string through the standard unknown-property rule, so leaving them out costs
+ * the caller nothing.
+ */
 export interface ResourceProperties {
 	url: string;
-	host: string;
-	port: number;
+	host?: string;
+	port?: number;
 	user?: string;
 	password?: string;
 	name?: string;
@@ -22,6 +32,15 @@ export interface ResourceProperties {
 	bucket?: string;
 	region?: string;
 	[key: string]: string | number | undefined;
+}
+
+/**
+ * The shell surface a provisioner runs against. Injecting it lets tests drive
+ * the provisioning sequence without Homebrew or a live server.
+ */
+export interface ShellRunner {
+	shell: typeof shell;
+	shellOk: typeof shellOk;
 }
 
 export interface ProvisionOpts {
