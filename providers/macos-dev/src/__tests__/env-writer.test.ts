@@ -6,7 +6,7 @@ import {
 	resolveGenerators,
 	generateSecrets,
 } from "../env-writer.js";
-import { readLaunch } from "@launchfile/sdk";
+import { readLaunch, resolveExpression } from "@launchfile/sdk";
 import type { NormalizedComponent, NormalizedLaunch, Secret } from "@launchfile/sdk";
 import type { ResourceProperties } from "../resources/types.js";
 import { storagePaths } from "../storage.js";
@@ -300,7 +300,7 @@ describe("provenance precedence — generator outranks default (D-49)", () => {
 		// would give the same file two different values across providers (P-5).
 		const c = comp("  FOO:\n    default: author-literal\n    generator: secret\n");
 		const env = resolveComponentEnv(c, ctx(), {});
-		await resolveGenerators(c, env);
+		await resolveGenerators(c, env, "default", {});
 		expect(env.FOO).not.toBe("author-literal");
 		expect(env.FOO).toMatch(/^[0-9a-f]{64}$/);
 	});
@@ -308,14 +308,110 @@ describe("provenance precedence — generator outranks default (D-49)", () => {
 	it("still uses the default when no generator is declared", async () => {
 		const c = comp("  FOO:\n    default: author-literal\n");
 		const env = resolveComponentEnv(c, ctx(), {});
-		await resolveGenerators(c, env);
+		await resolveGenerators(c, env, "default", {});
 		expect(env.FOO).toBe("author-literal");
 	});
 
 	it("leaves a bare required declaration unset for the operator", async () => {
 		const c = comp("  FOO:\n    required: true\n");
 		const env = resolveComponentEnv(c, ctx(), {});
-		await resolveGenerators(c, env);
+		await resolveGenerators(c, env, "default", {});
 		expect(env.FOO).toBeUndefined();
+	});
+});
+
+describe("env-level generator preservation (D-49, #186)", () => {
+	const comp = (envYaml: string) =>
+		readLaunch(`version: launch/v1\nname: p\ncommands:\n  start: run\nenv:\n${envYaml}`)
+			.components.default!;
+
+	it("reuses the persisted value instead of re-minting when state holds one", async () => {
+		const c = comp("  APP_KEY:\n    generator: secret\n");
+		const store = { "default.APP_KEY": "a".repeat(64) };
+		const env: Record<string, string> = {};
+
+		const minted = await resolveGenerators(c, env, "default", store);
+
+		expect(env.APP_KEY).toBe("a".repeat(64));
+		expect(minted).toBe(false);
+	});
+
+	it("mints and writes the value back to the store when state holds none", async () => {
+		const c = comp("  APP_KEY:\n    generator: secret\n");
+		const store: Record<string, string> = {};
+		const env: Record<string, string> = {};
+
+		const minted = await resolveGenerators(c, env, "default", store);
+
+		expect(env.APP_KEY).toMatch(/^[0-9a-f]{64}$/);
+		// The write-back is the invariant: a minted value the caller cannot
+		// persist would re-mint on the next run.
+		expect(store["default.APP_KEY"]).toBe(env.APP_KEY);
+		expect(minted).toBe(true);
+	});
+
+	it("does not persist `generator: port` and does not read a stale port from the store", async () => {
+		const c = comp("  APP_PORT:\n    generator: port\n");
+		// Even a (never-written-by-us) port entry in the store is ignored —
+		// the port branch re-allocates unconditionally.
+		const store: Record<string, string> = { "default.APP_PORT": "1" };
+		const env: Record<string, string> = {};
+
+		const minted = await resolveGenerators(c, env, "default", store);
+
+		expect(env.APP_PORT).toMatch(/^\d+$/);
+		expect(env.APP_PORT).not.toBe("1");
+		expect(store["default.APP_PORT"]).toBe("1"); // untouched, never re-written
+		expect(minted).toBe(false);
+	});
+
+	it("preserves `generator: uuid` values", async () => {
+		const c = comp("  INSTANCE_ID:\n    generator: uuid\n");
+		const store: Record<string, string> = {};
+		const env1: Record<string, string> = {};
+		await resolveGenerators(c, env1, "default", store);
+		expect(env1.INSTANCE_ID).toMatch(/^[0-9a-f-]{36}$/);
+
+		const env2: Record<string, string> = {};
+		await resolveGenerators(c, env2, "default", store);
+		expect(env2.INSTANCE_ID).toBe(env1.INSTANCE_ID);
+	});
+
+	it("does not leak env-level values into $secrets.*", async () => {
+		const c = comp("  APP_KEY:\n    generator: secret\n");
+		const store: Record<string, string> = {};
+		const env: Record<string, string> = {};
+		await resolveGenerators(c, env, "default", store);
+
+		// The resolver context is built from state.secrets, which the env
+		// store is disjoint from — a name declared only under env: must not
+		// resolve as a $secrets reference.
+		const context = buildResolverContext({}, {}, {}, NO_APP);
+		expect(resolveExpression("$secrets.APP_KEY", context)).toBe("");
+	});
+
+	it("keys per component: same variable name on two components stays independent and stable", async () => {
+		const launch = readLaunch(
+			`version: launch/v1\nname: p\ncomponents:\n  web:\n    commands:\n      start: run\n    env:\n      SHARED_KEY:\n        generator: secret\n  worker:\n    commands:\n      start: run\n    env:\n      SHARED_KEY:\n        generator: secret\n`,
+		);
+		const store: Record<string, string> = {};
+
+		const run = async (): Promise<Record<string, string>> => {
+			const values: Record<string, string> = {};
+			for (const [name, component] of Object.entries(launch.components)) {
+				const env: Record<string, string> = {};
+				await resolveGenerators(component, env, name, store);
+				values[name] = env.SHARED_KEY!;
+			}
+			return values;
+		};
+
+		const first = await run();
+		expect(first.web).not.toBe(first.worker); // two declarations, two mintings (D-25)
+		expect(store["web.SHARED_KEY"]).toBe(first.web);
+		expect(store["worker.SHARED_KEY"]).toBe(first.worker);
+
+		const second = await run();
+		expect(second).toEqual(first); // both stable across runs
 	});
 });

@@ -392,9 +392,13 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const allEnvs: Record<string, Record<string, string>> = {};
 	const isSingleComponent = componentNames.length === 1 && componentNames[0] === "default";
 
+	// Minted env-level generator values live in state (D-49) so a redeploy
+	// reuses them; saveState below (step 13) persists anything minted here.
+	const generatedEnv = (state.generatedEnv ??= {});
+
 	for (const [name, component] of Object.entries(launch.components)) {
 		const env = resolveComponentEnv(component, context, resourceMap, componentStorage[name]);
-		await resolveGenerators(component, env);
+		await resolveGenerators(component, env, name, generatedEnv);
 
 		const port = componentPorts[name];
 		if (port && !env.PORT) {
@@ -642,6 +646,15 @@ export async function launchEnv(opts: { component?: string; projectDir?: string 
 	const appProperties = computeAppProperties(launch, state.ports);
 	const context = buildResolverContext(resourceMap, state.ports, state.secrets, appProperties);
 
+	// `env` reports what the running app has, so it reads minted generator
+	// values from the same store `up` persists to (D-49). A value can still be
+	// minted here — a generator declared after the last `up` — and then it is
+	// persisted below, before printing, so `up`, `env`, and `bootstrap` all
+	// keep answering with the same value.
+	const generatedEnv = (state.generatedEnv ??= {});
+	let minted = false;
+	const resolvedEnvs: [string, Record<string, string>][] = [];
+
 	for (const [name, component] of Object.entries(launch.components)) {
 		if (opts.component && name !== opts.component) continue;
 
@@ -655,11 +668,19 @@ export async function launchEnv(opts: { component?: string; projectDir?: string 
 		}
 
 		const env = resolveComponentEnv(component, context, resourceMap, storageCtx);
-		await resolveGenerators(component, env);
+		minted = (await resolveGenerators(component, env, name, generatedEnv)) || minted;
 
 		const port = state.ports[name];
 		if (port && !env.PORT) env.PORT = String(port);
 
+		resolvedEnvs.push([name, env]);
+	}
+
+	if (minted) {
+		await saveState(projectDir, state);
+	}
+
+	for (const [name, env] of resolvedEnvs) {
 		console.log(`\n# ${name}`);
 		for (const [key, value] of Object.entries(env).sort(([a], [b]) => a.localeCompare(b))) {
 			console.log(`${key}=${value}`);

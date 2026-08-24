@@ -58,6 +58,16 @@ export interface LaunchState {
 	 * persistence existed simply omit this, and `down` tolerates its absence.
 	 */
 	processes?: Record<string, ProcessState>;
+	/**
+	 * Minted `env:`-level generator values (D-49: generate once, then
+	 * preserve), keyed `<component>.<ENV_NAME>` — one entry per declaration
+	 * (D-25), so same-named variables on different components hold independent
+	 * values. `generator: port` values are never stored here (ports are
+	 * re-allocated each run). Disjoint from `secrets` on purpose: these names
+	 * must not become resolvable as `$secrets.<name>`. Optional for backward
+	 * compatibility: older state files omit it and load as a first run.
+	 */
+	generatedEnv?: Record<string, string>;
 }
 
 const STATE_DIR = ".launchfile";
@@ -85,6 +95,10 @@ export async function loadState(projectDir: string): Promise<LaunchState | null>
 		// the redactor before anything can echo them.
 		registerSecrets(Object.values(state.secrets ?? {}));
 		registerSecrets(Object.values(state.resources ?? {}).map((r) => r.password));
+		// A value minted in an earlier run and merely reused in this one never
+		// passes through generateValue()'s registration, so the loader is the
+		// only place it can become scrubbable (D-18).
+		registerSecrets(Object.values(state.generatedEnv ?? {}));
 		return state;
 	} catch {
 		return null;
