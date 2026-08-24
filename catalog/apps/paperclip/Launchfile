@@ -52,13 +52,19 @@ commands:
   # authenticated (hence the sed). When the templated file-placement
   # primitive lands (held proposal, see issue #16), those two steps
   # collapse into a declarative file write.
+  #
+  # PAPERCLIP_HOME, CFG and BETTER_AUTH_URL are expanded by the shell inside
+  # the container, not by the Launchfile resolver. A bare `$NAME` is a
+  # deployment-time reference (P-9) and resolves to "" when it names nothing
+  # in the Launchfile, so each one is escaped `$$NAME` — the literal-`$`
+  # escape — to reach the shell intact.
   bootstrap:
     command: >-
-      CFG="$PAPERCLIP_HOME/instances/default/config.json";
-      test -f "$CFG" || {
+      CFG="$$PAPERCLIP_HOME/instances/default/config.json";
+      test -f "$$CFG" || {
       timeout 30 pnpm paperclipai onboard --yes >/dev/null 2>&1;
-      sed -i "s/\"deploymentMode\": \"local_trusted\"/\"deploymentMode\": \"authenticated\"/" "$CFG"; };
-      pnpm paperclipai auth bootstrap-ceo --base-url "$BETTER_AUTH_URL"
+      sed -i "s/\"deploymentMode\": \"local_trusted\"/\"deploymentMode\": \"authenticated\"/" "$$CFG"; };
+      pnpm paperclipai auth bootstrap-ceo --base-url "$$BETTER_AUTH_URL"
     capture:
       invite_link:
         pattern: "https?://\\S+invite\\S*"

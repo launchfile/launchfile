@@ -25,6 +25,18 @@ export interface DockerState {
 	secrets: Record<string, string>;
 	ports: Record<string, number>;
 	/**
+	 * Minted `env:`-level generator values (D-49: generate once, then
+	 * preserve), keyed `<component>.<ENV_NAME>` — one entry per declaration
+	 * (D-25), so same-named variables on different components hold independent
+	 * values. `generator: port` values are never stored here (ports are
+	 * re-allocated each run). Kept disjoint from `secrets`, which is already a
+	 * shared namespace of declared secret names and backing-service password
+	 * keys — env-var names must not join it or become resolvable as
+	 * `$secrets.<name>`. Optional for backward compatibility: older state
+	 * files omit it and load as a first run.
+	 */
+	generatedEnv?: Record<string, string>;
+	/**
 	 * Where the Launchfile came from, persisted so post-launch operations
 	 * (bootstrap, inspect) can re-read it without depending on the caller's
 	 * cwd (#25). Optional for backward compatibility — state files written by
@@ -56,8 +68,21 @@ export function composePath(slug: string): string {
 	return join(stateDir(slug), "docker-compose.yml");
 }
 
+const SAFE_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+const MAX_SLUG_LENGTH = 63;
+
+function normalizeSlugForProject(slug: string): string {
+	const normalized = slug.trim().toLowerCase();
+	if (!normalized || normalized.length > MAX_SLUG_LENGTH || !SAFE_SLUG_PATTERN.test(normalized)) {
+		throw new Error(
+			`Invalid slug "${slug}". Expected lowercase letters/digits/hyphens, max ${MAX_SLUG_LENGTH} chars.`,
+		);
+	}
+	return normalized;
+}
+
 export function composeProject(slug: string): string {
-	return `launchfile-${slug}`;
+	return `launchfile-${normalizeSlugForProject(slug)}`;
 }
 
 function hashContent(content: string): string {
@@ -71,6 +96,7 @@ export async function loadState(slug: string): Promise<DockerState | null> {
 		// Persisted secrets are reused across runs, so a value generated in an
 		// earlier process still has to be scrubbable in this one (D-18).
 		registerSecrets(Object.values(state.secrets ?? {}));
+		registerSecrets(Object.values(state.generatedEnv ?? {}));
 		return state;
 	} catch {
 		return null;

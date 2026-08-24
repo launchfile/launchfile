@@ -161,6 +161,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// Generate compose
 		const result = launchToCompose(launch, {
 			secrets: state.secrets,
+			generatedEnv: state.generatedEnv,
 			hostPorts,
 			projectDir: resolved.dir,
 		});
@@ -179,6 +180,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 
 		// Update state
 		state.secrets = result.secrets;
+		state.generatedEnv = result.generatedEnv;
 		state.ports = result.ports;
 
 		const upResult: DockerUpResult = {

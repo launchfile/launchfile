@@ -27,6 +27,17 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    ignore:
+      # TypeScript 7 (the native port) exports no `ts.sys`, and
+      # @astrojs/language-server calls `ts.sys.fileExists` when it looks for a
+      # tsconfig — so `astro check` dies with "Cannot read properties of
+      # undefined (reading 'fileExists')". @astrojs/check 0.9.10 is the newest
+      # release and still pins language-server ^2.16.7, so there is no version
+      # to upgrade into. These two sites stay on TypeScript 6 until a
+      # language-server release supports the 7.x API; the workspace root is
+      # unaffected because it runs `tsc` directly. Drop this once that lands.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     groups:
       astro-ecosystem:
         patterns: ["astro", "@astrojs/*"]
@@ -43,6 +54,17 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    ignore:
+      # TypeScript 7 (the native port) exports no `ts.sys`, and
+      # @astrojs/language-server calls `ts.sys.fileExists` when it looks for a
+      # tsconfig — so `astro check` dies with "Cannot read properties of
+      # undefined (reading 'fileExists')". @astrojs/check 0.9.10 is the newest
+      # release and still pins language-server ^2.16.7, so there is no version
+      # to upgrade into. These two sites stay on TypeScript 6 until a
+      # language-server release supports the 7.x API; the workspace root is
+      # unaffected because it runs `tsc` directly. Drop this once that lands.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     groups:
       astro-ecosystem:
         patterns: ["astro", "@astrojs/*"]

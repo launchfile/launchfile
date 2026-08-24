@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
-import { resolve } from "node:path";
+import { mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 const SDK_ROOT = resolve(import.meta.dirname ?? __dirname, "..", "..");
 const CLI = resolve(SDK_ROOT, "dist", "cli.js");
@@ -20,6 +22,18 @@ function run(
 		const e = err as { stdout: string; status: number };
 		return { stdout: e.stdout ?? "", exitCode: e.status ?? 1 };
 	}
+}
+
+/**
+ * Write a Launchfile to a temp file and return its path. The legacy `host:`
+ * block no longer appears in `spec/examples/` (D-58 migrated the gallery off
+ * it), so legacy-path CLI coverage lives on inline fixtures instead.
+ */
+function fixture(yaml: string): string {
+	const dir = mkdtempSync(join(tmpdir(), "launchfile-cli-"));
+	const path = join(dir, "Launchfile");
+	writeFileSync(path, yaml, "utf-8");
+	return path;
 }
 
 describe("launchfile CLI", () => {
@@ -94,12 +108,26 @@ describe("launchfile CLI", () => {
 		it("emits the host-capabilities summary for the legacy host block (D-44)", () => {
 			const { stdout, exitCode } = run([
 				"validate",
+				fixture(
+					"version: launch/v1\nname: legacy\nimage: app:1\nhost:\n  docker: required\n  network: host\n",
+				),
+			]);
+			expect(exitCode).toBe(0);
+			expect(stdout).toContain("host capabilities requested:");
+			expect(stdout).toContain("container_runtime=docker (required)");
+			expect(stdout).toContain("network=host (required)");
+		});
+
+		it("emits the host-capabilities summary for the migrated example (D-58)", () => {
+			const { stdout, exitCode } = run([
+				"validate",
 				`${EXAMPLES}/host-orchestrator.yaml`,
 			]);
 			expect(exitCode).toBe(0);
 			expect(stdout).toContain("host capabilities requested:");
 			expect(stdout).toContain("container_runtime=docker (required)");
 			expect(stdout).toContain("network=host (required)");
+			expect(stdout).toContain("filesystem=read-write (required)");
 		});
 
 		it("fails on malformed YAML", () => {
@@ -239,5 +267,62 @@ describe("launchfile CLI", () => {
 			const { exitCode } = run(["frobnicate"]);
 			expect(exitCode).toBe(1);
 		});
+	});
+});
+
+
+describe("launchfile validate — deprecation reporting (D-58/D-42)", () => {
+	const LEGACY = fixture(
+		"version: launch/v1\nname: legacy\nimage: app:1\nhost:\n  docker: required\n  network: host\n",
+	);
+
+	// D-42 capability (a) must be machine-readable. A prose warning string
+	// does not satisfy it, so the findings get their own JSON field.
+	it("emits structured deprecations in --json output", () => {
+		const { stdout, exitCode } = run(["validate", LEGACY, "--json"]);
+		expect(exitCode).toBe(0);
+		const result = JSON.parse(stdout);
+		expect(result.valid).toBe(true);
+		expect(Array.isArray(result.deprecations)).toBe(true);
+		const docker = result.deprecations.find(
+			(d: { path: string }) => d.path === "components.default.host.docker",
+		);
+		expect(docker).toEqual({
+			path: "components.default.host.docker",
+			deprecated_in: "launch/v1",
+			removed_in: "launch/v2",
+			replacement: "requires[].host.container_runtime",
+			hint: expect.stringContaining("container_runtime: docker"),
+		});
+	});
+
+	it("stays valid and exits 0 on a deprecated file (deprecation warns, never breaks)", () => {
+		const { stdout, exitCode } = run(["validate", LEGACY]);
+		expect(exitCode).toBe(0);
+		expect(stdout).toContain("is valid");
+	});
+
+	it("omits the deprecations field entirely for a file using the entry form", () => {
+		const path = fixture(
+			"version: launch/v1\nname: modern\nimage: app:1\nrequires:\n  - host: { container_runtime: docker }\n",
+		);
+		const { stdout, exitCode } = run(["validate", path, "--json"]);
+		expect(exitCode).toBe(0);
+		expect(JSON.parse(stdout).deprecations).toBeUndefined();
+	});
+
+	// The published gallery must never teach a deprecated form.
+	it("reports zero deprecations for every spec/examples file", () => {
+		const files = readdirSync(EXAMPLES).filter((f) => /\.ya?ml$/.test(f));
+		expect(files.length).toBeGreaterThan(0);
+		for (const file of files) {
+			const { stdout, exitCode } = run([
+				"validate",
+				`${EXAMPLES}/${file}`,
+				"--json",
+			]);
+			expect(exitCode, file).toBe(0);
+			expect(JSON.parse(stdout).deprecations, file).toBeUndefined();
+		}
 	});
 });

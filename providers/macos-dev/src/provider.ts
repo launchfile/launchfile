@@ -7,7 +7,14 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { readLaunch, selectionClosure, type NormalizedLaunch, type NormalizedComponent } from "@launchfile/sdk";
+import {
+	readLaunch,
+	resolveSourcePrepareCommand,
+	resolveSourceRunCommand,
+	selectionClosure,
+	type NormalizedLaunch,
+	type NormalizedComponent,
+} from "@launchfile/sdk";
 
 import { checkPrereqs } from "./prereqs.js";
 import { loadState, initState, saveState, ensureDirs } from "./state.js";
@@ -30,20 +37,13 @@ import { shell } from "./shell.js";
 import { parseDuration } from "./bootstrap.js";
 
 /**
- * Source-mode run resolution (D-38, precedence `dev` > `image` > `start`).
- * This provider runs apps from source. A component is source-runnable when it
- * declares `dev`, or a `start` with no `image` — an `image` without a `dev`
- * override stays artifact-mode, which this source-only provider can't launch.
+ * This provider runs apps from source. A component is source-runnable when
+ * {@link resolveSourceRunCommand} (D-38) resolves a command — declares `dev`,
+ * or a `start` with no `image`. An `image` without a `dev` override stays
+ * artifact-mode, which this source-only provider can't launch.
  */
 export function isSourceRunnable(component: NormalizedComponent): boolean {
-	return Boolean(component.commands?.dev || (component.commands?.start && !component.image));
-}
-
-/** The command run from source, or undefined if the component resolves to its artifact. */
-export function sourceRunCommand(component: NormalizedComponent): string | undefined {
-	if (component.commands?.dev?.command) return component.commands.dev.command;
-	if (component.image) return undefined; // image, no `dev` override → artifact
-	return component.commands?.start?.command;
+	return resolveSourceRunCommand(component) !== undefined;
 }
 
 /**
@@ -392,9 +392,13 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const allEnvs: Record<string, Record<string, string>> = {};
 	const isSingleComponent = componentNames.length === 1 && componentNames[0] === "default";
 
+	// Minted env-level generator values live in state (D-49) so a redeploy
+	// reuses them; saveState below (step 13) persists anything minted here.
+	const generatedEnv = (state.generatedEnv ??= {});
+
 	for (const [name, component] of Object.entries(launch.components)) {
 		const env = resolveComponentEnv(component, context, resourceMap, componentStorage[name]);
-		await resolveGenerators(component, env);
+		await resolveGenerators(component, env, name, generatedEnv);
 
 		const port = componentPorts[name];
 		if (port && !env.PORT) {
@@ -431,7 +435,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	// 14. Run source-mode prepare \u2014 `install ?? build` (D-38), on demand
 	if (!opts.noBuild) {
 		for (const [name, component] of Object.entries(launch.components)) {
-			const prepare = component.commands?.install ?? component.commands?.build;
+			const prepare = resolveSourcePrepareCommand(component);
 			const cmd = prepare?.command ?? pm?.installCommand;
 			if (cmd) {
 				console.log(`  \u2193 Preparing${componentNames.length > 1 ? ` [${name}]` : ""}...`);
@@ -467,7 +471,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		// Resolve the source-mode run command (D-38 precedence `dev` > `image` >
 		// `start`). Artifact components (image, no `dev` override) resolve to
 		// undefined — they were warned by the guard; skip them.
-		const startCmd = sourceRunCommand(component);
+		const startCmd = resolveSourceRunCommand(component)?.command;
 		if (!startCmd) continue;
 
 		pm2.register(name, {
@@ -642,6 +646,15 @@ export async function launchEnv(opts: { component?: string; projectDir?: string 
 	const appProperties = computeAppProperties(launch, state.ports);
 	const context = buildResolverContext(resourceMap, state.ports, state.secrets, appProperties);
 
+	// `env` reports what the running app has, so it reads minted generator
+	// values from the same store `up` persists to (D-49). A value can still be
+	// minted here — a generator declared after the last `up` — and then it is
+	// persisted below, before printing, so `up`, `env`, and `bootstrap` all
+	// keep answering with the same value.
+	const generatedEnv = (state.generatedEnv ??= {});
+	let minted = false;
+	const resolvedEnvs: [string, Record<string, string>][] = [];
+
 	for (const [name, component] of Object.entries(launch.components)) {
 		if (opts.component && name !== opts.component) continue;
 
@@ -655,11 +668,19 @@ export async function launchEnv(opts: { component?: string; projectDir?: string 
 		}
 
 		const env = resolveComponentEnv(component, context, resourceMap, storageCtx);
-		await resolveGenerators(component, env);
+		minted = (await resolveGenerators(component, env, name, generatedEnv)) || minted;
 
 		const port = state.ports[name];
 		if (port && !env.PORT) env.PORT = String(port);
 
+		resolvedEnvs.push([name, env]);
+	}
+
+	if (minted) {
+		await saveState(projectDir, state);
+	}
+
+	for (const [name, env] of resolvedEnvs) {
 		console.log(`\n# ${name}`);
 		for (const [key, value] of Object.entries(env).sort(([a], [b]) => a.localeCompare(b))) {
 			console.log(`${key}=${value}`);

@@ -443,29 +443,64 @@
     },
     "host": {
       "type": "object",
-      "description": "Host-level capabilities the app requires beyond a standard container",
+      "description": "DEPRECATED (D-58) — legacy top-level host block. Host-level capabilities the app requires beyond a standard container. Use host-capability entries in requires/supports instead (D-44). Still valid in launch/v1; removed in launch/v2.",
+      "deprecated": true,
+      "x-launchfile-deprecation": {
+        "deprecated_in": "launch/v1",
+        "removed_in": "launch/v2",
+        "replacement": "requires[].host / supports[].host",
+        "hint": "Replace the `host:` block with host-capability entries: each key becomes a `- host: { <capability>: <value> }` entry under `requires` (or `supports` when optional). See SPEC.md § Host for the per-key table."
+      },
       "properties": {
         "docker": {
           "type": "string",
           "enum": ["required", "optional"],
-          "description": "Whether the app needs Docker daemon access on the host"
+          "description": "DEPRECATED (D-58) — whether the app needs Docker daemon access on the host. Replaced by the container_runtime capability entry.",
+          "deprecated": true,
+          "x-launchfile-deprecation": {
+            "deprecated_in": "launch/v1",
+            "removed_in": "launch/v2",
+            "replacement": "requires[].host.container_runtime",
+            "hint": "Replace `host: { docker: required }` with `requires: [ - host: { container_runtime: docker } ]`. For `optional`, put the same entry under `supports`."
+          }
         },
         "network": {
           "type": "string",
           "enum": ["host", "bridge"],
-          "description": "Network mode",
-          "default": "bridge"
+          "description": "DEPRECATED (D-58) — network mode. Replaced by the network capability entry.",
+          "default": "bridge",
+          "deprecated": true,
+          "x-launchfile-deprecation": {
+            "deprecated_in": "launch/v1",
+            "removed_in": "launch/v2",
+            "replacement": "requires[].host.network",
+            "hint": "Replace `host: { network: host }` with `requires: [ - host: { network: host } ]`. `bridge` is the default — drop the key instead of writing an entry."
+          }
         },
         "filesystem": {
           "type": "string",
           "enum": ["read-write", "read-only", "none"],
-          "description": "Host filesystem access level",
-          "default": "none"
+          "description": "DEPRECATED (D-58) — host filesystem access level. Replaced by the filesystem capability entry.",
+          "default": "none",
+          "deprecated": true,
+          "x-launchfile-deprecation": {
+            "deprecated_in": "launch/v1",
+            "removed_in": "launch/v2",
+            "replacement": "requires[].host.filesystem",
+            "hint": "Replace `host: { filesystem: read-write }` with `requires: [ - host: { filesystem: read-write } ]`. `none` is the default — drop the key instead of writing an entry."
+          }
         },
         "privileged": {
           "type": "boolean",
-          "description": "Requires elevated privileges (e.g., device access)",
-          "default": false
+          "description": "DEPRECATED (D-58) — requires elevated privileges (e.g., device access). Replaced by the privileged capability entry.",
+          "default": false,
+          "deprecated": true,
+          "x-launchfile-deprecation": {
+            "deprecated_in": "launch/v1",
+            "removed_in": "launch/v2",
+            "replacement": "requires[].host.privileged",
+            "hint": "Replace `host: { privileged: true }` with `requires: [ - host: { privileged: true } ]`. `false` is the default — drop the key instead of writing an entry."
+          }
         }
       },
       "additionalProperties": false

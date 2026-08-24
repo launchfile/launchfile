@@ -63,12 +63,26 @@ function generateUuid(): string {
 }
 
 function generatePort(): string {
-	return String(10000 + Math.floor(Math.random() * 55000));
+	// A `generator: port` value can be declared under `secrets:`, where it is
+	// persisted to state and redacted like any other secret. Math.random() is
+	// seeded predictably and is not a security primitive, so the port comes
+	// from the same CSPRNG as every other generated value here.
+	const range = 55_000;
+	const buf = new Uint32Array(1);
+	crypto.getRandomValues(buf);
+	// Reject the short final bucket so every port in the range is equally
+	// likely — plain modulo would bias the low end.
+	const limit = Math.floor(0x1_0000_0000 / range) * range;
+	while (buf[0]! >= limit) crypto.getRandomValues(buf);
+	return String(10_000 + (buf[0]! % range));
 }
 
 /**
  * Create a backing service factory with pre-generated or cached passwords.
  * Passwords are per-app to ensure consistency across restarts.
+ *
+ * Each factory's `properties` map is this provider's answer to SPEC.md
+ * § Resource Property Vocabulary; `resourcePropertyKeys()` reads it back.
  */
 function createBackingServices(
 	savedSecrets: Record<string, string>,
@@ -168,6 +182,10 @@ function createBackingServices(
 			properties: {
 				host: `${_name}-redis`,
 				port: "6379",
+				// The image ships with no `requirepass`, so the honest value is empty.
+				// The property is still exposed: SPEC.md § Resource Property Vocabulary
+				// makes it a MUST for every provider that supports redis.
+				password: "",
 				url: `redis://${_name}-redis:6379`,
 			},
 			healthcheck: {
@@ -207,6 +225,10 @@ function createBackingServices(
 			image: "clickhouse/clickhouse-server:latest",
 			environment: {},
 			properties: {
+				// The image's shipped defaults: the `default` user with an empty
+				// password. Reported as-is so the values match the deployment.
+				user: "default",
+				password: "",
 				host: `${name}-clickhouse`,
 				port: "8123",
 				url: `http://${name}-clickhouse:8123`,
@@ -237,7 +259,6 @@ function createBackingServices(
 					user: "elastic",
 					password: pw,
 					url: `http://elastic:${encodeURIComponent(pw)}@${name}-elasticsearch:9200`,
-					name: name,
 				},
 				healthcheck: {
 					test: ["CMD-SHELL", `curl -sf -u elastic:$ELASTIC_PASSWORD http://localhost:9200/_cluster/health || exit 1`],
@@ -355,6 +376,26 @@ function createBackingServices(
 }
 
 /**
+ * The property keys each supported backing-service type exposes, keyed by type.
+ *
+ * Derived by running the factories, not hand-listed: the conformance test
+ * (`__tests__/resource-conformance.test.ts`) compares these against
+ * `spec/schema/resource-properties.json`, and a hand-maintained copy would
+ * drift from the factories, which is the drift the check exists to catch.
+ *
+ * Calling this generates throwaway passwords into a local secrets map. They are
+ * never returned and never reach a compose file.
+ */
+export function resourcePropertyKeys(): Record<string, string[]> {
+	const factories = createBackingServices({});
+	const keys: Record<string, string[]> = {};
+	for (const [type, factory] of Object.entries(factories)) {
+		keys[type] = Object.keys(factory("probe").properties);
+	}
+	return keys;
+}
+
+/**
  * Compute the $app.* property set (D-33, D-35) for a Launchfile under the docker
  * provider. The "primary" component is the first one (in declaration order)
  * with at least one `exposed: true` provides entry; its host port becomes
@@ -395,6 +436,11 @@ function computeAppProperties(
 export interface ComposeOpts {
 	/** Pre-existing secrets to reuse (mutated with new secrets) */
 	secrets?: Record<string, string>;
+	/**
+	 * Persisted `env:`-level generator values to reuse, keyed
+	 * `<component>.<ENV_NAME>` (mutated with newly minted values).
+	 */
+	generatedEnv?: Record<string, string>;
 	/** Host port overrides, keyed by component name */
 	hostPorts?: Record<string, number>;
 	/** Docker network name */
@@ -412,6 +458,8 @@ export interface ComposeResult {
 	builds: string[];
 	/** Secrets generated during composition (save to state) */
 	secrets: Record<string, string>;
+	/** `env:`-level generator values minted or reused during composition (save to state) */
+	generatedEnv: Record<string, string>;
 	/** Map of component name → exposed host port */
 	ports: Record<string, number>;
 	/** Map of component name → generated compose service name (skipped components absent) */
@@ -428,6 +476,7 @@ export function launchToCompose(
 	const services: Record<string, Record<string, unknown>> = {};
 	const volumes: Record<string, Record<string, unknown>> = {};
 	const secrets = opts.secrets ?? {};
+	const generatedEnv = opts.generatedEnv ?? {};
 	const ports: Record<string, number> = {};
 	const componentServices: Record<string, string> = {};
 
@@ -596,7 +645,7 @@ export function launchToCompose(
 
 		if (component.env) {
 			for (const [key, envVar] of Object.entries(component.env)) {
-				const value = resolveEnvVar(envVar, componentContext, key);
+				const value = resolveEnvVar(envVar, componentContext, key, componentName, generatedEnv);
 				if (value !== undefined) {
 					env[key] = value;
 				}
@@ -711,6 +760,7 @@ export function launchToCompose(
 		images: [...new Set(images)],
 		builds,
 		secrets,
+		generatedEnv,
 		ports,
 		services: componentServices,
 	};
@@ -721,12 +771,28 @@ export function launchToCompose(
 function resolveEnvVar(
 	envVar: NormalizedEnvVar,
 	context: ResolverContext,
-	key?: string,
+	key: string,
+	componentName: string,
+	generatedEnv: Record<string, string>,
 ): string | undefined {
 	if (envVar.generator) {
-		if (envVar.generator === "secret") return generateSecret();
-		if (envVar.generator === "uuid") return generateUuid();
+		// `port` is exempt from preservation (D-49): ports are re-allocated
+		// each run, and a preserved port produces a bind conflict rather than
+		// continuity.
 		if (envVar.generator === "port") return generatePort();
+
+		// Minted values are preserved (D-49): reuse the value state holds,
+		// mint and record otherwise. Keyed per declaration
+		// (`<component>.<ENV_NAME>`, D-25) — never by bare variable name — so
+		// same-named variables on different components stay independent, and
+		// kept out of `secrets` so these names never resolve as
+		// `$secrets.<name>`.
+		const stateKey = `${componentName}.${key}`;
+		const existing = generatedEnv[stateKey];
+		if (existing !== undefined) return existing;
+		const value = envVar.generator === "secret" ? generateSecret() : generateUuid();
+		generatedEnv[stateKey] = value;
+		return value;
 	}
 
 	if (envVar.default !== undefined) {

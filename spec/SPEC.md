@@ -135,7 +135,7 @@ When `components` is present, top-level component fields serve as **defaults** i
 
 **Multi-component mode:** use the `components` map where each key is a component name (see Quick Start multi-component example).
 
-Each component supports: [`runtime`](#runtime), [`image`](#image), [`build`](#build), [`provides`](#provides), [`requires`](#requires), [`supports`](#supports), [`env`](#environment-variables), [`commands`](#commands), [`health`](#health), [`depends_on`](#depends-on), [`storage`](#storage), [`restart`](#other-fields), [`schedule`](#other-fields), [`singleton`](#other-fields), [`platform`](#other-fields), [`host`](#host). Named outputs captured from a command's stdout are declared via the `capture:` field inside an expanded command form — see [Command Capture](#command-capture).
+Each component supports: [`runtime`](#runtime), [`image`](#image), [`build`](#build), [`provides`](#provides), [`requires`](#requires), [`supports`](#supports), [`env`](#environment-variables), [`commands`](#commands), [`health`](#health), [`depends_on`](#depends-on), [`storage`](#storage), [`restart`](#other-fields), [`schedule`](#other-fields), [`singleton`](#other-fields), [`platform`](#other-fields), [`host`](#host) *(deprecated — see [Host](#host))*. Named outputs captured from a command's stdout are declared via the `capture:` field inside an expanded command form — see [Command Capture](#command-capture).
 
 ```mermaid
 graph TD
@@ -299,7 +299,7 @@ Properties a provider cannot supply resolve to the empty string, matching unknow
 | `filesystem` | `read-write`, `read-only` | Host filesystem access |
 | `privileged` | `true` | Elevated privileges (e.g. device access) |
 
-`network`, `filesystem`, and `privileged` are the entry-form spelling of the legacy [`host` block](#host) keys — they are grant/refuse capabilities like any other. The legacy top-level `host:` block remains valid; its deprecation is a separate governed step ([#120](https://github.com/launchfile/launchfile/issues/120)).
+`network`, `filesystem`, and `privileged` are the entry-form spelling of the legacy [`host` block](#host) keys — they are grant/refuse capabilities like any other. That block is **deprecated in `launch/v1` and removed in `launch/v2`** ([D-58](DESIGN.md#d-58-the-legacy-host-block-is-deprecated-in-favor-of-capability-entries)); entries are the form to write. Existing files using the block stay valid and keep their meaning for the whole of `launch/v1` — see [Migrating off the `host:` block](#migrating-off-the-host-block).
 
 ## Supports
 
@@ -715,6 +715,8 @@ depends_on:
 
 ## Host
 
+> **Deprecated.** The whole top-level `host:` block is deprecated in `launch/v1` and is removed in `launch/v2` ([D-58](DESIGN.md#d-58-the-legacy-host-block-is-deprecated-in-favor-of-capability-entries)). Its replacement is the [host capability](#host-capabilities) entry form in `requires`/`supports`. Files using the block **stay valid for the whole of `launch/v1`** and keep their exact meaning — `launchfile validate` reports the deprecation and its migration, and never fails on it. Write new files with capability entries; migrate existing ones using the table below.
+
 Declares host-level capabilities the app requires that cannot be satisfied inside a standard container. When a deployer cannot meet these constraints, it should refuse the deployment with a clear error message rather than failing at runtime.
 
 | Field | Type | Description |
@@ -725,7 +727,7 @@ Declares host-level capabilities the app requires that cannot be satisfied insid
 | `privileged` | `boolean` | Requires elevated privileges (e.g. device access). Default `false`. |
 
 ```yaml
-# App that orchestrates Docker containers on the host
+# App that orchestrates Docker containers on the host (deprecated block form)
 host:
   docker: required
   network: host
@@ -734,7 +736,52 @@ host:
 
 When `host.docker` is `required`, the deployer must ensure the app runs with access to the Docker daemon socket (e.g. `/var/run/docker.sock`). If the deployer's execution strategy is container-based, it should either refuse or warn that Docker-in-Docker is unreliable.
 
-These keys are also expressible as [host capability](#host-capabilities) entries in `requires`/`supports` — `- host: { container_runtime: docker }` is the capability spelling of `docker: required`, with `set_env` wiring of the granted coordinates. This block remains valid; its deprecation in favor of the entry form is a separate governed step ([#120](https://github.com/launchfile/launchfile/issues/120)).
+### Migrating off the `host:` block
+
+Every key of the block is expressible as a [host capability](#host-capabilities) entry, and the two spellings are semantically identical — a provider MUST produce the same grant/refuse outcome for either (`PROVIDERS.md` § Host capabilities). `requires` carries a capability the app cannot run without; `supports` carries one it degrades gracefully without. A key set to its default declares no need at all, so it migrates to nothing.
+
+| Legacy key/value | Migrates to |
+|---|---|
+| `docker: required` | `requires: [ - host: { container_runtime: docker } ]` |
+| `docker: optional` | `supports: [ - host: { container_runtime: docker } ]` |
+| `network: host` | `requires: [ - host: { network: host } ]` |
+| `network: bridge` | *(default — drop the key, no entry)* |
+| `filesystem: read-write` \| `read-only` | `requires: [ - host: { filesystem: <value> } ]` |
+| `filesystem: none` | *(default — drop the key, no entry)* |
+| `privileged: true` | `requires: [ - host: { privileged: true } ]` |
+| `privileged: false` | *(default — drop the key, no entry)* |
+
+The entry form also gains what the block cannot express: `set_env` wiring of the granted coordinates (`$socket` / `$url` / `$api` for `container_runtime`), and a single home for the app's whole dependency statement instead of two parallel mechanisms.
+
+```yaml
+# The block above, migrated
+requires:
+  - host: { container_runtime: docker }
+    set_env:
+      DOCKER_HOST: $url
+  - host: { network: host }
+  - host: { filesystem: read-write }
+```
+
+### How deprecations are declared
+
+Deprecation is machine-readable, never prose-only ([D-42](DESIGN.md#d-42-deprecation-metadata-model--the-p-14-mechanism)). Every deprecated part of the format carries its metadata in the JSON Schema, in two places:
+
+1. The standard JSON Schema `deprecated: true` keyword (draft 2020-12), which every `$schema`-aware editor already understands.
+2. An `x-launchfile-deprecation` object carrying D-42's four semantic parts, which JSON Schema has no vocabulary for:
+
+```json
+"x-launchfile-deprecation": {
+  "deprecated_in": "launch/v1",
+  "removed_in":    "launch/v2",
+  "replacement":   "requires[].host.container_runtime",
+  "hint":          "Replace `host: { docker: required }` with `requires: [ - host: { container_runtime: docker } ]`. …"
+}
+```
+
+`deprecated_in` and `removed_in` are `launch/vN` format versions — the only version vocabulary the format has ([D-17](DESIGN.md#d-17-version-header-for-spec-versioning)) — and removal is always at a format major ([P-14](DESIGN.md#p-14-legible-evolution)). Both keys carry the same values everywhere a block and its keys are deprecated together; `replacement` and `hint` are per-key, because they differ per key.
+
+Tooling reads this metadata and reports it. In the reference SDK, `launchfile validate` emits a `deprecations` array — one entry per deprecated field present in the file, with all four parts populated — in `--json` output, and a `deprecated:` line per finding in the human output. A deprecation **never** affects `valid` and never changes the exit code: deprecation warns, removal migrates, nothing breaks.
 
 ## Runtime
 
@@ -826,7 +873,7 @@ Fetching and building a remote origin executes code from that origin — the per
 | `schedule` | `string` | Cron expression for scheduled jobs |
 | `singleton` | `boolean` | When `true`, the platform must not run more than one instance of this component |
 | `platform` | `string \| string[]` | OCI platform constraint (e.g. `linux/amd64`, `linux/arm64`) |
-| `host` | `object` | Host-level constraints (see [Host](#host)) |
+| `host` | `object` | **Deprecated** (`launch/v1` → removed in `launch/v2`, [D-58](DESIGN.md#d-58-the-legacy-host-block-is-deprecated-in-favor-of-capability-entries)) — host-level constraints. Use [host capability](#host-capabilities) entries instead; see [Host](#host) |
 
 ### `schedule`
 
