@@ -10,84 +10,64 @@
  * `env` must report an unsupplied var without emitting a bare `KEY=` line: its
  * output is designed to be `eval`'d, and an empty export re-creates the exact
  * failure the rule exists to stop.
+ *
+ * Only `shell.js` and `process-manager.js` are mocked — real subprocess exec
+ * and a real pm2 registration have no place in a unit test. Every other
+ * collaborator (`state.js`, `resources/index.js`, `port-allocator.js`,
+ * `lockfile-detect.js`, `storage.js`) runs for real against a real temp
+ * project directory: they're also driven for real by their own dedicated
+ * test files (state.test.ts, dry-run.test.ts, ...), and `provider.js` is a
+ * process-wide singleton — a module mocked here for this file's `launchUp`
+ * call is mocked for every other file's calls into that same module too.
+ * `resources/index.js`'s Postgres provisioner takes its shell dependency by
+ * injection (see postgres.ts's `ShellRunner`), defaulting to the already-
+ * mocked `./shell.js` — so running it for real never touches a live
+ * Homebrew/Postgres install.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-let launchfile = "";
-
+const shellCalls: string[] = [];
 const releaseEnvs: (Record<string, string> | undefined)[] = [];
 const startRegistrations: { name: string; env: Record<string, string> }[] = [];
-const provisioned: string[] = [];
 const writtenEnvFiles: { path: string; content: string }[] = [];
 const consoleLogs: string[] = [];
 const consoleErrors: string[] = [];
 
+// Real reads/writes/mkdir, confined to whatever path the caller passes —
+// every test below points collaborators at its own temp project dir.
+// `writeFile` is additionally captured so assertions can inspect what was
+// written without re-reading the file back off disk.
 vi.mock("node:fs/promises", () => ({
-	readFile: async () => launchfile,
-	writeFile: async (path: string, content: string) => {
+	readFile: async (path: string, encoding?: BufferEncoding) =>
+		readFileSync(path, encoding ?? "utf8"),
+	writeFile: async (path: string, content: string, opts?: { mode?: number }) => {
 		writtenEnvFiles.push({ path: String(path), content: String(content) });
+		writeFileSync(path, content, opts?.mode !== undefined ? { mode: opts.mode } : undefined);
 	},
-	mkdir: async () => {},
+	mkdir: async (path: string, opts?: { recursive?: boolean; mode?: number }) => {
+		mkdirSync(path, opts);
+	},
 }));
 
 vi.mock("../prereqs.js", () => ({
 	checkPrereqs: async () => ({ ok: true, missing: [] }),
 }));
 
-vi.mock("../state.js", () => ({
-	loadState: async () => null,
-	initState: (appName: string) => ({
-		version: 1,
-		appName,
-		launchfileHash: "test",
-		resources: {},
-		ports: {},
-		secrets: {},
-		processes: {},
-	}),
-	saveState: async () => {},
-	ensureDirs: async () => {},
-}));
-
-vi.mock("../port-allocator.js", () => ({
-	allocatePorts: async () => ({ default: 3000 }),
-}));
-
-vi.mock("../resources/index.js", () => ({
-	getProvisioner: (type: string) =>
-		type === "postgres"
-			? {
-					provision: async () => {
-						provisioned.push(type);
-						return {
-							properties: { url: "postgresql://u:p@localhost:5432/app", host: "localhost", port: 5432 },
-							state: { type, name: type, port: 5432 },
-						};
-					},
-					isRunning: async () => true,
-				}
-			: undefined,
-}));
-
 vi.mock("../runtimes/index.js", () => ({
 	getRuntimeInstaller: () => undefined,
 }));
 
-vi.mock("../lockfile-detect.js", () => ({
-	detectPackageManager: async () => undefined,
-}));
-
-vi.mock("../storage.js", () => ({
-	provisionStorage: async () => ({}),
-	storagePaths: () => ({}),
-}));
-
 vi.mock("../shell.js", () => ({
-	shell: async (_cmd: string, opts?: { env?: Record<string, string> }) => {
+	shell: async (cmd: string, opts?: { env?: Record<string, string> }) => {
+		shellCalls.push(cmd);
 		releaseEnvs.push(opts?.env);
 		return { exitCode: 0, stdout: "", stderr: "" };
 	},
+	shellOk: async () => true,
 }));
 
 vi.mock("../process-manager.js", () => ({
@@ -131,17 +111,24 @@ commands:
   start: "node server.js"
 `;
 
+let projectDir: string;
+
+function writeLaunchfile(yaml: string): void {
+	writeFileSync(join(projectDir, "Launchfile"), yaml);
+}
+
 describe("macos-dev up/env — unsupplied required env (rule 8, D-52)", () => {
 	let exitCode: number | undefined;
 
 	beforeEach(() => {
+		shellCalls.length = 0;
 		releaseEnvs.length = 0;
 		startRegistrations.length = 0;
-		provisioned.length = 0;
 		writtenEnvFiles.length = 0;
 		consoleLogs.length = 0;
 		consoleErrors.length = 0;
 		exitCode = undefined;
+		projectDir = mkdtempSync(join(tmpdir(), "lf-macos-required-env-"));
 		delete process.env.SITE_URL;
 		delete process.env.ADMIN_TOKEN;
 		vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
@@ -160,6 +147,7 @@ describe("macos-dev up/env — unsupplied required env (rule 8, D-52)", () => {
 
 	afterEach(() => {
 		vi.restoreAllMocks();
+		rmSync(projectDir, { recursive: true, force: true });
 		delete process.env.SITE_URL;
 		delete process.env.ADMIN_TOKEN;
 	});
@@ -169,32 +157,33 @@ describe("macos-dev up/env — unsupplied required env (rule 8, D-52)", () => {
 
 	// 14
 	it("up fails naming the component and the variable", async () => {
-		launchfile = RELEASE_AND_START;
-		await expect(launchUp({ projectDir: "/tmp/x" })).rejects.toThrow("__exit__1");
+		writeLaunchfile(RELEASE_AND_START);
+		await expect(launchUp({ projectDir })).rejects.toThrow("__exit__1");
 		expect(exitCode).toBe(1);
 		expect(stderr()).toContain("default: SITE_URL");
 	});
 
 	it("up marks a sensitive variable without printing any value", async () => {
-		launchfile = SENSITIVE;
-		await expect(launchUp({ projectDir: "/tmp/x" })).rejects.toThrow("__exit__1");
+		writeLaunchfile(SENSITIVE);
+		await expect(launchUp({ projectDir })).rejects.toThrow("__exit__1");
 		expect(stderr()).toContain("ADMIN_TOKEN (sensitive)");
 	});
 
 	it("up fails before provisioning or starting anything", async () => {
-		launchfile = RELEASE_AND_START;
-		await expect(launchUp({ projectDir: "/tmp/x" })).rejects.toThrow("__exit__1");
-		expect(provisioned).toEqual([]);
+		writeLaunchfile(RELEASE_AND_START);
+		await expect(launchUp({ projectDir })).rejects.toThrow("__exit__1");
+		// No provisioning shell call (pg_isready, psql, createdb, ...) ran.
+		expect(shellCalls).toEqual([]);
 		expect(startRegistrations).toEqual([]);
 		expect(writtenEnvFiles).toEqual([]);
 	});
 
 	// 15
 	it("an operator value in process.env reaches BOTH release's and start's env", async () => {
-		launchfile = RELEASE_AND_START;
+		writeLaunchfile(RELEASE_AND_START);
 		process.env.SITE_URL = "https://wiki.example.com";
 
-		await launchUp({ projectDir: "/tmp/x" });
+		await launchUp({ projectDir });
 
 		// `release` gets `allEnvs[name]` with no process.env inheritance, so it
 		// only sees the value if the explicit channel put it there.
@@ -202,34 +191,34 @@ describe("macos-dev up/env — unsupplied required env (rule 8, D-52)", () => {
 		expect(releaseEnvs.at(-1)?.SITE_URL).toBe("https://wiki.example.com");
 		expect(startRegistrations[0]?.env.SITE_URL).toBe("https://wiki.example.com");
 		// And it reaches the written .env file, which is what makes it visible.
-		expect(writtenEnvFiles[0]?.content).toMatch(/^SITE_URL=https:\/\/wiki\.example\.com$/m);
+		// (saveState also writes state.json and a .gitignore alongside it.)
+		expect(
+			writtenEnvFiles.some((f) => /^SITE_URL=https:\/\/wiki\.example\.com$/m.test(f.content)),
+		).toBe(true);
 	});
 
 	it("does not fail once the operator supplies the value", async () => {
-		launchfile = SENSITIVE;
+		writeLaunchfile(SENSITIVE);
 		process.env.ADMIN_TOKEN = "s3cret";
-		await expect(launchUp({ projectDir: "/tmp/x" })).resolves.toBeUndefined();
+		await expect(launchUp({ projectDir })).resolves.toBeUndefined();
 		expect(exitCode).toBeUndefined();
 	});
 
 	// 16
 	describe("env verb", () => {
 		beforeEach(async () => {
-			const state = await import("../state.js");
-			vi.spyOn(state, "loadState").mockResolvedValue({
-				version: 1,
-				appName: "app",
-				launchfileHash: "test",
-				resources: {},
-				ports: { default: 3000 },
-				secrets: {},
-				processes: {},
-			} as never);
+			// Real usage: `up` persists state once (with the value supplied), then
+			// the operator's shell loses the value before `env` is run again.
+			writeLaunchfile(SENSITIVE);
+			process.env.ADMIN_TOKEN = "s3cret";
+			await launchUp({ projectDir });
+			delete process.env.ADMIN_TOKEN;
+			// Isolate `launchEnv`'s own output from `up`'s setup-phase logging.
+			consoleLogs.length = 0;
 		});
 
 		it("reports the unsupplied var as a comment, never as a bare KEY= line", async () => {
-			launchfile = SENSITIVE;
-			await launchEnv({ projectDir: "/tmp/x" });
+			await launchEnv({ projectDir });
 
 			const out = stdout();
 			expect(out).toContain("# ADMIN_TOKEN: unsupplied");
@@ -239,8 +228,7 @@ describe("macos-dev up/env — unsupplied required env (rule 8, D-52)", () => {
 		});
 
 		it("every non-comment line stays a valid KEY=VALUE assignment", async () => {
-			launchfile = SENSITIVE;
-			await launchEnv({ projectDir: "/tmp/x" });
+			await launchEnv({ projectDir });
 
 			const lines = stdout()
 				.split("\n")
@@ -252,9 +240,8 @@ describe("macos-dev up/env — unsupplied required env (rule 8, D-52)", () => {
 		});
 
 		it("prints a real value instead of the report once the operator supplies it", async () => {
-			launchfile = SENSITIVE;
 			process.env.ADMIN_TOKEN = "s3cret";
-			await launchEnv({ projectDir: "/tmp/x" });
+			await launchEnv({ projectDir });
 
 			const out = stdout();
 			expect(out).toMatch(/^ADMIN_TOKEN=s3cret$/m);
