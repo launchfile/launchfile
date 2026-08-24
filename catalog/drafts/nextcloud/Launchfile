@@ -30,9 +30,8 @@ components:
 
   cron:
     image: nextcloud:latest
-    schedule: "*/5 * * * *"
     commands:
       start: "cron.sh"
     depends_on:
       - "app"
-    restart: "no"
+    restart: always
