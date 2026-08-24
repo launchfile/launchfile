@@ -15,12 +15,12 @@ export async function checkPrereqs(): Promise<PrereqResult> {
 	const warnings: string[] = [];
 
 	// Homebrew is required
-	if (!(await shellOk("which brew"))) {
+	if (!(await shellOk("which", ["brew"]))) {
 		missing.push("Homebrew — install from https://brew.sh");
 	}
 
 	// Git is required (for cloning)
-	if (!(await shellOk("which git"))) {
+	if (!(await shellOk("which", ["git"]))) {
 		missing.push("git — install via: brew install git");
 	}
 

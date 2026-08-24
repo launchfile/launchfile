@@ -13,14 +13,17 @@ const OPTS = { appName: "my-app" } as ProvisionOpts;
  */
 function recorder(okFor: (cmd: string) => boolean = () => true) {
 	const commands: string[] = [];
+	// Flattened to `cmd arg arg` so the assertions below stay readable; the
+	// provisioner passes argv arrays.
+	const flatten = (cmd: string, args: string[]) => [cmd, ...args].join(" ");
 	const deps: ShellRunner = {
-		shell: async (command: string) => {
-			commands.push(command);
+		shell: async (cmd: string, args: string[]) => {
+			commands.push(flatten(cmd, args));
 			return { exitCode: 0, stdout: "", stderr: "" };
 		},
-		shellOk: async (command: string) => {
-			commands.push(command);
-			return okFor(command);
+		shellOk: async (cmd: string, args: string[]) => {
+			commands.push(flatten(cmd, args));
+			return okFor(flatten(cmd, args));
 		},
 	};
 	return { commands, deps };

@@ -16,6 +16,11 @@ import type {
 const DEFAULT_PORT = 3306;
 const DEFAULT_HOST = "localhost";
 
+/** Connection flags shared by every mysql invocation, as argv elements. */
+function mysqlArgs(): string[] {
+	return ["-h", DEFAULT_HOST, "-u", "root"];
+}
+
 // Security: validate identifiers before interpolating into shell/SQL commands
 const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
@@ -30,7 +35,12 @@ export class MysqlProvisioner implements ResourceProvisioner {
 	}
 
 	async isRunning(): Promise<boolean> {
-		return this.#shellOk("mysqladmin ping -h localhost --silent");
+		return this.#shellOk("mysqladmin", [
+			"ping",
+			"-h",
+			DEFAULT_HOST,
+			"--silent",
+		]);
 	}
 
 	async provision(
@@ -40,10 +50,14 @@ export class MysqlProvisioner implements ResourceProvisioner {
 	): Promise<{ properties: ResourceProperties; state: ResourceState }> {
 		if (!(await this.isRunning())) {
 			console.log("  Starting MySQL via brew...");
-			const started = await this.#shellOk("brew services start mysql");
+			const started = await this.#shellOk("brew", [
+				"services",
+				"start",
+				"mysql",
+			]);
 			if (!started) {
-				await this.#shell("brew install mysql");
-				await this.#shell("brew services start mysql");
+				await this.#shell("brew", ["install", "mysql"]);
+				await this.#shell("brew", ["services", "start", "mysql"]);
 			}
 		}
 
@@ -56,16 +70,27 @@ export class MysqlProvisioner implements ResourceProvisioner {
 
 		// Create database and user (idempotent)
 		await this.#shell(
-			`mysql -h ${DEFAULT_HOST} -u root -e "CREATE DATABASE IF NOT EXISTS \\\`${dbName}\\\`;"`,
+			"mysql",
+			[...mysqlArgs(), "-e", `CREATE DATABASE IF NOT EXISTS \`${dbName}\`;`],
 			{ allowFailure: true },
 		);
 		await this.#shell(
-			`mysql -h ${DEFAULT_HOST} -u root -e "CREATE USER IF NOT EXISTS '${user}'@'${DEFAULT_HOST}' IDENTIFIED BY '${password}';"`,
+			"mysql",
+			[
+				...mysqlArgs(),
+				"-e",
+				`CREATE USER IF NOT EXISTS '${user}'@'${DEFAULT_HOST}' IDENTIFIED BY '${password}';`,
+			],
 			// silent: this command embeds the generated DB password; don't echo it (CWE-532).
 			{ allowFailure: true, silent: true },
 		);
 		await this.#shell(
-			`mysql -h ${DEFAULT_HOST} -u root -e "GRANT ALL PRIVILEGES ON \\\`${dbName}\\\`.* TO '${user}'@'${DEFAULT_HOST}';"`,
+			"mysql",
+			[
+				...mysqlArgs(),
+				"-e",
+				`GRANT ALL PRIVILEGES ON \`${dbName}\`.* TO '${user}'@'${DEFAULT_HOST}';`,
+			],
 			{ allowFailure: true },
 		);
 
@@ -97,13 +122,19 @@ export class MysqlProvisioner implements ResourceProvisioner {
 		// Security: state values come from disk (state.json) — validate before SQL interpolation
 		if (state.dbName && SAFE_IDENTIFIER.test(state.dbName)) {
 			await this.#shell(
-				`mysql -h ${DEFAULT_HOST} -u root -e "DROP DATABASE IF EXISTS \\\`${state.dbName}\\\`;"`,
+				"mysql",
+				[...mysqlArgs(), "-e", `DROP DATABASE IF EXISTS \`${state.dbName}\`;`],
 				{ allowFailure: true },
 			);
 		}
 		if (state.user && SAFE_IDENTIFIER.test(state.user)) {
 			await this.#shell(
-				`mysql -h ${DEFAULT_HOST} -u root -e "DROP USER IF EXISTS '${state.user}'@'${DEFAULT_HOST}';"`,
+				"mysql",
+				[
+					...mysqlArgs(),
+					"-e",
+					`DROP USER IF EXISTS '${state.user}'@'${DEFAULT_HOST}';`,
+				],
 				{ allowFailure: true },
 			);
 		}

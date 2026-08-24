@@ -5,6 +5,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { shell, shellOk } from "../shell.js";
+import { isInstalled } from "./installed-versions.js";
 import type { RuntimeInstaller } from "./types.js";
 
 export class RubyInstaller implements RuntimeInstaller {
@@ -20,20 +21,24 @@ export class RubyInstaller implements RuntimeInstaller {
 	}
 
 	async install(version: string): Promise<void> {
-		if (!(await shellOk("which rbenv"))) {
-			await shell("brew install rbenv ruby-build");
+		// `version` is the verbatim contents of .ruby-version in the target repo —
+		// untrusted input. It goes in as an argv element so it can never be read
+		// as shell syntax.
+		if (!(await shellOk("which", ["rbenv"]))) {
+			await shell("brew", ["install", "rbenv", "ruby-build"]);
 		}
-		const installed = await shellOk(`rbenv versions --bare | grep -q "^${version}$"`);
-		if (!installed) {
-			await shell(`rbenv install ${version}`);
+		if (!(await isInstalled("rbenv", version))) {
+			await shell("rbenv", ["install", version]);
 		}
-		await shell(`rbenv local ${version}`);
+		await shell("rbenv", ["local", version]);
 	}
 
 	async shellEnv(_version: string): Promise<Record<string, string>> {
-		if (await shellOk("which rbenv")) {
+		if (await shellOk("which", ["rbenv"])) {
 			try {
-				const result = await shell("rbenv init - bash", { silent: true });
+				const result = await shell("rbenv", ["init", "-", "bash"], {
+					silent: true,
+				});
 				return parseRbenvEnv(result.stdout);
 			} catch {
 				return {};
