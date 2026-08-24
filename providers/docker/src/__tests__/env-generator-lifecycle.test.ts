@@ -35,7 +35,10 @@ async function readState(slug: string): Promise<DockerState> {
 	return JSON.parse(await readFile(join(stateDir(slug), "state.json"), "utf8")) as DockerState;
 }
 
-describe.runIf(prereqs.ok)("env-level generator lifecycle — real up/down (D-49, #186)", () => {
+// describe.runIf is a vitest-only API; CI's bun test runner doesn't provide it.
+const describeIfPrereqsOk = prereqs.ok ? describe : describe.skip;
+
+describeIfPrereqsOk("env-level generator lifecycle — real up/down (D-49, #186)", () => {
 	let dir: string;
 	let slug: string | undefined;
 
