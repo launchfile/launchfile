@@ -42,7 +42,7 @@ import { parseDuration } from "./bootstrap.js";
  * or a `start` with no `image`. An `image` without a `dev` override stays
  * artifact-mode, which this source-only provider can't launch.
  */
-function isSourceRunnable(component: NormalizedComponent): boolean {
+export function isSourceRunnable(component: NormalizedComponent): boolean {
 	return resolveSourceRunCommand(component) !== undefined;
 }
 
