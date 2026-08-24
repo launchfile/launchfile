@@ -620,3 +620,97 @@ describe("deriveAppUrlProperties (D-35)", () => {
 		expect(resolveExpression("$app.scheme", ctx)).toBe("http");
 	});
 });
+
+/*--- test-spec
+title: One reference grammar in every position — whole-value, braced and embedded
+covers:
+  - a hyphenated name resolves identically whole-value, braced and embedded
+  - an embedded hyphenated name is never truncated at the hyphen
+  - underscores and digits behave the same in all three positions
+  - bracket index notation parses to the same path in all three positions
+  - a pipe transform applies the same in all three positions
+tags: [launch-spec, resolver, expression-parity, d-11]
+---*/
+describe("reference grammar parity across positions", () => {
+	const ctx = {
+		secrets: {
+			"api-key": "SEK",
+			"api_key": "SEK_UNDERSCORE",
+			api2key: "SEK_DIGIT",
+			"a-b-c-d": "SEK_MULTI",
+		},
+		app: { url: "http://localhost:49200", "custom-prop": "CUSTOM" },
+	};
+
+	// The three positions must agree, because a command string is always the
+	// embedded case: a name that works as a whole env value has to work there too.
+	const positions = (ref: string) => ({
+		whole: resolveExpression(`$${ref}`, ctx),
+		braced: resolveExpression(`\${${ref}}`, ctx),
+		embedded: resolveExpression(`cli --key $${ref} --flag`, ctx),
+	});
+
+	it("resolves a hyphenated secret name in all three positions", () => {
+		const { whole, braced, embedded } = positions("secrets.api-key");
+		expect(whole).toBe("SEK");
+		expect(braced).toBe("SEK");
+		expect(embedded).toBe("cli --key SEK --flag");
+	});
+
+	it("does not truncate an embedded hyphenated name at the hyphen", () => {
+		// Regression: the embedded class once excluded "-", so this produced
+		// "x -key" — the path truncated and the remainder re-emitted as text.
+		expect(resolveExpression("x $secrets.api-key", ctx)).toBe("x SEK");
+		expect(resolveExpression("x $secrets.a-b-c-d", ctx)).toBe("x SEK_MULTI");
+		expect(resolveExpression("x $app.custom-prop y", ctx)).toBe("x CUSTOM y");
+	});
+
+	it("resolves an underscored name in all three positions", () => {
+		const { whole, braced, embedded } = positions("secrets.api_key");
+		expect(whole).toBe("SEK_UNDERSCORE");
+		expect(braced).toBe("SEK_UNDERSCORE");
+		expect(embedded).toBe("cli --key SEK_UNDERSCORE --flag");
+	});
+
+	it("resolves a name containing digits in all three positions", () => {
+		const { whole, braced, embedded } = positions("secrets.api2key");
+		expect(whole).toBe("SEK_DIGIT");
+		expect(braced).toBe("SEK_DIGIT");
+		expect(embedded).toBe("cli --key SEK_DIGIT --flag");
+	});
+
+	it("parses bracket index notation to the same path in every position", () => {
+		const ref = "components.backend.instances[0].host";
+		const path = ["components", "backend", "instances", "0", "host"];
+		expect(parseExpression(`$${ref}`)).toMatchObject({ kind: "reference", path });
+		expect(parseExpression(`\${${ref}}`)).toMatchObject({ kind: "reference", path });
+		expect(parseExpression(`cli $${ref} x`)).toMatchObject({
+			kind: "template",
+			parts: [
+				{ kind: "text", value: "cli " },
+				{ kind: "ref", path },
+				{ kind: "text", value: " x" },
+			],
+		});
+	});
+
+	it("applies a pipe transform the same way in every position", () => {
+		expect(resolveExpression("$secrets.api-key|base64", ctx)).toBe(btoa("SEK"));
+		expect(resolveExpression("${secrets.api-key|base64}", ctx)).toBe(btoa("SEK"));
+		expect(resolveExpression("x $secrets.api-key|base64 y", ctx)).toBe(`x ${btoa("SEK")} y`);
+	});
+
+	it("still ends a bare reference at a character outside the grammar", () => {
+		// Whitespace, "/", ":" and "$" are not part of a name in any position.
+		expect(resolveExpression("$app.url/health", ctx)).toBe("http://localhost:49200/health");
+		expect(resolveExpression("a $secrets.api-key:b", ctx)).toBe("a SEK:b");
+		expect(resolveExpression("$secrets.api-key $secrets.api_key", ctx)).toBe(
+			"SEK SEK_UNDERSCORE",
+		);
+	});
+
+	it("keeps $$ an escape in every position", () => {
+		expect(resolveExpression("$$secrets.api-key", ctx)).toBe("$secrets.api-key");
+		expect(resolveExpression("x $$secrets.api-key", ctx)).toBe("x $secrets.api-key");
+	});
+});

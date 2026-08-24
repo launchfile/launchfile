@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { extractCaptures, parseDuration } from "../bootstrap.js";
-import type { CaptureEntry } from "@launchfile/sdk";
+import { extractCaptures, parseDuration, computeAppProperties } from "../bootstrap.js";
+import { readLaunch, resolveExpression, type CaptureEntry } from "@launchfile/sdk";
 
 describe("extractCaptures (D-34, docker provider)", () => {
 	it("extracts invite link pattern from CLI output", () => {
@@ -72,5 +72,60 @@ describe("parseDuration (docker provider)", () => {
 	it("rejects whitespace forms (ratified grammar, D-48)", () => {
 		expect(() => parseDuration("5 m")).toThrow(/invalid duration/);
 		expect(() => parseDuration(" 10s ")).toThrow(/invalid duration/);
+	});
+});
+
+describe("computeAppProperties (D-33, D-35, docker provider)", () => {
+	const launch = readLaunch(`
+name: expr-in-command
+components:
+  default:
+    image: nginx:alpine
+    provides:
+      - port: 8080
+        protocol: http
+    commands:
+      bootstrap: "cli --url $app.url --authority $app.authority --tls $app.tls"
+`);
+
+	// The context bootstrap.ts and release.ts build for command-string resolution.
+	const commandContext = (hostPorts: Record<string, number>) => ({
+		secrets: {},
+		app: computeAppProperties(launch, hostPorts),
+	});
+
+	it("supplies the full D-35 set, matching compose-generator's helper", () => {
+		expect(computeAppProperties(launch, { default: 49200 })).toEqual({
+			name: "expr-in-command",
+			host: "localhost",
+			port: 49200,
+			url: "http://localhost:49200",
+			authority: "localhost:49200",
+			scheme: "http",
+			tls: "false",
+		});
+	});
+
+	it("resolves $app.authority / $app.scheme / $app.tls inside a bootstrap command string", () => {
+		const command = launch.components.default!.commands!.bootstrap!.command;
+		expect(resolveExpression(command, commandContext({ default: 49200 }))).toBe(
+			"cli --url http://localhost:49200 --authority localhost:49200 --tls false",
+		);
+	});
+
+	it("degrades the whole set to empty for an app with no exposed component", () => {
+		const noPorts = readLaunch(`
+name: headless
+components:
+  default:
+    image: nginx:alpine
+`);
+		expect(computeAppProperties(noPorts, {})).toMatchObject({
+			port: 0,
+			url: "",
+			authority: "",
+			scheme: "",
+			tls: "",
+		});
 	});
 });

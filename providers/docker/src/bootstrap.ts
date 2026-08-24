@@ -12,6 +12,7 @@
 
 import { spawn } from "node:child_process";
 import {
+	deriveAppUrlProperties,
 	parseDurationMs,
 	resolveExpression,
 	type CaptureEntry,
@@ -67,10 +68,11 @@ export function extractCaptures(
 export const parseDuration = parseDurationMs;
 
 /**
- * Compute $app.* properties for the Docker provider. Mirrors the private
- * helper inside compose-generator.ts so bootstrap (and release) can resolve
- * $app.url against the same values compose-generator used when writing env
- * vars into the compose file.
+ * Compute the full `$app.*` set (D-33, D-35) for the Docker provider. Mirrors
+ * the private helper inside compose-generator.ts — same primary-component rule,
+ * same URL, and the same `authority`/`scheme`/`tls` trio derived from it via
+ * the SDK — so bootstrap (and release) resolve `$app.*` against exactly the
+ * values compose-generator used when writing env vars into the compose file.
  */
 export function computeAppProperties(
 	launch: NormalizedLaunch,
@@ -83,11 +85,13 @@ export function computeAppProperties(
 		primaryPort = hostPorts[name] ?? exposed[0]!.port;
 		break;
 	}
+	const url = primaryPort > 0 ? `http://localhost:${primaryPort}` : "";
 	return {
 		name: launch.name,
 		host: "localhost",
 		port: primaryPort,
-		url: primaryPort > 0 ? `http://localhost:${primaryPort}` : "",
+		url,
+		...deriveAppUrlProperties(url),
 	};
 }
 

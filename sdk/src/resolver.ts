@@ -95,6 +95,24 @@ export function isExpression(value: string): boolean {
 }
 
 /**
+ * The reference body after a leading `$`: a letter, then any mix of letters,
+ * digits, `_`, `.`, `[`, `]`, `|` and `-`.
+ *
+ * One grammar serves all three positions — whole value (`$secrets.api-key`),
+ * braced (`${secrets.api-key}`) and embedded mid-string (`cli --key
+ * $secrets.api-key`). A name that resolves in one position resolves in every
+ * position; a narrower embedded class would truncate a hyphenated name at the
+ * hyphen and re-emit the remainder as literal text.
+ */
+const REF_BODY = "[a-zA-Z][a-zA-Z0-9_.\\[\\]|-]*";
+/** Entire value is one bare reference: `$secrets.api-key` */
+const WHOLE_VALUE_REF = new RegExp(`^\\$(${REF_BODY})$`);
+/** Entire value is one braced reference: `${port:-5432}` */
+const WHOLE_VALUE_BRACED_REF = new RegExp(`^\\$\\{(${REF_BODY})(?::([^}]*))?\\}$`);
+/** A bare reference at the head of the remaining template text */
+const EMBEDDED_REF = new RegExp(`^\\$(${REF_BODY})`);
+
+/**
  * Parse a set_env value into a structured expression.
  *
  * Examples:
@@ -114,7 +132,7 @@ export function parseExpression(value: string): ParsedExpression {
 
 	// Check if this is a simple $prop (entire value is one reference)
 	// Allows pipe transforms: $prop|base64
-	const simpleMatch = /^\$([a-zA-Z][a-zA-Z0-9_.[\]|-]*)$/.exec(value);
+	const simpleMatch = WHOLE_VALUE_REF.exec(value);
 	if (simpleMatch) {
 		const { path, transforms } = splitTransforms(simpleMatch[1]!);
 		return { kind: "reference", path, ...(transforms.length > 0 && { transforms }) };
@@ -122,7 +140,7 @@ export function parseExpression(value: string): ParsedExpression {
 
 	// Check if entire string is a single ${prop} or ${prop:-default}
 	// Allows pipe transforms: ${prop|base64:-fallback}
-	const bracedSimple = /^\$\{([a-zA-Z][a-zA-Z0-9_.[\]|-]*)(?::([^}]*))?\}$/.exec(value);
+	const bracedSimple = WHOLE_VALUE_BRACED_REF.exec(value);
 	if (bracedSimple) {
 		const { path, transforms } = splitTransforms(bracedSimple[1]!);
 		// The default separator is ":-" so strip the leading "-"
@@ -186,7 +204,7 @@ function parseTemplate(value: string): ParsedExpression {
 				parts.push({ kind: "text", value: textBuffer });
 				textBuffer = "";
 			}
-			const bareMatch = /^\$([a-zA-Z][a-zA-Z0-9_.|]*)/.exec(remaining);
+			const bareMatch = EMBEDDED_REF.exec(remaining);
 			if (bareMatch) {
 				const { path, transforms } = splitTransforms(bareMatch[1]!);
 				parts.push({ kind: "ref", path, ...(transforms.length > 0 && { transforms }) });
