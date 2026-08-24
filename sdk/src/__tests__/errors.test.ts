@@ -225,6 +225,40 @@ describe("helpers", () => {
 		expect(stripControl("a\tb\nc")).toBe("a\tb\nc");
 	});
 
+	it("stripControl removes every escape shape a terminal writes", () => {
+		const esc = String.fromCharCode(27);
+		const bel = String.fromCharCode(7);
+
+		// CSI with the longest colour form, a private-mode CSI, an OSC title
+		// terminated by BEL, and a single-character escape.
+		expect(stripControl(`${esc}[38;2;255;255;255mhi${esc}[0m`)).toBe("hi");
+		expect(stripControl(`${esc}[?25lspin${esc}[?25h`)).toBe("spin");
+		expect(stripControl(`${esc}]0;window title${bel}after`)).toBe("after");
+		expect(stripControl(`${esc}Mup`)).toBe("up");
+	});
+
+	it("stripControl ends an OSC string at its terminator, not at the next one", () => {
+		const esc = String.fromCharCode(27);
+		// An OSC 8 hyperlink: open, link text, close. Both OSC strings end with
+		// ST (`ESC \`), so the text between them survives (ECMA-48 § 8.3.89).
+		const link = `${esc}]8;;https://example.com${esc}\\click${esc}]8;;${esc}\\`;
+		expect(stripControl(link)).toBe("click");
+	});
+
+	it("stripControl stays linear on a run of unterminated OSC starts (CWE-1333)", () => {
+		const esc = String.fromCharCode(27);
+		// Every `ESC ]` opens an OSC string that no BEL ever closes. With an
+		// unbounded payload each start rescanned the whole remainder, which is
+		// quadratic: 40 000 pairs took ~1.8s. Bounded, it is immeasurable.
+		const hostile = `${esc}]`.repeat(40_000);
+		const t0 = performance.now();
+		const out = stripControl(hostile);
+		const elapsedMs = performance.now() - t0;
+
+		expect(out).toBe("");
+		expect(elapsedMs).toBeLessThan(250);
+	});
+
 	it("envKeysOf sorts and drops values", () => {
 		expect(envKeysOf({ b: "2", a: "1" })).toEqual(["a", "b"]);
 	});

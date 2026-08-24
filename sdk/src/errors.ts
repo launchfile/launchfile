@@ -193,9 +193,26 @@ export const TAIL_LINES = 200;
 /** Each retained line is truncated to this many characters, after redaction. */
 export const MAX_LINE_CHARS = 2000;
 
-// CSI and the single-character escapes a terminal writes into captured output.
+// CSI, OSC, and the single-character escapes a terminal writes into captured
+// output. Every repetition is bounded, and the OSC payload stops at ESC.
+//
+// Unbounded, the OSC branch `\][^\u0007]*` is quadratic: each `ESC ]` in the input
+// rescans the whole remainder looking for a BEL that a hostile log line never
+// supplies, and captured output is exactly where a hostile log line arrives
+// (CWE-1333). A tail of 40 000 `ESC ]` pairs took 1.8s; bounded it takes 0ms.
+//
+// Excluding ESC from the payload also closes a swallow: ECMA-48 ends an OSC
+// string at BEL or ST (`ESC \`), and nothing between may contain ESC. The
+// unbounded class ran straight past an ST into the next OSC, so an OSC 8
+// hyperlink lost its link text along with its escapes.
+//
+// The bounds exclude nothing a terminal writes. A CSI carries a handful of
+// parameter bytes (`ESC [ 38;2;255;255;255 m` is 18) and ECMA-48 permits only a
+// few intermediates; an OSC 8 hyperlink URL is the longest realistic payload and
+// sits far under 1024. Past a bound the sequence falls through to CONTROL_CHARS
+// below, which drops the ESC and the BEL regardless.
 const ANSI_ESCAPE =
-	/\u001B(?:\[[0-9;?]*[ -/]*[@-~]|\][^\u0007]*(?:\u0007|\u001B\\)|[@-Z\\-_])/g;
+	/\u001B(?:\[[0-9;?]{0,32}[ -/]{0,8}[@-~]|\][^\u0007\u001B]{0,1024}(?:\u0007|\u001B\\)|[@-Z\\-_])/g;
 
 // Everything unprintable except \t and \n. \r is included: a log aggregator
 // consuming --json treats a stray CR as a record separator (CWE-117).
