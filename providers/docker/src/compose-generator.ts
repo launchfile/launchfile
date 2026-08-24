@@ -63,7 +63,19 @@ function generateUuid(): string {
 }
 
 function generatePort(): string {
-	return String(10000 + Math.floor(Math.random() * 55000));
+	const min = 10000;
+	const range = 55000; // 10000..64999
+	const maxUint32 = 0x100000000;
+	const limit = maxUint32 - (maxUint32 % range); // avoid modulo bias
+
+	const buf = new Uint32Array(1);
+	let n: number;
+	do {
+		crypto.getRandomValues(buf);
+		n = buf[0]!;
+	} while (n >= limit);
+
+	return String(min + (n % range));
 }
 
 /**
