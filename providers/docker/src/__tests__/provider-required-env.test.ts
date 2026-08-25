@@ -38,6 +38,22 @@ vi.mock("../prereqs.js", () => ({
 
 vi.mock("../port-allocator.js", () => ({
 	allocatePorts: async () => ({ web: 8080, worker: 8081, default: 8080 }),
+	// Faithful re-implementation of the real key scheme: first published
+	// endpoint keeps the bare component name, the rest get `component:name`
+	// (or `component:port`). The factory cannot spread the real module — see
+	// the `importOriginal` note below.
+	publishedEndpoints: (
+		component: string,
+		provides?: { port: number; exposed?: boolean; name?: string; protocol?: string; bind?: string }[],
+	) =>
+		(provides?.filter((p) => p.exposed === true) ?? []).map((p, index) => ({
+			key: index === 0 ? component : `${component}:${p.name ?? p.port}`,
+			component,
+			name: p.name,
+			port: p.port,
+			protocol: p.protocol,
+			bind: p.bind,
+		})),
 }));
 
 // A prompt here would be the rule-8 violation this test guards against: a

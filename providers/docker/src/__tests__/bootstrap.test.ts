@@ -235,6 +235,7 @@ components:
     provides:
       - port: 8080
         protocol: http
+        exposed: true
     commands:
       bootstrap: "cli --url $app.url --authority $app.authority --tls $app.tls"
 `);

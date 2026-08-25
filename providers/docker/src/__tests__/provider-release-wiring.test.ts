@@ -45,6 +45,21 @@ vi.mock("../prereqs.js", () => ({
 
 vi.mock("../port-allocator.js", () => ({
 	allocatePorts: async () => ({ app: 8080 }),
+	// Faithful re-implementation of the real key scheme (bare component name
+	// for the primary, `component:name` / `component:port` for the rest) —
+	// the factory cannot spread the real module, see the note below.
+	publishedEndpoints: (
+		component: string,
+		provides?: { port: number; exposed?: boolean; name?: string; protocol?: string; bind?: string }[],
+	) =>
+		(provides?.filter((p) => p.exposed === true) ?? []).map((p, index) => ({
+			key: index === 0 ? component : `${component}:${p.name ?? p.port}`,
+			component,
+			name: p.name,
+			port: p.port,
+			protocol: p.protocol,
+			bind: p.bind,
+		})),
 }));
 
 // Both factories list every export the code under test pulls, rather than
