@@ -135,7 +135,7 @@ export function findDeployment(
 /**
  * Find the deployment for the current working directory.
  *
- * `name` narrows the match to one instance (D-59): a deployment's identity is
+ * `name` narrows the match to one instance (D-55): a deployment's identity is
  * the (source, name) pair, so an unnamed `up` (`name: null`) never resolves to
  * a named instance from the same directory, and vice versa. Omitting `name`
  * keeps the legacy any-instance behavior — first match wins — for callers that
@@ -154,7 +154,7 @@ export function findBySource(
 	return null;
 }
 
-/** Every deployment launched from `sourcePath`, one per instance name (D-59). */
+/** Every deployment launched from `sourcePath`, one per instance name (D-55). */
 export function findAllBySource(
 	index: DeploymentIndex,
 	sourcePath: string,
