@@ -85,7 +85,7 @@ export async function resolveDeploymentTarget(
 	const index = await loadIndex(dir);
 
 	// No target → find by pwd. Several instances can share one directory
-	// (D-59: identity is the (source, name) pair), and picking one silently
+	// (D-55: identity is the (source, name) pair), and picking one silently
 	// would aim `down`/`status`/`logs` at an instance the user never named.
 	if (!target) {
 		const cwd = process.cwd();

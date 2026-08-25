@@ -1,5 +1,5 @@
 /**
- * Instance identity at the command layer (#240, D-59): `--name` reaches the
+ * Instance identity at the command layer (#240, D-55): `--name` reaches the
  * docker provider, the deployment index keys instances by the (source, name)
  * pair, and the macOS provider refuses the flag instead of silently running a
  * single unlabeled instance.
@@ -77,7 +77,7 @@ describe("up --name reaches the docker provider", () => {
 	});
 });
 
-describe("the deployment index keys instances by (source, name) (D-59)", () => {
+describe("the deployment index keys instances by (source, name) (D-55)", () => {
 	it("gives each label from one directory its own entry, plus the unnamed one", async () => {
 		const deps = { up: fakeUp([]), indexDir, recordDir };
 		await handleUp(projectDir, {}, deps);
@@ -112,7 +112,7 @@ describe("the deployment index keys instances by (source, name) (D-59)", () => {
 	});
 });
 
-describe("the macOS provider refuses --name (D-59 floor)", () => {
+describe("the macOS provider refuses --name (D-55 floor)", () => {
 	it("errors clearly instead of silently running the single unlabeled instance", async () => {
 		const exit = process.exit;
 		let exited: number | undefined;

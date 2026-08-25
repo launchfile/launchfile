@@ -99,7 +99,7 @@ export async function handleUp(
 		: `catalog:${upTarget.value}`;
 
 	// Check for existing deployment. Identity is the (source, name) pair
-	// (D-59): an unnamed `up` and each `--name <label>` from one directory are
+	// (D-55): an unnamed `up` and each `--name <label>` from one directory are
 	// distinct instances, each with its own index row.
 	const index = await loadIndex(indexDir);
 	const existingDeployment = findBySource(index, sourceKey, flags.name ?? null);
@@ -203,7 +203,7 @@ export async function handleUp(
 		}
 	} else if (provider === "macos") {
 		// This provider keys all state by project directory and has no
-		// instance-label support yet. Refusing is D-59's floor: accepting the
+		// instance-label support yet. Refusing is D-55's floor: accepting the
 		// flag while running the same single instance would silently break the
 		// isolation `--name` promises.
 		if (flags.name) {
