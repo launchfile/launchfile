@@ -9,6 +9,13 @@ on:
   # Nothing holds the filter up on the other side — CI reads no secret and
   # carries a read-only token, so a run costs minutes and nothing else.
   pull_request:
+  # And every merge into main. A `pull_request` run tests `refs/pull/N/merge` —
+  # the PR merged into main as main stood when that run started — so once main
+  # moves, the result describes a tree that no longer exists. Two PRs green
+  # against different bases can produce a broken main between them. This is the
+  # only run that looks at the merged result.
+  push:
+    branches: [main]
 
 # Least privilege: every job here only reads the checked-out code (build/test/
 # validate). No job writes to the repo, comments, or deploys, so the workflow
