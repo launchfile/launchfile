@@ -482,7 +482,7 @@ components:
 	});
 });
 
-describe("lintDeprecations — the legacy host block (D-58/D-42)", () => {
+describe("lintDeprecations — the legacy host block (D-54/D-42)", () => {
 	const LEGACY = `
 name: legacy
 image: app:1
