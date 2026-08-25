@@ -53,6 +53,55 @@ supports:
     generator: secret
     sensitive: true</code></pre>
 
+  <h2 id="lifecycle">Lifecycle commands</h2>
+
+  <p><code>commands.start</code> is one of six lifecycle slots — <code>build</code>, <code>release</code>, <code>start</code>, <code>seed</code>, <code>test</code>, and <code>bootstrap</code> — each with its own failure semantics. Source mode adds <code>install</code> and <code>dev</code> for running natively during development:</p>
+
+  <pre><code class="language-yaml">commands:
+  build: "npm run build"
+  release: "npx prisma migrate deploy"
+  start: "node server.js"</code></pre>
+
+  <p>See <a href="/learn/lifecycle-commands/">Lesson 5</a> for what each slot's failure costs you, and the <a href="https://launchfile.org/spec/commands/">spec</a> for the full contract.</p>
+
+  <h2 id="storage">Storage</h2>
+
+  <p>The <code>storage</code> block declares named volumes. Mark data that must survive redeploys as <code>persistent</code>, and volumes whose content only the operator can supply (a music library, a photo collection) with <code>content: operator</code> — the provider binds a directory you pass at launch (<code>--storage music=~/Music</code>) or refuses, never starts with an empty library:</p>
+
+  <pre><code class="language-yaml">storage:
+  data:
+    path: /var/lib/app/data
+    persistent: true
+  music:
+    path: /music
+    content: operator
+
+env:
+  DATA_DIR: $storage.data.path   # the volume's real provisioned path</code></pre>
+
+  <p>See <a href="/learn/ports-storage-health/">Lesson 4</a> and the <a href="https://launchfile.org/spec/storage/">spec</a>.</p>
+
+  <h2 id="source">Source origin</h2>
+
+  <p><code>repository</code> declares where the app's source lives, with an optional <code>#ref</code> fragment pinning the baseline revision:</p>
+
+  <pre><code class="language-yaml">repository: https://github.com/acme/my-app#v2.1.0</code></pre>
+
+  <h2 id="host-capabilities">Host capabilities</h2>
+
+  <p>Apps that need privileged host access — the Docker socket, the host network, the host filesystem — declare it as a <code>host:</code>-marked entry in <code>requires</code> or <code>supports</code>. The provider grants the capability or refuses the deployment; nothing degrades silently:</p>
+
+  <pre><code class="language-yaml">requires:
+  - host: &#123; container_runtime: docker &#125;
+    set_env:
+      DOCKER_HOST: $url</code></pre>
+
+  <div style="padding: 0.875rem 1.25rem; border-radius: 0.5rem; border: 1px solid var(--lf-purple-100); background: var(--lf-purple-50); margin: 1rem 0 1.5rem;">
+    <p style="margin: 0; font-size: 0.9375rem; color: var(--lf-charcoal);">
+      <strong>Deprecated:</strong> the legacy top-level <code>host:</code> block is deprecated in <code>launch/v1</code> and removed in <code>launch/v2</code>. Existing files stay valid — <code>launchfile validate</code> shows the migration. See <a href="/learn/specialized-patterns/" style="color: var(--lf-primary); font-weight: 600;">Lesson 7</a> for the mapping table.
+    </p>
+  </div>
+
   <h2 id="multi-component">Multi-component apps</h2>
 
   <p>For apps with multiple services (e.g., a backend API + a frontend), use the <code>components</code> map:</p>
