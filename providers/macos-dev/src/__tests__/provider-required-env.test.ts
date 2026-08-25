@@ -62,12 +62,17 @@ vi.mock("../runtimes/index.js", () => ({
 }));
 
 vi.mock("../shell.js", () => ({
-	shell: async (cmd: string, opts?: { env?: Record<string, string> }) => {
+	shell: async (cmd: string, _args: string[], opts?: { env?: Record<string, string> }) => {
 		shellCalls.push(cmd);
 		releaseEnvs.push(opts?.env);
 		return { exitCode: 0, stdout: "", stderr: "" };
 	},
 	shellOk: async () => true,
+	shellScript: async (command: string, opts?: { env?: Record<string, string> }) => {
+		shellCalls.push(command);
+		releaseEnvs.push(opts?.env);
+		return { exitCode: 0, stdout: "", stderr: "" };
+	},
 }));
 
 vi.mock("../process-manager.js", () => ({
