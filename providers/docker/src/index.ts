@@ -10,6 +10,7 @@ export {
 	dockerList,
 	HEALTH_TIMEOUT_MS,
 	UnsuppliedRequiredEnvError,
+	ForeignSourceError,
 	type DockerUpOpts,
 	type DockerUpResult,
 } from "./provider.js";
@@ -33,6 +34,8 @@ export {
 export { resolveSource, type ResolvedSource } from "./source-resolver.js";
 export { dockerBootstrap, type BootstrapResult } from "./bootstrap.js";
 export {
+	instanceSlug,
+	InvalidInstanceLabelError,
 	loadDockerSource,
 	type DockerSourceInfo,
 	type DockerSourceType,
