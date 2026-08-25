@@ -1,4 +1,10 @@
-export { cmdInspect, cmdSchema, cmdValidate, collectHostCapabilities } from "./commands.js";
+export {
+	cmdInspect,
+	cmdSchema,
+	cmdValidate,
+	collectHostCapabilities,
+	collectOperatorStorage,
+} from "./commands.js";
 export {
 	DEPRECATED_IN,
 	DEPRECATION_REGISTRY,

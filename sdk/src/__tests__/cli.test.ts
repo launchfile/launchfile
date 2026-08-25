@@ -130,6 +130,59 @@ describe("launchfile CLI", () => {
 			expect(stdout).toContain("filesystem=read-write (required)");
 		});
 
+		it("lists content: operator volumes in the privilege summary (D-50)", () => {
+			const { stdout, exitCode } = run([
+				"validate",
+				`${EXAMPLES}/operator-content.yaml`,
+			]);
+			expect(exitCode).toBe(0);
+			expect(stdout).toContain("operator-supplied storage:");
+			expect(stdout).toContain("music");
+			// The provider-owned sibling volume is not part of the summary.
+			expect(stdout).not.toMatch(/operator-supplied storage:.*data/);
+		});
+
+		it("reports operatorStorage in JSON output, component-prefixed outside default (D-50)", () => {
+			const { stdout, exitCode } = run([
+				"validate",
+				fixture(
+					"version: launch/v1\nname: media\ncomponents:\n  web:\n    image: app:1\n" +
+						"    storage:\n      music:\n        path: /music\n        content: operator\n" +
+						"      data:\n        path: /data\n",
+				),
+				"--json",
+			]);
+			expect(exitCode).toBe(0);
+			const result = JSON.parse(stdout);
+			expect(result.valid).toBe(true);
+			expect(result.operatorStorage).toEqual(["web.music"]);
+		});
+
+		it("omits operatorStorage when no volume carries the marker", () => {
+			const { stdout } = run([
+				"validate",
+				`${EXAMPLES}/storage-paths.yaml`,
+				"--json",
+			]);
+			expect(JSON.parse(stdout).operatorStorage).toBeUndefined();
+		});
+
+		it("warns on persistent: false beside content: operator (D-50)", () => {
+			const { stdout, exitCode } = run([
+				"validate",
+				fixture(
+					"version: launch/v1\nname: media\nimage: app:1\n" +
+						"storage:\n  music:\n    path: /music\n    content: operator\n    persistent: false\n",
+				),
+				"--json",
+			]);
+			expect(exitCode).toBe(0);
+			const result = JSON.parse(stdout);
+			expect(result.valid).toBe(true);
+			expect(result.warnings.join(" ")).toContain("contradiction");
+			expect(result.warnings.join(" ")).toContain("D-50");
+		});
+
 		it("fails on malformed YAML", () => {
 			const { exitCode } = run(["validate", resolve(SDK_ROOT, "package.json")]);
 			expect(exitCode).toBe(1);
@@ -242,7 +295,7 @@ describe("launchfile CLI", () => {
 				expect(result.valid).toBe(true);
 				expect(result.warnings).toContain(
 					'storage "caddy.caddyfile": unrecognized keys "source", "readonly" ' +
-						"(known: path, size, persistent) — unknown keys are ignored and " +
+						"(known: path, size, persistent, content) — unknown keys are ignored and " +
 						"will not affect deployment",
 				);
 			});

@@ -546,7 +546,7 @@ components:
 		expect(warnings).toHaveLength(1);
 		expect(warnings[0]).toBe(
 			'storage "caddy.caddyfile": unrecognized keys "source", "readonly" ' +
-				"(known: path, size, persistent) — unknown keys are ignored and " +
+				"(known: path, size, persistent, content) — unknown keys are ignored and " +
 				"will not affect deployment",
 		);
 	});
@@ -564,7 +564,7 @@ storage:
 		expect(warnings).toHaveLength(1);
 		expect(warnings[0]).toContain('storage "data"');
 		expect(warnings[0]).toContain('"mode"');
-		expect(warnings[0]).toContain("known: path, size, persistent");
+		expect(warnings[0]).toContain("known: path, size, persistent, content");
 	});
 
 	it("emits one warning per offending entry across components", () => {
@@ -613,5 +613,69 @@ components:
 		expect(lintUnknownStorageKeys(null)).toEqual([]);
 		expect(lintUnknownStorageKeys("just a string")).toEqual([]);
 		expect(lintUnknownStorageKeys(parseLaunchYaml("name: acme\nstorage: not-a-map\n"))).toEqual([]);
+	});
+});
+
+describe("lintLaunch — persistent: false beside content: operator (D-50)", () => {
+	it("warns that the pair is a contradiction, naming the volume", () => {
+		const warnings = lintLaunch(
+			readLaunch(`
+name: media-server
+image: navidrome:latest
+storage:
+  music:
+    path: /music
+    content: operator
+    persistent: false
+`),
+			{ suppressPortabilityWarnings: true },
+		);
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toBe(
+			'storage "music": `persistent: false` alongside `content: operator` ' +
+				"is a contradiction — the operator's directory outlives the " +
+				"deployment, and providers ignore `persistent` on an " +
+				"operator-supplied volume (D-50)",
+		);
+	});
+
+	it("prefixes the component name outside the default component", () => {
+		const warnings = lintLaunch(
+			readLaunch(`
+name: media-server
+components:
+  web:
+    image: navidrome:latest
+    storage:
+      music:
+        path: /music
+        content: operator
+        persistent: false
+`),
+			{ suppressPortabilityWarnings: true },
+		);
+		expect(warnings.join(" ")).toContain('storage "web.music"');
+	});
+
+	it("stays silent for content: operator alone, with persistent: true, or persistent: false alone", () => {
+		const clean = lintLaunch(
+			readLaunch(`
+name: media-server
+image: navidrome:latest
+storage:
+  music:
+    path: /music
+    content: operator
+    persistent: true
+  library:
+    path: /library
+    content: operator
+  cache:
+    path: /cache
+    persistent: false
+`),
+			{ suppressPortabilityWarnings: true },
+		);
+		expect(clean).toEqual([]);
 	});
 });

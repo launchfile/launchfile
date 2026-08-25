@@ -103,6 +103,25 @@ export function collectHostCapabilities(launch: NormalizedLaunch): string[] {
 	return [...caps].sort();
 }
 
+/**
+ * Collect the volumes marked `content: operator` (D-50) — the file-derived
+ * half of the privilege summary, listed alongside `host:` capabilities.
+ * The marker declares provenance, not a privilege grant: which binding a
+ * provider chooses (and its grant or refusal) is surfaced at launch, per
+ * PROVIDERS.md §11 — `validate` reads the parsed file alone. Each item is
+ * the volume name, `component.volume` outside the default component.
+ */
+export function collectOperatorStorage(launch: NormalizedLaunch): string[] {
+	const volumes = new Set<string>();
+	for (const [componentName, comp] of Object.entries(launch.components)) {
+		const prefix = componentName === "default" ? "" : `${componentName}.`;
+		for (const [volumeName, volume] of Object.entries(comp.storage ?? {})) {
+			if (volume.content === "operator") volumes.add(`${prefix}${volumeName}`);
+		}
+	}
+	return [...volumes].sort();
+}
+
 function formatZodErrors(err: unknown): string[] {
 	if (
 		err !== null &&
@@ -148,6 +167,12 @@ export interface ValidateResult {
 	requires?: string[];
 	/** Requested host capabilities (D-44) — the app's privilege surface. */
 	hostCapabilities?: string[];
+	/**
+	 * Volumes marked `content: operator` (D-50) — the file-derived half of
+	 * the privilege summary; the provider surfaces the actual grant or
+	 * refusal at launch (PROVIDERS.md §11).
+	 */
+	operatorStorage?: string[];
 	errors?: string[];
 	/** Non-fatal lint advisories (do not affect `valid`). */
 	warnings?: string[];
@@ -176,6 +201,7 @@ export function cmdValidate(path: string, opts: ValidateOpts = {}): ValidateResu
 		const componentNames = Object.keys(launch.components);
 		const allRequires = collectRequires(launch);
 		const hostCapabilities = collectHostCapabilities(launch);
+		const operatorStorage = collectOperatorStorage(launch);
 		const warnings = [
 			...lintLaunch(launch, {
 				detached: opts.detached,
@@ -192,6 +218,7 @@ export function cmdValidate(path: string, opts: ValidateOpts = {}): ValidateResu
 			components: componentNames,
 			requires: allRequires,
 			...(hostCapabilities.length > 0 && { hostCapabilities }),
+			...(operatorStorage.length > 0 && { operatorStorage }),
 			...(warnings.length > 0 && { warnings }),
 			...(deprecations.length > 0 && { deprecations }),
 		};
@@ -212,6 +239,14 @@ export function cmdValidate(path: string, opts: ValidateOpts = {}): ValidateResu
 				// capability is requested, in either spelling (entry or legacy block).
 				console.log(
 					`  ${fmt.dim("host capabilities requested:")} ${hostCapabilities.join(", ")}`,
+				);
+			}
+			if (operatorStorage.length > 0) {
+				// The D-50 half of the privilege summary — file-derived, like the
+				// D-44 line above. The grant or refusal itself is a launch-time
+				// fact the provider reports (PROVIDERS.md §11).
+				console.log(
+					`  ${fmt.dim("operator-supplied storage:")}   ${operatorStorage.join(", ")}`,
 				);
 			}
 			for (const d of deprecations) {

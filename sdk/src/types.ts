@@ -269,6 +269,12 @@ export interface StorageVolume {
 	size?: string;
 	/** Whether data should survive restarts */
 	persistent?: boolean;
+	/**
+	 * Who supplies the volume's content (D-50). `"operator"`: the operator
+	 * supplies it — the provider binds it at `path` or refuses the component,
+	 * and never initializes the volume empty.
+	 */
+	content?: "operator";
 }
 
 // --- Depends On ---

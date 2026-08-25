@@ -340,7 +340,36 @@ export function lintLaunch(
 	}
 
 	checkResourceProperties(launch, warnings);
+	checkOperatorStorageContradiction(launch, warnings);
 	checkPortability(launch, warnings, opts);
 
 	return warnings;
+}
+
+/**
+ * D-50 contradiction check: `persistent` is not applicable on a volume whose
+ * content is operator-supplied — the operator's directory outlives the
+ * deployment by construction, so providers ignore it there. `persistent: false`
+ * beside `content: operator` therefore asserts something the marker already
+ * denies. MAY-warn per D-50 rule 5; advisory only, never affects `valid`.
+ */
+function checkOperatorStorageContradiction(
+	launch: NormalizedLaunch,
+	warnings: string[],
+): void {
+	for (const [componentName, component] of Object.entries(launch.components)) {
+		const prefix = componentName === "default" ? "" : `${componentName}.`;
+		for (const [volumeName, volume] of Object.entries(
+			component.storage ?? {},
+		)) {
+			if (volume.content === "operator" && volume.persistent === false) {
+				warnings.push(
+					`storage "${prefix}${volumeName}": \`persistent: false\` alongside ` +
+						"`content: operator` is a contradiction — the operator's directory " +
+						"outlives the deployment, and providers ignore `persistent` on an " +
+						"operator-supplied volume (D-50)",
+				);
+			}
+		}
+	}
 }

@@ -254,6 +254,51 @@ storage:
 		expect(writeLaunch(readLaunch(yaml))).toContain("size: 512MB");
 	});
 
+	it("reads the D-50 content: operator marker", () => {
+		const result = readLaunch(`
+name: media-server
+image: navidrome:latest
+storage:
+  data:
+    path: /data
+    persistent: true
+  music:
+    path: /music
+    content: operator
+`);
+		expect(result.components.default?.storage?.music).toEqual({
+			path: "/music",
+			content: "operator",
+		});
+		// The sibling provider-owned volume carries no marker.
+		expect(result.components.default?.storage?.data?.content).toBeUndefined();
+	});
+
+	it("rejects a content value other than operator", () => {
+		expect(() =>
+			readLaunch(`
+name: media-server
+image: navidrome:latest
+storage:
+  music:
+    path: /music
+    content: user
+`),
+		).toThrow();
+	});
+
+	it("carries content: operator through parse → serialize", () => {
+		const yaml = `version: launch/v1
+name: media-server
+image: navidrome:latest
+storage:
+  music:
+    path: /music
+    content: operator
+`;
+		expect(writeLaunch(readLaunch(yaml))).toContain("content: operator");
+	});
+
 	// Secrets
 	it("reads secrets block and passes to normalized output", () => {
 		const result = readLaunch(`
