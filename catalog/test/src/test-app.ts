@@ -98,6 +98,19 @@ if (result.unsuppliedRequired.length > 0) {
   process.exit(1);
 }
 
+// A `content: operator` volume the translator could not bind is the same
+// class of hard failure (D-50): starting the app over an empty volume where
+// the operator's content belongs would record `health_check_passed: true`
+// for a configuration the shipped Docker provider refuses to deploy. Fails
+// before any pull, container, or volume exists.
+if (result.storageRefusals.length > 0) {
+  console.error(`\n=== ${appName}: FAIL — operator-supplied storage not bound (D-50) ===`);
+  for (const { component, volume, message } of result.storageRefusals) {
+    console.error(`  - ${appName} [${component}]: ${volume} — ${message}`);
+  }
+  process.exit(1);
+}
+
 if (result.warnings.length > 0) {
   console.log(`\nWarnings:`);
   for (const w of result.warnings) {

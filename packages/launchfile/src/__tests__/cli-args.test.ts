@@ -7,7 +7,14 @@
 import { execFileSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { flagPresent, getFlagValue, getPositional, hasFlag } from "../cli-args.js";
+import {
+	flagPresent,
+	getFlagValue,
+	getFlagValues,
+	getPositional,
+	hasFlag,
+	parseStoragePairs,
+} from "../cli-args.js";
 
 describe("getPositional (#248)", () => {
 	it("skips the value of a value-taking flag", () => {
@@ -37,6 +44,53 @@ describe("getPositional (#248)", () => {
 	it("does not skip the token after a boolean flag", () => {
 		const args = ["up", "--dry-run", "ghost"];
 		expect(getPositional(args, 1)).toBe("ghost");
+	});
+
+	it("skips --storage values so a pair is never the up target (D-50)", () => {
+		const args = ["up", "--storage", "music=/srv/music", "--storage", "books=/srv/books"];
+		expect(getPositional(args, 0)).toBe("up");
+		expect(getPositional(args, 1)).toBeUndefined();
+		expect(getPositional(["up", "--storage", "music=/x", "ghost"], 1)).toBe("ghost");
+	});
+});
+
+describe("getFlagValues (repeatable --storage, D-50)", () => {
+	it("collects every occurrence, in order", () => {
+		const args = ["up", "--storage", "music=/a", "--storage", "books=/b"];
+		expect(getFlagValues(args, "storage")).toEqual(["music=/a", "books=/b"]);
+	});
+
+	it("reads the inline --flag=value form too, mixed with the separate form", () => {
+		const args = ["up", "--storage=music=/a", "--storage", "books=/b"];
+		expect(getFlagValues(args, "storage")).toEqual(["music=/a", "books=/b"]);
+	});
+
+	it("returns an empty list when the flag is absent", () => {
+		expect(getFlagValues(["up"], "storage")).toEqual([]);
+	});
+});
+
+describe("parseStoragePairs (D-50)", () => {
+	it("splits each pair on the first = only", () => {
+		expect(parseStoragePairs(["music=/srv/music", "web.books=/x=y"])).toEqual({
+			music: "/srv/music",
+			"web.books": "/x=y",
+		});
+	});
+
+	it("rejects a pair with no =", () => {
+		expect(() => parseStoragePairs(["music"])).toThrow('Invalid --storage value "music"');
+	});
+
+	it("rejects an empty volume name or an empty path", () => {
+		expect(() => parseStoragePairs(["=/srv/music"])).toThrow("Invalid --storage value");
+		expect(() => parseStoragePairs(["music="])).toThrow("Invalid --storage value");
+	});
+
+	it("rejects a duplicate key instead of silently picking one", () => {
+		expect(() => parseStoragePairs(["music=/a", "music=/b"])).toThrow(
+			'Duplicate --storage key "music"',
+		);
 	});
 });
 

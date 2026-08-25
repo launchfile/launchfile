@@ -8,6 +8,8 @@ import {
 	dockerUp,
 	type DockerUpOpts,
 	type DockerUpResult,
+	MissingOperatorStoragePathError,
+	UnboundOperatorStorageError,
 	UnsuppliedRequiredEnvError,
 } from "@launchfile/docker";
 import { isLaunchError, type LaunchPhase } from "@launchfile/sdk";
@@ -33,6 +35,13 @@ export interface UpFlags {
 	detach?: boolean;
 	dryRun?: boolean;
 	name?: string;
+	/**
+	 * Host paths for `content: operator` volumes (D-50), keyed as typed on the
+	 * repeatable `--storage <volume>=<path>` / `--storage <component>.<volume>=<path>`
+	 * flag — the component/volume split happens in the provider, against the
+	 * parsed Launchfile.
+	 */
+	storage?: Record<string, string>;
 }
 
 /**
@@ -139,13 +148,19 @@ export async function handleUp(
 						detach: flags.detach,
 						dryRun: flags.dryRun,
 						name: flags.name,
+						storage: flags.storage,
 					}),
 				recordDir,
 			);
 		} catch (err) {
-			// An unsupplied `required:` variable (D-52) is an operator's problem to
-			// fix, not a bug — it gets the provider's own message, not a stack trace.
-			if (err instanceof UnsuppliedRequiredEnvError) {
+			// An unsupplied `required:` variable (D-52) or an unbound/absent
+			// operator storage path (D-50) is an operator's problem to fix, not a
+			// bug — it gets the provider's own message, not a stack trace.
+			if (
+				err instanceof UnsuppliedRequiredEnvError ||
+				err instanceof UnboundOperatorStorageError ||
+				err instanceof MissingOperatorStoragePathError
+			) {
 				console.error(`\n${err.message}`);
 				process.exit(1);
 			}
@@ -210,6 +225,16 @@ export async function handleUp(
 			console.error("--name is not yet supported by the macOS native provider.");
 			console.error(
 				"It runs one instance per project directory. Use a second checkout for a second instance, or the Docker provider (--docker) for named instances.",
+			);
+			process.exit(1);
+		}
+		// D-50's channel has no macOS implementation yet: refusing beats silently
+		// dropping the operator's paths and provisioning provider-owned storage
+		// where their content belongs — the silent-drop D-50 forbids.
+		if (flags.storage && Object.keys(flags.storage).length > 0) {
+			console.error("--storage is not yet supported by the macOS native provider.");
+			console.error(
+				"It provisions provider-owned storage only. Use the Docker provider (--docker) to bind operator-supplied content (D-50).",
 			);
 			process.exit(1);
 		}

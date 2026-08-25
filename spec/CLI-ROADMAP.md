@@ -13,7 +13,7 @@ launchfile <verb> [target] [flags]
 ```
 VERB          TARGET              FLAGS                         PHASE
 ────────────────────────────────────────────────────────────────────
-up            [slug|path]         --docker/--native/-d/--dry-run  1 ✓
+up            [slug|path]         --docker/--native/-d/--dry-run/--name/--storage  1 ✓
 down          [id|slug|name]      --destroy                       1 ✓
 status        [id|slug|name]                                      1 ✓
 logs          [id|slug|name]      --follow                        1 ✓

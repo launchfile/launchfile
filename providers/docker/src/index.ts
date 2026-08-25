@@ -12,6 +12,8 @@ export {
 	UnsuppliedRequiredEnvError,
 	ForeignSourceError,
 	type ForeignSourceDetails,
+	UnboundOperatorStorageError,
+	MissingOperatorStoragePathError,
 	type DockerUpOpts,
 	type DockerUpResult,
 } from "./provider.js";
@@ -30,6 +32,8 @@ export {
 	launchToCompose,
 	type ComposeResult,
 	type ComposeOpts,
+	type StorageBind,
+	type UnboundOperatorVolume,
 	type UnsuppliedRequiredVar,
 } from "./compose-generator.js";
 export { resolveSource, type ResolvedSource } from "./source-resolver.js";

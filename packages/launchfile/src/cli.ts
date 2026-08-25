@@ -28,8 +28,10 @@ import { cmdValidate, cmdInspect, cmdSchema } from "@launchfile/sdk";
 import {
 	hasFlag as argsHasFlag,
 	getFlagValue as argsGetFlagValue,
+	getFlagValues as argsGetFlagValues,
 	getPositional as argsGetPositional,
 	flagPresent as argsFlagPresent,
+	parseStoragePairs,
 } from "./cli-args.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -58,6 +60,12 @@ function getNameFlag(): string | undefined {
 	}
 	return value;
 }
+
+/** The D-50 `--storage` volume-to-path map, or undefined when the flag is absent. */
+const storageFlag = (): Record<string, string> | undefined => {
+	const values = argsGetFlagValues(args, "storage");
+	return values.length > 0 ? parseStoragePairs(values) : undefined;
+};
 
 const command = getPositional(0);
 const target = getPositional(1);
@@ -90,6 +98,11 @@ Options:
   --follow, -f     Stream logs continuously
   --name <label>   Launch a separate named instance of the app — its own
                     state, volumes, network, and ports (Docker provider)
+  --storage <volume>=<path>
+                   Host path for a volume marked \`content: operator\` — you
+                    supply its content; the provider binds it there instead of
+                    creating an empty volume. Repeat per volume; spell the key
+                    <component>.<volume> where the volume name is ambiguous
   --component <n>  Limit bootstrap to a single component
   --detached       (validate) Evaluate as fetched standalone, not read from the
                     app's own checkout — enables the D-43 reduced-portability check
@@ -129,6 +142,7 @@ async function main(): Promise<void> {
 				detach: hasFlag("detach"),
 				dryRun: hasFlag("dry-run"),
 				name: getNameFlag(),
+				storage: storageFlag(),
 			});
 			break;
 
@@ -141,6 +155,7 @@ async function main(): Promise<void> {
 				detach: hasFlag("detach"),
 				dryRun: hasFlag("dry-run"),
 				name: getNameFlag(),
+				storage: storageFlag(),
 			});
 			break;
 

@@ -5,6 +5,7 @@
  * Generates a compose file that can spin up an app with its backing services.
  */
 
+import { accessSync, constants as fsConstants } from "node:fs";
 import { stringify } from "yaml";
 import {
   resolveExpression,
@@ -232,6 +233,16 @@ export interface ComposeResult {
    * `health_check_passed: true` certify apps the shipped provider refuses.
    */
   unsuppliedRequired: { component: string; key: string; sensitive: boolean }[];
+  /**
+   * `content: operator` volumes this compose cannot honestly satisfy (D-50):
+   * no host path supplied, or the supplied path is absent/unreadable — the
+   * directory is never created. Their mounts are ABSENT from the emitted
+   * compose, never an empty volume. The runner turns a non-empty list into a
+   * hard failure naming the app and the volume, exactly as it does for
+   * `unsuppliedRequired` — a silent pass here would let catalog adoption of
+   * the marker flip `health_check_passed` without anyone deciding it.
+   */
+  storageRefusals: { component: string; volume: string; message: string }[];
 }
 
 export interface ComposeOpts {
@@ -244,14 +255,42 @@ export interface ComposeOpts {
    * than a guess.
    */
   testEnv?: Record<string, string>;
+  /**
+   * Host paths for `content: operator` volumes (D-50), keyed by volume name
+   * or `component.volume` — the same map the Docker provider's
+   * `ComposeOpts.storagePaths` takes, with the same first-dot key rule: a
+   * left half naming a component qualifies the key to that component;
+   * anything else is a bare volume name, dots included. Values must be
+   * absolute host paths that exist and are readable — an absent path is
+   * refused, never created.
+   */
+  storagePaths?: Record<string, string>;
 }
 
 export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}): ComposeResult {
   const warnings: string[] = [];
   const images: string[] = [];
   const unsuppliedRequired: ComposeResult["unsuppliedRequired"] = [];
+  const storageRefusals: ComposeResult["storageRefusals"] = [];
   const services: Record<string, Record<string, unknown>> = {};
   const volumes: Record<string, Record<string, unknown>> = {};
+
+  // D-50 storage-path keys, classified once against the component set — the
+  // same first-dot rule as the Docker provider's compose-generator: a key
+  // whose left half names a component is component-qualified; anything else
+  // is a bare volume name, dots included.
+  const componentSet = new Set(Object.keys(launch.components));
+  const qualifiedPaths = new Map<string, { path: string; key: string }>();
+  const barePaths = new Map<string, { path: string; key: string }>();
+  for (const [key, path] of Object.entries(opts.storagePaths ?? {})) {
+    const dot = key.indexOf(".");
+    if (dot > 0 && componentSet.has(key.slice(0, dot))) {
+      qualifiedPaths.set(key, { path, key });
+    } else {
+      barePaths.set(key, { path, key });
+    }
+  }
+  const usedStorageKeys = new Set<string>();
 
   // Pre-generate app-wide secrets
   const secretValues: Record<string, string> = {};
@@ -487,10 +526,46 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
     }
 
     // Storage volumes — use anonymous volumes to preserve image filesystem ownership
-    // (named volumes mount as root, which breaks non-root containers)
+    // (named volumes mount as root, which breaks non-root containers). A
+    // `content: operator` volume (D-50) is instead bound to the supplied host
+    // path, mirroring the Docker provider's four states: path supplied →
+    // bind; no path → refused; path absent/unreadable → refused, never
+    // created; no marker → unchanged. A refused volume gets NO mount — an
+    // empty volume standing in for the operator's content is exactly the
+    // fabrication whose health pass this harness must not certify.
     if (component.storage) {
       const svcVolumes: string[] = [];
-      for (const [, vol] of Object.entries(component.storage)) {
+      for (const [volName, vol] of Object.entries(component.storage)) {
+        if (vol.content === "operator") {
+          const bound =
+            qualifiedPaths.get(`${componentName}.${volName}`) ?? barePaths.get(volName);
+          if (!bound) {
+            storageRefusals.push({
+              component: componentName,
+              volume: volName,
+              message: `no host path supplied for this \`content: operator\` volume — pass storagePaths ({ "${volName}": "<path>" })`,
+            });
+            continue;
+          }
+          usedStorageKeys.add(bound.key);
+          let readable = false;
+          try {
+            accessSync(bound.path, fsConstants.R_OK);
+            readable = true;
+          } catch {
+            // fall through to the refusal below
+          }
+          if (!readable) {
+            storageRefusals.push({
+              component: componentName,
+              volume: volName,
+              message: `supplied path "${bound.path}" does not exist or is not readable — refusing to create it (D-50)`,
+            });
+            continue;
+          }
+          svcVolumes.push(`${bound.path}:${vol.path}`);
+          continue;
+        }
         svcVolumes.push(vol.path);
       }
       if (svcVolumes.length > 0) {
@@ -526,6 +601,16 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
     }
   }
 
+  // A storage-path key that bound nothing surfaces as a warning — only
+  // `content: operator` volumes are bindable, and a typo'd name should not
+  // vanish silently (the unbound marked volume it left behind is refused
+  // separately, so this alone never masks a refusal).
+  for (const key of Object.keys(opts.storagePaths ?? {})) {
+    if (!usedStorageKeys.has(key)) {
+      warnings.push(`storagePaths key "${key}" matches no \`content: operator\` volume — ignored`);
+    }
+  }
+
   const compose: Record<string, unknown> = { services };
   if (Object.keys(volumes).length > 0) {
     compose.volumes = volumes;
@@ -536,6 +621,7 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
     warnings,
     images: [...new Set(images)],
     unsuppliedRequired,
+    storageRefusals,
   };
 }
 
