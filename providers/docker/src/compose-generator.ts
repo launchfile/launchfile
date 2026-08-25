@@ -596,7 +596,12 @@ export interface ComposeOpts {
 	 * factory for: no backing service, no `depends_on`, no volume, and no
 	 * image pull are emitted for it. The entry's `set_env` resolves against
 	 * the supplied `properties`, which speak the standard resource-property
-	 * vocabulary (D-7/D-46).
+	 * vocabulary (D-7/D-46). Suppression is per ENTRY, not per type: where
+	 * two same-type entries exist and only one is supplied, the shared
+	 * backing service is still emitted for the unsupplied one, and the
+	 * supplied one takes its properties from this map. For `supports:`
+	 * entries — which this provider never provisions on its own — a supplied
+	 * entry is the only way their `set_env` bindings can ever inject.
 	 *
 	 * Readiness of the supplied resource is the orchestrator's precondition:
 	 * with no backing service there is no `service_healthy` gate, and the
