@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { parse } from "yaml";
 import { readLaunch } from "@launchfile/sdk";
 import { launchToCompose } from "../compose-generator.js";
+import { allocatePorts, publishedEndpoints } from "../port-allocator.js";
 
 const CATALOG_DIR = join(import.meta.dirname, "../../../../catalog");
 
@@ -95,6 +96,7 @@ image: nginx
 provides:
   - port: 80
     protocol: http
+    exposed: true
     bind: "127.0.0.1"
 `);
 		const result = launchToCompose(launch);
@@ -108,6 +110,7 @@ image: nginx
 provides:
   - port: 80
     protocol: http
+    exposed: true
     bind: "0.0.0.0"
 `);
 		const result = launchToCompose(launch);
@@ -122,6 +125,7 @@ image: nginx
 provides:
   - port: 80
     protocol: http
+    exposed: true
     bind: "127.0.0.1"
 `);
 		const result = launchToCompose(launch, { hostPorts: { default: 9999 } });
@@ -285,6 +289,331 @@ commands:
 		} catch {
 			// appwrite might not exist — skip gracefully
 		}
+	});
+});
+
+// D-27: only `exposed: true` publishes; D-6: endpoint name is the identity
+describe("multi-endpoint publication (D-27 / D-6)", () => {
+	it("publishes every exposed:true endpoint with an explicit host mapping", () => {
+		const launch = readLaunch(`
+name: proxy
+image: caddy
+provides:
+  - port: 80
+    protocol: http
+    exposed: true
+  - name: https
+    port: 443
+    protocol: https
+    exposed: true
+`);
+		const result = launchToCompose(launch, {
+			hostPorts: { default: 18080, "default:https": 18443 },
+		});
+		expect(result.yaml).toContain("18080:80");
+		expect(result.yaml).toContain("18443:443");
+		// No bare container port — that would let Docker re-pick on every recreate
+		expect(result.yaml).not.toMatch(/^\s+- "?443"?$/m);
+		expect(result.ports).toEqual({ default: 18080, "default:https": 18443 });
+		expect(result.endpoints["default:https"]).toMatchObject({
+			component: "default",
+			name: "https",
+			containerPort: 443,
+			hostPort: 18443,
+			protocol: "https",
+		});
+	});
+
+	it("does not publish entries that omit exposed (D-27: default false)", () => {
+		// The mailpit shape: web UI opted in, SMTP unmarked → internal
+		const launch = readLaunch(`
+name: mailpit-like
+image: axllent/mailpit
+provides:
+  - name: web-ui
+    port: 8025
+    protocol: http
+    exposed: true
+  - name: smtp
+    port: 1025
+    protocol: tcp
+`);
+		const result = launchToCompose(launch, { hostPorts: { default: 18025 } });
+		expect(result.yaml).toContain("18025:8025");
+		expect(result.yaml).not.toContain("1025");
+		expect(result.ports).toEqual({ default: 18025 });
+		expect(Object.keys(result.endpoints)).toEqual(["default"]);
+		// Something *is* published, so the unreachable-app warning must stay quiet
+		expect(result.warnings.filter((w) => w.includes("published to the host"))).toEqual([]);
+	});
+
+	it("warns when nothing in the whole app is published", () => {
+		const launch = readLaunch(`
+name: internal-only
+image: postgres-like
+provides:
+  - port: 5432
+    protocol: tcp
+`);
+		const result = launchToCompose(launch);
+		expect(result.ports).toEqual({});
+		expect(result.yaml).not.toContain("ports:");
+		const warning = result.warnings.find((w) => w.includes("nothing is published to the host"));
+		expect(warning).toBeDefined();
+		expect(warning).toContain("internal-only:");
+		expect(warning).toContain("exposed: true");
+		expect(warning).toContain("D-27");
+	});
+
+	it("stays silent about internal components when the app publishes something", () => {
+		// The supabase shape: five internal services behind one gateway. D-27's
+		// rationale calls this the norm, so it must not produce a diagnostic.
+		const launch = readLaunch(`
+name: gatewayed
+components:
+  postgres:
+    image: postgres-like
+    provides:
+      - port: 5432
+        protocol: tcp
+  studio:
+    image: studio-like
+    provides:
+      - port: 3000
+        protocol: http
+  kong:
+    image: kong-like
+    provides:
+      - port: 8000
+        protocol: http
+        exposed: true
+`);
+		const result = launchToCompose(launch, { hostPorts: { kong: 18000 } });
+		expect(result.ports).toEqual({ kong: 18000 });
+		expect(result.warnings.filter((w) => w.includes("published to the host"))).toEqual([]);
+	});
+
+	it("resolves $components.* for an explicitly exposed: false endpoint", () => {
+		// `exposed` governs the host boundary only — an endpoint marked
+		// `exposed: false` is still on the container network, so a sibling must
+		// reach it. Same answer as omitting the field entirely.
+		const launch = readLaunch(`
+name: stack
+components:
+  db:
+    image: postgres-like
+    provides:
+      - port: 5432
+        protocol: tcp
+        exposed: false
+  web:
+    image: nginx
+    provides:
+      - port: 3000
+        protocol: http
+        exposed: true
+    env:
+      DB_PORT: $components.db.port
+`);
+		const result = launchToCompose(launch, { hostPorts: { web: 13000 } });
+		expect(result.yaml).toContain('DB_PORT: "5432"');
+		// … while staying unpublished on the host
+		expect(result.ports).toEqual({ web: 13000 });
+	});
+
+	it("does not warn about publication when the app declares no provides at all", () => {
+		// A worker/cron app has nothing to publish; silence is correct.
+		const launch = readLaunch(`
+name: worker-only
+image: worker-like
+commands:
+  start: "./worker"
+`);
+		const result = launchToCompose(launch);
+		expect(result.ports).toEqual({});
+		expect(result.warnings.filter((w) => w.includes("published to the host"))).toEqual([]);
+	});
+
+	it("publishes nothing for a component with no exposed:true entry, but still registers $components.*", () => {
+		const launch = readLaunch(`
+name: stack
+components:
+  db:
+    image: postgres-like
+    provides:
+      - port: 5432
+        protocol: tcp
+  web:
+    image: nginx
+    provides:
+      - port: 3000
+        protocol: http
+        exposed: true
+    env:
+      DB_PORT: $components.db.port
+`);
+		const result = launchToCompose(launch, { hostPorts: { web: 13000 } });
+		// db's endpoint is internal: no host mapping, no ports entry …
+		expect(result.ports).toEqual({ web: 13000 });
+		expect(result.yaml).not.toContain(":5432");
+		// … but the in-network reference still resolves (independent of D-27)
+		expect(result.yaml).toContain('DB_PORT: "5432"');
+		// … and db being internal is not itself worth a warning — web is published
+		expect(result.warnings.filter((w) => w.includes("published to the host"))).toEqual([]);
+	});
+
+	it("emits /udp for udp endpoints", () => {
+		const launch = readLaunch(`
+name: wg-like
+image: wg-easy
+provides:
+  - name: web-ui
+    port: 51821
+    protocol: http
+    exposed: true
+  - name: wireguard
+    port: 51820
+    protocol: udp
+    exposed: true
+`);
+		const result = launchToCompose(launch, {
+			hostPorts: { default: 51821, "default:wireguard": 51820 },
+		});
+		expect(result.yaml).toContain("51820:51820/udp");
+		expect(result.yaml).not.toMatch(/51821:51821\/udp/);
+	});
+
+	it("applies bind per endpoint, including secondaries", () => {
+		const launch = readLaunch(`
+name: bound
+image: nginx
+provides:
+  - port: 80
+    protocol: http
+    exposed: true
+  - name: admin
+    port: 8443
+    protocol: https
+    exposed: true
+    bind: "127.0.0.1"
+`);
+		const result = launchToCompose(launch, {
+			hostPorts: { default: 10080, "default:admin": 10443 },
+		});
+		expect(result.yaml).toContain("10080:80");
+		expect(result.yaml).toContain("127.0.0.1:10443:8443");
+	});
+
+	it("gives same-port endpoints distinct keys and never emits a duplicate mapping", () => {
+		const launch = readLaunch(`
+name: samesies
+image: nginx
+provides:
+  - name: api
+    port: 8080
+    protocol: http
+    exposed: true
+  - name: metrics
+    port: 8080
+    protocol: http
+    exposed: true
+`);
+		const withPorts = launchToCompose(launch, {
+			hostPorts: { default: 18080, "default:metrics": 18081 },
+		});
+		expect(withPorts.yaml).toContain("18080:8080");
+		expect(withPorts.yaml).toContain("18081:8080");
+
+		// Without an allocator run, both fall back to the container port; the
+		// generator must not emit the identical mapping twice (compose rejects it).
+		const bare = launchToCompose(launch);
+		const occurrences = bare.yaml.match(/- "?8080:8080"?/g) ?? [];
+		expect(occurrences).toHaveLength(1);
+	});
+
+	it("round-trips allocator keys through the generator into result.ports", async () => {
+		const launch = readLaunch(`
+name: rt
+image: caddy
+provides:
+  - port: 80
+    protocol: http
+    exposed: true
+  - name: https
+    port: 443
+    protocol: https
+    exposed: true
+  - port: 8443
+    protocol: https
+    exposed: true
+`);
+		const hostPorts = await allocatePorts(launch.components, "rt");
+		const result = launchToCompose(launch, { hostPorts });
+
+		// Every allocated key survives into result.ports with the same value,
+		// so state persists exactly what the allocator will read back.
+		expect(result.ports).toEqual(hostPorts);
+		expect(Object.keys(hostPorts).sort()).toEqual(["default", "default:8443", "default:https"]);
+		// And each mapping is explicit in the yaml
+		for (const [key, hostPort] of Object.entries(hostPorts)) {
+			const containerPort = result.endpoints[key]!.containerPort;
+			expect(result.yaml).toContain(`${hostPort}:${containerPort}`);
+		}
+	});
+
+	it("keeps $app.* on the first component with an exposed:true entry (the supabase shape)", () => {
+		const launch = readLaunch(`
+name: stack
+components:
+  db:
+    image: postgres-like
+    provides:
+      - port: 5432
+        protocol: tcp
+  gateway:
+    image: kong-like
+    provides:
+      - port: 8000
+        protocol: http
+        exposed: true
+    env:
+      PUBLIC_URL: $app.url
+`);
+		const result = launchToCompose(launch, { hostPorts: { gateway: 18000 } });
+		// db comes first but is internal — $app.* must skip it (D-27)
+		expect(result.yaml).toContain("PUBLIC_URL: http://localhost:18000");
+	});
+});
+
+describe("publishedEndpoints", () => {
+	it("keys the primary by bare component name and secondaries by endpoint name (D-6)", () => {
+		const eps = publishedEndpoints("caddy", [
+			{ port: 80, protocol: "http", exposed: true },
+			{ name: "https", port: 443, protocol: "https", exposed: true },
+			{ port: 9090, protocol: "http", exposed: true },
+		]);
+		expect(eps.map((e) => e.key)).toEqual(["caddy", "caddy:https", "caddy:9090"]);
+	});
+
+	it("excludes entries without exposed: true", () => {
+		const eps = publishedEndpoints("app", [
+			{ port: 80, protocol: "http", exposed: true },
+			{ port: 22, protocol: "tcp" },
+			{ port: 53, protocol: "udp", exposed: false },
+		]);
+		expect(eps).toHaveLength(1);
+		expect(eps[0]!.key).toBe("app");
+	});
+
+	it("breaks key collisions between unnamed same-port entries", () => {
+		const eps = publishedEndpoints("app", [
+			{ port: 8080, protocol: "http", exposed: true },
+			{ port: 8080, protocol: "http", exposed: true },
+			{ port: 8080, protocol: "http", exposed: true },
+		]);
+		const keys = eps.map((e) => e.key);
+		expect(new Set(keys).size).toBe(3);
+		expect(keys[0]).toBe("app");
 	});
 });
 

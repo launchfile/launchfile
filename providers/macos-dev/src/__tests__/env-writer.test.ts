@@ -86,6 +86,39 @@ describe("computeAppProperties (D-33)", () => {
 		expect(app.url).toBe("http://localhost:10043");
 	});
 
+	// D-27: `exposed` defaults to false, so an entry that merely omits it is
+	// internal and cannot be the app's public address. The supabase shape —
+	// an internal Postgres declared before the public gateway — is the case
+	// that separates the two rules, and the docker provider must agree (P-5).
+	it("skips a component whose provides entry omits exposed (D-27)", () => {
+		const launch = baseLaunch({
+			components: {
+				postgres: {
+					provides: [{ protocol: "tcp", port: 5432 }],
+				} as unknown as NormalizedComponent,
+				kong: {
+					provides: [{ protocol: "http", port: 8000, exposed: true }],
+				} as NormalizedComponent,
+			},
+		});
+		const app = computeAppProperties(launch, { postgres: 5432, kong: 18000 });
+		expect(app.port).toBe(18000);
+		expect(app.url).toBe("http://localhost:18000");
+	});
+
+	it("treats an explicit exposed: false entry as internal", () => {
+		const launch = baseLaunch({
+			components: {
+				db: {
+					provides: [{ protocol: "tcp", port: 5432, exposed: false }],
+				} as NormalizedComponent,
+			},
+		});
+		const app = computeAppProperties(launch, { db: 15432 });
+		expect(app.port).toBe(0);
+		expect(app.url).toBe("");
+	});
+
 	it("returns port 0 and empty url when no component is exposed", () => {
 		const launch = baseLaunch({
 			components: {

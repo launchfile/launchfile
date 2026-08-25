@@ -16,6 +16,7 @@ import {
 	composeProject,
 	stateDir,
 	stateBaseDir,
+	type StateEndpoint,
 } from "./state.js";
 import { allocatePorts } from "./port-allocator.js";
 import { launchToCompose, type UnsuppliedRequiredVar } from "./compose-generator.js";
@@ -231,10 +232,13 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 			}
 		}
 
-		// Update state
+		// Update state. The full ports map (composite keys included) is what
+		// the allocator reads back on the next `up` — persisting only the
+		// primary would let every secondary endpoint move across restarts.
 		state.secrets = result.secrets;
 		state.generatedEnv = result.generatedEnv;
 		state.ports = result.ports;
+		state.endpoints = result.endpoints;
 
 		const upResult: DockerUpResult = {
 			slug: resolved.slug,
@@ -247,7 +251,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		if (opts.dryRun) {
 			console.log("\n--- docker-compose.yml ---\n");
 			console.log(result.yaml);
-			printSummary(launch.name, result.ports, summaryOnly);
+			printSummary(launch.name, result.ports, summaryOnly, result.endpoints);
 			return upResult;
 		}
 
@@ -363,7 +367,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		});
 
 		// Print summary
-		printSummary(launch.name, result.ports, summaryOnly);
+		printSummary(launch.name, result.ports, summaryOnly, result.endpoints);
 
 		return upResult;
 	});
@@ -431,8 +435,8 @@ export async function dockerStatus(slug?: string): Promise<void> {
 
 		if (Object.keys(state.ports).length > 0) {
 			console.log("\nAccess URLs:");
-			for (const [name, port] of Object.entries(state.ports)) {
-				console.log(`  ${name}: http://localhost:${port}`);
+			for (const [key, port] of Object.entries(state.ports)) {
+				console.log(`  ${key}: ${endpointAddress(port, state.endpoints?.[key]?.protocol)}`);
 			}
 		}
 	});
@@ -542,25 +546,63 @@ async function waitForHealth(project: string, composeFile: string): Promise<bool
 	return false;
 }
 
+/** The component a ports-map key belongs to (`caddy:https` → `caddy`). */
+export function componentOfPortKey(
+	key: string,
+	endpoints?: Record<string, StateEndpoint>,
+): string {
+	return endpoints?.[key]?.component ?? key.split(":")[0]!;
+}
+
 /**
- * Build the "<component> is running at …" summary lines, one per exposed port.
+ * Human-readable address for a published endpoint. HTTP-family protocols get
+ * a browsable URL; raw tcp/udp/grpc endpoints get `localhost:<port> (<proto>)`
+ * because an `http://` link to an SMTP or DNS port would be wrong. Keys with
+ * no endpoint metadata (state files written by older versions) keep the
+ * legacy `http://` form.
+ */
+export function endpointAddress(port: number, protocol?: string): string {
+	switch (protocol) {
+		case "https":
+			return `https://localhost:${port}`;
+		case "ws":
+			return `ws://localhost:${port}`;
+		case "tcp":
+		case "udp":
+		case "grpc":
+			return `localhost:${port} (${protocol})`;
+		default:
+			return `http://localhost:${port}`;
+	}
+}
+
+/**
+ * Build the "<component> is running at …" summary lines, one per published
+ * endpoint.
  *
  * `only`, when provided, restricts the summary to that set of component names —
  * used by the component selector (#77) so a partial `up` doesn't claim that
- * components it never started are running. An undefined `only` means "report
- * everything" (the all-components default). Pure and side-effect-free so it can
- * be unit-tested without spinning Docker.
+ * components it never started are running. Composite keys (`caddy:https`)
+ * match through their component (`caddy`), so a selected component reports
+ * every endpoint it publishes. An undefined `only` means "report everything"
+ * (the all-components default). Pure and side-effect-free so it can be
+ * unit-tested without spinning Docker.
  */
 export function summaryLines(
 	appName: string,
 	ports: Record<string, number>,
 	only?: ReadonlySet<string>,
+	endpoints?: Record<string, StateEndpoint>,
 ): string[] {
 	const lines: string[] = [];
-	for (const [name, port] of Object.entries(ports)) {
-		if (only && !only.has(name)) continue;
-		const label = name === "default" ? appName : name;
-		lines.push(`  ${label} is running at http://localhost:${port}`);
+	for (const [key, port] of Object.entries(ports)) {
+		const component = componentOfPortKey(key, endpoints);
+		if (only && !only.has(component)) continue;
+		const base = component === "default" ? appName : component;
+		// Secondary endpoints carry their endpoint name (D-6) or container
+		// port as a qualifier so multi-endpoint components stay tellable apart.
+		const qualifier = key === component ? "" : ` (${endpoints?.[key]?.name ?? key.slice(component.length + 1)})`;
+		lines.push(`  ${base}${qualifier} is running at ${endpointAddress(port, endpoints?.[key]?.protocol)}`);
 	}
 	return lines;
 }
@@ -569,9 +611,10 @@ function printSummary(
 	appName: string,
 	ports: Record<string, number>,
 	only?: ReadonlySet<string>,
+	endpoints?: Record<string, StateEndpoint>,
 ): void {
 	console.log("");
-	for (const line of summaryLines(appName, ports, only)) {
+	for (const line of summaryLines(appName, ports, only, endpoints)) {
 		console.log(line);
 	}
 }

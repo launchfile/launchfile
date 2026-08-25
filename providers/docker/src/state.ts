@@ -14,6 +14,21 @@ import { registerSecrets } from "./redact.js";
 /** Where the Launchfile that produced this state came from. */
 export type DockerSourceType = "local" | "catalog" | "url";
 
+/**
+ * A published endpoint's metadata, keyed by the same key as its entry in
+ * `DockerState.ports`. Carries what the ports map alone cannot: which
+ * component the key belongs to, the endpoint's declared name (D-6), and its
+ * protocol — so summary/status/list can print a protocol-correct address and
+ * filter by component.
+ */
+export interface StateEndpoint {
+	component: string;
+	name?: string;
+	containerPort: number;
+	hostPort: number;
+	protocol?: string;
+}
+
 export interface DockerState {
 	version: 1;
 	slug: string;
@@ -36,6 +51,12 @@ export interface DockerState {
 	 * files omit it and load as a first run.
 	 */
 	generatedEnv?: Record<string, string>;
+	/**
+	 * Endpoint metadata for each `ports` key. Optional for backward
+	 * compatibility — state files written by older versions lack it, and
+	 * consumers must fall back to the ports map alone.
+	 */
+	endpoints?: Record<string, StateEndpoint>;
 	/**
 	 * Where the Launchfile came from, persisted so post-launch operations
 	 * (bootstrap, inspect) can re-read it without depending on the caller's

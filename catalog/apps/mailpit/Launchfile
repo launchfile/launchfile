@@ -17,6 +17,7 @@ provides:
   - name: smtp
     protocol: tcp
     port: 1025
+    exposed: true
 storage:
   data:
     path: /data

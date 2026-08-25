@@ -6,6 +6,7 @@ platform: linux/amd64
 provides:
   - protocol: http
     port: 3000
+    exposed: true
     bind: "0.0.0.0"
 requires:
   - type: postgres

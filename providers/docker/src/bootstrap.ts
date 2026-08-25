@@ -108,9 +108,11 @@ export function computeAppProperties(
 ): Record<string, string | number> {
 	let primaryPort = 0;
 	for (const [name, component] of Object.entries(launch.components)) {
-		const exposed = component.provides?.filter((p) => p.exposed !== false) ?? [];
-		if (exposed.length === 0) continue;
-		primaryPort = hostPorts[name] ?? exposed[0]!.port;
+		// Only endpoints explicitly marked `exposed: true` are reachable from the
+		// host (D-27), so only they can be the app's public address.
+		const published = component.provides?.filter((p) => p.exposed === true) ?? [];
+		if (published.length === 0) continue;
+		primaryPort = hostPorts[name] ?? published[0]!.port;
 		break;
 	}
 	const url = primaryPort > 0 ? `http://localhost:${primaryPort}` : "";
