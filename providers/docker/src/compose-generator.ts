@@ -78,6 +78,98 @@ function generatePort(): string {
 	return String(10_000 + (buf[0]! % range));
 }
 
+// --- requires.config handling ---
+
+// Security: extension names come from Launchfile config (untrusted input).
+// Validate each against SAFE_IDENTIFIER before interpolating into SQL —
+// the same regex providers/macos-dev/src/resources/postgres.ts uses.
+const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
+// SPEC.md's `config.extensions` example lists package names (`pgvector`)
+// while CREATE EXTENSION needs the SQL extension name (`vector`). Accept
+// both spellings and normalize to the SQL name; names not listed here pass
+// through unchanged.
+const POSTGRES_EXTENSION_SQL_NAMES: Record<string, string> = {
+	pgvector: "vector",
+};
+
+// SQL extension name → smallest stock image that ships its binaries. The
+// default postgres image carries the contrib extensions (pg_trgm, hstore,
+// citext, …) but not these; declaring one swaps the service image.
+const POSTGRES_EXTENSION_IMAGES: Record<string, string> = {
+	vector: "pgvector/pgvector:pg16",
+	postgis: "postgis/postgis:16-3.4",
+};
+
+/**
+ * Honor `requires.config` for postgres (PROVIDERS.md §10.8: report gaps,
+ * not silent drops). Declared extensions select a satisfying image and are
+ * created via an init script the caller mounts into
+ * /docker-entrypoint-initdb.d/ (runs when the database directory is
+ * initialized). An extension no known image provides passes through
+ * validated — if the image lacks it, initialization fails loudly at boot
+ * instead of the app failing later on its first CREATE EXTENSION. Every
+ * config key or extension the provider cannot honor is surfaced as a
+ * warning, never dropped.
+ *
+ * Returns the init SQL, or undefined when no extensions are declared.
+ * Mutates `backing.image` when an extension requires a different image.
+ */
+function applyPostgresConfig(
+	config: Record<string, unknown>,
+	backing: BackingService,
+	warnings: string[],
+): string | undefined {
+	const sqlNames: string[] = [];
+	for (const [key, value] of Object.entries(config)) {
+		if (key !== "extensions") {
+			warnings.push(
+				`postgres config key ${JSON.stringify(key)} is not supported by the docker provider — ignored`,
+			);
+			continue;
+		}
+		if (!Array.isArray(value)) {
+			warnings.push("postgres config.extensions must be a list — ignored");
+			continue;
+		}
+		for (const entry of value) {
+			if (typeof entry !== "string" || !SAFE_IDENTIFIER.test(entry)) {
+				warnings.push(
+					`postgres extension name ${JSON.stringify(entry)} is not a valid identifier — skipped`,
+				);
+				continue;
+			}
+			const sqlName = POSTGRES_EXTENSION_SQL_NAMES[entry] ?? entry;
+			if (!sqlNames.includes(sqlName)) sqlNames.push(sqlName);
+		}
+	}
+
+	if (sqlNames.length === 0) return undefined;
+
+	// First declared extension with a dedicated image picks the image;
+	// contrib extensions keep the default image.
+	const imageExts = sqlNames.filter((n) => POSTGRES_EXTENSION_IMAGES[n]);
+	const first = imageExts[0];
+	if (first) {
+		backing.image = POSTGRES_EXTENSION_IMAGES[first]!;
+		for (const other of imageExts.slice(1)) {
+			warnings.push(
+				`postgres extensions ${first} and ${other} need different images — selected ` +
+					`${backing.image}; CREATE EXTENSION ${other} will fail at boot unless that image provides it`,
+			);
+		}
+	}
+	for (const ext of sqlNames) {
+		if (POSTGRES_EXTENSION_IMAGES[ext]) continue;
+		warnings.push(
+			`postgres extension "${ext}" has no known dedicated image — passing it through; ` +
+				`initialization fails at boot if ${backing.image} does not provide it`,
+		);
+	}
+
+	return `${sqlNames.map((n) => `CREATE EXTENSION IF NOT EXISTS "${n}";`).join("\n")}\n`;
+}
+
 /**
  * Create a backing service factory with pre-generated or cached passwords.
  * Passwords are per-app to ensure consistency across restarts.
@@ -503,6 +595,9 @@ export function launchToCompose(
 	const builds: string[] = [];
 	const services: Record<string, Record<string, unknown>> = {};
 	const volumes: Record<string, Record<string, unknown>> = {};
+	const configs: Record<string, Record<string, unknown>> = {};
+	// serviceName → serialized req.config it was created with (shared-service dedup)
+	const appliedConfigs = new Map<string, string>();
 	const secrets = opts.secrets ?? {};
 	const generatedEnv = opts.generatedEnv ?? {};
 	const ports: Record<string, number> = {};
@@ -691,6 +786,8 @@ export function launchToCompose(
 					req,
 					services,
 					volumes,
+					configs,
+					appliedConfigs,
 					images,
 					warnings,
 					backingServices,
@@ -798,6 +895,9 @@ export function launchToCompose(
 	if (Object.keys(volumes).length > 0) {
 		compose.volumes = volumes;
 	}
+	if (Object.keys(configs).length > 0) {
+		compose.configs = configs;
+	}
 
 	return {
 		yaml: stringify(compose, { lineWidth: 120 }),
@@ -861,6 +961,8 @@ function addBackingService(
 	req: NormalizedRequirement,
 	services: Record<string, Record<string, unknown>>,
 	volumes: Record<string, Record<string, unknown>>,
+	configs: Record<string, Record<string, unknown>>,
+	appliedConfigs: Map<string, string>,
 	images: string[],
 	warnings: string[],
 	backingServices: Record<string, (name: string) => BackingService>,
@@ -875,13 +977,56 @@ function addBackingService(
 
 	const serviceName = `${appName}-${type}`;
 
-	if (!services[serviceName]) {
+	if (services[serviceName]) {
+		// The backing service is shared across components; only the requirement
+		// that created it configured it. A later requirement whose config
+		// matches is already satisfied; a differing one cannot be honored and
+		// must be surfaced (§10.8) — never silently dropped. The comparison is
+		// on serialized form, so key order matters; a false mismatch costs a
+		// warning, never a behavior change.
+		const incoming = JSON.stringify(req.config ?? null);
+		if (incoming !== appliedConfigs.get(serviceName)) {
+			warnings.push(
+				`${type} config on a later requirement differs from what the shared service ` +
+					`${serviceName} was created with — ignored (the first requirement wins)`,
+			);
+		}
+	} else {
 		const backing = factory(appName);
+		appliedConfigs.set(serviceName, JSON.stringify(req.config ?? null));
+
+		// requires.config — honor what we can, surface what we can't (§10.8).
+		let initSql: string | undefined;
+		if (req.config) {
+			if (type === "postgres") {
+				initSql = applyPostgresConfig(req.config, backing, warnings);
+			} else {
+				for (const key of Object.keys(req.config)) {
+					warnings.push(
+						`${type} config key ${JSON.stringify(key)} is not supported by the docker provider — ignored`,
+					);
+				}
+			}
+		}
+
 		images.push(backing.image);
 
 		const service: Record<string, unknown> = {
 			image: backing.image,
 		};
+
+		if (initSql) {
+			// Inline compose config (Compose v2.23.0+) — keeps the init script
+			// inside the generated file, no sidecar to write or clean up.
+			const configName = `${serviceName}-init`;
+			configs[configName] = { content: initSql };
+			service.configs = [
+				{
+					source: configName,
+					target: "/docker-entrypoint-initdb.d/90-launchfile-extensions.sql",
+				},
+			];
+		}
 
 		if (Object.keys(backing.environment).length > 0) {
 			service.environment = backing.environment;

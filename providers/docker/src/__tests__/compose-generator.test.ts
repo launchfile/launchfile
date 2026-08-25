@@ -694,3 +694,185 @@ secrets:
 		expect(ports.size).toBeGreaterThan(1500);
 	});
 });
+
+describe("requires.config — postgres extensions (PROVIDERS.md §10.8)", () => {
+	const pgLaunch = (config: string) =>
+		readLaunch(`
+name: vectorapp
+image: myapp:1
+requires:
+  - type: postgres
+${config}
+provides:
+  - protocol: http
+    port: 3000
+    exposed: true
+`);
+
+	it("selects the pgvector image and emits an init script for extensions: [vector]", () => {
+		const launch = pgLaunch(`    config:
+      extensions: [vector]`);
+		const result = launchToCompose(launch);
+
+		expect(result.yaml).toContain("pgvector/pgvector:pg16");
+		expect(result.yaml).not.toContain("postgres:16-alpine");
+		expect(result.yaml).toContain('CREATE EXTENSION IF NOT EXISTS "vector";');
+		expect(result.yaml).toContain("/docker-entrypoint-initdb.d/90-launchfile-extensions.sql");
+		expect(result.images).toContain("pgvector/pgvector:pg16");
+		expect(result.warnings).toHaveLength(0);
+	});
+
+	it("normalizes the package name pgvector to the SQL name vector", () => {
+		const launch = pgLaunch(`    config:
+      extensions: [pgvector]`);
+		const result = launchToCompose(launch);
+
+		expect(result.yaml).toContain("pgvector/pgvector:pg16");
+		expect(result.yaml).toContain('CREATE EXTENSION IF NOT EXISTS "vector";');
+		expect(result.yaml).not.toContain('"pgvector"');
+		expect(result.warnings).toHaveLength(0);
+	});
+
+	it("selects the postgis image for extensions: [postgis]", () => {
+		const launch = pgLaunch(`    config:
+      extensions: [postgis]`);
+		const result = launchToCompose(launch);
+
+		expect(result.yaml).toContain("postgis/postgis:16-3.4");
+		expect(result.yaml).toContain('CREATE EXTENSION IF NOT EXISTS "postgis";');
+		expect(result.warnings).toHaveLength(0);
+	});
+
+	it("keeps the stock image and emits no init script without config", () => {
+		const launch = pgLaunch("");
+		const result = launchToCompose(launch);
+
+		expect(result.yaml).toContain("postgres:16-alpine");
+		expect(result.yaml).not.toContain("configs:");
+		expect(result.yaml).not.toContain("CREATE EXTENSION");
+	});
+
+	it("rejects an extension name that is not a safe identifier", () => {
+		const launch = pgLaunch(`    config:
+      extensions: ["vector; DROP TABLE users"]`);
+		const result = launchToCompose(launch);
+
+		expect(result.yaml).not.toContain("DROP TABLE");
+		expect(result.yaml).not.toContain("CREATE EXTENSION");
+		expect(result.warnings.some((w) => w.includes("not a valid identifier"))).toBe(true);
+	});
+
+	it("passes an unmapped extension through validated, with a warning", () => {
+		const launch = pgLaunch(`    config:
+      extensions: [pg_trgm]`);
+		const result = launchToCompose(launch);
+
+		expect(result.yaml).toContain("postgres:16-alpine");
+		expect(result.yaml).toContain('CREATE EXTENSION IF NOT EXISTS "pg_trgm";');
+		expect(result.warnings.some((w) => w.includes("no known dedicated image"))).toBe(true);
+	});
+
+	it("warns when two declared extensions need different images", () => {
+		const launch = pgLaunch(`    config:
+      extensions: [vector, postgis]`);
+		const result = launchToCompose(launch);
+
+		expect(result.yaml).toContain("pgvector/pgvector:pg16");
+		expect(result.yaml).toContain('CREATE EXTENSION IF NOT EXISTS "vector";');
+		expect(result.yaml).toContain('CREATE EXTENSION IF NOT EXISTS "postgis";');
+		expect(result.warnings.some((w) => w.includes("need different images"))).toBe(true);
+	});
+
+	it("warns for a postgres config key it cannot honor", () => {
+		const launch = pgLaunch(`    config:
+      shared_buffers: 256MB`);
+		const result = launchToCompose(launch);
+
+		expect(result.yaml).toContain("postgres:16-alpine");
+		expect(
+			result.warnings.some(
+				(w) => w.includes('"shared_buffers"') && w.includes("not supported"),
+			),
+		).toBe(true);
+	});
+
+	it("warns for config on a backing service type with no config support", () => {
+		const launch = readLaunch(`
+name: cacheapp
+image: myapp:1
+requires:
+  - type: redis
+    config:
+      maxmemory: 256mb
+`);
+		const result = launchToCompose(launch);
+
+		expect(
+			result.warnings.some((w) => w.includes('"maxmemory"') && w.includes("not supported")),
+		).toBe(true);
+	});
+});
+
+describe("requires.config — shared backing service across components", () => {
+	const twoComponentLaunch = (apiReq: string, workerReq: string) =>
+		readLaunch(`
+name: multi-pg
+components:
+  api:
+    image: nginx
+    requires:
+      - type: postgres
+${apiReq}
+    provides:
+      - port: 4000
+        protocol: http
+        exposed: true
+  worker:
+    image: nginx
+    requires:
+      - type: postgres
+${workerReq}
+`);
+
+	it("warns when a later requirement's config differs from the shared service's", () => {
+		const launch = twoComponentLaunch(
+			"",
+			`        config:
+          extensions: [vector]`,
+		);
+		const result = launchToCompose(launch);
+
+		// First requirement (no config) created the service — stock image, no init script
+		expect(result.yaml).toContain("postgres:16-alpine");
+		expect(result.yaml).not.toContain("CREATE EXTENSION");
+		expect(
+			result.warnings.some(
+				(w) => w.includes("differs") && w.includes("multi-pg-postgres"),
+			),
+		).toBe(true);
+	});
+
+	it("stays silent when both components declare identical config", () => {
+		const config = `        config:
+          extensions: [vector]`;
+		const launch = twoComponentLaunch(config, config);
+		const result = launchToCompose(launch);
+
+		expect(result.yaml).toContain("pgvector/pgvector:pg16");
+		expect(result.yaml).toContain('CREATE EXTENSION IF NOT EXISTS "vector";');
+		expect(result.warnings).toHaveLength(0);
+	});
+
+	it("honors the first requirement's config and warns on the config-less duplicate", () => {
+		const launch = twoComponentLaunch(
+			`        config:
+          extensions: [vector]`,
+			"",
+		);
+		const result = launchToCompose(launch);
+
+		expect(result.yaml).toContain("pgvector/pgvector:pg16");
+		expect(result.yaml).toContain('CREATE EXTENSION IF NOT EXISTS "vector";');
+		expect(result.warnings.some((w) => w.includes("differs"))).toBe(true);
+	});
+});
