@@ -211,7 +211,7 @@ export interface ExpectedRefusal {
 	readonly expectedRefusal: true;
 }
 
-function isExpectedRefusal(error: unknown): boolean {
+export function isExpectedRefusal(error: unknown): boolean {
 	return (
 		typeof error === "object" &&
 		error !== null &&

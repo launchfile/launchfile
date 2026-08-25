@@ -22,6 +22,7 @@ import {
 	type LaunchPhase,
 	type NormalizedLaunch,
 } from "@launchfile/sdk";
+import { isExpectedRefusal } from "./logger.js";
 import { redactSecrets } from "./redact.js";
 import { shell, type ShellResult } from "./shell.js";
 
@@ -140,6 +141,11 @@ export async function inPhase<T>(
 		return await fn();
 	} catch (err) {
 		if (isLaunchError(err)) throw err;
+		// A deliberate refusal (`ExpectedRefusal`, e.g. an unsupplied `required:`
+		// variable, D-52) carries its own type and actionable message — callers
+		// match on the type, so it propagates unwrapped instead of becoming a
+		// phase-tagged record.
+		if (isExpectedRefusal(err)) throw err;
 		throw await launchErrorFrom(phase, context, err);
 	}
 }
