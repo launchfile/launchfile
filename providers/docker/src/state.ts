@@ -71,6 +71,16 @@ export interface DockerState {
 	sourcePath?: string;
 	/** Original URL for `url` sources, so it can be re-fetched. */
 	sourceUrl?: string;
+	/**
+	 * Orchestrator-supplied publication context (#290): the normalized public
+	 * URL `$app.*` resolves from, persisted alongside `ports` so later verbs
+	 * (bootstrap) and re-runs resolve the same values as the `up` that set it.
+	 * A subsequent `up` that supplies a different value replaces it and the
+	 * derived env recomputes (D-49); a run that omits it preserves what is
+	 * recorded. Optional for backward compatibility — absent means the
+	 * provider's own localhost routing answers.
+	 */
+	appUrl?: string;
 }
 
 export function stateBaseDir(): string {

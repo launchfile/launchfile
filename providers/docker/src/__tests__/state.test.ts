@@ -76,6 +76,28 @@ describe("docker state — source persistence (#25)", () => {
 	});
 });
 
+describe("docker state — publication context (#290)", () => {
+	it("round-trips appUrl", async () => {
+		const state = initState("proxied", "proxied", "name: proxied\n");
+		state.appUrl = "https://notes.example.com";
+		await saveState("proxied", state);
+
+		const loaded = await loadState("proxied");
+		expect(loaded).not.toBeNull();
+		expect(loaded!.appUrl).toBe("https://notes.example.com");
+	});
+
+	it("loads a state file without an appUrl key (localhost routing stands)", async () => {
+		const state = initState("plain", "plain", "name: plain\n");
+		expect("appUrl" in state).toBe(false);
+		await saveState("plain", state);
+
+		const loaded = await loadState("plain");
+		expect(loaded).not.toBeNull();
+		expect(loaded!.appUrl).toBeUndefined();
+	});
+});
+
 describe("docker state — backward compatibility", () => {
 	it("loads a legacy state file that lacks the new source fields", async () => {
 		// Simulate a state.json written before source persistence landed.

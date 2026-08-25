@@ -18,13 +18,13 @@
 
 import { spawn } from "node:child_process";
 import {
-	deriveAppUrlProperties,
 	parseDurationMs,
 	resolveExpression,
 	type CaptureEntry,
 	type NormalizedLaunch,
 	type ResolverContext,
 } from "@launchfile/sdk";
+import { computeAppProperties } from "./app-url.js";
 import { redactSecrets } from "./redact.js";
 import { loadState, composeProject } from "./state.js";
 
@@ -95,35 +95,11 @@ export function extractCaptures(
  */
 export const parseDuration = parseDurationMs;
 
-/**
- * Compute the full `$app.*` set (D-33, D-35) for the Docker provider. Mirrors
- * the private helper inside compose-generator.ts — same primary-component rule,
- * same URL, and the same `authority`/`scheme`/`tls` trio derived from it via
- * the SDK — so bootstrap (and release) resolve `$app.*` against exactly the
- * values compose-generator used when writing env vars into the compose file.
- */
-export function computeAppProperties(
-	launch: NormalizedLaunch,
-	hostPorts: Record<string, number>,
-): Record<string, string | number> {
-	let primaryPort = 0;
-	for (const [name, component] of Object.entries(launch.components)) {
-		// Only endpoints explicitly marked `exposed: true` are reachable from the
-		// host (D-27), so only they can be the app's public address.
-		const published = component.provides?.filter((p) => p.exposed === true) ?? [];
-		if (published.length === 0) continue;
-		primaryPort = hostPorts[name] ?? published[0]!.port;
-		break;
-	}
-	const url = primaryPort > 0 ? `http://localhost:${primaryPort}` : "";
-	return {
-		name: launch.name,
-		host: "localhost",
-		port: primaryPort,
-		url,
-		...deriveAppUrlProperties(url),
-	};
-}
+// Re-exported so bootstrap and release keep resolving `$app.*` against the
+// ONE implementation compose-generator used when writing env vars into the
+// compose file (see app-url.ts) — a drifted mirror here would make the same
+// deployment resolve $app.* two different ways.
+export { computeAppProperties } from "./app-url.js";
 
 /**
  * Map a component name to its compose service name. Mirrors the service-
@@ -145,13 +121,19 @@ export function planBootstraps(
 		/** Component name → allocated host port (for $app.* resolution). */
 		hostPorts: Record<string, number>;
 		secrets: Record<string, string>;
+		/**
+		 * Orchestrator-supplied publication context (#290) — the recorded
+		 * `DockerState.appUrl`, so bootstrap resolves the same `$app.*` the
+		 * compose file was generated with. Unset = localhost routing.
+		 */
+		appUrl?: string;
 		/** Restrict to this single component; undefined = all. */
 		component?: string;
 	},
 ): BootstrapPlanItem[] {
 	const resolverContext: ResolverContext = {
 		secrets: opts.secrets,
-		app: computeAppProperties(launch, opts.hostPorts),
+		app: computeAppProperties(launch, opts.hostPorts, opts.appUrl),
 	};
 
 	const plan: BootstrapPlanItem[] = [];
@@ -370,6 +352,7 @@ export async function dockerBootstrap(opts: {
 	const plan = planBootstraps(opts.launch, {
 		hostPorts: state.ports,
 		secrets: state.secrets,
+		appUrl: state.appUrl,
 		component: opts.component,
 	});
 

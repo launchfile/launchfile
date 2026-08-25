@@ -90,6 +90,12 @@ export function planReleases(
 		/** Component name → allocated host port (for $app.* resolution). */
 		hostPorts: Record<string, number>;
 		secrets: Record<string, string>;
+		/**
+		 * Orchestrator-supplied publication context (#290) — the same value the
+		 * compose file was generated with, so release commands resolve identical
+		 * `$app.*`. Unset = localhost routing.
+		 */
+		appUrl?: string;
 		/** Restrict to these components (the D-41 start-set); undefined = all. */
 		only?: ReadonlySet<string>;
 	},
@@ -101,7 +107,7 @@ export function planReleases(
 
 	const resolverContext: ResolverContext = {
 		secrets: opts.secrets,
-		app: computeAppProperties(launch, opts.hostPorts),
+		app: computeAppProperties(launch, opts.hostPorts, opts.appUrl),
 	};
 
 	const plan: ReleasePlanItem[] = [];

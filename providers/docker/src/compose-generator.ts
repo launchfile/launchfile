@@ -11,7 +11,6 @@ import { stringify } from "yaml";
 import { publishedEndpoints } from "./port-allocator.js";
 import type { StateEndpoint } from "./state.js";
 import {
-	deriveAppUrlProperties,
 	resolveExpression,
 	isExpression,
 	type ResolverContext,
@@ -21,6 +20,7 @@ import {
 	type NormalizedHealth,
 	unsuppliedRequiredEnv,
 } from "@launchfile/sdk";
+import { computeAppProperties } from "./app-url.js";
 import { registerSensitiveEnv, registerSuppliedEnv } from "./env-secrets.js";
 import { registerSecret } from "./redact.js";
 
@@ -491,44 +491,6 @@ export function resourcePropertyKeys(): Record<string, string[]> {
 	return keys;
 }
 
-/**
- * Compute the $app.* property set (D-33, D-35) for a Launchfile under the docker
- * provider. The "primary" component is the first one (in declaration order)
- * with at least one `exposed: true` provides entry; its host port becomes
- * `$app.port` and `http://localhost:<hostPort>` becomes `$app.url`. The
- * `authority`/`scheme`/`tls` trio is derived from that URL via the SDK so the
- * split-field tokens (e.g. HedgeDoc's `CMD_DOMAIN: $app.authority`) resolve.
- *
- * Apps with no exposed component get `port: 0` and `url: ""` (and empty
- * authority/scheme/tls). For multi-exposed-component apps that need a specific
- * component's URL, use `$components.<name>.url` instead — `$app.*` always points
- * at the first exposed component to give a single, predictable answer.
- */
-function computeAppProperties(
-	launch: NormalizedLaunch,
-	hostPorts: Record<string, number> | undefined,
-): Record<string, string | number> {
-	let primaryPort = 0;
-	for (const [name, component] of Object.entries(launch.components)) {
-		// Only endpoints explicitly marked `exposed: true` are reachable from the
-		// host (D-27), so only they can be the app's public address.
-		const published = component.provides?.filter((p) => p.exposed === true) ?? [];
-		if (published.length === 0) continue;
-		// Prefer caller-supplied host port, fall back to the declared container port.
-		primaryPort = hostPorts?.[name] ?? published[0]!.port;
-		break;
-	}
-
-	const url = primaryPort > 0 ? `http://localhost:${primaryPort}` : "";
-	return {
-		name: launch.name,
-		host: "localhost",
-		port: primaryPort,
-		url,
-		...deriveAppUrlProperties(url),
-	};
-}
-
 // --- Main generator ---
 
 export interface ComposeOpts {
@@ -570,6 +532,25 @@ export interface ComposeOpts {
 	 * and verifies each bound path exists before launching (rule 2 row 3).
 	 */
 	storagePaths?: Record<string, string>;
+	/**
+	 * Orchestrator-supplied publication context (#290): the public URL the app
+	 * is reachable at when routing is owned OUTSIDE the compose project — a
+	 * reverse proxy, tunnel, or edge in front of it. When set, `$app.*`
+	 * resolves from this URL (D-33/D-35: url, host, port, authority, scheme,
+	 * tls) instead of the provider's own `http://localhost:<hostPort>` routing
+	 * answer. Published host ports are still allocated; they just aren't the
+	 * public address.
+	 *
+	 * Asserts the public address of the app's PRIMARY endpoint only (the first
+	 * `exposed: true` component — the existing `$app.*` contract). It MUST NOT
+	 * be used to derive other published endpoints' public addresses;
+	 * per-endpoint publication context is a separate future proposal.
+	 *
+	 * Must be an absolute http(s) URL with no userinfo, query, or fragment; a
+	 * malformed value throws `InvalidAppUrlError` — refuse, never degrade.
+	 * Unset preserves the current localhost behavior byte-for-byte.
+	 */
+	appUrl?: string;
 }
 
 /** A `content: operator` volume bound to an operator-supplied host path (D-50 row 1). */
@@ -627,8 +608,11 @@ export interface ComposeResult {
 	 * Deliberately NOT folded into `warnings`: `dockerUp` prints warnings and
 	 * proceeds, which is precisely the warn-then-fail-anyway behavior D-52's
 	 * *Rejected* block forbids. A deploying verb reads this field and fails.
-	 * `launchToCompose` itself never throws — it is exported public API and a
-	 * pure generator.
+	 * `launchToCompose` itself never throws for Launchfile content — it is
+	 * exported public API and a pure generator. The one exception is a
+	 * malformed `opts.appUrl`, an orchestrator input no `$app.*` can be
+	 * correctly derived from: it throws `InvalidAppUrlError` before any
+	 * generation (#290) — refuse, never degrade.
 	 */
 	unsuppliedRequired: UnsuppliedRequiredVar[];
 	/**
@@ -720,9 +704,11 @@ export function launchToCompose(
 	// Compute $app.* properties (D-33) from the first component (in declaration
 	// order) that has at least one `exposed: true` provides entry. The "primary"
 	// component's host port is the app's externally-reachable port; the public
-	// URL is http://localhost:<hostPort>. For multi-exposed-component apps that
-	// need a specific component's URL, use $components.<name>.url instead.
-	const appProperties = computeAppProperties(launch, opts.hostPorts);
+	// URL is http://localhost:<hostPort> — unless the orchestrator supplied the
+	// publication context (`opts.appUrl`, #290), which answers instead. For
+	// multi-exposed-component apps that need a specific component's URL, use
+	// $components.<name>.url instead.
+	const appProperties = computeAppProperties(launch, opts.hostPorts, opts.appUrl);
 
 	const resolverContext: ResolverContext = {
 		resources: resourceMap,
