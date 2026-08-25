@@ -13,6 +13,7 @@ export const VALUE_FLAGS: ReadonlySet<string> = new Set([
 	"name",
 	"component",
 	"schema-path",
+	"storage",
 ]);
 
 export function hasFlag(args: readonly string[], flag: string): boolean {
@@ -33,6 +34,54 @@ export function getFlagValue(args: readonly string[], flag: string): string | un
 		if (arg.startsWith(inlinePrefix)) return arg.slice(inlinePrefix.length);
 	}
 	return undefined;
+}
+
+/**
+ * Every value of a repeatable flag, in order — `--flag <value>` and
+ * `--flag=<value>` forms both count. `--storage` (D-50) repeats once per
+ * operator-supplied volume.
+ */
+export function getFlagValues(args: readonly string[], flag: string): string[] {
+	const inlinePrefix = `--${flag}=`;
+	const values: string[] = [];
+	for (let i = 0; i < args.length; i++) {
+		const arg = args[i]!;
+		if (arg === `--${flag}`) {
+			if (args[i + 1] !== undefined) values.push(args[i + 1]!);
+		} else if (arg.startsWith(inlinePrefix)) {
+			values.push(arg.slice(inlinePrefix.length));
+		}
+	}
+	return values;
+}
+
+/**
+ * Parse repeated `--storage <key>=<path>` values (D-50) into a key-to-path
+ * map. The key half — a volume name, or `component.volume` — passes through
+ * as typed: the first-dot split needs the parsed Launchfile's component
+ * names, so it happens in the provider. A malformed pair or a duplicate key
+ * is rejected with the offending value, never guessed at.
+ */
+export function parseStoragePairs(values: readonly string[]): Record<string, string> {
+	const pairs: Record<string, string> = {};
+	for (const value of values) {
+		const eq = value.indexOf("=");
+		const key = eq === -1 ? "" : value.slice(0, eq);
+		const path = eq === -1 ? "" : value.slice(eq + 1);
+		if (!key || !path) {
+			throw new Error(
+				`Invalid --storage value "${value}". Expected --storage <volume>=<host-path>, ` +
+					"or --storage <component>.<volume>=<host-path> where the volume name is ambiguous.",
+			);
+		}
+		if (pairs[key] !== undefined) {
+			throw new Error(
+				`Duplicate --storage key "${key}". Each volume takes one path; repeat the flag for different volumes.`,
+			);
+		}
+		pairs[key] = path;
+	}
+	return pairs;
 }
 
 /**
