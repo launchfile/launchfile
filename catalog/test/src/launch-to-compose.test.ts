@@ -12,8 +12,9 @@
  * run this manually: `cd catalog/test && bun install && bun run test`.
  */
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import { parse } from "yaml";
@@ -432,5 +433,108 @@ env:
       for (const v of unsuppliedRequired) failures.push(`${app} [${v.component}]: ${v.key}`);
     }
     expect(failures).toEqual([]);
+  });
+});
+
+describe("content: operator volumes (D-50)", () => {
+  const MARKED = `
+name: media
+image: navidrome:latest
+storage:
+  music:
+    path: /music
+    content: operator
+    persistent: true
+  data:
+    path: /data
+`;
+
+  it("binds a supplied, existing path instead of an anonymous volume (row 1)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "lf-harness-content-"));
+    try {
+      const result = launchToCompose(readLaunch(MARKED), { storagePaths: { music: dir } });
+      expect(result.storageRefusals).toEqual([]);
+      expect(result.yaml).toContain(`${dir}:/music`);
+      // The unmarked volume keeps its anonymous-volume form.
+      expect(result.yaml).toContain("- /data");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses an unbound marked volume — no mount, no empty volume (row 2)", () => {
+    const result = launchToCompose(readLaunch(MARKED));
+    expect(result.storageRefusals).toHaveLength(1);
+    expect(result.storageRefusals[0]).toMatchObject({ component: "default", volume: "music" });
+    expect(result.yaml).not.toContain("/music");
+  });
+
+  it("refuses a supplied path that does not exist — never creates it (row 3)", () => {
+    const missing = join(tmpdir(), `lf-harness-missing-${Date.now()}`);
+    const result = launchToCompose(readLaunch(MARKED), { storagePaths: { music: missing } });
+    expect(result.storageRefusals).toHaveLength(1);
+    expect(result.storageRefusals[0]!.message).toContain("does not exist or is not readable");
+    expect(existsSync(missing)).toBe(false);
+    expect(result.yaml).not.toContain(missing);
+  });
+
+  it("leaves an unmarked launch byte-identical whether or not storagePaths is passed (row 4)", () => {
+    const yaml = `
+name: plain
+image: nginx
+storage:
+  data:
+    path: /data
+`;
+    const without = launchToCompose(readLaunch(yaml));
+    const withMap = launchToCompose(readLaunch(yaml), { storagePaths: { data: "/srv/data" } });
+    expect(withMap.yaml).toBe(without.yaml);
+    expect(withMap.warnings.join("\n")).toContain("matches no `content: operator` volume");
+  });
+
+  it("routes component.volume keys by the first dot; an unknown left half stays a volume name", () => {
+    const dirA = mkdtempSync(join(tmpdir(), "lf-harness-a-"));
+    const dirB = mkdtempSync(join(tmpdir(), "lf-harness-b-"));
+    try {
+      const launch = readLaunch(`
+name: shelf
+components:
+  web:
+    image: shelf:latest
+    storage:
+      library:
+        path: /library
+        content: operator
+  sync:
+    image: syncer:latest
+    storage:
+      drop.box:
+        path: /drop
+        content: operator
+`);
+      const result = launchToCompose(launch, {
+        storagePaths: { "web.library": dirA, "drop.box": dirB },
+      });
+      expect(result.storageRefusals).toEqual([]);
+      expect(result.yaml).toContain(`${dirA}:/library`);
+      expect(result.yaml).toContain(`${dirB}:/drop`);
+    } finally {
+      rmSync(dirA, { recursive: true, force: true });
+      rmSync(dirB, { recursive: true, force: true });
+    }
+  });
+
+  it("no shipped catalog app is refused: none carries the marker yet (adoption gate)", () => {
+    // D-50 Conformance at adoption: the marker lands in the catalog only
+    // after every surface (this harness included) implements the channel.
+    const appsDir = fileURLToPath(new URL("../../apps", import.meta.url));
+    const refused: string[] = [];
+    for (const app of readdirSync(appsDir)) {
+      const file = resolve(appsDir, app, "Launchfile");
+      if (!existsSync(file)) continue;
+      const { storageRefusals } = launchToCompose(readLaunch(readFileSync(file, "utf-8")));
+      for (const r of storageRefusals) refused.push(`${app} [${r.component}]: ${r.volume}`);
+    }
+    expect(refused).toEqual([]);
   });
 });
