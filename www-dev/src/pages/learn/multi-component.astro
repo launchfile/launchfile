@@ -22,6 +22,7 @@ const multiComponentYaml = multiComponentYamlRaw.replace(/^#.*\n/gm, "").trim();
     "Inter-component dependency ordering with depends_on",
     "Cross-component expressions like $components.backend.url",
     "The exposed flag — only frontends need it",
+    "Starting one component and its dependency closure",
   ]}
   nextLesson={{ title: "Specialized Patterns", description: "Cron jobs, prebuilt images, host access, and optional dependencies.", href: "/learn/specialized-patterns/" }}
 >
@@ -147,6 +148,22 @@ components:
   This pattern scales to any number of components. A backend, a frontend, a websocket server, a background worker — each gets a key in <code>components:</code>, declares its own ports and dependencies, and uses expressions to discover the others.
 </p>
 
+<h2 id="starting-one-component">Starting just one component</h2>
+
+<p>
+  Sometimes you don't want the whole app — you're iterating on the backend and the frontend would just be noise. Name the component and you get it <em>plus everything it needs</em>, and nothing more:
+</p>
+
+<pre><code>launchfile up backend</code></pre>
+
+<p>
+  That starts <code>backend</code>, its <code>depends_on</code> targets, and their required services (Postgres here) — but not <code>frontend</code>. The closure runs <GlossaryTip term="downward closure" definition="The selected components plus everything they depend on, followed transitively. Never the components that depend on them.">downward only</GlossaryTip>: you get what you asked for and what it needs, never what needs it. Dependencies that are already running are left alone, so repeating the command is safe.
+</p>
+
+<Callout type="info" title="Why not start only what you named?">
+  <p>Because the file itself says the component can't work without its dependencies — <code>depends_on</code> is a hard startup prerequisite, and starting <code>backend</code> without Postgres would hand you a broken process. Every provider computes the same start-set from the same rule, so <code>up backend</code> produces the same running topology everywhere. A future <code>--no-deps</code> flag may let operators who manage dependencies themselves opt out.</p>
+</Callout>
+
 <h2 id="in-the-wild">In the wild</h2>
 
 <p>Here's the full HedgeDoc Launchfile from the spec examples. This is the same file we built step by step — now with all the production details.</p>
@@ -180,6 +197,7 @@ components:
     <li><code>depends_on</code> controls startup order — a component waits until its dependency is healthy.</li>
     <li><code>$components.&lt;name&gt;.url</code> lets components discover each other without hardcoded addresses.</li>
     <li>Only public-facing components need <code>exposed: true</code> — keep backends internal.</li>
+    <li><code>launchfile up &lt;component&gt;</code> starts that component plus its downward dependency closure — its dependencies and their services, never the components that depend on it.</li>
   </ul>
 </div>
 

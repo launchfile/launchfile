@@ -188,8 +188,23 @@ env:
 </Callout>
 
 <p>
-  If your app has no HTTP endpoint (say, a background worker), you can omit <code>health</code> entirely — with no HTTP check declared, liveness falls back to a simpler signal, like whether the process is still running.
+  Not every app speaks HTTP. A background worker or a TCP-only service has nothing for a <code>path</code> check to hit — but it can still tell you it's alive. Use <code>command</code> instead of <code>path</code>: the provider runs the shell command, and a zero exit code means healthy.
 </p>
+
+<BeforeAfter
+  before={{ title: "HTTP check", yaml: `health:
+  path: /api/health
+  retries: 3` }}
+  after={{ title: "Exec check", yaml: `health:
+  command: "pg_isready -q"
+  retries: 3` }}
+/>
+
+<Callout type="info" title="If you declare both">
+  <p>
+    <code>path</code> takes precedence over <code>command</code> — declare one or the other. And if your app has no meaningful health signal at all, you can omit <code>health</code> entirely: liveness falls back to a simpler signal, like whether the process is still running.
+  </p>
+</Callout>
 
 <h2 id="in-the-wild">In the wild</h2>
 
@@ -227,7 +242,7 @@ env:
     <li><strong><code>storage</code></strong> declares named volumes. Set <code>persistent: true</code> for data that must survive restarts.</li>
     <li><strong><code>content: operator</code></strong> marks a volume you fill yourself — the provider binds your directory (<code>--storage &lt;volume&gt;=&lt;path&gt;</code>) or refuses the component, and never creates the volume empty.</li>
     <li><strong><code>$storage.&lt;name&gt;.path</code></strong> resolves to the real path the volume was actually provisioned at — reference it in <code>env</code> instead of hardcoding the path in two places.</li>
-    <li><strong><code>health</code></strong> describes how your app's readiness is checked. Use the string shorthand for simple cases, the object form for tuning.</li>
+    <li><strong><code>health</code></strong> describes how your app's readiness is checked. Use the string shorthand for simple cases, the object form for tuning — with <code>path</code> for HTTP checks or <code>command</code> for everything else.</li>
     <li><strong><code>exposed: true</code></strong> means "the internet should reach this." Default is <code>false</code> (internal only).</li>
   </ul>
 </div>

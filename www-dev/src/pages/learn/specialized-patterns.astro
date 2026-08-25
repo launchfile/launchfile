@@ -32,6 +32,7 @@ const uptimeKumaYaml = stripComments(uptimeKumaYamlRaw);
     "Host access for CI runners and orchestrators",
     "Optional dependencies with supports",
   ]}
+  nextLesson={{ title: "Expressions & Resource Configuration", description: "The full $ reference grammar, plus naming, versioning, and configuring resources.", href: "/learn/expressions-and-resources/" }}
 >
 
 <h2 id="cron-jobs">Cron jobs</h2>
@@ -60,6 +61,10 @@ commands:
   <p>Cron jobs don't have <code>provides:</code> — they're not servers, they don't listen on ports, and nothing connects to them. They just run, do their work, and exit.</p>
 </Callout>
 
+<p>
+  A related knob: <GlossaryTip term="singleton" definition="When true, the platform must not run more than one instance of this component — no scaling, no overlapping runs."><code>singleton: true</code></GlossaryTip> tells the platform it must never run more than one instance of a component. Use it where two copies would collide — a scheduler double-firing jobs, a migration runner racing itself. It's a declaration about the app's nature, so it belongs in the file, not in deploy config.
+</p>
+
 <h2 id="images-builds-runtimes">Images, builds, and runtimes</h2>
 
 <p>
@@ -87,6 +92,12 @@ commands:
 <p>
   Lesson 5 distinguished <code>commands.build</code> (shell commands inside an already-built container) from the top-level <code>build:</code> block (Dockerfile-based image builds). They're different layers: <code>commands.build</code> runs <em>inside</em> the container, <code>build:</code> creates the container.
 </p>
+
+<Callout type="info" title="The portability warning">
+  <p>
+    A Dockerfile and a prebuilt image are <em>provider specializations</em> — one family of providers knows what to do with them, others don't. If they're your app's <em>only</em> way to run — no <code>runtime</code>, no <code>commands</code> — then a provider that doesn't speak that specialization has nothing to fall back on. <code>launchfile validate</code> flags this as a <strong>reduced-portability warning</strong>: non-fatal, suppressible, and never emitted by operational commands like <code>up</code>. To clear it, keep a portable contract alongside the specialization — declare the <code>runtime</code> and <code>commands</code> that would let any provider build and run the app from source.
+  </p>
+</Callout>
 
 <h3 id="platform-pinning">Platform pinning</h3>
 
@@ -249,20 +260,11 @@ host:
   <ul>
     <li>Cron jobs use <code>schedule</code> + <code>restart: no</code> — no <code>provides</code> needed.</li>
     <li><code>runtime</code>, <code>build</code>, and <code>image</code> describe three different things and can coexist: <code>runtime</code> is metadata, <code>build</code> creates the image, <code>image</code> names it. Use <code>platform:</code> to pin OCI architecture.</li>
+    <li>An app whose only build path is a Dockerfile or prebuilt image gets a reduced-portability warning from <code>validate</code> — keep <code>runtime</code> + <code>commands</code> alongside it so any provider can run the app.</li>
     <li>Host access is security-sensitive — declare it explicitly, as a capability entry (<code>- host: {"{ container_runtime: docker }"}</code>) in <code>requires</code>/<code>supports</code>. It's granted or refused, and wired via <code>$socket</code>/<code>$url</code>/<code>$api</code>.</li>
     <li>The old top-level <code>host:</code> block (<code>host.docker</code>, <code>host.network</code>, <code>host.filesystem</code>) is deprecated in <code>launch/v1</code> and removed in <code>launch/v2</code> — still valid, but <code>validate</code> will show you the migration.</li>
     <li><code>supports:</code> is like <code>requires:</code> but optional — the app gracefully degrades without it.</li>
   </ul>
-</div>
-
-<div style="margin-top: 2rem; padding: 1.5rem; border-radius: 0.75rem; background: var(--lf-purple-50); border: 1px solid var(--lf-purple-100); text-align: center;">
-  <p style="font-size: 1.0625rem; font-weight: 600; color: var(--lf-ink); margin: 0 0 0.5rem;">Course complete!</p>
-  <p style="font-size: 0.9375rem; color: var(--lf-slate); margin: 0 0 1rem;">You're ready to write Launchfiles for any application.</p>
-  <div style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
-    <a href="https://launchfile.org/spec/" style="display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.5rem 1rem; border-radius: 9999px; font-size: 0.875rem; font-weight: 600; color: white; background: var(--lf-primary); text-decoration: none;">Read the full spec</a>
-    <a href="/examples/" style="display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.5rem 1rem; border-radius: 9999px; font-size: 0.875rem; font-weight: 600; color: var(--lf-primary); border: 1px solid var(--lf-purple-200); text-decoration: none;">Browse examples</a>
-    <a href="https://launchfile.io/apps/" style="display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.5rem 1rem; border-radius: 9999px; font-size: 0.875rem; font-weight: 600; color: var(--lf-primary); border: 1px solid var(--lf-purple-200); text-decoration: none;">Explore the catalog</a>
-  </div>
 </div>
 
 </CourseLayout>
