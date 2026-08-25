@@ -195,14 +195,21 @@ export async function runReleases(
 			if (stderr.trim()) console.error(redactSecrets(stderr.trim()));
 			// `compose run` output is the only record of why a migration failed,
 			// and it is discarded once this frame unwinds. Carry it on the error
-			// so the failure capture (#44) can keep the tail. The command travels
-			// in its redacted form — `$secrets.*` is resolved by now (D-18).
+			// so the failure capture (#44) can keep the tail. The command AND the
+			// tails travel in redacted form — `$secrets.*` is resolved by now, and
+			// the span logger serializes this error whole on failure, so a raw
+			// tail here would reach stderr and the opt-in NDJSON file (D-18,
+			// CWE-532).
 			throw Object.assign(
 				new Error(
 					`release [${item.component}] failed with exit code ${exitCode} — deploy aborted`,
 				),
 				{
-					result: { exitCode, stdout, stderr },
+					result: {
+						exitCode,
+						stdout: redactSecrets(stdout),
+						stderr: redactSecrets(stderr),
+					},
 					display: redactSecrets(item.command),
 				},
 			);

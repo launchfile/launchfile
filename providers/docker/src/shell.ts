@@ -69,9 +69,16 @@ export async function shell(
 				// capture records the command as its own field without parsing it
 				// back out of prose. It is the redacted form — a release command
 				// arrives here with `$secrets.*` resolved (D-18, CWE-532).
+				// The attached output is redacted here too, not only at capture:
+				// the span logger serializes the whole error on failure, so a raw
+				// tail on the error would reach stderr and the opt-in NDJSON file.
 				reject(
 					Object.assign(new Error(`Command failed: ${redactSecrets(display)}`), {
-						result,
+						result: {
+							...result,
+							stdout: redactSecrets(result.stdout),
+							stderr: redactSecrets(result.stderr),
+						} satisfies ShellResult,
 						display: redactSecrets(display),
 					}),
 				);
