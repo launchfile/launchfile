@@ -25,6 +25,11 @@ import { handleList } from "./commands/list.js";
 import { handleBootstrap } from "./commands/bootstrap.js";
 import { handleDiagnose } from "./commands/diagnose.js";
 import { cmdValidate, cmdInspect, cmdSchema } from "@launchfile/sdk";
+import {
+	hasFlag as argsHasFlag,
+	getFlagValue as argsGetFlagValue,
+	getPositional as argsGetPositional,
+} from "./cli-args.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const { version: VERSION } = JSON.parse(
@@ -33,26 +38,9 @@ const { version: VERSION } = JSON.parse(
 
 const args = process.argv.slice(2);
 
-function hasFlag(flag: string): boolean {
-	return args.includes(`--${flag}`) || args.includes(`-${flag[0]}`);
-}
-
-function getFlagValue(flag: string): string | undefined {
-	const idx = args.indexOf(`--${flag}`);
-	if (idx === -1 || idx + 1 >= args.length) return undefined;
-	return args[idx + 1];
-}
-
-/** Get the Nth positional argument (skipping flags) */
-function getPositional(index: number): string | undefined {
-	let pos = 0;
-	for (const arg of args) {
-		if (arg.startsWith("-")) continue;
-		if (pos === index) return arg;
-		pos++;
-	}
-	return undefined;
-}
+const hasFlag = (flag: string): boolean => argsHasFlag(args, flag);
+const getFlagValue = (flag: string): string | undefined => argsGetFlagValue(args, flag);
+const getPositional = (index: number): string | undefined => argsGetPositional(args, index);
 
 const command = getPositional(0);
 const target = getPositional(1);
@@ -83,7 +71,8 @@ Options:
   --dry-run        Preview without starting anything
   --destroy        Remove all containers and data (with down)
   --follow, -f     Stream logs continuously
-  --name <name>    Name this deployment
+  --name <label>   Launch a separate named instance of the app — its own
+                    state, volumes, network, and ports (Docker provider)
   --component <n>  Limit bootstrap to a single component
   --detached       (validate) Evaluate as fetched standalone, not read from the
                     app's own checkout — enables the D-43 reduced-portability check

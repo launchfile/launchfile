@@ -98,20 +98,11 @@ export async function handleUp(
 		? upTarget.dir ?? resolve(upTarget.value, "..")
 		: `catalog:${upTarget.value}`;
 
-	// Check for existing deployment
+	// Check for existing deployment. Identity is the (source, name) pair
+	// (D-59): an unnamed `up` and each `--name <label>` from one directory are
+	// distinct instances, each with its own index row.
 	const index = await loadIndex(indexDir);
-	let existingDeployment = findBySource(index, sourceKey);
-
-	// For named deployments, check for name conflicts
-	if (flags.name) {
-		const nameConflict = Object.entries(index.deployments).find(
-			([, e]) => e.name === flags.name,
-		);
-		if (nameConflict && existingDeployment?.id !== nameConflict[0]) {
-			// Different deployment already uses this name — create new
-			existingDeployment = null;
-		}
-	}
+	const existingDeployment = findBySource(index, sourceKey, flags.name ?? null);
 
 	const deployId = existingDeployment?.id ?? generateDeploymentId();
 
@@ -147,6 +138,7 @@ export async function handleUp(
 					launch(dockerSource, {
 						detach: flags.detach,
 						dryRun: flags.dryRun,
+						name: flags.name,
 					}),
 				recordDir,
 			);
@@ -210,6 +202,17 @@ export async function handleUp(
 			console.log(`\n  Deployment: ${deployId}`);
 		}
 	} else if (provider === "macos") {
+		// This provider keys all state by project directory and has no
+		// instance-label support yet. Refusing is D-59's floor: accepting the
+		// flag while running the same single instance would silently break the
+		// isolation `--name` promises.
+		if (flags.name) {
+			console.error("--name is not yet supported by the macOS native provider.");
+			console.error(
+				"It runs one instance per project directory. Use a second checkout for a second instance, or the Docker provider (--docker) for named instances.",
+			);
+			process.exit(1);
+		}
 		// The import is what "provider not available" describes, so only the
 		// import is caught here. Wrapping the launch in the same try reported
 		// every genuine launch failure — a failed Postgres provision, a failed

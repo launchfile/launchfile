@@ -9,6 +9,7 @@ import {
 	loadIndex,
 	findDeployment,
 	findBySource,
+	findAllBySource,
 	type DeploymentEntry,
 } from "./state/index.js";
 
@@ -83,11 +84,14 @@ export async function resolveDeploymentTarget(
 ): Promise<ResolvedDeployment> {
 	const index = await loadIndex(dir);
 
-	// No target → find by pwd
+	// No target → find by pwd. Several instances can share one directory
+	// (D-59: identity is the (source, name) pair), and picking one silently
+	// would aim `down`/`status`/`logs` at an instance the user never named.
 	if (!target) {
 		const cwd = process.cwd();
-		const found = findBySource(index, cwd);
-		if (found) return found;
+		const found = findAllBySource(index, cwd);
+		if (found.length === 1) return found[0]!;
+		if (found.length > 1) exitAmbiguous(cwd, found);
 
 		console.error("No deployment found for the current directory.");
 		console.error("Specify a deployment ID or app name: launchfile down <id|name>");
@@ -112,14 +116,22 @@ export async function resolveDeploymentTarget(
 	}
 
 	// Ambiguous
-	console.error(`Multiple deployments match "${target}":`);
+	exitAmbiguous(target, matches);
+}
+
+function exitAmbiguous(
+	query: string,
+	matches: ResolvedDeployment[],
+): never {
+	console.error(`Multiple deployments match "${query}":`);
 	for (const m of matches) {
 		const src = m.entry.sourceType === "local"
 			? m.entry.source.replace(process.env.HOME ?? "", "~")
 			: m.entry.source;
+		const name = m.entry.name ? `(--name ${m.entry.name})` : "(unnamed)";
 		const port = m.entry.port ? `:${m.entry.port}` : "";
-		console.error(`  ${m.id}  ${src}  ${port}`);
+		console.error(`  ${m.id}  ${name}  ${src}  ${port}`);
 	}
-	console.error("\nSpecify a deployment ID, or run from the project directory.");
+	console.error("\nSpecify a deployment ID or instance name.");
 	process.exit(1);
 }
