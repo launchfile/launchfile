@@ -559,6 +559,35 @@ export interface ComposeOpts {
 	 * generated, so an operator's credential cannot survive into captured output.
 	 */
 	supplied?: Record<string, Record<string, string>>;
+	/**
+	 * Operator-supplied host paths for `content: operator` volumes (D-50),
+	 * keyed by volume name or `component.volume`. A key splits on its FIRST
+	 * dot: if the left half names a component, the key is component-qualified;
+	 * otherwise the whole key is a volume name (dots included). The qualified
+	 * form wins when both match one volume. Values must be absolute — the
+	 * compose file lives in state, not the project dir, so a relative path
+	 * would rebase silently; `dockerUp` resolves flag values against its cwd
+	 * and verifies each bound path exists before launching (rule 2 row 3).
+	 */
+	storagePaths?: Record<string, string>;
+}
+
+/** A `content: operator` volume bound to an operator-supplied host path (D-50 row 1). */
+export interface StorageBind {
+	component: string;
+	volume: string;
+	/** The `storagePaths` key that supplied the path, as the operator wrote it. */
+	key: string;
+	hostPath: string;
+	containerPath: string;
+}
+
+/** A `content: operator` volume no supplied path covers (D-50 row 2). */
+export interface UnboundOperatorVolume {
+	component: string;
+	volume: string;
+	/** The exact flag that satisfies the volume, e.g. `--storage music=<path>`. */
+	flag: string;
 }
 
 /** A `required:` variable neither the Launchfile nor the operator supplied. */
@@ -602,6 +631,19 @@ export interface ComposeResult {
 	 * pure generator.
 	 */
 	unsuppliedRequired: UnsuppliedRequiredVar[];
+	/**
+	 * Bind mounts emitted for `content: operator` volumes (D-50 row 1). The
+	 * generator is pure, so the caller owns row 3: verify each `hostPath`
+	 * exists and is readable before launching — refuse, never create.
+	 */
+	storageBinds: StorageBind[];
+	/**
+	 * `content: operator` volumes with no supplied path (D-50 row 2). Their
+	 * mounts are ABSENT from the emitted compose — never a fabricated empty
+	 * volume. Same shape as `unsuppliedRequired`, deliberately NOT folded into
+	 * `warnings`: a deploying verb reads this field and refuses.
+	 */
+	unboundOperatorVolumes: UnboundOperatorVolume[];
 }
 
 export function launchToCompose(
@@ -622,6 +664,33 @@ export function launchToCompose(
 	const componentServices: Record<string, string> = {};
 	const unsuppliedRequired: UnsuppliedRequiredVar[] = [];
 	const endpoints: Record<string, StateEndpoint> = {};
+	const storageBinds: StorageBind[] = [];
+	const unboundOperatorVolumes: UnboundOperatorVolume[] = [];
+
+	// D-50 storage-path keys, classified once against the component set: a key
+	// whose first-dot left half names a component is component-qualified;
+	// anything else — no dot, or a left half naming no component — is a bare
+	// volume name, dots included.
+	const componentSet = new Set(Object.keys(launch.components));
+	const qualifiedPaths = new Map<string, { path: string; key: string }>();
+	const barePaths = new Map<string, { path: string; key: string }>();
+	for (const [key, path] of Object.entries(opts.storagePaths ?? {})) {
+		const dot = key.indexOf(".");
+		if (dot > 0 && componentSet.has(key.slice(0, dot))) {
+			qualifiedPaths.set(key, { path, key });
+		} else {
+			barePaths.set(key, { path, key });
+		}
+	}
+	const usedStorageKeys = new Set<string>();
+	// How many components declare a volume of each name — an ambiguous name gets
+	// the `component.volume` spelling in the refusal's suggested flag.
+	const volumeNameCount = new Map<string, number>();
+	for (const comp of Object.values(launch.components)) {
+		for (const volName of Object.keys(comp.storage ?? {})) {
+			volumeNameCount.set(volName, (volumeNameCount.get(volName) ?? 0) + 1);
+		}
+	}
 	// Set by any component that declares `provides` and is actually translated,
 	// so a component skipped earlier (refused capability, non-local build
 	// context) can't be mistaken for a missing `exposed: true`.
@@ -925,10 +994,41 @@ export function launchToCompose(
 			service.healthcheck = translateHealth(component.health, component.provides);
 		}
 
-		// Storage — named volumes for persistence
+		// Storage — named volumes for persistence. A `content: operator` volume
+		// (D-50) is instead bound to the operator-supplied host path, or — when
+		// no path covers it — its mount is withheld and the volume recorded for
+		// the caller to refuse: an empty named volume where the operator's
+		// content belongs is D-52's fabrication in storage form. An unmarked
+		// volume is untouched by `storagePaths` (row 4: byte-identical).
 		if (component.storage) {
 			const svcVolumes: string[] = [];
 			for (const [volName, vol] of Object.entries(component.storage)) {
+				if (vol.content === "operator") {
+					const bound =
+						qualifiedPaths.get(`${componentName}.${volName}`) ?? barePaths.get(volName);
+					if (!bound) {
+						const flagKey =
+							(volumeNameCount.get(volName) ?? 0) > 1
+								? `${componentName}.${volName}`
+								: volName;
+						unboundOperatorVolumes.push({
+							component: componentName,
+							volume: volName,
+							flag: `--storage ${flagKey}=<path>`,
+						});
+						continue;
+					}
+					usedStorageKeys.add(bound.key);
+					svcVolumes.push(`${bound.path}:${vol.path}`);
+					storageBinds.push({
+						component: componentName,
+						volume: volName,
+						key: bound.key,
+						hostPath: bound.path,
+						containerPath: vol.path,
+					});
+					continue;
+				}
 				const namedVolume = `${serviceName}-${volName}`;
 				svcVolumes.push(`${namedVolume}:${vol.path}`);
 				volumes[namedVolume] = {};
@@ -956,6 +1056,17 @@ export function launchToCompose(
 		warnings.push(
 			`${launch.name}: no endpoint sets \`exposed: true\` — nothing is published to the host, so the app is not reachable (D-27)`,
 		);
+	}
+
+	// A storage-path key that bound nothing would otherwise vanish without a
+	// trace — a typo'd name surfaces here (the unbound marked volume it left
+	// behind is refused separately, so this alone never masks a refusal). Only
+	// `content: operator` volumes are bindable: row 4 keeps unmarked volumes
+	// byte-identical, so a key naming one is unused too.
+	for (const key of Object.keys(opts.storagePaths ?? {})) {
+		if (!usedStorageKeys.has(key)) {
+			warnings.push(`--storage ${key} matches no \`content: operator\` volume — ignored`);
+		}
 	}
 
 	// Add network
@@ -986,6 +1097,8 @@ export function launchToCompose(
 		endpoints,
 		services: componentServices,
 		unsuppliedRequired,
+		storageBinds,
+		unboundOperatorVolumes,
 	};
 }
 

@@ -2,8 +2,9 @@
  * Main provider orchestration — docker compose lifecycle management.
  */
 
-import { realpathSync } from "node:fs";
+import { accessSync, constants as fsConstants, realpathSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
+import { resolve as resolvePath } from "node:path";
 import { createInterface } from "node:readline";
 import { readLaunch, selectionClosure } from "@launchfile/sdk";
 import { checkPrereqs, composeSupportsIgnoreBuildable } from "./prereqs.js";
@@ -21,7 +22,12 @@ import {
 	type StateEndpoint,
 } from "./state.js";
 import { allocatePorts } from "./port-allocator.js";
-import { launchToCompose, type UnsuppliedRequiredVar } from "./compose-generator.js";
+import {
+	launchToCompose,
+	type StorageBind,
+	type UnboundOperatorVolume,
+	type UnsuppliedRequiredVar,
+} from "./compose-generator.js";
 import { planReleases, runReleases } from "./release.js";
 import { shell, shellStream } from "./shell.js";
 import { getLogger, withSpan } from "./logger.js";
@@ -58,6 +64,16 @@ export interface DockerUpOpts {
 	 * all components.
 	 */
 	components?: string[];
+	/**
+	 * Operator-supplied host paths for `content: operator` volumes (D-50):
+	 * `--storage <volume>=<path>` / `--storage <component>.<volume>=<path>`,
+	 * keyed as typed (the component/volume split happens against the parsed
+	 * Launchfile). Relative paths resolve against the invocation cwd. The
+	 * explicit flag map is the only source this provider consults today; per
+	 * D-50 rule 1 it takes precedence over any provider-config map, so a
+	 * config channel added later slots in below it, never above.
+	 */
+	storage?: Record<string, string>;
 }
 
 /**
@@ -105,6 +121,63 @@ export class ForeignSourceError extends Error {
 	constructor(details: ForeignSourceDetails) {
 		super(foreignSourceMessage(details));
 		this.name = "ForeignSourceError";
+	}
+}
+
+/**
+ * A deploy refused because a `content: operator` volume arrived with no host
+ * path (D-50 rule 2, row 2). Creating the volume empty and starting anyway is
+ * D-52's fabrication in storage form — the silent success this refusal closes.
+ * Each line names the volume and the exact flag that satisfies it.
+ */
+export class UnboundOperatorStorageError extends Error {
+	/** An operator-fixable precondition, not a crash — see `ExpectedRefusal`. */
+	readonly expectedRefusal = true as const;
+	readonly volumes: UnboundOperatorVolume[];
+
+	constructor(volumes: UnboundOperatorVolume[]) {
+		const lines = volumes.map(
+			({ component, volume, flag }) => `  - ${component}: ${volume} — supply it with ${flag}`,
+		);
+		super(
+			`Cannot launch: ${volumes.length} volume${volumes.length === 1 ? "" : "s"} marked ` +
+				"`content: operator` had no host path.\n" +
+				`${lines.join("\n")}\n` +
+				"The Launchfile declares that you supply this content (D-50); this provider will not\n" +
+				"create an empty volume in its place. Provide each path and run `up` again.",
+		);
+		this.name = "UnboundOperatorStorageError";
+		this.volumes = volumes;
+	}
+}
+
+/**
+ * A deploy refused because an operator-supplied storage path is absent or
+ * unreadable on the host (D-50 rule 2, row 3). The directory is never
+ * created: a silently minted empty `~/Music` would reintroduce the
+ * empty-library failure through this channel's own flag.
+ */
+export class MissingOperatorStoragePathError extends Error {
+	/** An operator-fixable precondition, not a crash — see `ExpectedRefusal`. */
+	readonly expectedRefusal = true as const;
+	readonly binds: StorageBind[];
+
+	constructor(binds: StorageBind[]) {
+		const lines = binds.map(
+			({ component, volume, key, hostPath }) =>
+				`  - ${component}: ${volume} — --storage ${key}=${hostPath}`,
+		);
+		super(
+			(binds.length === 1
+				? "Cannot launch: a supplied storage path does not exist or is not readable."
+				: `Cannot launch: ${binds.length} supplied storage paths do not exist or are not readable.`) +
+				`\n${lines.join("\n")}\n` +
+				"The volume is marked `content: operator` (D-50), so this provider refuses to create\n" +
+				"the directory — an empty one here is the missing-content failure the marker exists\n" +
+				"to catch. Check each path and run `up` again.",
+		);
+		this.name = "MissingOperatorStoragePathError";
+		this.binds = binds;
 	}
 }
 
@@ -364,6 +437,15 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// Generate compose. `process.env` is this provider's operator channel for
 		// `required:` variables the Launchfile supplies no value for (PROVIDERS.md
 		// §10 rule 8) — `URL=https://wiki.example.com launchfile up` supplies one.
+		// Storage paths (D-50) are absolutized here, against the invocation
+		// cwd — the compose file lives in state, so a relative path in it
+		// would rebase against whatever directory compose later runs from.
+		const storagePaths = opts.storage
+			? Object.fromEntries(
+					Object.entries(opts.storage).map(([key, path]) => [key, resolvePath(path)]),
+				)
+			: undefined;
+
 		const result = await inPhase("provision", failure(), async () =>
 			launchToCompose(launch, {
 				secrets: state.secrets,
@@ -371,6 +453,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 				hostPorts,
 				projectDir: resolved.dir,
 				operatorEnv: process.env,
+				storagePaths,
 			}),
 		);
 
@@ -388,6 +471,29 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		const blocking = result.unsuppliedRequired.filter((v) => launching.has(v.component));
 		if (blocking.length > 0) {
 			throw new UnsuppliedRequiredEnvError(blocking);
+		}
+
+		// D-50 rule 2, rows 2 and 3 — refused before the compose file is
+		// written and before any volume exists, dry-run included. Scoped the
+		// same way as required-env (§5 rule 4): a marked volume on a component
+		// outside the start-set blocks nothing.
+		const unboundStorage = result.unboundOperatorVolumes.filter((v) =>
+			launching.has(v.component),
+		);
+		if (unboundStorage.length > 0) {
+			throw new UnboundOperatorStorageError(unboundStorage);
+		}
+		const missingPaths: StorageBind[] = [];
+		for (const bind of result.storageBinds) {
+			if (!launching.has(bind.component)) continue;
+			try {
+				accessSync(bind.hostPath, fsConstants.R_OK);
+			} catch {
+				missingPaths.push(bind);
+			}
+		}
+		if (missingPaths.length > 0) {
+			throw new MissingOperatorStoragePathError(missingPaths);
 		}
 
 		// Past the refusal gate — from here the provider starts leaving things on
