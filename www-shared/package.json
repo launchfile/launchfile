@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Shared Astro layouts/components and Sätteri markdown plugins for the launchfile.org and launchfile.dev sites.",
   "dependencies": {
-    "satteri": "^0.9.3"
+    "satteri": "^0.10.5"
   },
   "devDependencies": {
     "@types/hast": "^3.0.4",
