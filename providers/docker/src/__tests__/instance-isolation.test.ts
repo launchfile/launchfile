@@ -181,14 +181,147 @@ describe("dockerUp --dry-run instance isolation (#240)", () => {
 			await saveState("isotest", foreign);
 
 			await expect(dockerUp(projectDir, {})).rejects.toThrow(ForeignSourceError);
-			// The refusal names the project and both remedies.
+			// The refusal names the project and the remedies.
 			const err = await dockerUp(projectDir, {}).catch((e: unknown) => e as Error);
 			expect(err).toBeInstanceOf(ForeignSourceError);
 			expect((err as Error).message).toContain("launchfile-isotest");
 			expect((err as Error).message).toContain("/somewhere/else/Launchfile");
 			expect((err as Error).message).toContain("--name <label>");
+			expect((err as Error).message).toContain("launchfile down isotest --destroy");
 		},
 	);
+
+	it("accepts the same checkout spelled through a symlink — no false refusal", async () => {
+		// projectDir came from mkdtemp under the platform tmpdir; a symlinked
+		// spelling of the same directory must compare equal via realpath.
+		const linked = join(tmpHome, "linked-app");
+		const { symlinkSync } = await import("node:fs");
+		symlinkSync(projectDir, linked);
+
+		const own = initState("isotest", "isotest", LAUNCHFILE, {
+			sourceType: "local",
+			sourcePath: join(projectDir, "Launchfile"),
+		});
+		await saveState("isotest", own);
+
+		await dockerUp(linked, { dryRun: true });
+		expect(errors.join("\n")).not.toContain("different source");
+	});
+});
+
+describe("foreign-source guard across source types (#240 review blocker)", () => {
+	let prevHome: string | undefined;
+	let prevDockerConfig: string | undefined;
+	let tmpHome: string;
+	let errors: string[];
+	let restore: (() => void) | null = null;
+
+	beforeEach(() => {
+		prevHome = process.env.HOME;
+		prevDockerConfig = process.env.DOCKER_CONFIG;
+		tmpHome = mkdtempSync(join(tmpdir(), "lf-xsource-home-"));
+		if (prevHome && !prevDockerConfig) {
+			process.env.DOCKER_CONFIG = join(prevHome, ".docker");
+		}
+		process.env.HOME = tmpHome;
+
+		errors = [];
+		const log = console.log;
+		const err = console.error;
+		console.log = () => undefined;
+		console.error = (...args: unknown[]) => errors.push(args.join(" "));
+		restore = () => {
+			console.log = log;
+			console.error = err;
+		};
+	});
+
+	afterEach(() => {
+		restore?.();
+		restore = null;
+		if (prevHome === undefined) delete process.env.HOME;
+		else process.env.HOME = prevHome;
+		if (prevDockerConfig === undefined) delete process.env.DOCKER_CONFIG;
+		else process.env.DOCKER_CONFIG = prevDockerConfig;
+		rmSync(tmpHome, { recursive: true, force: true });
+	});
+
+	it("a catalog up over local-recorded state warns on dry-run — the reviewer's repro", async () => {
+		// Slug "ghost" resolved from the repo's own catalog; its saved state
+		// says a local checkout deployed it.
+		const local = initState("ghost", "ghost", "name: ghost\n", {
+			sourceType: "local",
+			sourcePath: "/some/checkout/Launchfile",
+		});
+		await saveState("ghost", local);
+
+		await dockerUp("ghost", { dryRun: true });
+		const printed = errors.join("\n");
+		expect(printed).toContain("already deployed from a different source");
+		expect(printed).toContain("/some/checkout/Launchfile");
+		expect(printed).toContain("the launchfile catalog");
+	});
+
+	itIfPrereqsOk(
+		"a catalog up over local-recorded state refuses for real, with the teardown remedy",
+		async () => {
+			const local = initState("ghost", "ghost", "name: ghost\n", {
+				sourceType: "local",
+				sourcePath: "/some/checkout/Launchfile",
+			});
+			await saveState("ghost", local);
+
+			const err = await dockerUp("ghost", { yes: true }).catch((e: unknown) => e as Error);
+			expect(err).toBeInstanceOf(ForeignSourceError);
+			expect((err as Error).message).toContain("/some/checkout/Launchfile");
+			expect((err as Error).message).toContain("launchfile down ghost --destroy");
+		},
+	);
+
+	it("a url up over a different recorded url warns on dry-run", async () => {
+		const { createServer: createHttpServer } = await import("node:http");
+		const server = createHttpServer((_req, res) => {
+			res.writeHead(200, { "content-type": "text/yaml" });
+			res.end(LAUNCHFILE);
+		});
+		await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+		const address = server.address() as { port: number };
+		try {
+			const recorded = initState("isotest", "isotest", LAUNCHFILE, {
+				sourceType: "url",
+				sourceUrl: "http://other.example/Launchfile",
+			});
+			await saveState("isotest", recorded);
+
+			await dockerUp(`http://127.0.0.1:${address.port}/Launchfile`, { dryRun: true });
+			const printed = errors.join("\n");
+			expect(printed).toContain("already deployed from a different source");
+			expect(printed).toContain("http://other.example/Launchfile");
+		} finally {
+			await new Promise((resolve) => server.close(resolve));
+		}
+	});
+
+	it("a catalog up over catalog-recorded state proceeds — same source, no warning", async () => {
+		const recorded = initState("ghost", "ghost", "name: ghost\n", {
+			sourceType: "catalog",
+		});
+		await saveState("ghost", recorded);
+
+		await dockerUp("ghost", { dryRun: true });
+		expect(errors.join("\n")).not.toContain("different source");
+	});
+
+	it("pre-source-tracking state stays fail-open — no recorded source, no refusal", async () => {
+		const legacy = initState("ghost", "ghost", "name: ghost\n");
+		legacy.sourceType = undefined;
+		legacy.sourcePath = undefined;
+		legacy.sourceUrl = undefined;
+		await saveState("ghost", legacy);
+
+		await dockerUp("ghost", { dryRun: true });
+		expect(errors.join("\n")).not.toContain("different source");
+	});
 });
 
 describe("port allocation is seeded per instance (D-59, #275 interaction)", () => {

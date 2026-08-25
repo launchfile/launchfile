@@ -2,6 +2,7 @@
  * Main provider orchestration — docker compose lifecycle management.
  */
 
+import { realpathSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { readLaunch, selectionClosure } from "@launchfile/sdk";
@@ -92,41 +93,75 @@ export class UnsuppliedRequiredEnvError extends Error {
 
 /**
  * A deploy refused because the slug's existing state was created from a
- * different source (D-59): adopting it would hand another checkout's live
- * containers, volumes, and secrets to whatever is in the current directory.
- * The message names the existing project and both remedies; nothing is
+ * different source (D-59): adopting it would hand another source's live
+ * containers, volumes, and secrets to whatever is being launched now.
+ * The message names the existing project and the remedies; nothing is
  * touched before the throw.
  */
 export class ForeignSourceError extends Error {
 	/** An operator-fixable precondition, not a crash — see `ExpectedRefusal`. */
 	readonly expectedRefusal = true as const;
 
-	constructor(details: {
-		slug: string;
-		project: string;
-		existingPath: string;
-		currentPath: string;
-	}) {
+	constructor(details: ForeignSourceDetails) {
 		super(foreignSourceMessage(details));
 		this.name = "ForeignSourceError";
 	}
 }
 
-/** Shared by the refusal and the dry-run warning, so both say the same thing. */
-export function foreignSourceMessage(details: {
+export interface ForeignSourceDetails {
 	slug: string;
 	project: string;
-	existingPath: string;
-	currentPath: string;
-}): string {
+	existingSource: string;
+	currentSource: string;
+	/** The recorded source is a local checkout — "run from its directory" applies. */
+	existingIsLocal: boolean;
+}
+
+/** Shared by the refusal and the dry-run warning, so both say the same thing. */
+export function foreignSourceMessage(details: ForeignSourceDetails): string {
+	const remedies = [
+		"  - launch a separate instance from here: launchfile up --name <label>",
+		...(details.existingIsLocal
+			? [
+					"  - or update the existing deployment by running `launchfile up` from its source directory,",
+				]
+			: []),
+		`  - or tear the existing deployment down first: launchfile down ${details.slug} --destroy`,
+	];
 	return (
 		`"${details.slug}" (compose project ${details.project}) is already deployed from a different source.\n` +
-		`  Existing source: ${details.existingPath}\n` +
-		`  This source:     ${details.currentPath}\n` +
+		`  Existing source: ${details.existingSource}\n` +
+		`  This source:     ${details.currentSource}\n` +
 		`Refusing to adopt that deployment's containers, volumes, and secrets. Either:\n` +
-		`  - launch a separate instance from here: launchfile up --name <label>\n` +
-		`  - or update the existing deployment by running \`launchfile up\` from its source directory.`
+		remedies.join("\n")
 	);
+}
+
+/** Human name for a deployment's source: its path, its URL, or the catalog. */
+function describeSource(
+	sourceType: string | undefined,
+	sourcePath: string | undefined,
+	sourceUrl: string | undefined,
+): string {
+	if (sourcePath) return sourcePath;
+	if (sourceUrl) return sourceUrl;
+	if (sourceType === "catalog") return "the launchfile catalog";
+	return sourceType ?? "unknown (pre-source-tracking state)";
+}
+
+/**
+ * Path equality for the foreign-source guard, resolved through symlinks so a
+ * differently-spelled route to the same checkout (`/tmp` vs `/private/tmp`)
+ * is never a false refusal. A path that no longer resolves keeps the plain
+ * string verdict — unequal strings stay foreign.
+ */
+function samePath(a: string, b: string): boolean {
+	if (a === b) return true;
+	try {
+		return realpathSync(a) === realpathSync(b);
+	} catch {
+		return false;
+	}
 }
 
 /** component name → compose service name (mirrors compose-generator). */
@@ -271,19 +306,35 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// Load or init state
 		let state = await loadState(slug);
 
-		// Foreign-source guard (#240, D-59): existing state created from a
-		// different local path is another checkout's live deployment — refuse to
-		// adopt it (silently re-pointing its containers, volumes, and secrets is
-		// the clobber this guards against). A dry run surfaces the same message
-		// as a warning: it writes nothing, so previewing is safe. Older state
-		// files without `sourcePath`, and catalog/url sources, carry no path to
-		// compare and pass through unchanged.
-		if (state?.sourcePath && sourceInfo.sourcePath && state.sourcePath !== sourceInfo.sourcePath) {
-			const details = {
+		// Foreign-source guard (#240, D-59): existing state recorded from a
+		// different source — another checkout's path, another URL, or another
+		// source type entirely (a catalog `up` over a checkout's state) — is a
+		// different deployment; refuse to adopt it (silently re-pointing its
+		// containers, volumes, and secrets is the clobber this guards against).
+		// A dry run surfaces the same message as a warning: it writes nothing,
+		// so previewing is safe. Pre-source-tracking state files record no
+		// sourceType and pass through unchanged (fail-open floor — the guard
+		// arms on the next legitimate `up`, which records the source).
+		const foreign =
+			state !== null &&
+			((state.sourceType !== undefined && state.sourceType !== sourceInfo.sourceType) ||
+				(state.sourcePath !== undefined &&
+					sourceInfo.sourcePath !== undefined &&
+					!samePath(state.sourcePath, sourceInfo.sourcePath)) ||
+				(state.sourceUrl !== undefined &&
+					sourceInfo.sourceUrl !== undefined &&
+					state.sourceUrl !== sourceInfo.sourceUrl));
+		if (state && foreign) {
+			const details: ForeignSourceDetails = {
 				slug,
 				project: composeProject(slug),
-				existingPath: state.sourcePath,
-				currentPath: sourceInfo.sourcePath,
+				existingSource: describeSource(state.sourceType, state.sourcePath, state.sourceUrl),
+				currentSource: describeSource(
+					sourceInfo.sourceType,
+					sourceInfo.sourcePath,
+					sourceInfo.sourceUrl,
+				),
+				existingIsLocal: state.sourceType === "local" || state.sourcePath !== undefined,
 			};
 			if (!opts.dryRun) throw new ForeignSourceError(details);
 			console.error(`  Warning: ${foreignSourceMessage(details)}`);
@@ -292,12 +343,13 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		if (!state) {
 			state = initState(slug, launch.name, resolved.yaml, sourceInfo);
 		} else {
-			// Backfill/refresh source info on existing state (older state files
-			// predate these fields; a re-`up` from the same app's moved checkout
-			// updates them — a different checkout is refused above).
+			// Refresh recorded source info without erasing what this run cannot
+			// know: a field the current source does not carry (a catalog `up`
+			// has no path, a local one no URL) stays as recorded — overwriting
+			// it with undefined would permanently disarm the guard above.
 			state.sourceType = sourceInfo.sourceType;
-			state.sourcePath = sourceInfo.sourcePath;
-			state.sourceUrl = sourceInfo.sourceUrl;
+			if (sourceInfo.sourcePath !== undefined) state.sourcePath = sourceInfo.sourcePath;
+			if (sourceInfo.sourceUrl !== undefined) state.sourceUrl = sourceInfo.sourceUrl;
 		}
 
 		// Allocate host ports. The deterministic-fallback seed for a named

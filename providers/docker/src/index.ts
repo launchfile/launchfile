@@ -11,6 +11,7 @@ export {
 	HEALTH_TIMEOUT_MS,
 	UnsuppliedRequiredEnvError,
 	ForeignSourceError,
+	type ForeignSourceDetails,
 	type DockerUpOpts,
 	type DockerUpResult,
 } from "./provider.js";
