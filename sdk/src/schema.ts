@@ -205,6 +205,10 @@ const StorageVolumeSchema = z.object({
 	// deletes a documented field through parse → serialize.
 	size: z.string().max(256).optional(),
 	persistent: z.boolean().optional(),
+	// D-50 provenance marker: the operator supplies this volume's content —
+	// the provider binds it at `path` or refuses the component, and never
+	// initializes it empty.
+	content: z.enum(["operator"]).optional(),
 });
 
 // --- DependsOn ---

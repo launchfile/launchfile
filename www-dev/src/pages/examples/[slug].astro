@@ -230,6 +230,28 @@ export function getStaticPaths() {
         { line: "persistent: false", text: "Marks the cache volume as ephemeral scratch — not preserved across restarts like the data volume." },
       ],
     },
+    {
+      slug: "operator-content",
+      title: "Operator-Supplied Content",
+      description: "Mark a volume whose content the operator supplies with content: operator — the provider binds it at launch or refuses the component, and never creates it empty.",
+      catalogLink: 'Media and file servers like <a href="https://launchfile.io/apps/navidrome/">Navidrome</a>, <a href="https://launchfile.io/apps/audiobookshelf/">Audiobookshelf</a>, and <a href="https://launchfile.io/apps/file-browser/">File Browser</a> serve libraries the platform cannot create.',
+      concepts: [
+        "`content: operator` marks a volume the operator fills — a music library, a photo collection — that the platform cannot create",
+        "The marker says who fills the volume; the host path stays out of the file and is supplied at launch: `launchfile up --storage music=~/Music` (repeatable; `<component>.<volume>=<path>` when ambiguous)",
+        "The provider binds the operator's content at the declared path or refuses the component with an error naming the volume and the flag — it never creates the volume empty behind a successful-looking deploy",
+        "`persistent` is not applicable on a marked volume — the operator's directory outlives the deployment by construction",
+        "`launchfile validate` lists marked volumes in its privilege summary alongside host capabilities",
+      ],
+      guidance: "Media servers, file managers, backup tools — any app whose volume holds content only the operator can supply.",
+      specLinks: [
+        { label: "Storage", href: "https://launchfile.org/spec/storage/" },
+        { label: "Storage Properties", href: "https://launchfile.org/spec/storage-properties/" },
+      ],
+      annotations: [
+        { line: "content: operator", text: "The provenance marker (D-50). Without it, a provider reads the operator's library volume exactly like a provider-owned one — and starts the app over an empty directory." },
+        { line: "ND_MUSICFOLDER: $storage.music.path", text: "Resolves as usual — the container path is still the mount point, whoever supplied the content." },
+      ],
+    },
   ];
 
   return examples.map((ex) => ({
