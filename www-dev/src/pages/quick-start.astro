@@ -85,6 +85,27 @@ npx launchfile up --native
 
   <p>Now try it with your own app — create a <code>Launchfile</code> in your project root, then run <code>npx launchfile up</code>.</p>
 
+  <h2 id="when-a-launch-fails">When a launch fails</h2>
+
+  <p>A failed <code>up</code> writes a structured record of what went wrong. Ask for it afterwards — from any directory, in a new shell:</p>
+
+  <Code lang="bash" theme="github-dark" code={`npx launchfile diagnose
+# my-app failed during release slot
+#   phase:       release
+#   disposition: failed the deploy — the release stage aborted it (D-48)
+#   exit code:   1`} />
+
+  <p>The record names the <strong>lifecycle slot</strong> that failed — <code>prepare</code>, <code>release</code>, <code>run</code>, <code>bootstrap</code> — not the command name, because the same command fills different slots in different modes. Alongside it is the <em>disposition</em>: whether the failure killed the deploy, killed the invocation, or was only reported.</p>
+
+  <p>The record also carries the failing command, the exit code, and the log tails. Secrets are masked when the record is written, and it stores the <em>names</em> of your environment variables, never their values.</p>
+
+  <Code lang="bash" theme="github-dark" code={`npx launchfile diagnose --json | jq .phase
+# "release"`} />
+
+  <p><code>--json</code> writes the raw record to stdout and nothing else, so it pipes cleanly. Records live at <code>~/.launchfile/errors/</code>, one per app, and are cleared by the next successful <code>up</code>.</p>
+
+  <p>One failure has its own phase: <code>health</code>. A component that never becomes healthy fails the launch, so <code>up</code> exits non-zero and names the components that never passed. Their containers stay running so you can look at them, and the deployment is listed as <code>unhealthy</code> — <code>launchfile status</code>, <code>launchfile logs</code>, and <code>launchfile down</code> all reach it. A component that declares no health check counts as healthy once its container is running.</p>
+
   <h2 id="next-steps">Next steps</h2>
 
   <ul>

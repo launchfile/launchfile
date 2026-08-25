@@ -65,9 +65,21 @@ export async function shell(
 			);
 
 			if (error && !opts.allowFailure) {
+				// `display` is carried separately from the message so a failure
+				// capture records the command as its own field without parsing it
+				// back out of prose. It is the redacted form — a release command
+				// arrives here with `$secrets.*` resolved (D-18, CWE-532).
+				// The attached output is redacted here too, not only at capture:
+				// the span logger serializes the whole error on failure, so a raw
+				// tail on the error would reach stderr and the opt-in NDJSON file.
 				reject(
 					Object.assign(new Error(`Command failed: ${redactSecrets(display)}`), {
-						result,
+						result: {
+							...result,
+							stdout: redactSecrets(result.stdout),
+							stderr: redactSecrets(result.stderr),
+						} satisfies ShellResult,
+						display: redactSecrets(display),
 					}),
 				);
 			} else {
@@ -128,7 +140,17 @@ export async function shellStream(
 				"shell stream complete",
 			);
 			if (exitCode !== 0 && !opts.allowFailure) {
-				reject(new Error(`Command failed: ${redactSecrets(display)} (exit ${exitCode})`));
+				// Output streamed straight to the terminal, so there is nothing
+				// buffered to capture — the exit code and the redacted command are.
+				reject(
+					Object.assign(
+						new Error(`Command failed: ${redactSecrets(display)} (exit ${exitCode})`),
+						{
+							result: { exitCode, stdout: "", stderr: "" } satisfies ShellResult,
+							display: redactSecrets(display),
+						},
+					),
+				);
 			} else {
 				resolvePromise(exitCode);
 			}

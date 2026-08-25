@@ -3,6 +3,15 @@
  *
  * Maintains ~/.launchfile/deployments/index.json as the single source
  * of truth for all managed deployments.
+ *
+ * The index states what exists on the machine, not what succeeded: a launch that
+ * started containers and then failed still has a deployment, and `status`,
+ * `logs`, and `down` all resolve through here (`commands/up.ts` →
+ * `failedDeploymentStatus`).
+ *
+ * Every entry point takes the directory as a defaulted argument so tests can
+ * point it at a temp directory (the repo's injection-over-module-mocking rule).
+ * As in `state/errors.ts`, there is deliberately no environment variable for it.
  */
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
@@ -21,57 +30,67 @@ export function deploymentsDir(): string {
 	return join(launchfileHome(), "deployments");
 }
 
-export function deploymentDir(id: string): string {
-	return join(deploymentsDir(), id);
+export function deploymentDir(id: string, dir: string = deploymentsDir()): string {
+	return join(dir, id);
 }
 
-function indexPath(): string {
-	return join(deploymentsDir(), "index.json");
+function indexPath(dir: string): string {
+	return join(dir, "index.json");
 }
 
 function emptyIndex(): DeploymentIndex {
 	return { version: 1, deployments: {} };
 }
 
-export async function loadIndex(): Promise<DeploymentIndex> {
+export async function loadIndex(
+	dir: string = deploymentsDir(),
+): Promise<DeploymentIndex> {
 	try {
-		const raw = await readFile(indexPath(), "utf8");
+		const raw = await readFile(indexPath(dir), "utf8");
 		return JSON.parse(raw) as DeploymentIndex;
 	} catch {
 		return emptyIndex();
 	}
 }
 
-export async function saveIndex(index: DeploymentIndex): Promise<void> {
-	await mkdir(deploymentsDir(), { recursive: true });
-	await writeFile(indexPath(), JSON.stringify(index, null, 2) + "\n");
+export async function saveIndex(
+	index: DeploymentIndex,
+	dir: string = deploymentsDir(),
+): Promise<void> {
+	await mkdir(dir, { recursive: true });
+	await writeFile(indexPath(dir), JSON.stringify(index, null, 2) + "\n");
 }
 
 export async function addDeployment(
 	id: string,
 	entry: DeploymentEntry,
+	dir: string = deploymentsDir(),
 ): Promise<void> {
-	const index = await loadIndex();
+	const index = await loadIndex(dir);
 	index.deployments[id] = entry;
-	await saveIndex(index);
-	await mkdir(deploymentDir(id), { recursive: true });
+	await saveIndex(index, dir);
+	await mkdir(deploymentDir(id, dir), { recursive: true });
 }
 
 export async function updateDeployment(
 	id: string,
 	updates: Partial<DeploymentEntry>,
+	dir: string = deploymentsDir(),
 ): Promise<void> {
-	const index = await loadIndex();
+	const index = await loadIndex(dir);
 	const existing = index.deployments[id];
 	if (!existing) return;
 	index.deployments[id] = { ...existing, ...updates, updatedAt: new Date().toISOString() };
-	await saveIndex(index);
+	await saveIndex(index, dir);
 }
 
-export async function removeDeployment(id: string): Promise<void> {
-	const index = await loadIndex();
+export async function removeDeployment(
+	id: string,
+	dir: string = deploymentsDir(),
+): Promise<void> {
+	const index = await loadIndex(dir);
 	delete index.deployments[id];
-	await saveIndex(index);
+	await saveIndex(index, dir);
 }
 
 /**

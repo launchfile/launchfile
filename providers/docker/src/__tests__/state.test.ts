@@ -8,6 +8,7 @@ import {
 	loadState,
 	loadDockerSource,
 	stateDir,
+	composeProject,
 	type DockerState,
 } from "../state.js";
 import { clearRegisteredSecrets, redactSecrets, REDACTED } from "../redact.js";
@@ -143,5 +144,35 @@ describe("docker state — env-level generator values (D-49, #186)", () => {
 		clearRegisteredSecrets();
 		await loadState("envgen");
 		expect(redactSecrets(`token=${value}`)).toBe(`token=${REDACTED}`);
+	});
+});
+
+describe("docker state — composeProject slug guard", () => {
+	it("prefixes a well-formed slug", () => {
+		expect(composeProject("cool-app")).toBe("launchfile-cool-app");
+		expect(composeProject("a")).toBe("launchfile-a");
+		expect(composeProject(`a${"b".repeat(62)}`)).toBe(`launchfile-a${"b".repeat(62)}`);
+	});
+
+	it("normalizes case and whitespace before validating", () => {
+		expect(composeProject("APP")).toBe("launchfile-app");
+		expect(composeProject(" app ")).toBe("launchfile-app");
+	});
+
+	it("rejects a slug that could reach docker as anything but a project name", () => {
+		// The name travels as its own argv element, so none of these are
+		// interpreted today — the guard is what keeps that true (CWE-78).
+		for (const bad of [
+			"app;rm -rf /",
+			"app $(id)",
+			"app`id`",
+			"../escape",
+			"app name",
+			"-p",
+			"",
+			`a${"b".repeat(63)}`,
+		]) {
+			expect(() => composeProject(bad)).toThrow(/Invalid slug/);
+		}
 	});
 });

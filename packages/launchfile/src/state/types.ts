@@ -19,7 +19,16 @@ export interface DeploymentEntry {
 	slug?: string;
 	name: string | null;
 	port: number | null;
-	status: "up" | "down" | "unknown";
+	/**
+	 * What is on the machine, not whether the command succeeded.
+	 *
+	 * `unhealthy` is a deployment whose containers run and whose health gate
+	 * never passed — `up` exited non-zero and left them up on purpose. `unknown`
+	 * is a launch interrupted after containers started (a `release` or `run`
+	 * failure), where some exist and the exact set is not knowable from here.
+	 * Both are reachable by `status`, `logs`, and `down`.
+	 */
+	status: "up" | "down" | "unhealthy" | "unknown";
 	createdAt: string;
 	updatedAt: string;
 }

@@ -5,6 +5,7 @@ import {
 	clearRegisteredSecrets,
 	REDACTED,
 	redactSecrets,
+	registerDeclaredSecret,
 	registerSecret,
 	registerSecrets,
 } from "../redact.js";
@@ -51,6 +52,17 @@ describe("redactSecrets", () => {
 	it("ignores values too short to be registered safely", () => {
 		registerSecret("abc");
 		expect(redactSecrets("abc def")).toBe("abc def");
+	});
+
+	it("applies no length floor to a declared secret", () => {
+		registerDeclaredSecret("824193");
+		expect(redactSecrets("pin 824193 rejected")).toBe(`pin ${REDACTED} rejected`);
+	});
+
+	it("rejects the empty string as a declared secret", () => {
+		// An empty separator would splice REDACTED between every character.
+		registerDeclaredSecret("");
+		expect(redactSecrets("untouched")).toBe("untouched");
 	});
 
 	it("ignores non-string registry entries", () => {

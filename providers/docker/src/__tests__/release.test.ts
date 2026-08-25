@@ -1,5 +1,6 @@
 import { readLaunch } from "@launchfile/sdk";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { clearRegisteredSecrets, REDACTED, registerSecret } from "../redact.js";
 import {
 	DEFAULT_RELEASE_TIMEOUT_MS,
 	dependencyOrder,
@@ -198,6 +199,32 @@ describe("runReleases", () => {
 			}),
 		).rejects.toThrow(/release \[backend\] failed with exit code 1/);
 		expect(calls).toHaveLength(1);
+	});
+
+	describe("the error's attached output is redacted at the attach point", () => {
+		afterEach(() => clearRegisteredSecrets());
+
+		it("carries no registered secret on result.stdout/stderr — the span logger serializes the error whole", async () => {
+			const secret = "release-planted-secret-77aa";
+			registerSecret(secret);
+			const exec: ReleaseExec = async () => ({
+				exitCode: 1,
+				stdout: `token=${secret}`,
+				stderr: `auth failed: rejected ${secret}`,
+			});
+
+			const err = (await runReleases(plan, {
+				project: "lf-acme",
+				composeFile: "/tmp/c.yml",
+				exec,
+			}).catch((e: unknown) => e)) as Error & {
+				result: { stdout: string; stderr: string };
+			};
+
+			expect(err.result.stdout).toBe(`token=${REDACTED}`);
+			expect(err.result.stderr).toBe(`auth failed: rejected ${REDACTED}`);
+			expect(JSON.stringify(err.result)).not.toContain(secret);
+		});
 	});
 });
 

@@ -7,6 +7,7 @@
  *   launchfile down [id|slug|name]     Stop a deployment
  *   launchfile status [id|slug|name]   Show deployment status
  *   launchfile logs [id|slug|name]     View logs
+ *   launchfile diagnose [id|slug]      Explain the last failed launch
  *   launchfile list                    List all deployments
  *   launchfile validate [path]         Validate a Launchfile
  *   launchfile inspect [path]          Print normalized JSON
@@ -22,6 +23,7 @@ import { handleStatus } from "./commands/status.js";
 import { handleLogs } from "./commands/logs.js";
 import { handleList } from "./commands/list.js";
 import { handleBootstrap } from "./commands/bootstrap.js";
+import { handleDiagnose } from "./commands/diagnose.js";
 import { cmdValidate, cmdInspect, cmdSchema } from "@launchfile/sdk";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -66,6 +68,7 @@ Usage:
   launchfile down [id|slug]          Stop a deployment
   launchfile status [id|slug]        Show deployment status
   launchfile logs [id|slug]          View logs
+  launchfile diagnose [id|slug]      Explain why the last launch failed
   launchfile bootstrap [id|slug]     Run post-start setup (commands.bootstrap)
   launchfile list                    List all deployments
   launchfile validate [path]         Validate a Launchfile
@@ -84,6 +87,7 @@ Options:
   --component <n>  Limit bootstrap to a single component
   --detached       (validate) Evaluate as fetched standalone, not read from the
                     app's own checkout — enables the D-43 reduced-portability check
+  --json           Machine-readable output (with diagnose, validate)
   --help           Show this help
   --version        Show version
 
@@ -93,6 +97,8 @@ Environment:
 Examples:
   launchfile up ghost                Run Ghost from the catalog
   launchfile up                      Run the app in the current directory
+  launchfile diagnose                Explain the last failed launch
+  launchfile diagnose --json         The same record, for a script
   launchfile down --destroy          Stop and remove everything
   launchfile list                    Show all deployments
 `;
@@ -147,6 +153,12 @@ async function main(): Promise<void> {
 				follow: hasFlag("follow") || args.includes("-f"),
 			});
 			break;
+
+		case "diagnose": {
+			const code = await handleDiagnose(target, { json: hasFlag("json") });
+			if (code !== 0) process.exit(code);
+			break;
+		}
 
 		case "list":
 		case "ls":
