@@ -106,6 +106,49 @@ export function composeProject(slug: string): string {
 	return `launchfile-${normalizeSlugForProject(slug)}`;
 }
 
+/**
+ * An instance label that cannot become part of a slug (D-59). An operator
+ * mistake with an actionable message — labels are rejected, never silently
+ * mangled, because a mangled label would key state under a name the operator
+ * never typed.
+ */
+export class InvalidInstanceLabelError extends Error {
+	/** An operator-fixable precondition, not a crash — see `ExpectedRefusal`. */
+	readonly expectedRefusal = true as const;
+
+	constructor(message: string) {
+		super(message);
+		this.name = "InvalidInstanceLabelError";
+	}
+}
+
+/**
+ * The slug a deployment's provider state is keyed by (D-59): the app's base
+ * slug, qualified by the instance label when one is given. Everything that
+ * keys off the slug — state dir, compose project (and through it volumes and
+ * networks), port persistence — follows the label automatically, which is
+ * what isolates two instances of one app.
+ *
+ * The label must already satisfy the slug rules (`SAFE_SLUG_PATTERN`) and the
+ * combined slug must fit the compose project-name limit; violations are
+ * rejected with the reason, never normalized away.
+ */
+export function instanceSlug(baseSlug: string, label?: string): string {
+	if (!label) return baseSlug;
+	if (!SAFE_SLUG_PATTERN.test(label)) {
+		throw new InvalidInstanceLabelError(
+			`Invalid instance name "${label}". Use lowercase letters, digits, and hyphens, starting with a letter or digit.`,
+		);
+	}
+	const slug = `${baseSlug}-${label}`;
+	if (slug.length > MAX_SLUG_LENGTH) {
+		throw new InvalidInstanceLabelError(
+			`Instance name "${label}" makes the combined slug "${slug}" longer than ${MAX_SLUG_LENGTH} characters. Use a shorter name.`,
+		);
+	}
+	return slug;
+}
+
 function hashContent(content: string): string {
 	return createHash("sha256").update(content).digest("hex").slice(0, 16);
 }

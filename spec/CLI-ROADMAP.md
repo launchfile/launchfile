@@ -103,6 +103,15 @@ $ launchfile up --docker     # Docker even if on macOS
 
 Resolution order: ID → name → app slug → pwd.
 
+A deployment's identity is the **(source, name)** pair, and its provider state
+key is the **(app identity, instance label)** pair (D-59). The provider's
+effective slug is `<app-slug>-<name>` when `--name` is given, and the bare app
+slug when not — so `up ghost --name=ghost-test` runs under the slug
+`ghost-ghost-test`, with its own state directory, compose project (volumes and
+network follow project scoping), and port allocations, fully isolated from the
+unnamed `ghost`. A provider must refuse — not silently adopt — existing state
+recorded from a different source.
+
 ## State
 
 ```

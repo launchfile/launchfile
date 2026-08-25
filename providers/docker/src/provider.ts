@@ -2,6 +2,7 @@
  * Main provider orchestration — docker compose lifecycle management.
  */
 
+import { realpathSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { readLaunch, selectionClosure } from "@launchfile/sdk";
@@ -10,6 +11,7 @@ import { resolveSource } from "./source-resolver.js";
 import {
 	loadState,
 	initState,
+	instanceSlug,
 	saveState,
 	ensureStateDir,
 	composePath,
@@ -38,6 +40,14 @@ export interface DockerUpOpts {
 	dryRun?: boolean;
 	/** Skip confirmation prompt for remote Launchfiles */
 	yes?: boolean;
+	/**
+	 * Instance label (#240, D-59): folded into the effective slug
+	 * (`<base-slug>-<label>`), which keys the state dir, compose project — and
+	 * through project scoping the volumes and network — and the port
+	 * allocations. Two `up` runs with different labels are fully isolated
+	 * instances; absent, the slug and every existing deployment are unchanged.
+	 */
+	name?: string;
 	/**
 	 * Component selector (#77): if non-empty, these components plus their
 	 * transitive downward `depends_on` closure are started (D-41). The start-set
@@ -81,6 +91,79 @@ export class UnsuppliedRequiredEnvError extends Error {
 	}
 }
 
+/**
+ * A deploy refused because the slug's existing state was created from a
+ * different source (D-59): adopting it would hand another source's live
+ * containers, volumes, and secrets to whatever is being launched now.
+ * The message names the existing project and the remedies; nothing is
+ * touched before the throw.
+ */
+export class ForeignSourceError extends Error {
+	/** An operator-fixable precondition, not a crash — see `ExpectedRefusal`. */
+	readonly expectedRefusal = true as const;
+
+	constructor(details: ForeignSourceDetails) {
+		super(foreignSourceMessage(details));
+		this.name = "ForeignSourceError";
+	}
+}
+
+export interface ForeignSourceDetails {
+	slug: string;
+	project: string;
+	existingSource: string;
+	currentSource: string;
+	/** The recorded source is a local checkout — "run from its directory" applies. */
+	existingIsLocal: boolean;
+}
+
+/** Shared by the refusal and the dry-run warning, so both say the same thing. */
+export function foreignSourceMessage(details: ForeignSourceDetails): string {
+	const remedies = [
+		"  - launch a separate instance from here: launchfile up --name <label>",
+		...(details.existingIsLocal
+			? [
+					"  - or update the existing deployment by running `launchfile up` from its source directory,",
+				]
+			: []),
+		`  - or tear the existing deployment down first: launchfile down ${details.slug} --destroy`,
+	];
+	return (
+		`"${details.slug}" (compose project ${details.project}) is already deployed from a different source.\n` +
+		`  Existing source: ${details.existingSource}\n` +
+		`  This source:     ${details.currentSource}\n` +
+		`Refusing to adopt that deployment's containers, volumes, and secrets. Either:\n` +
+		remedies.join("\n")
+	);
+}
+
+/** Human name for a deployment's source: its path, its URL, or the catalog. */
+function describeSource(
+	sourceType: string | undefined,
+	sourcePath: string | undefined,
+	sourceUrl: string | undefined,
+): string {
+	if (sourcePath) return sourcePath;
+	if (sourceUrl) return sourceUrl;
+	if (sourceType === "catalog") return "the launchfile catalog";
+	return sourceType ?? "unknown (pre-source-tracking state)";
+}
+
+/**
+ * Path equality for the foreign-source guard, resolved through symlinks so a
+ * differently-spelled route to the same checkout (`/tmp` vs `/private/tmp`)
+ * is never a false refusal. A path that no longer resolves keeps the plain
+ * string verdict — unequal strings stay foreign.
+ */
+function samePath(a: string, b: string): boolean {
+	if (a === b) return true;
+	try {
+		return realpathSync(a) === realpathSync(b);
+	} catch {
+		return false;
+	}
+}
+
 /** component name → compose service name (mirrors compose-generator). */
 function serviceNameFor(appName: string, componentName: string): string {
 	return componentName === "default" ? appName : `${appName}-${componentName}`;
@@ -92,6 +175,7 @@ function serviceNameFor(appName: string, componentName: string): string {
  * docker provider uses (#48), and can re-locate the Launchfile later (#25).
  */
 export interface DockerUpResult {
+	/** Effective slug — instance-qualified when `opts.name` was given (D-59). */
 	slug: string;
 	appName: string;
 	sourceType: "local" | "catalog" | "url";
@@ -111,13 +195,20 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 	// Resolve source before the span so we have the slug for span context
 	const resolved = await inPhase("resolve", sourceContext, () => resolveSource(source));
 
-	const key = dockerErrorKey({ slug: resolved.slug });
+	// Effective slug (D-59): instance-qualified when a name was given. Every
+	// slug-keyed value below — state, compose project, ports, error records —
+	// uses this, never the base slug, so named instances never share any of
+	// them. An invalid label is an expected refusal and throws here, before
+	// anything exists.
+	const slug = instanceSlug(resolved.slug, opts.name);
+
+	const key = dockerErrorKey({ slug });
 
 	// Anything that escapes without a phase still gets a record, tagged
 	// `unknown` rather than guessed at — an untagged failure would leave
 	// `diagnose` with nothing to show for a run that visibly failed.
-	return inPhase("unknown", { key, slug: resolved.slug }, () =>
-	withSpan("up", { source, slug: resolved.slug }, async () => {
+	return inPhase("unknown", { key, slug }, () =>
+	withSpan("up", { source, slug }, async () => {
 		const log = getLogger();
 
 		// Check prerequisites
@@ -129,14 +220,14 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 				throw dockerLaunchError({
 					phase: "prereq",
 					key,
-					slug: resolved.slug,
+					slug,
 					message: `Missing prerequisites: ${prereqs.missing.join("; ")}`,
 				});
 			}
 		}
 
 		// Parse Launchfile
-		const launch = await inPhase("parse", { key, slug: resolved.slug }, async () =>
+		const launch = await inPhase("parse", { key, slug }, async () =>
 			readLaunch(resolved.yaml),
 		);
 		const componentNames = Object.keys(launch.components);
@@ -146,7 +237,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// ever in scope here, so none can reach a record.
 		const failure = (extra: Partial<PhaseContext> = {}): PhaseContext => ({
 			key,
-			slug: resolved.slug,
+			slug,
 			app: launch.name,
 			env: declaredEnvKeys(launch),
 			...extra,
@@ -191,7 +282,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 				(name) => launch.components[name]?.build,
 			);
 
-			console.log(`  App: ${launch.name} (${resolved.slug})`);
+			console.log(`  App: ${launch.name} (${slug})`);
 			if (resources.length) console.log(`  Resources: ${resources.join(", ")}`);
 			if (images.length) console.log(`  Images: ${images.join(", ")}`);
 			if (buildComponents.length) console.log(`  Builds from source: ${buildComponents.join(", ")}`);
@@ -213,20 +304,61 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		};
 
 		// Load or init state
-		let state = await loadState(resolved.slug);
-		if (!state) {
-			state = initState(resolved.slug, launch.name, resolved.yaml, sourceInfo);
-		} else {
-			// Backfill/refresh source info on existing state (older state files
-			// predate these fields; a re-`up` from a new location updates them).
-			state.sourceType = sourceInfo.sourceType;
-			state.sourcePath = sourceInfo.sourcePath;
-			state.sourceUrl = sourceInfo.sourceUrl;
+		let state = await loadState(slug);
+
+		// Foreign-source guard (#240, D-59): existing state recorded from a
+		// different source — another checkout's path, another URL, or another
+		// source type entirely (a catalog `up` over a checkout's state) — is a
+		// different deployment; refuse to adopt it (silently re-pointing its
+		// containers, volumes, and secrets is the clobber this guards against).
+		// A dry run surfaces the same message as a warning: it writes nothing,
+		// so previewing is safe. Pre-source-tracking state files record no
+		// sourceType and pass through unchanged (fail-open floor — the guard
+		// arms on the next legitimate `up`, which records the source).
+		const foreign =
+			state !== null &&
+			((state.sourceType !== undefined && state.sourceType !== sourceInfo.sourceType) ||
+				(state.sourcePath !== undefined &&
+					sourceInfo.sourcePath !== undefined &&
+					!samePath(state.sourcePath, sourceInfo.sourcePath)) ||
+				(state.sourceUrl !== undefined &&
+					sourceInfo.sourceUrl !== undefined &&
+					state.sourceUrl !== sourceInfo.sourceUrl));
+		if (state && foreign) {
+			const details: ForeignSourceDetails = {
+				slug,
+				project: composeProject(slug),
+				existingSource: describeSource(state.sourceType, state.sourcePath, state.sourceUrl),
+				currentSource: describeSource(
+					sourceInfo.sourceType,
+					sourceInfo.sourcePath,
+					sourceInfo.sourceUrl,
+				),
+				existingIsLocal: state.sourceType === "local" || state.sourcePath !== undefined,
+			};
+			if (!opts.dryRun) throw new ForeignSourceError(details);
+			console.error(`  Warning: ${foreignSourceMessage(details)}`);
 		}
 
-		// Allocate host ports
+		if (!state) {
+			state = initState(slug, launch.name, resolved.yaml, sourceInfo);
+		} else {
+			// Refresh recorded source info without erasing what this run cannot
+			// know: a field the current source does not carry (a catalog `up`
+			// has no path, a local one no URL) stays as recorded — overwriting
+			// it with undefined would permanently disarm the guard above.
+			state.sourceType = sourceInfo.sourceType;
+			if (sourceInfo.sourcePath !== undefined) state.sourcePath = sourceInfo.sourcePath;
+			if (sourceInfo.sourceUrl !== undefined) state.sourceUrl = sourceInfo.sourceUrl;
+		}
+
+		// Allocate host ports. The deterministic-fallback seed for a named
+		// instance is the effective slug, so two instances of one app prefer
+		// distinct ports before probing (D-59). Unnamed deployments keep the
+		// historical `launch.name` seed — changing it would move existing
+		// deployments' fallback ports.
 		const hostPorts = await inPhase("provision", failure(), () =>
-			allocatePorts(launch.components, launch.name, state.ports),
+			allocatePorts(launch.components, opts.name ? slug : launch.name, state.ports),
 		);
 
 		// Generate compose. `process.env` is this provider's operator channel for
@@ -260,7 +392,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 
 		// Past the refusal gate — from here the provider starts leaving things on
 		// disk, so the state directory is created here rather than earlier.
-		await ensureStateDir(resolved.slug);
+		await ensureStateDir(slug);
 
 		// Log warnings; refusals (un-grantable host capabilities, D-44) are
 		// surfaced distinctly — a refusal is user-visible output, not a line
@@ -283,7 +415,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		state.endpoints = result.endpoints;
 
 		const upResult: DockerUpResult = {
-			slug: resolved.slug,
+			slug,
 			appName: launch.name,
 			sourceType: sourceInfo.sourceType,
 			sourcePath: sourceInfo.sourcePath,
@@ -303,20 +435,20 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 
 		// Write compose file
 		await inPhase("provision", failure({ warnings }), () =>
-			withSpan("up:compose", { slug: resolved.slug }, async () => {
+			withSpan("up:compose", { slug }, async () => {
 				// Security: compose file contains passwords in environment variables
-				const file = composePath(resolved.slug);
+				const file = composePath(slug);
 				await writeFile(file, result.yaml, { mode: 0o600 });
 			}),
 		);
 
 		// Save state
 		await inPhase("provision", failure({ warnings }), () =>
-			saveState(resolved.slug, state),
+			saveState(slug, state),
 		);
 
-		const project = composeProject(resolved.slug);
-		const composeFile = composePath(resolved.slug);
+		const project = composeProject(slug);
+		const composeFile = composePath(slug);
 		const withLogs = (extra: Partial<PhaseContext> = {}): PhaseContext =>
 			failure({ warnings, logs: () => captureComposeLogs(project, composeFile), ...extra });
 

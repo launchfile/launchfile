@@ -25,6 +25,12 @@ import { handleList } from "./commands/list.js";
 import { handleBootstrap } from "./commands/bootstrap.js";
 import { handleDiagnose } from "./commands/diagnose.js";
 import { cmdValidate, cmdInspect, cmdSchema } from "@launchfile/sdk";
+import {
+	hasFlag as argsHasFlag,
+	getFlagValue as argsGetFlagValue,
+	getPositional as argsGetPositional,
+	flagPresent as argsFlagPresent,
+} from "./cli-args.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const { version: VERSION } = JSON.parse(
@@ -33,25 +39,24 @@ const { version: VERSION } = JSON.parse(
 
 const args = process.argv.slice(2);
 
-function hasFlag(flag: string): boolean {
-	return args.includes(`--${flag}`) || args.includes(`-${flag[0]}`);
-}
+const hasFlag = (flag: string): boolean => argsHasFlag(args, flag);
+const getFlagValue = (flag: string): string | undefined => argsGetFlagValue(args, flag);
+const getPositional = (index: number): string | undefined => argsGetPositional(args, index);
 
-function getFlagValue(flag: string): string | undefined {
-	const idx = args.indexOf(`--${flag}`);
-	if (idx === -1 || idx + 1 >= args.length) return undefined;
-	return args[idx + 1];
-}
-
-/** Get the Nth positional argument (skipping flags) */
-function getPositional(index: number): string | undefined {
-	let pos = 0;
-	for (const arg of args) {
-		if (arg.startsWith("-")) continue;
-		if (pos === index) return arg;
-		pos++;
+/**
+ * The instance label, or undefined when --name was not given. A `--name` with
+ * no value (nothing follows, `--name=`, or another flag follows) is an error —
+ * silently launching the unnamed instance would target different state than
+ * the user asked for.
+ */
+function getNameFlag(): string | undefined {
+	if (!argsFlagPresent(args, "name")) return undefined;
+	const value = getFlagValue("name");
+	if (!value || value.startsWith("-")) {
+		console.error("--name requires a value, e.g. --name test-a");
+		process.exit(1);
 	}
-	return undefined;
+	return value;
 }
 
 const command = getPositional(0);
@@ -83,7 +88,8 @@ Options:
   --dry-run        Preview without starting anything
   --destroy        Remove all containers and data (with down)
   --follow, -f     Stream logs continuously
-  --name <name>    Name this deployment
+  --name <label>   Launch a separate named instance of the app — its own
+                    state, volumes, network, and ports (Docker provider)
   --component <n>  Limit bootstrap to a single component
   --detached       (validate) Evaluate as fetched standalone, not read from the
                     app's own checkout — enables the D-43 reduced-portability check
@@ -122,7 +128,7 @@ async function main(): Promise<void> {
 				native: hasFlag("native"),
 				detach: hasFlag("detach"),
 				dryRun: hasFlag("dry-run"),
-				name: getFlagValue("name"),
+				name: getNameFlag(),
 			});
 			break;
 
@@ -134,7 +140,7 @@ async function main(): Promise<void> {
 				native: true,
 				detach: hasFlag("detach"),
 				dryRun: hasFlag("dry-run"),
-				name: getFlagValue("name"),
+				name: getNameFlag(),
 			});
 			break;
 

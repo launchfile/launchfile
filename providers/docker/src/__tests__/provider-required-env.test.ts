@@ -74,6 +74,8 @@ vi.mock("node:fs/promises", () => ({
 
 vi.mock("../state.js", () => ({
 	loadState: async () => null,
+	instanceSlug: (baseSlug: string, label?: string) =>
+		label ? `${baseSlug}-${label}` : baseSlug,
 	saveState: async () => {},
 	ensureStateDir: async () => {},
 	composePath: () => composeFile,

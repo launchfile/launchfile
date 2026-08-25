@@ -132,15 +132,38 @@ export function findDeployment(
 	return results;
 }
 
-/** Find the deployment for the current working directory */
+/**
+ * Find the deployment for the current working directory.
+ *
+ * `name` narrows the match to one instance (D-59): a deployment's identity is
+ * the (source, name) pair, so an unnamed `up` (`name: null`) never resolves to
+ * a named instance from the same directory, and vice versa. Omitting `name`
+ * keeps the legacy any-instance behavior — first match wins — for callers that
+ * only have a path.
+ */
 export function findBySource(
 	index: DeploymentIndex,
 	sourcePath: string,
+	name?: string | null,
 ): { id: string; entry: DeploymentEntry } | null {
-	for (const [id, entry] of Object.entries(index.deployments)) {
-		if (entry.source === sourcePath) {
+	for (const { id, entry } of findAllBySource(index, sourcePath)) {
+		if (name === undefined || (entry.name ?? null) === name) {
 			return { id, entry };
 		}
 	}
 	return null;
+}
+
+/** Every deployment launched from `sourcePath`, one per instance name (D-59). */
+export function findAllBySource(
+	index: DeploymentIndex,
+	sourcePath: string,
+): { id: string; entry: DeploymentEntry }[] {
+	const results: { id: string; entry: DeploymentEntry }[] = [];
+	for (const [id, entry] of Object.entries(index.deployments)) {
+		if (entry.source === sourcePath) {
+			results.push({ id, entry });
+		}
+	}
+	return results;
 }
