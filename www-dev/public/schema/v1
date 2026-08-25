@@ -444,7 +444,7 @@
     },
     "host": {
       "type": "object",
-      "description": "DEPRECATED (D-58) — legacy top-level host block. Host-level capabilities the app requires beyond a standard container. Use host-capability entries in requires/supports instead (D-44). Still valid in launch/v1; removed in launch/v2.",
+      "description": "DEPRECATED (D-54) — legacy top-level host block. Host-level capabilities the app requires beyond a standard container. Use host-capability entries in requires/supports instead (D-44). Still valid in launch/v1; removed in launch/v2.",
       "deprecated": true,
       "x-launchfile-deprecation": {
         "deprecated_in": "launch/v1",
@@ -456,7 +456,7 @@
         "docker": {
           "type": "string",
           "enum": ["required", "optional"],
-          "description": "DEPRECATED (D-58) — whether the app needs Docker daemon access on the host. Replaced by the container_runtime capability entry.",
+          "description": "DEPRECATED (D-54) — whether the app needs Docker daemon access on the host. Replaced by the container_runtime capability entry.",
           "deprecated": true,
           "x-launchfile-deprecation": {
             "deprecated_in": "launch/v1",
@@ -468,7 +468,7 @@
         "network": {
           "type": "string",
           "enum": ["host", "bridge"],
-          "description": "DEPRECATED (D-58) — network mode. Replaced by the network capability entry.",
+          "description": "DEPRECATED (D-54) — network mode. Replaced by the network capability entry.",
           "default": "bridge",
           "deprecated": true,
           "x-launchfile-deprecation": {
@@ -481,7 +481,7 @@
         "filesystem": {
           "type": "string",
           "enum": ["read-write", "read-only", "none"],
-          "description": "DEPRECATED (D-58) — host filesystem access level. Replaced by the filesystem capability entry.",
+          "description": "DEPRECATED (D-54) — host filesystem access level. Replaced by the filesystem capability entry.",
           "default": "none",
           "deprecated": true,
           "x-launchfile-deprecation": {
@@ -493,7 +493,7 @@
         },
         "privileged": {
           "type": "boolean",
-          "description": "DEPRECATED (D-58) — requires elevated privileges (e.g., device access). Replaced by the privileged capability entry.",
+          "description": "DEPRECATED (D-54) — requires elevated privileges (e.g., device access). Replaced by the privileged capability entry.",
           "default": false,
           "deprecated": true,
           "x-launchfile-deprecation": {
