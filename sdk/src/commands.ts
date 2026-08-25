@@ -9,8 +9,8 @@ import { readFileSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { lintDeprecations } from "./deprecations.js";
 import type { Deprecation } from "./deprecations.js";
-import { lintLaunch } from "./lint.js";
-import { readLaunch } from "./reader.js";
+import { lintLaunch, lintUnknownStorageKeys } from "./lint.js";
+import { parseLaunchYaml, readLaunch, validateLaunch } from "./reader.js";
 import type { NormalizedLaunch } from "./types.js";
 
 // --- Color helpers ---
@@ -168,14 +168,21 @@ export function cmdValidate(path: string, opts: ValidateOpts = {}): ValidateResu
 	const yaml = readFile(resolvedPath, fmt);
 
 	try {
-		const launch = readLaunch(yaml);
+		// Parse once, feed both paths: schema validation strips unrecognized
+		// keys, so the unknown-storage-key lint can only see them on the raw
+		// document — never on the normalized result.
+		const raw = parseLaunchYaml(yaml);
+		const launch = validateLaunch(raw);
 		const componentNames = Object.keys(launch.components);
 		const allRequires = collectRequires(launch);
 		const hostCapabilities = collectHostCapabilities(launch);
-		const warnings = lintLaunch(launch, {
-			detached: opts.detached,
-			suppressPortabilityWarnings: envFlag("LAUNCHFILE_NO_PORTABILITY_WARNINGS"),
-		});
+		const warnings = [
+			...lintLaunch(launch, {
+				detached: opts.detached,
+				suppressPortabilityWarnings: envFlag("LAUNCHFILE_NO_PORTABILITY_WARNINGS"),
+			}),
+			...lintUnknownStorageKeys(raw),
+		];
 		const deprecations = lintDeprecations(launch);
 
 		const result: ValidateResult = {

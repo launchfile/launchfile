@@ -11,6 +11,7 @@
 import { parseExpression } from "./resolver.js";
 import { RESOURCE_PROPERTY_VOCABULARY } from "./resource-properties.js";
 import { lintDurations } from "./durations.js";
+import { StorageVolumeSchema } from "./schema.js";
 import type { NormalizedLaunch, NormalizedRequirement } from "./types.js";
 
 export type { Deprecation, DeprecationRecord } from "./deprecations.js";
@@ -154,6 +155,59 @@ function checkResourceProperties(
 			}
 		}
 	}
+}
+
+/**
+ * Storage keys the schema recognizes, derived from the schema itself so a
+ * future ratified field can never produce a stale false warning.
+ */
+const KNOWN_STORAGE_KEYS = Object.keys(StorageVolumeSchema.shape);
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Warn on unrecognized keys in storage entries (#239). Zod's default strip
+ * mode deletes unlisted keys at parse, so a `NormalizedLaunch` can never
+ * carry them — this check MUST take the raw YAML document (as returned by
+ * the reader's `parseLaunchYaml`), which is why it is a separate function rather
+ * than part of {@link lintLaunch}. Warn-only per D-46's unknown-vocabulary
+ * posture: parse still succeeds, `valid` and the exit code are untouched.
+ * Covers both spellings — `components.<name>.storage` and the top-level
+ * single-component `storage` block.
+ */
+export function lintUnknownStorageKeys(raw: unknown): string[] {
+	const warnings: string[] = [];
+	if (!isPlainObject(raw)) return warnings;
+
+	const checkBlock = (storage: unknown, prefix: string): void => {
+		if (!isPlainObject(storage)) return;
+		for (const [entryName, entry] of Object.entries(storage)) {
+			if (!isPlainObject(entry)) continue;
+			const unrecognized = Object.keys(entry).filter(
+				(key) => !KNOWN_STORAGE_KEYS.includes(key),
+			);
+			if (unrecognized.length === 0) continue;
+			warnings.push(
+				`storage "${prefix}${entryName}": unrecognized keys ` +
+					`${unrecognized.map((key) => `"${key}"`).join(", ")} ` +
+					`(known: ${KNOWN_STORAGE_KEYS.join(", ")}) — unknown keys are ` +
+					"ignored and will not affect deployment",
+			);
+		}
+	};
+
+	checkBlock(raw.storage, "");
+	if (isPlainObject(raw.components)) {
+		for (const [componentName, component] of Object.entries(raw.components)) {
+			if (isPlainObject(component)) {
+				checkBlock(component.storage, `${componentName}.`);
+			}
+		}
+	}
+
+	return warnings;
 }
 
 /**

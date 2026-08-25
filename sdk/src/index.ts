@@ -17,8 +17,8 @@ export {
 	type UnsuppliedRequiredEnv,
 	unsuppliedRequiredEnv,
 } from "./env.js";
-export { lintLaunch } from "./lint.js";
-export { readLaunch, validateLaunch } from "./reader.js";
+export { lintLaunch, lintUnknownStorageKeys } from "./lint.js";
+export { parseLaunchYaml, readLaunch, validateLaunch } from "./reader.js";
 export { parseRepository } from "./repository.js";
 export type { RepositoryRef } from "./repository.js";
 export {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { lintDeprecations, lintLaunch } from "../lint.js";
-import { readLaunch } from "../reader.js";
+import { lintDeprecations, lintLaunch, lintUnknownStorageKeys } from "../lint.js";
+import { parseLaunchYaml, readLaunch } from "../reader.js";
 
 describe("lintLaunch — conflicting same-name resources (Q1)", () => {
 	it("warns when the same name declares a divergent version", () => {
@@ -523,5 +523,95 @@ requires:
 		for (const w of warnings) {
 			expect(w.toLowerCase()).not.toContain("deprecat");
 		}
+	});
+});
+
+describe("lintUnknownStorageKeys — unrecognized keys in storage entries (#239)", () => {
+	it("warns per offending entry, naming the entry, its keys, and the known set", () => {
+		const raw = parseLaunchYaml(`
+name: acme
+components:
+  caddy:
+    image: caddy:2
+    storage:
+      caddyfile:
+        path: /etc/caddy
+        source: ./caddy
+        readonly: true
+      data:
+        path: /data
+        persistent: true
+`);
+		const warnings = lintUnknownStorageKeys(raw);
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toBe(
+			'storage "caddy.caddyfile": unrecognized keys "source", "readonly" ' +
+				"(known: path, size, persistent) — unknown keys are ignored and " +
+				"will not affect deployment",
+		);
+	});
+
+	it("covers the top-level single-component storage spelling", () => {
+		const raw = parseLaunchYaml(`
+name: acme
+image: app:1
+storage:
+  data:
+    path: /data
+    mode: "0700"
+`);
+		const warnings = lintUnknownStorageKeys(raw);
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toContain('storage "data"');
+		expect(warnings[0]).toContain('"mode"');
+		expect(warnings[0]).toContain("known: path, size, persistent");
+	});
+
+	it("emits one warning per offending entry across components", () => {
+		const raw = parseLaunchYaml(`
+name: acme
+components:
+  api:
+    image: api:1
+    storage:
+      uploads:
+        path: /uploads
+        readonly: true
+  worker:
+    image: worker:1
+    storage:
+      cache:
+        path: /cache
+        source: ./cache
+`);
+		const warnings = lintUnknownStorageKeys(raw);
+		expect(warnings).toHaveLength(2);
+		expect(warnings.join(" ")).toContain('storage "api.uploads"');
+		expect(warnings.join(" ")).toContain('storage "worker.cache"');
+	});
+
+	it("stays silent for entries that only use recognized keys", () => {
+		const raw = parseLaunchYaml(`
+name: acme
+components:
+  api:
+    image: api:1
+    storage:
+      data:
+        path: /data
+        size: 10Gi
+        persistent: true
+`);
+		expect(lintUnknownStorageKeys(raw)).toEqual([]);
+	});
+
+	it("stays silent for files with no storage at all", () => {
+		expect(lintUnknownStorageKeys(parseLaunchYaml("name: acme\nimage: app:1\n"))).toEqual([]);
+	});
+
+	it("tolerates non-object documents and malformed storage shapes", () => {
+		expect(lintUnknownStorageKeys(null)).toEqual([]);
+		expect(lintUnknownStorageKeys("just a string")).toEqual([]);
+		expect(lintUnknownStorageKeys(parseLaunchYaml("name: acme\nstorage: not-a-map\n"))).toEqual([]);
 	});
 });
