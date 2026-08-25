@@ -28,6 +28,12 @@ function createFormatter(useColor: boolean) {
 
 // --- Helpers ---
 
+/** True unless the var is unset, empty, "0", or "false" (case-insensitive). */
+function envFlag(name: string): boolean {
+	const value = process.env[name];
+	return value !== undefined && value !== "" && value !== "0" && value.toLowerCase() !== "false";
+}
+
 function readFile(path: string, fmt: ReturnType<typeof createFormatter>): string {
 	try {
 		return readFileSync(path, "utf-8");
@@ -125,6 +131,13 @@ export interface ValidateOpts {
 	json?: boolean;
 	quiet?: boolean;
 	noColor?: boolean;
+	/**
+	 * Evaluate as if this file were fetched standalone rather than read from
+	 * the app's own checkout — enables the D-43 reduced-portability case
+	 * (PROVIDERS.md § Source acquisition). Default false (attached), matching
+	 * an ordinary local `validate <path>` read.
+	 */
+	detached?: boolean;
 }
 
 export interface ValidateResult {
@@ -159,7 +172,10 @@ export function cmdValidate(path: string, opts: ValidateOpts = {}): ValidateResu
 		const componentNames = Object.keys(launch.components);
 		const allRequires = collectRequires(launch);
 		const hostCapabilities = collectHostCapabilities(launch);
-		const warnings = lintLaunch(launch);
+		const warnings = lintLaunch(launch, {
+			detached: opts.detached,
+			suppressPortabilityWarnings: envFlag("LAUNCHFILE_NO_PORTABILITY_WARNINGS"),
+		});
 		const deprecations = lintDeprecations(launch);
 
 		const result: ValidateResult = {

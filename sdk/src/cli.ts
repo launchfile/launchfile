@@ -3,7 +3,7 @@
  * CLI for the Launchfile SDK.
  *
  * Usage:
- *   launchfile validate [path] [--json] [--quiet]
+ *   launchfile validate [path] [--json] [--quiet] [--detached]
  *   launchfile inspect [path]
  *   launchfile schema [--schema-path <path>]
  *   launchfile --help
@@ -47,14 +47,20 @@ ${bold("Usage:")}
 ${bold("Options:")}
   --json          Output structured JSON (validate)
   --quiet         No output, just exit code (validate)
+  --detached      Evaluate as fetched standalone, not read from the app's own
+                   checkout — enables the D-43 reduced-portability check (validate)
   --schema-path   Path to JSON Schema file (schema)
   --no-color      Disable colored output
   --version       Show version
   --help          Show this help
 
+${bold("Environment:")}
+  LAUNCHFILE_NO_PORTABILITY_WARNINGS   Set to silence the D-40/D-43 reduced-portability warnings
+
 ${bold("Examples:")}
   launchfile validate
   launchfile validate ./Launchfile --json
+  launchfile validate ./Launchfile --detached
   launchfile inspect ./apps/web/Launchfile
   launchfile schema > launchfile.schema.json
 `;
@@ -83,6 +89,7 @@ function main(): void {
 			cmdValidate(resolvePath(), {
 				json: hasFlag("json"),
 				quiet: hasFlag("quiet"),
+				detached: hasFlag("detached"),
 				noColor,
 			});
 			break;
