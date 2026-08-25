@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { PostgresProvisioner, type ShellRunner } from "../resources/postgres.js";
 import type { NormalizedRequirement } from "@launchfile/sdk";
 import type { ProvisionOpts } from "../resources/types.js";
+import type { ResourceState } from "../state.js";
 
 const REQ = { type: "postgres" } as NormalizedRequirement;
 const OPTS = { appName: "my-app" } as ProvisionOpts;
@@ -91,4 +92,52 @@ describe("PostgresProvisioner readiness gate", () => {
 		expect(() => new PostgresProvisioner()).not.toThrow();
 		expect(new PostgresProvisioner().type).toBe("postgres");
 	});
+});
+
+/**
+ * Same trust boundary as the mysql provisioner: `.launchfile/state.json` is
+ * JSON.parsed without validation, so the database name, user and password
+ * provision() reuses from it are attacker-controlled.
+ */
+describe("PostgresProvisioner rejects unsafe values reused from state.json", () => {
+	const STORED = {
+		type: "postgres",
+		name: "db",
+		brewService: "postgresql",
+		port: 5432,
+		dbName: "launchfile_my_app",
+		user: "launchfile_my_app",
+		password: "s3cret-base64url_value",
+	} as ResourceState;
+
+	const cases = [
+		{
+			field: "dbName",
+			value: "x; DROP DATABASE victim; --",
+			message: /Invalid database name/,
+		},
+		{
+			field: "user",
+			value: "u; DROP DATABASE victim; --",
+			message: /Invalid database user/,
+		},
+		{
+			field: "password",
+			value: "p'; ALTER ROLE postgres SUPERUSER; -- ",
+			message: /Invalid database password/,
+		},
+	] as const;
+
+	for (const { field, value, message } of cases) {
+		it(`throws on a hostile ${field} and issues no psql command`, async () => {
+			const { commands, deps } = recorder();
+			const provisioner = new PostgresProvisioner(deps);
+
+			await expect(
+				provisioner.provision(REQ, OPTS, { ...STORED, [field]: value }),
+			).rejects.toThrow(message);
+
+			expect(commands.filter((c) => c.startsWith("psql"))).toEqual([]);
+		});
+	}
 });

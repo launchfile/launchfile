@@ -5,6 +5,11 @@
 import type { NormalizedRequirement } from "@launchfile/sdk";
 import { shell, shellOk } from "../shell.js";
 import { generatePassword } from "../secret-generator.js";
+import {
+	assertSafeIdentifier,
+	assertSafePassword,
+	SAFE_IDENTIFIER,
+} from "./identifiers.js";
 import type { ResourceState } from "../state.js";
 import type {
 	ProvisionOpts,
@@ -20,9 +25,6 @@ const DEFAULT_HOST = "localhost";
 function mysqlArgs(): string[] {
 	return ["-h", DEFAULT_HOST, "-u", "root"];
 }
-
-// Security: validate identifiers before interpolating into shell/SQL commands
-const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
 export class MysqlProvisioner implements ResourceProvisioner {
 	readonly type = "mysql";
@@ -66,6 +68,12 @@ export class MysqlProvisioner implements ResourceProvisioner {
 		const dbName = existingState?.dbName ?? `launchfile_${safeName}`;
 		const user = existingState?.user ?? `launchfile_${safeName}`;
 		const password = existingState?.password ?? generatePassword();
+		// Security: all three are interpolated into the SQL below, and `mysql -e`
+		// runs `;`-separated statements as root. Fresh values cannot fail these
+		// checks; values reused from state.json are unvalidated JSON (state.ts).
+		assertSafeIdentifier(dbName, "database name");
+		assertSafeIdentifier(user, "database user");
+		assertSafePassword(password);
 		const port = DEFAULT_PORT;
 
 		// Create database and user (idempotent)

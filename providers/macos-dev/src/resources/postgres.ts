@@ -11,6 +11,11 @@
 import type { NormalizedRequirement } from "@launchfile/sdk";
 import { shell, shellOk } from "../shell.js";
 import { generatePassword } from "../secret-generator.js";
+import {
+	assertSafeIdentifier,
+	assertSafePassword,
+	SAFE_IDENTIFIER,
+} from "./identifiers.js";
 import type { ResourceState } from "../state.js";
 import type {
 	ProvisionOpts,
@@ -24,10 +29,6 @@ export type { ShellRunner };
 const DEFAULT_PORT = 5432;
 const DEFAULT_HOST = "localhost";
 const READY_TIMEOUT_SECONDS = 10;
-
-// Security: validate identifiers before interpolating into shell/SQL commands.
-// Only alphanumeric + underscore — safe for SQL identifiers and shell args.
-const SAFE_IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
 /** Connection flags shared by every psql invocation, as argv elements. */
 function psqlArgs(port: number, database: string): string[] {
@@ -87,12 +88,14 @@ export class PostgresProvisioner implements ResourceProvisioner {
 		const safeName = opts.appName.replace(/-/g, "_");
 		const dbName = existingState?.dbName ?? `launchfile_${safeName}`;
 		const user = existingState?.user ?? `launchfile_${safeName}`;
-		// Security: both are interpolated into the psql commands below. A schema-validated
-		// app name can never fail this, but existingState comes from the on-disk state file,
-		// which is JSON.parse'd without validation (state.ts).
-		if (!SAFE_IDENTIFIER.test(dbName)) throw new Error("Invalid database name");
-		if (!SAFE_IDENTIFIER.test(user)) throw new Error("Invalid database user");
 		const password = existingState?.password ?? generatePassword();
+		// Security: all three are interpolated into the psql commands below. A
+		// schema-validated app name and a generated password can never fail these
+		// checks, but existingState comes from the on-disk state file, which is
+		// JSON.parse'd without validation (state.ts).
+		assertSafeIdentifier(dbName, "database name");
+		assertSafeIdentifier(user, "database user");
+		assertSafePassword(password);
 		const port = DEFAULT_PORT;
 
 		// Create user (idempotent)
