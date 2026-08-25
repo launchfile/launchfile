@@ -8,4 +8,6 @@ The runtime installers were the live case: `detectVersion()` returns the verbati
 
 `shell()` now takes `(cmd, args[], opts)`, matching `@launchfile/docker`. Author-written command strings — `commands:`, `health:`, `release:` — keep their shell, which is their documented contract, through the separate `shellScript()` entry point.
 
+Values reused from `.launchfile/state.json` are now validated before they reach SQL. `MysqlProvisioner.provision()` interpolated the stored database name, user and password into `mysql -e`, which runs `;`-separated statements as root; `loadState()` parses that file with no validation and it sits inside the cloned repo. Postgres guarded its two identifiers but not the password. Both provisioners now check all three against `resources/identifiers.ts` before issuing any statement.
+
 Also fixes an unrelated bug in the same code: the rbenv/pyenv installed-version check matched with `grep`, treating the version as a regex, so every `.` matched any character and an unrelated installed version could satisfy the request and skip the install.
