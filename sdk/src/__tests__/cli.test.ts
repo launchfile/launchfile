@@ -26,7 +26,7 @@ function run(
 
 /**
  * Write a Launchfile to a temp file and return its path. The legacy `host:`
- * block no longer appears in `spec/examples/` (D-58 migrated the gallery off
+ * block no longer appears in `spec/examples/` (D-54 migrated the gallery off
  * it), so legacy-path CLI coverage lives on inline fixtures instead.
  */
 function fixture(yaml: string): string {
@@ -118,7 +118,7 @@ describe("launchfile CLI", () => {
 			expect(stdout).toContain("network=host (required)");
 		});
 
-		it("emits the host-capabilities summary for the migrated example (D-58)", () => {
+		it("emits the host-capabilities summary for the migrated example (D-54)", () => {
 			const { stdout, exitCode } = run([
 				"validate",
 				`${EXAMPLES}/host-orchestrator.yaml`,
@@ -382,7 +382,7 @@ describe("launchfile CLI", () => {
 });
 
 
-describe("launchfile validate — deprecation reporting (D-58/D-42)", () => {
+describe("launchfile validate — deprecation reporting (D-54/D-42)", () => {
 	const LEGACY = fixture(
 		"version: launch/v1\nname: legacy\nimage: app:1\nhost:\n  docker: required\n  network: host\n",
 	);

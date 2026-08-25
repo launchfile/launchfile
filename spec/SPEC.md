@@ -299,7 +299,7 @@ Properties a provider cannot supply resolve to the empty string, matching unknow
 | `filesystem` | `read-write`, `read-only` | Host filesystem access |
 | `privileged` | `true` | Elevated privileges (e.g. device access) |
 
-`network`, `filesystem`, and `privileged` are the entry-form spelling of the legacy [`host` block](#host) keys — they are grant/refuse capabilities like any other. That block is **deprecated in `launch/v1` and removed in `launch/v2`** ([D-58](DESIGN.md#d-58-the-legacy-host-block-is-deprecated-in-favor-of-capability-entries)); entries are the form to write. Existing files using the block stay valid and keep their meaning for the whole of `launch/v1` — see [Migrating off the `host:` block](#migrating-off-the-host-block).
+`network`, `filesystem`, and `privileged` are the entry-form spelling of the legacy [`host` block](#host) keys — they are grant/refuse capabilities like any other. That block is **deprecated in `launch/v1` and removed in `launch/v2`** ([D-54](DESIGN.md#d-54-the-legacy-host-block-is-deprecated-in-favor-of-capability-entries)); entries are the form to write. Existing files using the block stay valid and keep their meaning for the whole of `launch/v1` — see [Migrating off the `host:` block](#migrating-off-the-host-block).
 
 ## Supports
 
@@ -721,7 +721,7 @@ depends_on:
 
 ## Host
 
-> **Deprecated.** The whole top-level `host:` block is deprecated in `launch/v1` and is removed in `launch/v2` ([D-58](DESIGN.md#d-58-the-legacy-host-block-is-deprecated-in-favor-of-capability-entries)). Its replacement is the [host capability](#host-capabilities) entry form in `requires`/`supports`. Files using the block **stay valid for the whole of `launch/v1`** and keep their exact meaning — `launchfile validate` reports the deprecation and its migration, and never fails on it. Write new files with capability entries; migrate existing ones using the table below.
+> **Deprecated.** The whole top-level `host:` block is deprecated in `launch/v1` and is removed in `launch/v2` ([D-54](DESIGN.md#d-54-the-legacy-host-block-is-deprecated-in-favor-of-capability-entries)). Its replacement is the [host capability](#host-capabilities) entry form in `requires`/`supports`. Files using the block **stay valid for the whole of `launch/v1`** and keep their exact meaning — `launchfile validate` reports the deprecation and its migration, and never fails on it. Write new files with capability entries; migrate existing ones using the table below.
 
 Declares host-level capabilities the app requires that cannot be satisfied inside a standard container. When a deployer cannot meet these constraints, it should refuse the deployment with a clear error message rather than failing at runtime.
 
@@ -879,7 +879,7 @@ Fetching and building a remote origin executes code from that origin — the per
 | `schedule` | `string` | Cron expression for scheduled jobs |
 | `singleton` | `boolean` | When `true`, the platform must not run more than one instance of this component |
 | `platform` | `string \| string[]` | OCI platform constraint (e.g. `linux/amd64`, `linux/arm64`) |
-| `host` | `object` | **Deprecated** (`launch/v1` → removed in `launch/v2`, [D-58](DESIGN.md#d-58-the-legacy-host-block-is-deprecated-in-favor-of-capability-entries)) — host-level constraints. Use [host capability](#host-capabilities) entries instead; see [Host](#host) |
+| `host` | `object` | **Deprecated** (`launch/v1` → removed in `launch/v2`, [D-54](DESIGN.md#d-54-the-legacy-host-block-is-deprecated-in-favor-of-capability-entries)) — host-level constraints. Use [host capability](#host-capabilities) entries instead; see [Host](#host) |
 
 ### `schedule`
 

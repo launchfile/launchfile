@@ -1,5 +1,5 @@
 /**
- * D-58 / D-42: the deprecation registry is the mechanism, not one special
+ * D-54 / D-42: the deprecation registry is the mechanism, not one special
  * case. These tests guard the two properties that make it one — the SDK
  * registry and the JSON Schema annotations stay in lockstep, and no
  * deprecation can ship half-annotated.
@@ -128,7 +128,7 @@ describe("deprecation metadata in the JSON Schema", () => {
 		expect(readFileSync(PUBLISHED_SCHEMA_PATH, "utf-8")).toBe(schemaText);
 	});
 
-	// D-58 leaves every legacy key structurally untouched — the deprecation is
+	// D-54 leaves every legacy key structurally untouched — the deprecation is
 	// annotation-only, so existing files stay hard-valid (P-13).
 	it("changes nothing structural under $defs.host", () => {
 		const host = pointer(schema, "#/$defs/host") as Record<string, unknown>;

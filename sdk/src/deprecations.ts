@@ -1,6 +1,6 @@
 /**
  * The deprecation registry and reporter — D-42's mechanism, first applied by
- * D-58 to the legacy top-level `host:` block.
+ * D-54 to the legacy top-level `host:` block.
  *
  * Deprecations are DATA, not code: adding one is an entry in
  * {@link DEPRECATION_REGISTRY} plus the matching JSON Schema annotations, with

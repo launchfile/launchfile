@@ -9,7 +9,7 @@
 # warn rather than attempting Docker-in-Docker, which is fragile.
 #
 # The legacy top-level `host:` block spells the same needs, but it is
-# deprecated in launch/v1 and removed in launch/v2 (D-58). See
+# deprecated in launch/v1 and removed in launch/v2 (D-54). See
 # spec/SPEC.md § Host for the per-key migration table.
 
 version: launch/v1

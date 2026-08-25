@@ -214,7 +214,7 @@ requires:
 
 		// P-13 / PROVIDERS.md § Host capabilities: "a file using the new entry
 		// form and a file using the legacy block get the same grant/refuse
-		// outcome." D-58 deprecates the block without changing that — the
+		// outcome." D-54 deprecates the block without changing that — the
 		// counterpart of translate.test.ts's "grades image-only identically".
 		it("produces the same grant/refuse outcome for both spellings (P-13)", () => {
 			const of = (decl: string) =>

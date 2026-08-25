@@ -430,10 +430,10 @@ describe("LaunchSchema", () => {
 		expect(Object.keys(result.components!)).toEqual(["web", "sidekiq"]);
 	});
 
-	// D-58: the legacy host block is deprecated, NOT removed or restricted.
+	// D-54: the legacy host block is deprecated, NOT removed or restricted.
 	// The annotation is the whole change — every legacy file stays hard-valid
 	// with its exact meaning for the whole of launch/v1 (P-13/P-14).
-	it("still accepts a full legacy host block unchanged (D-58)", () => {
+	it("still accepts a full legacy host block unchanged (D-54)", () => {
 		const parsed = LaunchSchema.parse({
 			name: "legacy",
 			image: "app:1",
@@ -452,7 +452,7 @@ describe("LaunchSchema", () => {
 		});
 	});
 
-	it("still accepts a legacy host block on a component (D-58)", () => {
+	it("still accepts a legacy host block on a component (D-54)", () => {
 		const parsed = LaunchSchema.parse({
 			name: "legacy",
 			components: {

@@ -689,8 +689,8 @@ commands:
 	});
 });
 
-describe("legacy host block round-trip (D-58 anti-normalization guard)", () => {
-	// D-58 rejected parse-time normalization: a normalizing parse would make
+describe("legacy host block round-trip (D-54 anti-normalization guard)", () => {
+	// D-54 rejected parse-time normalization: a normalizing parse would make
 	// readLaunch → writeLaunch silently migrate the user's source file. The
 	// deprecation is a report, never a rewrite — so the block must survive the
 	// round-trip as a block, with every key and value intact.
