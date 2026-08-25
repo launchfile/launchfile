@@ -5,6 +5,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { shell, shellOk } from "../shell.js";
+import { isInstalled } from "./installed-versions.js";
 import type { RuntimeInstaller } from "./types.js";
 
 export class PythonInstaller implements RuntimeInstaller {
@@ -20,18 +21,24 @@ export class PythonInstaller implements RuntimeInstaller {
 	}
 
 	async install(version: string): Promise<void> {
-		if (!(await shellOk("which pyenv"))) {
-			await shell("brew install pyenv");
+		// `version` is the verbatim contents of .python-version in the target repo
+		// — untrusted input. It goes in as an argv element so it can never be read
+		// as shell syntax.
+		if (!(await shellOk("which", ["pyenv"]))) {
+			await shell("brew", ["install", "pyenv"]);
 		}
-		if (!(await shellOk(`pyenv versions --bare | grep -q "^${version}$"`))) {
-			await shell(`pyenv install ${version}`);
+		if (!(await isInstalled("pyenv", version))) {
+			await shell("pyenv", ["install", version]);
 		}
-		await shell(`pyenv local ${version}`);
+		await shell("pyenv", ["local", version]);
 	}
 
 	async shellEnv(_version: string): Promise<Record<string, string>> {
-		if (await shellOk("which pyenv")) {
-			const result = await shell("pyenv root", { silent: true, allowFailure: true });
+		if (await shellOk("which", ["pyenv"])) {
+			const result = await shell("pyenv", ["root"], {
+				silent: true,
+				allowFailure: true,
+			});
 			if (result.exitCode === 0) {
 				const root = result.stdout.trim();
 				return { PATH: `${root}/shims:${process.env.PATH ?? ""}` };

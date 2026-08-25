@@ -3,7 +3,7 @@
  */
 
 import { parseDurationMs, type NormalizedHealth } from "@launchfile/sdk";
-import { shell } from "./shell.js";
+import { shellScript } from "./shell.js";
 
 /**
  * Parse a health duration against the ratified grammar (D-48). Throws on an
@@ -49,7 +49,7 @@ export async function waitForHealthy(
 					return true;
 				}
 			} else if (health.command) {
-				await shell(health.command, { timeout: checkTimeout, silent: true });
+				await shellScript(health.command, { timeout: checkTimeout, silent: true });
 				console.log(`  [${name}] Healthy`);
 				return true;
 			} else {

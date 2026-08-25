@@ -26,7 +26,7 @@ export class RedisProvisioner implements ResourceProvisioner {
 	}
 
 	async isRunning(): Promise<boolean> {
-		return this.#shellOk("redis-cli ping");
+		return this.#shellOk("redis-cli", ["ping"]);
 	}
 
 	async provision(
@@ -36,10 +36,14 @@ export class RedisProvisioner implements ResourceProvisioner {
 	): Promise<{ properties: ResourceProperties; state: ResourceState }> {
 		if (!(await this.isRunning())) {
 			console.log("  Starting Redis via brew...");
-			const started = await this.#shellOk("brew services start redis");
+			const started = await this.#shellOk("brew", [
+				"services",
+				"start",
+				"redis",
+			]);
 			if (!started) {
-				await this.#shell("brew install redis");
-				await this.#shell("brew services start redis");
+				await this.#shell("brew", ["install", "redis"]);
+				await this.#shell("brew", ["services", "start", "redis"]);
 			}
 		}
 

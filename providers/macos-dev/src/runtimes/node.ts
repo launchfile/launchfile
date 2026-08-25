@@ -33,22 +33,27 @@ export class NodeInstaller implements RuntimeInstaller {
 	}
 
 	async install(version: string): Promise<void> {
+		// `version` is the verbatim contents of .nvmrc / .node-version /
+		// package.json engines.node in the target repo — untrusted input. It goes
+		// in as an argv element so it can never be read as shell syntax.
 		// Prefer fnm (faster), fall back to nvm
-		if (await shellOk("which fnm")) {
-			await shell(`fnm install ${version}`);
-		} else if (await shellOk("which nvm")) {
-			await shell(`nvm install ${version}`);
+		if (await shellOk("which", ["fnm"])) {
+			await shell("fnm", ["install", version]);
+		} else if (await shellOk("which", ["nvm"])) {
+			await shell("nvm", ["install", version]);
 		} else {
 			console.log("  Installing fnm via brew...");
-			await shell("brew install fnm");
-			await shell(`fnm install ${version}`);
+			await shell("brew", ["install", "fnm"]);
+			await shell("fnm", ["install", version]);
 		}
 	}
 
 	async shellEnv(_version: string): Promise<Record<string, string>> {
-		if (await shellOk("which fnm")) {
+		if (await shellOk("which", ["fnm"])) {
 			try {
-				const result = await shell("fnm env --shell bash", { silent: true });
+				const result = await shell("fnm", ["env", "--shell", "bash"], {
+					silent: true,
+				});
 				return parseShellEnv(result.stdout);
 			} catch {
 				return {};

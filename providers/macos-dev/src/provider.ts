@@ -35,7 +35,7 @@ import { detectPackageManager } from "./lockfile-detect.js";
 import { provisionStorage, storagePaths } from "./storage.js";
 import { ProcessManager } from "./process-manager.js";
 import { stopRecordedProcesses } from "./process-stopper.js";
-import { shell } from "./shell.js";
+import { shellScript } from "./shell.js";
 import { parseDuration } from "./bootstrap.js";
 
 /**
@@ -490,7 +490,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 			const cmd = prepare?.command ?? pm?.installCommand;
 			if (cmd) {
 				console.log(`  \u2193 Preparing${componentNames.length > 1 ? ` [${name}]` : ""}...`);
-				await shell(cmd, {
+				await shellScript(cmd, {
 					cwd: join(projectDir, component.source ?? component.build?.context ?? "."),
 					env: allEnvs[name],
 					// Installs/compiles routinely exceed the 2-minute shell default;
@@ -506,7 +506,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		const release = component.commands?.release;
 		if (release?.command) {
 			console.log(`  \u2193 Running release${componentNames.length > 1 ? ` [${name}]` : ""}...`);
-			await shell(release.command, {
+			await shellScript(release.command, {
 				cwd: join(projectDir, component.source ?? component.build?.context ?? "."),
 				env: allEnvs[name],
 				timeout: declaredTimeout(release.timeout, `release [${name}]`),

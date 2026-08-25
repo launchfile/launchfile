@@ -7,7 +7,7 @@ import {
 	registerSecrets,
 } from "../redact.js";
 import { generatePassword, generateValue } from "../secret-generator.js";
-import { shell } from "../shell.js";
+import { shell, shellScript } from "../shell.js";
 
 beforeEach(() => {
 	clearRegisteredSecrets();
@@ -99,20 +99,20 @@ describe("shell command echo", () => {
 	// the generated password appears verbatim on stdout.
 	it("never echoes a generated password in the command it prints", async () => {
 		const password = generatePassword();
-		await shell(`echo ${password} > /dev/null`);
+		await shell("echo", [password]);
 		expect(logged.join("\n")).not.toContain(password);
 		expect(logged.join("\n")).toContain(REDACTED);
 	});
 
 	it("keeps the non-secret part of the command readable", async () => {
 		const password = generatePassword();
-		await shell(`echo ${password} > /dev/null`);
+		await shell("echo", [password]);
 		expect(logged.join("\n")).toContain("echo");
 	});
 
 	it("does not echo the command at all when silent", async () => {
 		const password = generatePassword();
-		await shell(`echo ${password} > /dev/null`, { silent: true });
+		await shell("echo", [password], { silent: true });
 		expect(logged).toHaveLength(0);
 	});
 });
@@ -128,8 +128,8 @@ describe("shell failure errors", () => {
 
 	it("keeps a generated password out of the thrown error message", async () => {
 		const password = generatePassword();
-		await expect(shell(`false ${password}`)).rejects.toThrow();
-		await shell(`false ${password}`).catch((err: unknown) => {
+		await expect(shell("false", [password])).rejects.toThrow();
+		await shell("false", [password]).catch((err: unknown) => {
 			expect((err as Error).message).not.toContain(password);
 			expect((err as Error).message).toContain(REDACTED);
 		});
@@ -137,7 +137,7 @@ describe("shell failure errors", () => {
 
 	it("keeps a secret echoed back on stderr out of the error message", async () => {
 		const password = generatePassword();
-		await shell(`echo ${password} >&2; exit 1`).catch((err: unknown) => {
+		await shellScript(`echo ${password} >&2; exit 1`).catch((err: unknown) => {
 			expect((err as Error).message).not.toContain(password);
 		});
 	});

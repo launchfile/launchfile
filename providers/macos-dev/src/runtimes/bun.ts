@@ -14,8 +14,8 @@ export class BunInstaller implements RuntimeInstaller {
 	}
 
 	async install(_version: string): Promise<void> {
-		if (!(await shellOk("which bun"))) {
-			await shell("brew install bun");
+		if (!(await shellOk("which", ["bun"]))) {
+			await shell("brew", ["install", "bun"]);
 		}
 	}
 
