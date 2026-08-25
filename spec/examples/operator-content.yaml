@@ -1,0 +1,58 @@
+# yaml-language-server: $schema=../schema/launchfile.schema.json
+#
+# Example: operator-supplied volume content (content: operator, D-50).
+#
+# A media server declares two kinds of storage. The `data` volume is
+# provider-owned: the provider creates it empty and the app fills it (index,
+# settings, cache). The `music` volume holds the operator's own library —
+# content the platform cannot create — so it carries `content: operator`.
+#
+# The marker says WHO fills the volume, never where that content lives. The
+# host path changes per machine, so it stays with the orchestrator:
+#
+#   launchfile up --storage music=~/Music
+#
+# (--storage is repeatable; use <component>.<volume>=<path> when ambiguous.)
+#
+# The provider either binds the operator's content at the declared path, or
+# refuses the component with an error naming the volume and the flag that
+# would satisfy it. It never creates the volume empty — an empty library
+# behind a successful-looking deploy is the failure the marker closes.
+#
+# `persistent` is not applicable on a marked volume (the operator's directory
+# outlives the deployment by construction), and $storage.<name>.path resolves
+# as usual — the container path is still the mount point.
+#
+# See also: spec/SPEC.md § Storage, spec/DESIGN.md D-50 (and D-49/D-52, whose
+# operator-supplied provenance class this marker extends to storage).
+
+version: launch/v1
+name: media-server
+
+image: ghcr.io/example/media-server:latest
+
+provides:
+  - port: 4533
+    protocol: http
+    exposed: true
+
+storage:
+  # Provider-owned: created empty, filled by the app itself.
+  data:
+    path: /data
+    persistent: true
+  # Operator-owned: the operator's music library. Bound from a host path
+  # supplied at launch (launchfile up --storage music=~/Music) — or the
+  # component is refused. Never created empty.
+  music:
+    path: /music
+    content: operator
+
+env:
+  # Where the app finds its own state — resolved per provider (D-39).
+  ND_DATAFOLDER: $storage.data.path
+  # The mount point of the operator's library, resolved the same way.
+  ND_MUSICFOLDER: $storage.music.path
+
+health: /ping
+restart: always

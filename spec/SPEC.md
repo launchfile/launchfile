@@ -682,8 +682,11 @@ Declares persistent volumes. Value is a map of named volumes.
 | `path` | `string` | **yes** | -- | Mount path inside the container |
 | `size` | `string` | no | -- | Minimum size hint (e.g. `512MB`, `10GB`) |
 | `persistent` | `boolean` | no | `true` | Whether data survives restarts |
+| `content` | `string` | no | -- | Who supplies the volume's content. Only value: `operator` — the operator supplies it; a provider must never initialize the volume empty ([D-50](DESIGN.md#d-50-storagenamecontent-operator--operator-supplied-volume-content-bound-by-the-orchestrator-or-refused)) |
 
 If you're declaring named storage, you probably want it to survive restarts — hence the default. Use `persistent: false` explicitly for ephemeral scratch space like caches.
+
+`content: operator` marks a volume whose content the platform cannot create — a music library, a photo collection, the files a file manager browses. It declares *who fills the volume*, never where that content lives: the host path changes per machine, so it stays with the orchestrator — `launchfile up --storage <volume>=<path>` (repeatable; `--storage <component>.<volume>=<path>` where ambiguous), and a provider may accept the same map from its own config. A provider MUST either **bind** the operator-supplied content at `path`, or **refuse** the component with a clear error naming the volume and the flag that would satisfy it. It MUST NOT create an empty volume and start the app, and MUST NOT create a supplied path that is absent or unreadable on the host ([D-50](DESIGN.md#d-50-storagenamecontent-operator--operator-supplied-volume-content-bound-by-the-orchestrator-or-refused)). `persistent` is not applicable on a marked volume — the operator's directory outlives the deployment by construction — so providers ignore it there, and a validator MAY warn that `persistent: false` beside the marker is a contradiction. `$storage.<name>.path` resolves as usual (see [Storage Properties](#storage-properties)): the container path is still the mount point.
 
 ```yaml
 storage:
@@ -694,6 +697,9 @@ storage:
     path: /app/cache
     size: 512MB
     persistent: false
+  music:
+    path: /music
+    content: operator    # the operator's library — bind it or refuse, never create empty
 ```
 
 > **Real-world examples:** [Ghost](https://launchfile.io/apps/ghost/) and [Paperless](https://launchfile.io/apps/paperless/) use persistent storage for content. [Browse all apps →](https://launchfile.io/apps/)
