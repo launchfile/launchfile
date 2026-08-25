@@ -7,22 +7,28 @@
  */
 
 import { resolve as resolvePath } from "node:path";
-import { stringify } from "yaml";
-import { publishedEndpoints } from "./port-allocator.js";
-import type { StateEndpoint } from "./state.js";
 import {
 	deriveAppUrlProperties,
-	resolveExpression,
 	isExpression,
-	type ResolverContext,
-	type NormalizedLaunch,
-	type NormalizedRequirement,
 	type NormalizedEnvVar,
 	type NormalizedHealth,
+	type NormalizedLaunch,
+	type NormalizedRequirement,
+	parseExpression,
+	RESOURCE_PROPERTY_VOCABULARY,
+	type ResolverContext,
+	resolveExpression,
 	unsuppliedRequiredEnv,
 } from "@launchfile/sdk";
-import { registerSensitiveEnv, registerSuppliedEnv } from "./env-secrets.js";
+import { stringify } from "yaml";
+import {
+	registerSensitiveEnv,
+	registerSuppliedEnv,
+	registerSuppliedResourceProperties,
+} from "./env-secrets.js";
+import { publishedEndpoints } from "./port-allocator.js";
 import { registerSecret } from "./redact.js";
+import type { StateEndpoint } from "./state.js";
 
 // --- Backing service definitions ---
 
@@ -57,7 +63,9 @@ function randomPassword(): string {
 function generateSecret(): string {
 	const bytes = new Uint8Array(32);
 	crypto.getRandomValues(bytes);
-	const secret = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+	const secret = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(
+		"",
+	);
 	registerSecret(secret);
 	return secret;
 }
@@ -357,7 +365,10 @@ function createBackingServices(
 					url: `http://elastic:${encodeURIComponent(pw)}@${name}-elasticsearch:9200`,
 				},
 				healthcheck: {
-					test: ["CMD-SHELL", `curl -sf -u elastic:$ELASTIC_PASSWORD http://localhost:9200/_cluster/health || exit 1`],
+					test: [
+						"CMD-SHELL",
+						`curl -sf -u elastic:$ELASTIC_PASSWORD http://localhost:9200/_cluster/health || exit 1`,
+					],
 					interval: "10s",
 					timeout: "5s",
 					retries: 5,
@@ -388,7 +399,10 @@ function createBackingServices(
 					command: "server /data",
 				},
 				healthcheck: {
-					test: ["CMD-SHELL", "curl -sf http://localhost:9000/minio/health/live || exit 1"],
+					test: [
+						"CMD-SHELL",
+						"curl -sf http://localhost:9000/minio/health/live || exit 1",
+					],
 					interval: "10s",
 					timeout: "5s",
 					retries: 5,
@@ -418,7 +432,10 @@ function createBackingServices(
 					command: "server /data",
 				},
 				healthcheck: {
-					test: ["CMD-SHELL", "curl -sf http://localhost:9000/minio/health/live || exit 1"],
+					test: [
+						"CMD-SHELL",
+						"curl -sf http://localhost:9000/minio/health/live || exit 1",
+					],
 					interval: "10s",
 					timeout: "5s",
 					retries: 5,
@@ -512,7 +529,8 @@ function computeAppProperties(
 	for (const [name, component] of Object.entries(launch.components)) {
 		// Only endpoints explicitly marked `exposed: true` are reachable from the
 		// host (D-27), so only they can be the app's public address.
-		const published = component.provides?.filter((p) => p.exposed === true) ?? [];
+		const published =
+			component.provides?.filter((p) => p.exposed === true) ?? [];
 		if (published.length === 0) continue;
 		// Prefer caller-supplied host port, fall back to the declared container port.
 		primaryPort = hostPorts?.[name] ?? published[0]!.port;
@@ -570,6 +588,30 @@ export interface ComposeOpts {
 	 * and verifies each bound path exists before launching (rule 2 row 3).
 	 */
 	storagePaths?: Record<string, string>;
+	/**
+	 * Orchestrator-satisfied `requires`/`supports` entries, keyed by the
+	 * entry's `name ?? type` — app-global, matching the resource expression
+	 * namespace (no component qualification). A supplied entry wins over this
+	 * provider's own provisioning — always, including for types it has a
+	 * factory for: no backing service, no `depends_on`, no volume, and no
+	 * image pull are emitted for it. The entry's `set_env` resolves against
+	 * the supplied `properties`, which speak the standard resource-property
+	 * vocabulary (D-7/D-46). Suppression is per ENTRY, not per type: where
+	 * two same-type entries exist and only one is supplied, the shared
+	 * backing service is still emitted for the unsupplied one, and the
+	 * supplied one takes its properties from this map. For `supports:`
+	 * entries — which this provider never provisions on its own — a supplied
+	 * entry is the only way their `set_env` bindings can ever inject.
+	 *
+	 * Readiness of the supplied resource is the orchestrator's precondition:
+	 * with no backing service there is no `service_healthy` gate, and the
+	 * provider does not verify the resource exists or is reachable — the
+	 * orchestrator owns its channel's correctness (the D-50/D-52 posture).
+	 * Credential-bearing values are registered with the redactor before
+	 * anything is generated, so a supplied password cannot survive into
+	 * captured output.
+	 */
+	resources?: Record<string, { properties: Record<string, string> }>;
 }
 
 /** A `content: operator` volume bound to an operator-supplied host path (D-50 row 1). */
@@ -699,7 +741,37 @@ export function launchToCompose(
 	// Before anything resolves: every operator-supplied value is credential
 	// material this provider never minted, so nothing else can have registered it
 	// (D-52). Registering here covers components the generator later skips too.
-	for (const values of Object.values(opts.supplied ?? {})) registerSuppliedEnv(values);
+	for (const values of Object.values(opts.supplied ?? {}))
+		registerSuppliedEnv(values);
+
+	// Same discipline for orchestrator-supplied resource properties: register
+	// the credential-bearing ones before anything is generated or captured,
+	// classified by name against the type's D-46 vocabulary (fail closed for
+	// names outside it; the structural set stays unregistered so addresses and
+	// ports never corrupt a diagnostic). The entry's declared type is looked up
+	// across every component's requires/supports — the resource namespace is
+	// app-global — and an unmatched key has no type, so all of its
+	// non-structural properties register.
+	if (opts.resources) {
+		const suppliedResourceTypes = new Map<string, string>();
+		for (const comp of Object.values(launch.components)) {
+			for (const entry of [
+				...(comp.requires ?? []),
+				...(comp.supports ?? []),
+			]) {
+				if (entry.host) continue;
+				suppliedResourceTypes.set(entry.name ?? entry.type, entry.type);
+			}
+		}
+		for (const [key, resource] of Object.entries(opts.resources)) {
+			const type = suppliedResourceTypes.get(key);
+			registerSuppliedResourceProperties(
+				resource.properties,
+				type ? RESOURCE_PROPERTY_VOCABULARY[type] : undefined,
+			);
+		}
+	}
+	const usedResourceKeys = new Set<string>();
 
 	const backingServices = createBackingServices(secrets);
 
@@ -733,7 +805,9 @@ export function launchToCompose(
 
 	for (const [componentName, component] of Object.entries(launch.components)) {
 		const serviceName =
-			componentName === "default" ? launch.name : `${launch.name}-${componentName}`;
+			componentName === "default"
+				? launch.name
+				: `${launch.name}-${componentName}`;
 
 		if (!component.image && !component.build) {
 			warnings.push(`${componentName}: no image or build — skipped`);
@@ -757,7 +831,9 @@ export function launchToCompose(
 			}
 		}
 		if (component.host?.docker === "required") {
-			refusedCapabilities.push("container_runtime=docker (host.docker: required)");
+			refusedCapabilities.push(
+				"container_runtime=docker (host.docker: required)",
+			);
 		}
 		if (component.host?.network === "host") {
 			refusedCapabilities.push("network=host (host.network: host)");
@@ -806,13 +882,18 @@ export function launchToCompose(
 			}
 
 			const build: Record<string, unknown> = {
-				context: isRemoteContext ? context : resolvePath(opts.projectDir!, context),
+				context: isRemoteContext
+					? context
+					: resolvePath(opts.projectDir!, context),
 			};
-			if (component.build.dockerfile) build.dockerfile = component.build.dockerfile;
+			if (component.build.dockerfile)
+				build.dockerfile = component.build.dockerfile;
 			if (component.build.target) build.target = component.build.target;
 			if (component.build.args) build.args = component.build.args;
 			if (component.build.secrets?.length) {
-				warnings.push(`${componentName}: build secrets are not yet supported by the docker provider — ignored`);
+				warnings.push(
+					`${componentName}: build secrets are not yet supported by the docker provider — ignored`,
+				);
 			}
 			service.build = build;
 			// `image:` alongside `build:` names the built artifact (SPEC.md:
@@ -864,7 +945,10 @@ export function launchToCompose(
 						hostPort,
 						protocol: endpoint.protocol,
 					};
-					const bind = endpoint.bind && endpoint.bind !== "0.0.0.0" ? `${endpoint.bind}:` : "";
+					const bind =
+						endpoint.bind && endpoint.bind !== "0.0.0.0"
+							? `${endpoint.bind}:`
+							: "";
 					const proto = endpoint.protocol === "udp" ? "/udp" : "";
 					const mapping = `${bind}${hostPort}:${endpoint.port}${proto}`;
 					// Two entries can only produce the same mapping string when no
@@ -898,7 +982,13 @@ export function launchToCompose(
 
 		if (component.env) {
 			for (const [key, envVar] of Object.entries(component.env)) {
-				const value = resolveEnvVar(envVar, componentContext, key, componentName, generatedEnv);
+				const value = resolveEnvVar(
+					envVar,
+					componentContext,
+					key,
+					componentName,
+					generatedEnv,
+				);
 				if (value !== undefined) {
 					env[key] = value;
 				}
@@ -908,8 +998,60 @@ export function launchToCompose(
 		// Backing services from requires
 		const dependsOn: Record<string, { condition: string }> = {};
 
+		// One satisfied entry, requires or supports: register the supplied
+		// properties for cross-resource resolution and inject its set_env —
+		// no service, no depends_on, no volume, no pull. Config on a resource
+		// this provider does not own cannot be applied and is surfaced (§10.8),
+		// and a referenced-but-unsupplied property warns before resolving ""
+		// (L-4) so an integration gap on this external channel is never silent.
+		const applySuppliedResource = (
+			entry: NormalizedRequirement,
+			resourceName: string,
+			properties: Record<string, string>,
+		): void => {
+			usedResourceKeys.add(resourceName);
+			resourceMap[resourceName] = { ...properties };
+			if (entry.config) {
+				warnings.push(
+					`${componentName}: config on ${resourceName} cannot be applied — the resource is orchestrator-supplied, not provisioned by this provider — ignored`,
+				);
+			}
+			if (entry.set_env) {
+				const scopedContext: ResolverContext = {
+					...componentContext,
+					resource: properties,
+				};
+				for (const [envKey, expr] of Object.entries(entry.set_env)) {
+					for (const prop of missingSuppliedRefs(
+						expr,
+						resourceName,
+						properties,
+					)) {
+						warnings.push(
+							`${componentName}: set_env references ${resourceName}.${prop}, which the supplied resource does not provide — resolved to ""`,
+						);
+					}
+					env[envKey] = resolveExpression(expr, scopedContext);
+				}
+			}
+		};
+
 		if (component.requires?.length) {
 			for (const req of component.requires) {
+				const resourceName = req.name ?? req.type;
+				const suppliedResource = opts.resources?.[resourceName];
+				if (suppliedResource) {
+					// The supplied entry wins over factory dispatch — always,
+					// including for types this provider could provision itself
+					// (the D-43 rule 1 precedence). Satisfaction is per entry:
+					// a same-type entry under another key still provisions.
+					// Readiness of a resource this provider does not manage is
+					// the orchestrator's precondition — compose cannot
+					// healthcheck a service it does not own (D-16 orders
+					// startup only within the project), so no gate is emitted.
+					applySuppliedResource(req, resourceName, suppliedResource.properties);
+					continue;
+				}
 				const backingResult = addBackingService(
 					launch.name,
 					req,
@@ -923,7 +1065,6 @@ export function launchToCompose(
 				);
 				if (backingResult) {
 					// Register this resource's properties for cross-resource resolution
-					const resourceName = req.name ?? req.type;
 					resourceMap[resourceName] = backingResult.properties;
 
 					if (req.set_env) {
@@ -943,14 +1084,38 @@ export function launchToCompose(
 			}
 		}
 
+		// Optional resources (`supports:`) — this provider never provisions
+		// them, so an orchestrator-supplied entry is the only way their
+		// set_env bindings can ever inject. An unsatisfied entry keeps its
+		// long-standing behavior — nothing injected — but warns so the
+		// degradation is visible (§10.8), matching the ungranted
+		// host-capability note above. Host-marked entries are capabilities
+		// (grant/refuse, D-53), already handled at the top of this loop.
+		for (const sup of component.supports ?? []) {
+			if (sup.host) continue;
+			const resourceName = sup.name ?? sup.type;
+			const suppliedResource = opts.resources?.[resourceName];
+			if (!suppliedResource) {
+				warnings.push(
+					`${componentName}: optional resource ${resourceName} is not satisfied — this provider does not provision \`supports:\` resources and none was supplied; its set_env bindings are omitted and the app runs degraded`,
+				);
+				continue;
+			}
+			applySuppliedResource(sup, resourceName, suppliedResource.properties);
+		}
+
 		// Unsupplied `required:` variables (D-52, PROVIDERS.md §10 rule 8). This
 		// runs AFTER the `set_env` injection above because the test is arrival:
-		// a binding counts only when the resource behind it resolved. `supports:`
-		// resources are never provisioned by this provider, and a binding on an
-		// unknown backing type never injects, so neither reaches `env` here.
+		// a binding counts only when the resource behind it resolved —
+		// provisioned by this provider or satisfied through `opts.resources`.
+		// An unsatisfied `supports:` binding, and a binding on an unknown,
+		// unsupplied backing type, never inject, so neither reaches `env` here.
 		// Whatever is still missing gets one look at the operator channel, then
 		// is recorded — absent from the artifact, never substituted.
-		for (const { key, sensitive } of unsuppliedRequiredEnv(component, Object.keys(env))) {
+		for (const { key, sensitive } of unsuppliedRequiredEnv(
+			component,
+			Object.keys(env),
+		)) {
 			const supplied = opts.operatorEnv?.[key];
 			if (supplied !== undefined) {
 				env[key] = supplied;
@@ -967,7 +1132,8 @@ export function launchToCompose(
 						? launch.name
 						: `${launch.name}-${dep.component}`;
 				dependsOn[depServiceName] = {
-					condition: dep.condition === "healthy" ? "service_healthy" : "service_started",
+					condition:
+						dep.condition === "healthy" ? "service_healthy" : "service_started",
 				};
 			}
 		}
@@ -991,7 +1157,10 @@ export function launchToCompose(
 		}
 
 		if (component.health) {
-			service.healthcheck = translateHealth(component.health, component.provides);
+			service.healthcheck = translateHealth(
+				component.health,
+				component.provides,
+			);
 		}
 
 		// Storage — named volumes for persistence. A `content: operator` volume
@@ -1005,7 +1174,8 @@ export function launchToCompose(
 			for (const [volName, vol] of Object.entries(component.storage)) {
 				if (vol.content === "operator") {
 					const bound =
-						qualifiedPaths.get(`${componentName}.${volName}`) ?? barePaths.get(volName);
+						qualifiedPaths.get(`${componentName}.${volName}`) ??
+						barePaths.get(volName);
 					if (!bound) {
 						const flagKey =
 							(volumeNameCount.get(volName) ?? 0) > 1
@@ -1065,7 +1235,21 @@ export function launchToCompose(
 	// byte-identical, so a key naming one is unused too.
 	for (const key of Object.keys(opts.storagePaths ?? {})) {
 		if (!usedStorageKeys.has(key)) {
-			warnings.push(`--storage ${key} matches no \`content: operator\` volume — ignored`);
+			warnings.push(
+				`--storage ${key} matches no \`content: operator\` volume — ignored`,
+			);
+		}
+	}
+
+	// Same sweep for the supplied-resource channel: a key that satisfied no
+	// `requires`/`supports` entry would otherwise vanish without a trace, and a
+	// typo'd key surfaces here. Its properties were still registered with the
+	// redactor above — an unmatched credential is a credential all the same.
+	for (const key of Object.keys(opts.resources ?? {})) {
+		if (!usedResourceKeys.has(key)) {
+			warnings.push(
+				`supplied resource ${key} matches no \`requires\`/\`supports\` entry — ignored`,
+			);
 		}
 	}
 
@@ -1104,6 +1288,60 @@ export function launchToCompose(
 
 // --- Helpers ---
 
+/** Multi-segment namespaces the resolver checks before user-named resources. */
+const RESERVED_NAMESPACES = new Set([
+	"app",
+	"secrets",
+	"components",
+	"storage",
+]);
+
+/**
+ * The properties a `set_env` expression reads from THIS supplied resource that
+ * its property map does not provide. Counted: scoped `$prop` references and
+ * `$<resourceName>.<prop>` references; not counted: reserved namespaces, other
+ * resources, and any reference carrying a `:-fallback` — the fallback fires
+ * instead of the empty resolution this warning exists to flag.
+ */
+function missingSuppliedRefs(
+	expr: string,
+	resourceName: string,
+	properties: Record<string, string>,
+): string[] {
+	const parsed = parseExpression(expr);
+	const refs: Array<{ path: string[]; fallback?: string }> = [];
+	if (parsed.kind === "reference") {
+		refs.push(parsed);
+	} else if (parsed.kind === "template") {
+		for (const part of parsed.parts) {
+			if (part.kind === "ref") refs.push(part);
+		}
+	}
+
+	const missing: string[] = [];
+	for (const ref of refs) {
+		if (ref.fallback !== undefined) continue;
+		let prop: string | undefined;
+		if (ref.path.length === 1) {
+			prop = ref.path[0];
+		} else if (
+			ref.path.length === 2 &&
+			ref.path[0] === resourceName &&
+			!RESERVED_NAMESPACES.has(resourceName)
+		) {
+			prop = ref.path[1];
+		}
+		if (
+			prop !== undefined &&
+			!(prop in properties) &&
+			!missing.includes(prop)
+		) {
+			missing.push(prop);
+		}
+	}
+	return missing;
+}
+
 function resolveEnvVar(
 	envVar: NormalizedEnvVar,
 	context: ResolverContext,
@@ -1126,7 +1364,8 @@ function resolveEnvVar(
 		const stateKey = `${componentName}.${key}`;
 		const existing = generatedEnv[stateKey];
 		if (existing !== undefined) return existing;
-		const value = envVar.generator === "secret" ? generateSecret() : generateUuid();
+		const value =
+			envVar.generator === "secret" ? generateSecret() : generateUuid();
 		generatedEnv[stateKey] = value;
 		return value;
 	}
