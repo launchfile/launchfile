@@ -15,10 +15,15 @@
  *
  * Both must be registered *before* any output is captured, or the capture writes
  * plaintext credentials to disk (CWE-532, CWE-312).
+ *
+ * Both register through `registerDeclaredSecret`, which has no length floor.
+ * These values are sensitive because something said so, not because this
+ * provider guessed — and `registerSecret`'s floor would silently drop a short
+ * one (a PIN, a numeric code) straight into a record.
  */
 
 import type { NormalizedEnvVar } from "@launchfile/sdk";
-import { registerSecret } from "./redact.js";
+import { registerDeclaredSecret } from "./redact.js";
 
 /**
  * Register the resolved values of every `sensitive: true` declaration in one
@@ -32,7 +37,7 @@ export function registerSensitiveEnv(
 	if (!declared) return;
 	for (const [key, definition] of Object.entries(declared)) {
 		if (!definition?.sensitive) continue;
-		registerSecret(resolved[key]);
+		registerDeclaredSecret(resolved[key]);
 	}
 }
 
@@ -45,5 +50,5 @@ export function registerSuppliedEnv(
 	supplied: Readonly<Record<string, string>> | undefined,
 ): void {
 	if (!supplied) return;
-	for (const value of Object.values(supplied)) registerSecret(value);
+	for (const value of Object.values(supplied)) registerDeclaredSecret(value);
 }

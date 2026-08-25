@@ -23,7 +23,7 @@ export { registerSensitiveEnv, registerSuppliedEnv } from "./env-secrets.js";
 // Redaction is exported so a caller running IN THIS PROCESS (the unified CLI's
 // bootstrap path) can scrub against the live registry. A separate process gets
 // an empty registry and can scrub nothing — capture there is already too late.
-export { redactSecrets, registerSecret, registerSecrets } from "./redact.js";
+export { redactSecrets, registerDeclaredSecret, registerSecret, registerSecrets } from "./redact.js";
 export {
 	launchToCompose,
 	type ComposeResult,

@@ -147,6 +147,55 @@ components:
 		expect(JSON.stringify(err.context)).not.toContain("skipped-but-secret-51ab");
 	});
 
+	it("registers a SHORT sensitive: true literal — no length floor on a declaration", () => {
+		// A six-digit PIN is below MIN_SECRET_LENGTH. The author declared it
+		// sensitive, so the declaration outranks the coincidence heuristic;
+		// otherwise the PIN reaches an on-disk record in plaintext (CWE-532).
+		const launch = readLaunch(`
+name: shortpin
+components:
+  default:
+    image: example/app
+    env:
+      DEVICE_PIN:
+        default: "824193"
+        sensitive: true
+`);
+		launchToCompose(launch, {});
+
+		const err = dockerLaunchError({
+			phase: "run",
+			key: "shortpin",
+			message: "boom",
+			stderr: "rejected pin 824193",
+		});
+
+		expect(JSON.stringify(err.context)).not.toContain("824193");
+		expect(err.context.stderr).toContain(REDACTED);
+	});
+
+	it("registers a SHORT operator-supplied value (D-52)", () => {
+		const launch = readLaunch(`
+name: shortsupplied
+components:
+  default:
+    image: example/app
+    env:
+      OTP:
+        required: true
+`);
+		launchToCompose(launch, { supplied: { default: { OTP: "9931" } } });
+
+		const err = dockerLaunchError({
+			phase: "release",
+			key: "shortsupplied",
+			message: "boom",
+			stdout: "otp 9931 rejected",
+		});
+
+		expect(JSON.stringify(err.context)).not.toContain("9931");
+	});
+
 	it("registerSensitiveEnv and registerSuppliedEnv ignore what they are not given", () => {
 		expect(() => registerSensitiveEnv(undefined, {})).not.toThrow();
 		expect(() => registerSuppliedEnv(undefined)).not.toThrow();
