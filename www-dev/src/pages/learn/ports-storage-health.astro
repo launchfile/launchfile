@@ -21,6 +21,7 @@ const ghostYaml = ghostYamlRaw.replace(/^#.*\n/gm, "").trim();
   learningGoals={[
     "How provides declares ports and protocols your app exposes",
     "Using storage for persistent volumes",
+    "Marking operator-supplied content with content: operator",
     "Referencing a volume's resolved path with $storage.<name>.path",
     "Health checks — shorthand and expanded forms",
     "The exposed flag for public-facing ports",
@@ -101,6 +102,35 @@ health:
     note: "Switch to the <strong>expanded health check</strong> form for full control over timing, retries, and startup grace period.",
   },
 ]} />
+
+<h2 id="who-fills-the-volume">Who fills the volume?</h2>
+
+<p>
+  Most volumes start empty and the app fills them — a database directory, an upload folder, a cache. But some volumes hold content only <em>you</em> can supply: a music server's library, a photo manager's originals, the files a file manager browses. A provider can't tell the two apart from <code>path</code> and <code>persistent</code> alone, so it would happily create the library volume empty and start the app — a deploy that looks successful and serves nothing. Mark those volumes with <GlossaryTip term="content: operator" definition="A provenance marker: the operator supplies this volume's content. The provider binds it at launch or refuses the component — it never initializes the volume empty."><code>content: operator</code></GlossaryTip>.
+</p>
+
+<BeforeAfter
+  before={{
+    title: "Unmarked — starts empty",
+    yaml: `storage:
+  music:
+    path: /music
+    persistent: true`,
+  }}
+  after={{
+    title: "Marked — bound or refused",
+    yaml: `storage:
+  music:
+    path: /music
+    content: operator`,
+  }}
+/>
+
+<Callout type="info" title="Where does the content come from?">
+  <p>
+    Not from the Launchfile — the host path (<code>~/Music</code>, <code>/srv/books</code>) changes per machine, so it never enters the file. You supply it at launch: <code>launchfile up --storage music=~/Music</code> (repeat the flag for multiple volumes). The provider binds your directory at the declared path, or refuses the component with an error naming the volume and the flag that would satisfy it. It never creates the volume empty. <code>persistent</code> doesn't apply to a marked volume — your directory outlives the deployment by construction.
+  </p>
+</Callout>
 
 <h2 id="referencing-the-path">Referencing the path</h2>
 
@@ -195,6 +225,7 @@ env:
   <ul>
     <li><strong><code>provides</code></strong> declares every network endpoint your app exposes, with protocol, port, and visibility.</li>
     <li><strong><code>storage</code></strong> declares named volumes. Set <code>persistent: true</code> for data that must survive restarts.</li>
+    <li><strong><code>content: operator</code></strong> marks a volume you fill yourself — the provider binds your directory (<code>--storage &lt;volume&gt;=&lt;path&gt;</code>) or refuses the component, and never creates the volume empty.</li>
     <li><strong><code>$storage.&lt;name&gt;.path</code></strong> resolves to the real path the volume was actually provisioned at — reference it in <code>env</code> instead of hardcoding the path in two places.</li>
     <li><strong><code>health</code></strong> describes how your app's readiness is checked. Use the string shorthand for simple cases, the object form for tuning.</li>
     <li><strong><code>exposed: true</code></strong> means "the internet should reach this." Default is <code>false</code> (internal only).</li>

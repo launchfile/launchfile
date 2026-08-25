@@ -370,7 +370,8 @@
       "properties": {
         "path": { "type": "string", "description": "Mount path inside the container" },
         "size": { "type": "string", "description": "Minimum size hint (e.g. '512MB', '10GB')" },
-        "persistent": { "type": "boolean", "description": "Data survives restarts", "default": true }
+        "persistent": { "type": "boolean", "description": "Data survives restarts", "default": true },
+        "content": { "enum": ["operator"], "description": "Who supplies the volume's content. 'operator': the operator supplies it — the provider binds it at path or refuses the component, and never initializes it empty (D-50)" }
       },
       "additionalProperties": false
     },
