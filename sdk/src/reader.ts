@@ -38,12 +38,24 @@ import type {
 const MAX_YAML_SIZE = 1_048_576; // 1 MB
 const MAX_ALIAS_COUNT = 100;
 
-/** Parse and validate a YAML string into a normalized Launch object */
-export function readLaunch(yaml: string): NormalizedLaunch {
+/**
+ * Parse a YAML string into a raw document with the size and alias caps
+ * applied. Exposed separately from {@link readLaunch} because schema
+ * validation strips unrecognized keys — a caller that needs to inspect
+ * what the author actually wrote (e.g. `validate`'s unknown-storage-key
+ * lint) must read the raw document, and this keeps that read behind the
+ * same security caps as the validated path.
+ */
+export function parseLaunchYaml(yaml: string): unknown {
 	if (yaml.length > MAX_YAML_SIZE) {
 		throw new Error(`Launchfile exceeds maximum size of ${MAX_YAML_SIZE} bytes`);
 	}
-	const raw = parse(yaml, { maxAliasCount: MAX_ALIAS_COUNT });
+	return parse(yaml, { maxAliasCount: MAX_ALIAS_COUNT });
+}
+
+/** Parse and validate a YAML string into a normalized Launch object */
+export function readLaunch(yaml: string): NormalizedLaunch {
+	const raw = parseLaunchYaml(yaml);
 	const validated = LaunchSchema.parse(raw) as Launch;
 	return normalizeLaunch(validated);
 }

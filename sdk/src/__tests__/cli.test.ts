@@ -225,6 +225,64 @@ describe("launchfile CLI", () => {
 				expect(result.warnings.join(" ")).toContain("D-40");
 			});
 		});
+
+		describe("unrecognized storage keys (#239)", () => {
+			it("warns but stays non-fatal for a component storage entry: exit 0, valid: true", () => {
+				const { stdout, exitCode } = run([
+					"validate",
+					fixture(
+						"version: launch/v1\nname: acme\ncomponents:\n  caddy:\n    image: caddy:2\n" +
+							"    storage:\n      caddyfile:\n        path: /etc/caddy\n" +
+							"        source: ./caddy\n        readonly: true\n",
+					),
+					"--json",
+				]);
+				expect(exitCode).toBe(0);
+				const result = JSON.parse(stdout);
+				expect(result.valid).toBe(true);
+				expect(result.warnings).toContain(
+					'storage "caddy.caddyfile": unrecognized keys "source", "readonly" ' +
+						"(known: path, size, persistent) — unknown keys are ignored and " +
+						"will not affect deployment",
+				);
+			});
+
+			it("warns for the top-level single-component storage spelling", () => {
+				const { stdout, exitCode } = run([
+					"validate",
+					fixture(
+						"version: launch/v1\nname: acme\nimage: app:1\n" +
+							"storage:\n  data:\n    path: /data\n    mode: \"0700\"\n",
+					),
+					"--json",
+				]);
+				expect(exitCode).toBe(0);
+				const result = JSON.parse(stdout);
+				expect(result.valid).toBe(true);
+				expect(result.warnings.join(" ")).toContain('storage "data"');
+				expect(result.warnings.join(" ")).toContain('"mode"');
+			});
+
+			it("stays silent for storage entries using only recognized keys", () => {
+				const { stdout, exitCode } = run(
+					[
+						"validate",
+						fixture(
+							"version: launch/v1\nname: acme\nimage: app:1\n" +
+								"storage:\n  data:\n    path: /data\n    size: 10Gi\n    persistent: true\n",
+						),
+						"--json",
+					],
+					// Silence the unrelated D-40 prebuilt-image diagnostic so an empty
+					// warnings list proves the storage check specifically stayed quiet.
+					{ LAUNCHFILE_NO_PORTABILITY_WARNINGS: "1" },
+				);
+				expect(exitCode).toBe(0);
+				const result = JSON.parse(stdout);
+				expect(result.valid).toBe(true);
+				expect(result.warnings ?? []).toEqual([]);
+			});
+		});
 	});
 
 	describe("inspect", () => {
