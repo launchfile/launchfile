@@ -1,5 +1,5 @@
 /**
- * Instance identity and isolation (#240, D-59).
+ * Instance identity and isolation (#240, D-55).
  *
  * A deployment's provider state key is the (app identity, instance label)
  * pair: `--name <label>` folds into the effective slug, and everything the
@@ -42,7 +42,7 @@ commands:
   start: sleep 300
 `;
 
-describe("instanceSlug (D-59)", () => {
+describe("instanceSlug (D-55)", () => {
 	it("returns the base slug unchanged when no label is given", () => {
 		expect(instanceSlug("ghost")).toBe("ghost");
 		expect(instanceSlug("ghost", undefined)).toBe("ghost");
@@ -324,7 +324,7 @@ describe("foreign-source guard across source types (#240 review blocker)", () =>
 	});
 });
 
-describe("port allocation is seeded per instance (D-59, #275 interaction)", () => {
+describe("port allocation is seeded per instance (D-55, #275 interaction)", () => {
 	let blocker: Server;
 
 	beforeEach(async () => {

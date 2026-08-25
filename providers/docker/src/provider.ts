@@ -41,7 +41,7 @@ export interface DockerUpOpts {
 	/** Skip confirmation prompt for remote Launchfiles */
 	yes?: boolean;
 	/**
-	 * Instance label (#240, D-59): folded into the effective slug
+	 * Instance label (#240, D-55): folded into the effective slug
 	 * (`<base-slug>-<label>`), which keys the state dir, compose project — and
 	 * through project scoping the volumes and network — and the port
 	 * allocations. Two `up` runs with different labels are fully isolated
@@ -93,7 +93,7 @@ export class UnsuppliedRequiredEnvError extends Error {
 
 /**
  * A deploy refused because the slug's existing state was created from a
- * different source (D-59): adopting it would hand another source's live
+ * different source (D-55): adopting it would hand another source's live
  * containers, volumes, and secrets to whatever is being launched now.
  * The message names the existing project and the remedies; nothing is
  * touched before the throw.
@@ -175,7 +175,7 @@ function serviceNameFor(appName: string, componentName: string): string {
  * docker provider uses (#48), and can re-locate the Launchfile later (#25).
  */
 export interface DockerUpResult {
-	/** Effective slug — instance-qualified when `opts.name` was given (D-59). */
+	/** Effective slug — instance-qualified when `opts.name` was given (D-55). */
 	slug: string;
 	appName: string;
 	sourceType: "local" | "catalog" | "url";
@@ -195,7 +195,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 	// Resolve source before the span so we have the slug for span context
 	const resolved = await inPhase("resolve", sourceContext, () => resolveSource(source));
 
-	// Effective slug (D-59): instance-qualified when a name was given. Every
+	// Effective slug (D-55): instance-qualified when a name was given. Every
 	// slug-keyed value below — state, compose project, ports, error records —
 	// uses this, never the base slug, so named instances never share any of
 	// them. An invalid label is an expected refusal and throws here, before
@@ -306,7 +306,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// Load or init state
 		let state = await loadState(slug);
 
-		// Foreign-source guard (#240, D-59): existing state recorded from a
+		// Foreign-source guard (#240, D-55): existing state recorded from a
 		// different source — another checkout's path, another URL, or another
 		// source type entirely (a catalog `up` over a checkout's state) — is a
 		// different deployment; refuse to adopt it (silently re-pointing its
@@ -354,7 +354,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 
 		// Allocate host ports. The deterministic-fallback seed for a named
 		// instance is the effective slug, so two instances of one app prefer
-		// distinct ports before probing (D-59). Unnamed deployments keep the
+		// distinct ports before probing (D-55). Unnamed deployments keep the
 		// historical `launch.name` seed — changing it would move existing
 		// deployments' fallback ports.
 		const hostPorts = await inPhase("provision", failure(), () =>

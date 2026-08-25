@@ -107,7 +107,7 @@ export function composeProject(slug: string): string {
 }
 
 /**
- * An instance label that cannot become part of a slug (D-59). An operator
+ * An instance label that cannot become part of a slug (D-55). An operator
  * mistake with an actionable message — labels are rejected, never silently
  * mangled, because a mangled label would key state under a name the operator
  * never typed.
@@ -123,7 +123,7 @@ export class InvalidInstanceLabelError extends Error {
 }
 
 /**
- * The slug a deployment's provider state is keyed by (D-59): the app's base
+ * The slug a deployment's provider state is keyed by (D-55): the app's base
  * slug, qualified by the instance label when one is given. Everything that
  * keys off the slug — state dir, compose project (and through it volumes and
  * networks), port persistence — follows the label automatically, which is
