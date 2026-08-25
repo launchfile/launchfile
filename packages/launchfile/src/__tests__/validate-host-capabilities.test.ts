@@ -31,7 +31,7 @@ function run(cliArgs: string[]): { stdout: string; exitCode: number } {
 
 /**
  * Write a Launchfile to a temp file and return its path. `spec/examples/` no
- * longer contains a legacy `host:` block (D-58 migrated the gallery off it),
+ * longer contains a legacy `host:` block (D-54 migrated the gallery off it),
  * so legacy-path coverage lives on an inline fixture.
  */
 function fixture(yaml: string): string {
@@ -84,7 +84,7 @@ describe("launchfile validate — host capabilities summary (D-44 merge gate)", 
 		expect(result.hostCapabilities).toEqual(["container_runtime=docker (required)"]);
 	});
 
-	it("lists capabilities requested via the migrated example (D-58)", () => {
+	it("lists capabilities requested via the migrated example (D-54)", () => {
 		const { stdout, exitCode } = run([
 			"validate",
 			join(EXAMPLES, "host-orchestrator.yaml"),
@@ -103,7 +103,7 @@ describe("launchfile validate — host capabilities summary (D-44 merge gate)", 
 	});
 });
 
-describe("launchfile validate — deprecation reporting (D-58/D-42)", () => {
+describe("launchfile validate — deprecation reporting (D-54/D-42)", () => {
 	it("reports the legacy block's deprecations machine-readably, still valid", () => {
 		const { stdout, exitCode } = run(["validate", LEGACY_BLOCK, "--json"]);
 		expect(exitCode).toBe(0);
