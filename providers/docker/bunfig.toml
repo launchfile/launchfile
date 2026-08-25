@@ -1,0 +1,4 @@
+# `bun test` would silently use Bun's runner instead of Vitest.
+# The preload stops it and points at `bun run test`.
+[test]
+preload = ["./scripts/test-guard.ts"]

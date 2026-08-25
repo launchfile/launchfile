@@ -33,7 +33,7 @@ jobs:
       - run: cd sdk && bun install --frozen-lockfile
       - run: cd sdk && bun run typecheck
       - run: cd sdk && bun run build
-      - run: cd sdk && bun test
+      - run: cd sdk && bun run test
 
   providers:
     name: "Provider (${{ matrix.provider }})"
@@ -49,7 +49,7 @@ jobs:
         run: cd sdk && bun install --frozen-lockfile && bun run build
       - run: cd providers/${{ matrix.provider }} && bun install --frozen-lockfile
       - run: cd providers/${{ matrix.provider }} && bun run typecheck
-      - run: cd providers/${{ matrix.provider }} && bun test
+      - run: cd providers/${{ matrix.provider }} && bun run test
 
   # The AWS provider is translation-only: prove the emitted HCL is valid Terraform
   # against the real AWS provider schema (no credentials — init only fetches the
@@ -98,7 +98,7 @@ jobs:
       - run: cd packages/launchfile && bun install --frozen-lockfile
       - run: cd packages/launchfile && bun run typecheck
       - run: cd packages/launchfile && bun run build
-      - run: cd packages/launchfile && bun test
+      - run: cd packages/launchfile && bun run test
       - name: Verify dist/cli.js exists
         run: test -f packages/launchfile/dist/cli.js || (echo "dist/cli.js missing!" && exit 1)
 
