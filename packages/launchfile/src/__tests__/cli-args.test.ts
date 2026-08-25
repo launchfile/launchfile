@@ -4,8 +4,10 @@
  * the form the CLI roadmap's UC4 itself uses.
  */
 
+import { execFileSync } from "node:child_process";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { getFlagValue, getPositional, hasFlag } from "../cli-args.js";
+import { flagPresent, getFlagValue, getPositional, hasFlag } from "../cli-args.js";
 
 describe("getPositional (#248)", () => {
 	it("skips the value of a value-taking flag", () => {
@@ -58,5 +60,43 @@ describe("hasFlag", () => {
 		expect(hasFlag(["logs", "--follow"], "follow")).toBe(true);
 		expect(hasFlag(["logs", "-f"], "follow")).toBe(true);
 		expect(hasFlag(["logs"], "follow")).toBe(false);
+	});
+});
+
+describe("flagPresent", () => {
+	it("matches the bare and inline long forms only", () => {
+		expect(flagPresent(["up", "--name"], "name")).toBe(true);
+		expect(flagPresent(["up", "--name=a"], "name")).toBe(true);
+		expect(flagPresent(["up", "-n"], "name")).toBe(false);
+		expect(flagPresent(["up"], "name")).toBe(false);
+	});
+});
+
+describe("launchfile up --name with no value (built CLI)", () => {
+	const CLI = join(resolve(import.meta.dirname, "..", ".."), "dist", "cli.js");
+
+	function run(cliArgs: string[]): { output: string; exitCode: number } {
+		try {
+			const output = execFileSync("node", [CLI, ...cliArgs], {
+				encoding: "utf-8",
+				stdio: ["ignore", "pipe", "pipe"],
+			});
+			return { output, exitCode: 0 };
+		} catch (err) {
+			const e = err as { stdout?: string; stderr?: string; status?: number };
+			return { output: `${e.stdout ?? ""}${e.stderr ?? ""}`, exitCode: e.status ?? 1 };
+		}
+	}
+
+	it("errors instead of silently launching the unnamed instance", () => {
+		for (const argv of [
+			["up", "--dry-run", "--name"],
+			["up", "--name", "--dry-run"],
+			["up", "--name=", "--dry-run"],
+		]) {
+			const { output, exitCode } = run(argv);
+			expect(exitCode).toBe(1);
+			expect(output).toContain("--name requires a value");
+		}
 	});
 });

@@ -29,6 +29,7 @@ import {
 	hasFlag as argsHasFlag,
 	getFlagValue as argsGetFlagValue,
 	getPositional as argsGetPositional,
+	flagPresent as argsFlagPresent,
 } from "./cli-args.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -41,6 +42,22 @@ const args = process.argv.slice(2);
 const hasFlag = (flag: string): boolean => argsHasFlag(args, flag);
 const getFlagValue = (flag: string): string | undefined => argsGetFlagValue(args, flag);
 const getPositional = (index: number): string | undefined => argsGetPositional(args, index);
+
+/**
+ * The instance label, or undefined when --name was not given. A `--name` with
+ * no value (nothing follows, `--name=`, or another flag follows) is an error —
+ * silently launching the unnamed instance would target different state than
+ * the user asked for.
+ */
+function getNameFlag(): string | undefined {
+	if (!argsFlagPresent(args, "name")) return undefined;
+	const value = getFlagValue("name");
+	if (!value || value.startsWith("-")) {
+		console.error("--name requires a value, e.g. --name test-a");
+		process.exit(1);
+	}
+	return value;
+}
 
 const command = getPositional(0);
 const target = getPositional(1);
@@ -111,7 +128,7 @@ async function main(): Promise<void> {
 				native: hasFlag("native"),
 				detach: hasFlag("detach"),
 				dryRun: hasFlag("dry-run"),
-				name: getFlagValue("name"),
+				name: getNameFlag(),
 			});
 			break;
 
@@ -123,7 +140,7 @@ async function main(): Promise<void> {
 				native: true,
 				detach: hasFlag("detach"),
 				dryRun: hasFlag("dry-run"),
-				name: getFlagValue("name"),
+				name: getNameFlag(),
 			});
 			break;
 

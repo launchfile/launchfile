@@ -19,6 +19,11 @@ export function hasFlag(args: readonly string[], flag: string): boolean {
 	return args.includes(`--${flag}`) || args.includes(`-${flag[0]}`);
 }
 
+/** True when `--flag` or `--flag=…` appears — exact long form only, no short alias. */
+export function flagPresent(args: readonly string[], flag: string): boolean {
+	return args.some((arg) => arg === `--${flag}` || arg.startsWith(`--${flag}=`));
+}
+
 /** The value of `--flag <value>` or `--flag=<value>`, whichever appears first. */
 export function getFlagValue(args: readonly string[], flag: string): string | undefined {
 	const inlinePrefix = `--${flag}=`;
