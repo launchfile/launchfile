@@ -21,6 +21,7 @@ export const navigation: NavGroup[] = [
       { title: "5. Lifecycle Commands", href: "/learn/lifecycle-commands/" },
       { title: "6. Multi-Component Apps", href: "/learn/multi-component/" },
       { title: "7. Specialized Patterns", href: "/learn/specialized-patterns/" },
+      { title: "8. Expressions & Resource Configuration", href: "/learn/expressions-and-resources/" },
     ],
   },
   {

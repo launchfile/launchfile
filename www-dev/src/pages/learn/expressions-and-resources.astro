@@ -1,0 +1,195 @@
+---
+import metabaseYamlRaw from "../../../../catalog/apps/metabase/Launchfile?raw";
+
+import CourseLayout from "@/components/learn/CourseLayout.astro";
+import CodeBuildUp from "@/components/learn/CodeBuildUp.astro";
+import Callout from "@/components/learn/Callout.astro";
+import BeforeAfter from "@/components/learn/BeforeAfter.astro";
+import GlossaryTip from "@/components/learn/GlossaryTip.astro";
+import Quiz from "@/components/learn/Quiz.astro";
+import RealWorldExample from "@/components/learn/RealWorldExample.astro";
+
+const metabaseYaml = metabaseYamlRaw.replace(/^#.*\n/gm, "").trim();
+---
+
+<CourseLayout
+  title="Expressions & Resource Configuration"
+  subtitle="The full $ reference grammar, and how to name, version, and configure the resources your app requires."
+  moduleName="Advanced"
+  moduleNumber={3}
+  lessonNumber={8}
+  learningGoals={[
+    "The complete $ expression grammar — bare props, dot paths, templates, fallbacks, and escapes",
+    "How a reference is resolved — the namespace order",
+    "Naming resources to tell two instances of the same type apart",
+    "Version constraints and config hints on required resources",
+    "The property vocabulary — and how validate catches typos",
+  ]}
+>
+
+<h2 id="one-grammar">One grammar, not five tricks</h2>
+
+<p>
+  You've been using expressions since Lesson 2 — <code>$url</code> on a database, <code>{"${secrets.app-key|base64}"}</code> in Lesson 3, <code>$storage.data.path</code> in Lesson 4, <code>$components.backend.url</code> in Lesson 6. Each looked like its own trick. They're not: every one is the same <GlossaryTip term="expression" definition="A $-prefixed reference the provider resolves at deploy time. One grammar covers resource properties, secrets, storage paths, component URLs, and app properties.">$ reference grammar</GlossaryTip>, resolved by one set of rules. This lesson puts the whole system in one place — and covers the resource fields that make expressions necessary: <code>name</code>, <code>version</code>, and <code>config</code>.
+</p>
+
+<h2 id="build-it-up">Build it up</h2>
+
+<CodeBuildUp steps={[
+  {
+    yaml: `requires:
+  - type: postgres
+    set_env:
+      DATABASE_URL: $url`,
+    note: "The form you know from Lesson 2. Inside a resource's <code>set_env</code>, a bare <code>$prop</code> resolves against <em>that</em> resource — <code>$url</code> here is the Postgres connection string, because Postgres is the enclosing resource.",
+  },
+  {
+    yaml: `requires:
+  - type: postgres
+    set_env:
+      JDBC_URL: "jdbc:postgresql://\${host}:\${port}/\${name}"
+      DB_PORT: "\${port:-5432}"`,
+    note: "Expressions compose. The braced form <code>\${prop}</code> means the same as <code>$prop</code> but can sit inside a longer string — here a JDBC URL assembled from three properties. <code>\${port:-5432}</code> adds a <strong>fallback</strong>: the literal after <code>:-</code> is used when the reference has no value.",
+  },
+  {
+    yaml: `requires:
+  - type: postgres
+    name: primary-db
+    set_env:
+      PRIMARY_DB_URL: $url
+  - type: postgres
+    name: analytics-db
+    set_env:
+      ANALYTICS_DB_URL: $url`,
+    note: "Two Postgres instances would be ambiguous — which one is <code>$postgres.host</code>? The <code>name</code> field disambiguates: references elsewhere in the file become <code>$primary-db.host</code> and <code>$analytics-db.host</code>. Without <code>name</code>, a resource's name defaults to its <code>type</code>.",
+  },
+  {
+    yaml: `requires:
+  - type: postgres
+    name: primary-db
+    version: ">=15"
+    config:
+      extensions: [pgvector]
+    set_env:
+      PRIMARY_DB_URL: $url`,
+    note: "Two more resource fields. <code>version</code> constrains what the platform may provision, using semver range syntax — <code>\">=15\"</code>, <code>\"^7.0\"</code>, <code>\"20.x\"</code>. <code>config</code> passes <strong>provisioning hints</strong> whose keys are resource-type-specific; a platform that doesn't understand a key ignores it.",
+  },
+]} />
+
+<h2 id="the-grammar">The grammar at a glance</h2>
+
+<table>
+  <thead>
+    <tr><th>Syntax</th><th>Meaning</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>$prop</code></td><td>Property of the enclosing resource</td></tr>
+    <tr><td><code>$resource.prop</code></td><td>Property of a named resource (name defaults to <code>type</code>)</td></tr>
+    <tr><td><code>$components.name.prop</code></td><td>Another component's endpoint (Lesson 6)</td></tr>
+    <tr><td><code>$secrets.name</code></td><td>App-wide generated secret (Lesson 3)</td></tr>
+    <tr><td><code>$app.prop</code></td><td>Platform-injected app property, like <code>$app.url</code> (Lesson 3)</td></tr>
+    <tr><td><code>$storage.name.path</code></td><td>Provider-resolved storage path (Lesson 4)</td></tr>
+    <tr><td><code>{"${prop}"}</code></td><td>Braced form — same reference, composable inside strings</td></tr>
+    <tr><td><code>{"${prop:-default}"}</code></td><td>Reference with a fallback value</td></tr>
+    <tr><td><code>{"$ref|transform"}</code></td><td>Any reference piped through a transform, like <code>|base64</code> (Lesson 3)</td></tr>
+    <tr><td><code>$$</code></td><td>A literal <code>$</code> — the escape for values like <code>$$HOME/bin</code></td></tr>
+  </tbody>
+</table>
+
+<h2 id="resolution-order">How a reference is resolved</h2>
+
+<p>
+  When the provider meets a dotted path, it checks the namespaces in a fixed order: <code>app.*</code> first, then <code>secrets.*</code>, then <code>components.*</code>, then <code>storage.*</code>. Only then does it treat the first segment as a resource name. A single bare segment — <code>$host</code>, <code>$port</code> — never goes through that lookup: it always means the enclosing resource.
+</p>
+
+<Callout type="warning" title="app and storage are reserved">
+  <p>
+    Because the namespaces are checked first, a resource named <code>app</code> or a volume named <code>storage</code> can't be reached by expression — <code>$app.url</code> still resolves to the platform-injected app property, not your resource. Pick a different name.
+  </p>
+</Callout>
+
+<h2 id="the-vocabulary">The property vocabulary</h2>
+
+<p>
+  What can go after the <code>$</code>? Each resource type exposes a <GlossaryTip term="property vocabulary" definition="The standard set of properties a resource type exposes — e.g. url, host, port, user, password, name for postgres. Published in machine-readable form as resource-properties.json.">standard property set</GlossaryTip>: <code>postgres</code> gives you <code>url</code>, <code>host</code>, <code>port</code>, <code>user</code>, <code>password</code>, and <code>name</code>; <code>redis</code> gives <code>url</code>, <code>host</code>, <code>port</code>, <code>password</code>; and so on. <code>url</code> is always the fully-formed connection string; the rest are its pieces, for apps that want them separately.
+</p>
+
+<BeforeAfter
+  before={{
+    title: "One string — most apps",
+    yaml: `requires:
+  - type: postgres
+    set_env:
+      DATABASE_URL: $url`,
+  }}
+  after={{
+    title: "The pieces — apps that insist",
+    yaml: `requires:
+  - type: postgres
+    set_env:
+      DB_HOST: $host
+      DB_PORT: $port
+      DB_USER: $user
+      DB_PASSWORD: $password
+      DB_NAME: $name`,
+  }}
+/>
+
+<Callout type="info" title="Why typos don't fail — and don't hide either">
+  <p>
+    The vocabulary is standard but <em>open</em>: a provider may expose extra properties, so a reference outside the standard set isn't invalid — it might be a deliberate extension. But it might be a typo, and an unknown property resolves to <strong>empty string</strong>. Write <code>$hoost</code> and your app gets an empty <code>DB_HOST</code> — a failure that surfaces at first connection, far from its cause. That's why <code>launchfile validate</code> reports any reference outside the standard vocabulary as an <strong>advisory warning</strong>, never an error. Run it before you deploy.
+  </p>
+</Callout>
+
+<h2 id="in-the-wild">In the wild</h2>
+
+<p>
+  Metabase is a business-intelligence tool that refuses the single-URL shortcut — its config wants every database detail in its own variable. Its Launchfile is the property vocabulary at full stretch.
+</p>
+
+<RealWorldExample
+  appName="metabase"
+  yaml={metabaseYaml}
+  annotations={[
+    { line: "MB_DB_HOST: $host", text: "Bare $prop resolves against the enclosing resource — this is the Postgres host, not the app's." },
+    { line: "MB_DB_DBNAME: $name", text: "$name is the database name from the vocabulary — one letter off ($naame) and it would resolve to empty string, which is exactly what validate's advisory warning exists to catch." },
+    { line: "MB_DB_TYPE:", text: "A plain literal default — not every value needs an expression." },
+    { line: "generator: secret", text: "The Lesson 3 machinery, side by side with resource expressions — one grammar across the whole file." },
+  ]}
+  catalogUrl="https://launchfile.io/apps/metabase/"
+/>
+
+<h2 id="check-your-understanding">Check your understanding</h2>
+
+<Quiz
+  question="Inside a requires entry's set_env, what does a bare $host resolve to?"
+  options={[
+    { text: "The host property of the enclosing resource", correct: true, explanation: "Correct! A single bare segment always means the enclosing resource — no namespace lookup involved. Inside a postgres entry, $host is the database host." },
+    { text: "The app's public hostname", correct: false, explanation: "That's $app.host — the app namespace needs the explicit dotted path. Bare segments never reach the app.* table." },
+    { text: "The host machine's hostname", correct: false, explanation: "Expressions never reach into the host machine. Host access is a separate, explicit mechanism — the capability entries from Lesson 7." },
+    { text: "An environment variable named host", correct: false, explanation: "The $ grammar references resources, secrets, components, storage, and app properties — not other environment variables. A literal $ for the shell is written $$." },
+  ]}
+/>
+
+<div class="takeaways">
+  <div class="takeaways-title">Key takeaways</div>
+  <ul>
+    <li>Every expression in a Launchfile is one grammar: bare <code>$prop</code> for the enclosing resource, dotted paths for everything else, <code>{"${...}"}</code> to compose inside strings, <code>{"${prop:-default}"}</code> for fallbacks, <code>$$</code> for a literal dollar.</li>
+    <li>Dotted paths resolve namespaces in a fixed order — <code>app</code>, <code>secrets</code>, <code>components</code>, <code>storage</code>, then resource names. <code>app</code> and <code>storage</code> are reserved.</li>
+    <li>Use <code>name:</code> when you require two resources of the same type — references become <code>$primary-db.host</code> instead of an ambiguous <code>$postgres.host</code>.</li>
+    <li><code>version:</code> constrains provisioning with semver ranges; <code>config:</code> passes type-specific hints that unsupporting platforms ignore.</li>
+    <li>Each resource type has a standard property vocabulary. An unknown property resolves to empty string — <code>launchfile validate</code> warns about it before your app fails at first connection.</li>
+  </ul>
+</div>
+
+<div style="margin-top: 2rem; padding: 1.5rem; border-radius: 0.75rem; background: var(--lf-purple-50); border: 1px solid var(--lf-purple-100); text-align: center;">
+  <p style="font-size: 1.0625rem; font-weight: 600; color: var(--lf-ink); margin: 0 0 0.5rem;">Course complete!</p>
+  <p style="font-size: 0.9375rem; color: var(--lf-slate); margin: 0 0 1rem;">You're ready to write Launchfiles for any application.</p>
+  <div style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap;">
+    <a href="https://launchfile.org/spec/" style="display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.5rem 1rem; border-radius: 9999px; font-size: 0.875rem; font-weight: 600; color: white; background: var(--lf-primary); text-decoration: none;">Read the full spec</a>
+    <a href="/examples/" style="display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.5rem 1rem; border-radius: 9999px; font-size: 0.875rem; font-weight: 600; color: var(--lf-primary); border: 1px solid var(--lf-purple-200); text-decoration: none;">Browse examples</a>
+    <a href="https://launchfile.io/apps/" style="display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.5rem 1rem; border-radius: 9999px; font-size: 0.875rem; font-weight: 600; color: var(--lf-primary); border: 1px solid var(--lf-purple-200); text-decoration: none;">Explore the catalog</a>
+  </div>
+</div>
+
+</CourseLayout>
