@@ -9,6 +9,7 @@
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { dockerErrorKey, type DockerUpResult } from "@launchfile/docker";
 import {
 	buildLaunchErrorContext,
 	LaunchError,
@@ -182,6 +183,51 @@ describe("up, on the other failure phases", () => {
 			),
 		).rejects.toThrow();
 		expect(Object.keys((await index()).deployments)).toHaveLength(0);
+	});
+});
+
+describe("up, after an earlier pre-slug failure", () => {
+	it("supersedes the source-keyed record too, so a bare diagnose reports nothing", async () => {
+		// A failure before a slug exists (`resolve`, `parse`) is keyed by the
+		// source hash the provider derives from the string handleUp passes it —
+		// which for a directory target is the resolved project dir itself.
+		const sourceKey = dockerErrorKey({ source: projectDir });
+		const preSlug = new LaunchError(
+			buildLaunchErrorContext(
+				{
+					phase: "parse",
+					provider: "docker",
+					key: sourceKey,
+					message: "Launchfile did not parse",
+				},
+				IDENTITY,
+			),
+		);
+		await expect(
+			handleUp(projectDir, {}, deps(() => Promise.reject(preSlug))),
+		).rejects.toThrow("Launchfile did not parse");
+		expect((await readLaunchErrorRecord(undefined, recordDir))?.phase).toBe("parse");
+
+		// A later `up` of the same source succeeds.
+		const ok: DockerUpResult = {
+			slug: "gov23",
+			appName: "gov23",
+			sourceType: "local",
+		};
+		await handleUp(projectDir, {}, { up: async () => ok, indexDir, recordDir });
+
+		// The pre-slug record and the last.json pointer are both gone: a bare
+		// `diagnose` finds nothing instead of presenting the old parse failure.
+		expect(await readLaunchErrorRecord(sourceKey, recordDir)).toBeNull();
+		let printed = "";
+		const code = await handleDiagnose(
+			undefined,
+			{},
+			{ out: (t) => (printed += t), err: (t) => (printed += t) },
+			recordDir,
+		);
+		expect(code).toBe(1);
+		expect(printed).toContain("No captured launch failure.");
 	});
 });
 

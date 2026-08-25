@@ -4,6 +4,7 @@
 
 import { resolve } from "node:path";
 import {
+	dockerErrorKey,
 	dockerUp,
 	type DockerUpOpts,
 	type DockerUpResult,
@@ -182,8 +183,14 @@ export async function handleUp(
 
 		// Retention (#44 §H): the previous failure record for this key described a
 		// launch that no longer exists. Supersede it rather than leaving stale log
-		// tails on disk for `diagnose` to present as current.
-		if (!flags.dryRun) await clearLaunchErrorRecord(result.slug, recordDir);
+		// tails on disk for `diagnose` to present as current. A failure before a
+		// slug exists (`resolve`, `parse`) is keyed by the source hash instead —
+		// clear that key too, or a bare `diagnose` keeps presenting the old
+		// pre-slug failure after a successful launch.
+		if (!flags.dryRun) {
+			await clearLaunchErrorRecord(result.slug, recordDir);
+			await clearLaunchErrorRecord(dockerErrorKey({ source: dockerSource }), recordDir);
+		}
 
 		if (!flags.dryRun) {
 			// Identity (#48): key the index entry by the SAME slug the docker
