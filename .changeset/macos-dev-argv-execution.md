@@ -10,4 +10,6 @@ The runtime installers were the live case: `detectVersion()` returns the verbati
 
 Values reused from `.launchfile/state.json` are now validated before they reach SQL. `MysqlProvisioner.provision()` interpolated the stored database name, user and password into `mysql -e`, which runs `;`-separated statements as root; `loadState()` parses that file with no validation and it sits inside the cloned repo. Postgres guarded its two identifiers but not the password. Both provisioners now check all three against `resources/identifiers.ts` before issuing any statement.
 
+Measured, not assumed: the pre-fix postgres password was OS command execution, not a contained role change. Driven against a live server, a hostile `.launchfile/state.json` password inside the `DO $$ … $$` body runs `COPY … TO PROGRAM` (a host command) and escalates the app role to a cluster superuser; only non-transactional DDL such as `DROP DATABASE` is refused inside the block. The base64url password allowlist is what closes this — argv execution alone would still pass a quote through to the SQL parser.
+
 Also fixes an unrelated bug in the same code: the rbenv/pyenv installed-version check matched with `grep`, treating the version as a regex, so every `.` matched any character and an unrelated installed version could satisfy the request and skip the install.
