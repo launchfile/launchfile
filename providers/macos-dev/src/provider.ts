@@ -12,6 +12,7 @@ import {
 	resolveSourcePrepareCommand,
 	resolveSourceRunCommand,
 	selectionClosure,
+	unsuppliedRequiredEnv,
 	type NormalizedLaunch,
 	type NormalizedComponent,
 } from "@launchfile/sdk";
@@ -25,6 +26,7 @@ import {
 	generateSecrets,
 	resolveGenerators,
 	writeEnvFile,
+	type UnsuppliedRequiredEnv,
 } from "./env-writer.js";
 import { getProvisioner, type ResourceProperties } from "./resources/index.js";
 import { allocatePorts } from "./port-allocator.js";
@@ -265,6 +267,51 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		}
 	}
 
+	// 2c. Unsupplied `required:` environment variables (D-52, PROVIDERS.md §10
+	// rule 8, deploying branch). This provider's operator channel is the
+	// launching environment, read EXPLICITLY here — the `...process.env` spread
+	// on the pm2 registration below is incidental inheritance that never reaches
+	// `release` and is invisible to `env`, so it cannot serve as the channel.
+	// Values found are carried in `operatorEnv` and merged into `allEnvs` at
+	// step 12, which puts them on both `release` and `start` and makes them
+	// visible to `launch env`. Anything still missing fails HERE — before
+	// directories, resources, ports, runtimes, or processes exist. No prompt: a
+	// non-interactive invocation must fail by name, not hang on stdin.
+	const operatorEnv: Record<string, Record<string, string>> = {};
+	const missingRequired: { component: string; key: string; sensitive: boolean }[] = [];
+	for (const [name, component] of Object.entries(launch.components)) {
+		// A `requires:` binding injects only when this provider can provision the
+		// resource behind it; `supports:` is provisioned only under --with-optional
+		// and is never credited (SPEC.md §Supports).
+		const arriving = new Set(
+			(component.requires ?? [])
+				.filter((req) => !req.host && getProvisioner(req.type))
+				.flatMap((req) => Object.keys(req.set_env ?? {})),
+		);
+		for (const { key, sensitive } of unsuppliedRequiredEnv(component, arriving)) {
+			const supplied = process.env[key];
+			if (supplied !== undefined) {
+				(operatorEnv[name] ??= {})[key] = supplied;
+				continue;
+			}
+			missingRequired.push({ component: name, key, sensitive });
+		}
+	}
+	if (missingRequired.length > 0) {
+		console.error(
+			`\nCannot launch: ${missingRequired.length} required environment variable${missingRequired.length === 1 ? "" : "s"} had no value.`,
+		);
+		for (const { component, key, sensitive } of missingRequired) {
+			console.error(`  - ${component}: ${key}${sensitive ? " (sensitive)" : ""}`);
+		}
+		console.error(
+			"\nThe Launchfile declares them `required:` with no `default:`, `generator:`, or resource",
+		);
+		console.error("binding, so you supply them. Set them in the environment and run `up` again, e.g.");
+		console.error(`  ${missingRequired[0]!.key}=<value> launch up`);
+		process.exit(1);
+	}
+
 	// 3. Load or init state
 	let state = await loadState(projectDir);
 	if (!state) {
@@ -397,8 +444,12 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const generatedEnv = (state.generatedEnv ??= {});
 
 	for (const [name, component] of Object.entries(launch.components)) {
-		const env = resolveComponentEnv(component, context, resourceMap, componentStorage[name]);
+		const { env } = resolveComponentEnv(component, context, resourceMap, componentStorage[name]);
 		await resolveGenerators(component, env, name, generatedEnv);
+
+		// Operator-supplied `required:` values (step 2c) join the resolved set, so
+		// they reach `release` and `start` alike and show up in `launch env`.
+		Object.assign(env, operatorEnv[name] ?? {});
 
 		const port = componentPorts[name];
 		if (port && !env.PORT) {
@@ -653,7 +704,7 @@ export async function launchEnv(opts: { component?: string; projectDir?: string 
 	// keep answering with the same value.
 	const generatedEnv = (state.generatedEnv ??= {});
 	let minted = false;
-	const resolvedEnvs: [string, Record<string, string>][] = [];
+	const resolvedEnvs: [string, Record<string, string>, UnsuppliedRequiredEnv[]][] = [];
 
 	for (const [name, component] of Object.entries(launch.components)) {
 		if (opts.component && name !== opts.component) continue;
@@ -667,23 +718,43 @@ export async function launchEnv(opts: { component?: string; projectDir?: string 
 			storageCtx[volName] = { path: localPath };
 		}
 
-		const env = resolveComponentEnv(component, context, resourceMap, storageCtx);
+		const { env, unsupplied } = resolveComponentEnv(component, context, resourceMap, storageCtx);
 		minted = (await resolveGenerators(component, env, name, generatedEnv)) || minted;
+
+		// The operator channel `up` reads (the launching environment) answers here
+		// too, so a var supplied at launch time prints as a real value rather than
+		// being reported missing.
+		for (const { key } of unsupplied) {
+			const supplied = process.env[key];
+			if (supplied !== undefined) env[key] = supplied;
+		}
 
 		const port = state.ports[name];
 		if (port && !env.PORT) env.PORT = String(port);
 
-		resolvedEnvs.push([name, env]);
+		resolvedEnvs.push([name, env, unsupplied]);
 	}
 
 	if (minted) {
 		await saveState(projectDir, state);
 	}
 
-	for (const [name, env] of resolvedEnvs) {
+	for (const [name, env, unsupplied] of resolvedEnvs) {
 		console.log(`\n# ${name}`);
 		for (const [key, value] of Object.entries(env).sort(([a], [b]) => a.localeCompare(b))) {
 			console.log(`${key}=${value}`);
+		}
+		// PROVIDERS.md §10 rule 8, `env` branch: report an unsupplied required var
+		// rather than dropping it — this is where an operator comes to find out
+		// what is missing. It goes out as a `#` comment, never a bare `KEY=` line,
+		// because this output is designed to be `eval`'d (§2): a bare line would
+		// export an empty value and re-create the failure the rule exists to stop.
+		for (const { key, sensitive } of unsupplied.sort((a, b) => a.key.localeCompare(b.key))) {
+			if (env[key] !== undefined) continue;
+			console.log(
+				`# ${key}: unsupplied — required, no default/generator/binding` +
+					`${sensitive ? ", sensitive" : ""}. Supply it in the environment.`,
+			);
 		}
 	}
 }

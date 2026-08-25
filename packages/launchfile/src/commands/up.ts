@@ -3,7 +3,7 @@
  */
 
 import { resolve } from "node:path";
-import { dockerUp } from "@launchfile/docker";
+import { dockerUp, UnsuppliedRequiredEnvError } from "@launchfile/docker";
 import { detectProvider } from "../detect-provider.js";
 import { resolveUpTarget } from "../resolve-target.js";
 import {
@@ -55,10 +55,21 @@ export async function handleUp(target: string | undefined, flags: UpFlags): Prom
 			? upTarget.value
 			: upTarget.value;
 
-		const result = await dockerUp(dockerSource, {
-			detach: flags.detach,
-			dryRun: flags.dryRun,
-		});
+		let result: Awaited<ReturnType<typeof dockerUp>>;
+		try {
+			result = await dockerUp(dockerSource, {
+				detach: flags.detach,
+				dryRun: flags.dryRun,
+			});
+		} catch (err) {
+			// An unsupplied `required:` variable (D-52) is an operator's problem to
+			// fix, not a bug — it gets the provider's own message, not a stack trace.
+			if (err instanceof UnsuppliedRequiredEnvError) {
+				console.error(`\n${err.message}`);
+				process.exit(1);
+			}
+			throw err;
+		}
 
 		if (!flags.dryRun) {
 			// Identity (#48): key the index entry by the SAME slug the docker

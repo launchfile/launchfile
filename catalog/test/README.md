@@ -57,10 +57,28 @@ images:
     platform: [linux/arm64]
 ```
 
+### `test_env:` — the harness's operator channel
+
+An `env.<NAME>: { required: true }` with no `default:`, no `generator:`, and no
+resource binding is a value the **operator** supplies (D-52, PROVIDERS.md §10
+rule 8). The harness is an operator, so it may supply one — from a `test_env:`
+block you write by hand:
+
+```yaml
+test_env:
+  SMTP_HOST: "mail.example.test"
+```
+
+These are declared test inputs, reviewable in the catalog PR. The harness never
+guesses a value from a variable's name; a required variable with no `test_env:`
+entry **fails the app's test run by name**, before any image is pulled. If a
+value belongs in the Launchfile rather than in a fixture, give it a `default:`
+or a `generator:` instead.
+
 ## Known Limitations
 
 - `build:` components are skipped (no source code to build)
 - `host:` requirements (docker socket, host networking, privileged) are skipped
 - `schedule:` is ignored (containers run but won't cron)
-- Required env vars without defaults get placeholder values
+- Required env vars without a value source must be declared in `test_env:` (see above) — the run fails by name otherwise
 - Port mapping uses ephemeral host ports to avoid conflicts

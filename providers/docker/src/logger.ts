@@ -201,6 +201,25 @@ export function startSpan(
 }
 
 /**
+ * An error that carries this flag is a deliberate refusal — an operator-fixable
+ * precondition such as an unsupplied `required:` variable (D-52) — not a crash.
+ * It still fails the span, but the CLI has already printed an actionable message
+ * for it, and dumping a stack underneath would bury that message in a trace the
+ * operator can do nothing with.
+ */
+export interface ExpectedRefusal {
+	readonly expectedRefusal: true;
+}
+
+function isExpectedRefusal(error: unknown): boolean {
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		(error as Partial<ExpectedRefusal>).expectedRefusal === true
+	);
+}
+
+/**
  * End a span, logging its outcome and duration.
  */
 export function endSpan(
@@ -210,7 +229,11 @@ export function endSpan(
 ): void {
 	const durationMs = Math.round(performance.now() - span.startedAt);
 
-	if (outcome === "error" && error) {
+	if (outcome === "error" && error && isExpectedRefusal(error)) {
+		// Recorded at debug: the file transport (trace level) keeps it, and the
+		// default stderr transport stays out of the CLI's way.
+		span.logger.debug({ durationMs, refusal: error.message }, "span refused");
+	} else if (outcome === "error" && error) {
 		span.logger.error({ durationMs, err: error }, "span failed");
 	} else if (outcome === "error") {
 		span.logger.error({ durationMs }, "span failed");
