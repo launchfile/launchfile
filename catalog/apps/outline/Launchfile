@@ -29,6 +29,7 @@ env:
     generator: secret
     sensitive: true
   URL:
+    default: $app.url
     required: true
     description: "Public-facing URL of the Outline instance"
 health: /_health

@@ -15,12 +15,14 @@ import {
 	type NormalizedLaunch,
 	type ResolverContext,
 	type Secret,
+	type UnsuppliedRequiredEnv,
+	unsuppliedRequiredEnv,
 } from "@launchfile/sdk";
 import type { ResourceProperties } from "./resources/types.js";
 import { generateValue } from "./secret-generator.js";
 
 // Re-export so existing callers in the macos-dev provider keep their import path.
-export type { ResolverContext };
+export type { ResolverContext, UnsuppliedRequiredEnv };
 
 /**
  * Compute the $app.* property set (D-33, D-35) for a Launchfile under the
@@ -94,6 +96,21 @@ export function buildResolverContext(
 }
 
 /**
+ * The resolved environment for one component, plus what the file did not supply.
+ */
+export interface ComponentEnvResult {
+	/** Keys that actually arrived. An unsupplied `required:` key is ABSENT, never `""`. */
+	env: Record<string, string>;
+	/**
+	 * `required:` variables with no `generator:`, no `default:`, and no
+	 * `set_env:` binding that injected (D-52, PROVIDERS.md §10 rule 8). The
+	 * caller decides: `up` reads its operator channel then fails by name, `env`
+	 * reports them without breaking `eval`.
+	 */
+	unsupplied: UnsuppliedRequiredEnv[];
+}
+
+/**
  * Resolve all environment variables for a single component.
  */
 export function resolveComponentEnv(
@@ -101,7 +118,7 @@ export function resolveComponentEnv(
 	context: ResolverContext,
 	resourceMap: Record<string, ResourceProperties>,
 	storage?: Record<string, Record<string, string>>,
-): Record<string, string> {
+): ComponentEnvResult {
 	const env: Record<string, string> = {};
 
 	// This component's provider-resolved storage paths (D-39). Scoped per
@@ -174,11 +191,17 @@ export function resolveComponentEnv(
 					env[key] = defaultStr;
 				}
 			}
-			// required + no default + no generator → left unset (provider should prompt)
 		}
 	}
 
-	return env;
+	// A `required:` var nothing above yielded is left ABSENT and reported, not
+	// silently dropped (D-52, PROVIDERS.md §10 rule 8). `generator:` keys were
+	// skipped just above but are not unsupplied — `resolveGenerators` mints them
+	// — and the shared predicate excludes them for that reason. The test runs
+	// after the `set_env` loops so it measures arrival, not declaration.
+	const unsupplied = unsuppliedRequiredEnv(component, Object.keys(env));
+
+	return { env, unsupplied };
 }
 
 /**
@@ -291,7 +314,7 @@ export async function writeAllEnvFiles(
 	const isSingleComponent = componentNames.length === 1 && componentNames[0] === "default";
 
 	for (const [name, component] of Object.entries(launch.components)) {
-		const env = resolveComponentEnv(component, context, resourceMap);
+		const { env } = resolveComponentEnv(component, context, resourceMap);
 		await resolveGenerators(component, env, name, generatedEnv);
 
 		// Inject PORT if not already set and component has provides

@@ -12,6 +12,7 @@ import {
   deriveAppUrlProperties,
   type ResolverContext,
 } from "../../../sdk/src/resolver.ts";
+import { unsuppliedRequiredEnv } from "../../../sdk/src/env.ts";
 import type {
   NormalizedLaunch,
   NormalizedRequirement,
@@ -223,11 +224,32 @@ export interface ComposeResult {
   warnings: string[];
   /** All unique images referenced (for pull tracking) */
   images: string[];
+  /**
+   * `required:` variables neither the Launchfile nor the declared test fixture
+   * supplied (D-52, PROVIDERS.md §10 rule 8). Their keys are ABSENT from the
+   * emitted compose. The runner turns a non-empty list into a hard failure
+   * naming the app and the variable — a silent pass here is what let
+   * `health_check_passed: true` certify apps the shipped provider refuses.
+   */
+  unsuppliedRequired: { component: string; key: string; sensitive: boolean }[];
 }
 
-export function launchToCompose(launch: NormalizedLaunch): ComposeResult {
+export interface ComposeOpts {
+  /**
+   * The harness's declared operator channel: per-app values for `required:`
+   * variables the Launchfile itself does not supply, from the app's
+   * `metadata.yaml` `test_env:` block. Consulted ONLY for an otherwise
+   * unsupplied required key. Rule 8 lets an operator supply a value; it forbids
+   * the resolver inventing one, and a fixture is a reviewable test input rather
+   * than a guess.
+   */
+  testEnv?: Record<string, string>;
+}
+
+export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}): ComposeResult {
   const warnings: string[] = [];
   const images: string[] = [];
+  const unsuppliedRequired: ComposeResult["unsuppliedRequired"] = [];
   const services: Record<string, Record<string, unknown>> = {};
   const volumes: Record<string, Record<string, unknown>> = {};
 
@@ -372,7 +394,7 @@ export function launchToCompose(launch: NormalizedLaunch): ComposeResult {
     // Resolve env vars from the Launchfile
     if (component.env) {
       for (const [key, envVar] of Object.entries(component.env)) {
-        const value = resolveEnvVar(envVar, baseCtx, key);
+        const value = resolveEnvVar(envVar, baseCtx);
         if (value !== undefined) {
           env[key] = value;
         }
@@ -416,6 +438,21 @@ export function launchToCompose(launch: NormalizedLaunch): ComposeResult {
           };
         }
       }
+    }
+
+    // Unsupplied `required:` variables (D-52, PROVIDERS.md §10 rule 8). Runs
+    // AFTER the `set_env` injection above because the test is arrival, not
+    // declaration: a `supports:` binding never injects here (this harness does
+    // not provision optional resources) and a binding on an unknown backing
+    // type does not either. The declared fixture gets one look; whatever it
+    // does not cover is recorded for the runner to fail on by name.
+    for (const { key, sensitive } of unsuppliedRequiredEnv(component, Object.keys(env))) {
+      const supplied = opts.testEnv?.[key];
+      if (supplied !== undefined) {
+        env[key] = supplied;
+        continue;
+      }
+      unsuppliedRequired.push({ component: componentName, key, sensitive });
     }
 
     // Inter-component depends_on
@@ -498,6 +535,7 @@ export function launchToCompose(launch: NormalizedLaunch): ComposeResult {
     yaml: stringify(compose, { lineWidth: 120 }),
     warnings,
     images: [...new Set(images)],
+    unsuppliedRequired,
   };
 }
 
@@ -506,7 +544,6 @@ export function launchToCompose(launch: NormalizedLaunch): ComposeResult {
 function resolveEnvVar(
   envVar: NormalizedEnvVar,
   ctx: ResolverContext,
-  key?: string,
 ): string | undefined {
   // Generator takes precedence
   if (envVar.generator) {
@@ -525,18 +562,10 @@ function resolveEnvVar(
     return val;
   }
 
-  // For required vars without defaults, provide smart placeholders
-  if (envVar.required) {
-    const lowerKey = key?.toLowerCase() ?? "";
-    if (lowerKey.includes("url") || lowerKey.includes("domain") || lowerKey.includes("origin")) {
-      return "http://localhost";
-    }
-    if (lowerKey.includes("email") || lowerKey.includes("mail")) {
-      return "test@localhost";
-    }
-    return "PLACEHOLDER";
-  }
-
+  // A `required:` var the file supplies no value for gets nothing here (D-52,
+  // PROVIDERS.md §10 rule 8). The harness is an OPERATOR, so it may still supply
+  // one — but only from `opts.testEnv`, a declared fixture reviewable in the
+  // catalog PR, never from a guess made inside this resolver.
   return undefined;
 }
 

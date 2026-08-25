@@ -12,6 +12,9 @@
  * run this manually: `cd catalog/test && bun install && bun run test`.
  */
 
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import { parse } from "yaml";
 import { readLaunch } from "../../../sdk/src/reader.ts";
@@ -220,5 +223,214 @@ describe("host capabilities — refused, not silently deployed (D-44)", () => {
 
   it("still deploys a component with no host capabilities", () => {
     expect(run("requires:\n  - postgres\n").deployed).toBe(true);
+  });
+});
+
+/**
+ * The `required:` arrival table for the harness (D-52, PROVIDERS.md §10 rule 8),
+ * ported from `providers/aws/src/__tests__/translate.test.ts` and verb-adjusted.
+ *
+ * The harness is an OPERATOR, not a provider: rule 8 lets it supply a value from
+ * a declared channel (`test_env:` in the app's metadata.yaml) and forbids it
+ * inventing one inside the resolver. Before this change it did the second, with
+ * the same name-derived guesses as the docker provider — which is what let
+ * `health_check_passed: true` certify apps the shipped provider refuses.
+ */
+describe("unsupplied required env (rule 8, D-52)", () => {
+  const compose = (yaml: string, testEnv?: Record<string, string>) => {
+    const result = launchToCompose(readLaunch(yaml), testEnv ? { testEnv } : {});
+    const doc = parse(result.yaml) as {
+      services: Record<string, { environment?: Record<string, string> }>;
+    };
+    return { ...result, doc };
+  };
+
+  const REQUIRED = `
+name: app
+image: acme/app:1
+provides:
+  - { protocol: http, port: 3000, exposed: true }
+env:
+  API_KEY:
+    required: true
+    sensitive: true
+  SITE_URL:
+    required: true
+  HAS_DEFAULT:
+    required: true
+    default: fine
+  GENERATED:
+    required: true
+    generator: secret
+`;
+
+  // 1
+  it("leaves the key absent from the emitted compose — absent, not empty", () => {
+    const { doc } = compose(REQUIRED);
+    const env = doc.services.app!.environment!;
+    expect("API_KEY" in env).toBe(false);
+    expect("SITE_URL" in env).toBe(false);
+  });
+
+  // 2
+  it("never invents a value for it", () => {
+    const { yaml } = compose(`
+name: app
+image: acme/app:1
+env:
+  PGRST_DB_URI: { required: true }
+  EMAIL_SMTP_HOST: { required: true }
+  ADMIN_TOKEN: { required: true, sensitive: true }
+`);
+    expect(yaml).not.toContain("PLACEHOLDER");
+    expect(yaml).not.toContain("http://localhost");
+    expect(yaml).not.toContain("test@localhost");
+  });
+
+  // 3
+  it("still emits vars the file supplies via default or generator", () => {
+    const { doc, unsuppliedRequired } = compose(REQUIRED);
+    const env = doc.services.app!.environment!;
+    expect(env.HAS_DEFAULT).toBe("fine");
+    expect(env.GENERATED).toMatch(HEX64);
+    expect(unsuppliedRequired.map((v) => v.key).sort()).toEqual(["API_KEY", "SITE_URL"]);
+  });
+
+  // 4
+  it("treats a set_env binding on a provisioned resource as supplying the value", () => {
+    const { doc, unsuppliedRequired } = compose(`
+name: app
+image: acme/app:1
+requires:
+  - type: postgres
+    set_env:
+      DATABASE_URL: $url
+env:
+  DATABASE_URL:
+    required: true
+`);
+    expect(doc.services.app!.environment!.DATABASE_URL).toContain("postgres");
+    expect(unsuppliedRequired).toEqual([]);
+  });
+
+  // 5
+  it("does NOT treat a binding on an unmappable resource as supplying the value", () => {
+    const { yaml, unsuppliedRequired } = compose(`
+name: app
+image: acme/app:1
+requires:
+  - type: sqlite
+    set_env:
+      DB_URL: $url
+env:
+  DB_URL:
+    required: true
+    sensitive: true
+`);
+    expect(yaml).not.toContain("DB_URL");
+    expect(unsuppliedRequired).toEqual([
+      { component: "default", key: "DB_URL", sensitive: true },
+    ]);
+  });
+
+  // 6
+  it("does NOT treat a supports-only binding as supplying the value", () => {
+    const { yaml, unsuppliedRequired } = compose(`
+name: app
+image: acme/app:1
+supports:
+  - type: redis
+    set_env:
+      CACHE_URL: $url
+env:
+  CACHE_URL:
+    required: true
+`);
+    expect(yaml).not.toContain("CACHE_URL");
+    expect(unsuppliedRequired.map((v) => v.key)).toEqual(["CACHE_URL"]);
+  });
+
+  it("names the component and marks sensitive vars, so the runner can fail by name", () => {
+    // What test-app.ts turns into a hard failure: without this the app's run
+    // passes silently and metadata.yaml records health_check_passed: true.
+    const { unsuppliedRequired } = compose(`
+name: app
+components:
+  web:
+    image: acme/web:1
+    env:
+      SITE_URL: { required: true }
+  admin:
+    image: acme/admin:1
+    env:
+      ADMIN_TOKEN: { required: true, sensitive: true }
+`);
+    expect(unsuppliedRequired).toEqual([
+      { component: "web", key: "SITE_URL", sensitive: false },
+      { component: "admin", key: "ADMIN_TOKEN", sensitive: true },
+    ]);
+  });
+
+  describe("test_env: the declared operator channel", () => {
+    it("supplies the value and stops reporting the var", () => {
+      const { doc, unsuppliedRequired } = compose(REQUIRED, {
+        API_KEY: "fixture-key",
+        SITE_URL: "http://app.test",
+      });
+      const env = doc.services.app!.environment!;
+      expect(env.API_KEY).toBe("fixture-key");
+      expect(env.SITE_URL).toBe("http://app.test");
+      expect(unsuppliedRequired).toEqual([]);
+    });
+
+    it("never overrides a default or a set_env binding", () => {
+      const { doc } = compose(
+        `
+name: app
+image: acme/app:1
+requires:
+  - type: postgres
+    set_env:
+      DATABASE_URL: $url
+env:
+  HAS_DEFAULT:
+    required: true
+    default: fine
+  DATABASE_URL:
+    required: true
+`,
+        { HAS_DEFAULT: "hijacked", DATABASE_URL: "hijacked" },
+      );
+      const env = doc.services.app!.environment!;
+      expect(env.HAS_DEFAULT).toBe("fine");
+      expect(env.DATABASE_URL).toContain("postgres");
+    });
+  });
+
+  it("every catalog app under apps/ launches with no unsupplied required var", () => {
+    // D-52 Conformance at adoption: the catalog pass lands with the provider
+    // change, so no shipped app regresses to undeployable.
+    const appsDir = fileURLToPath(new URL("../../apps", import.meta.url));
+    const failures: string[] = [];
+    for (const app of readdirSync(appsDir)) {
+      const file = resolve(appsDir, app, "Launchfile");
+      if (!existsSync(file)) continue;
+      const metaPath = resolve(appsDir, app, "metadata.yaml");
+      const meta = existsSync(metaPath)
+        ? ((parse(readFileSync(metaPath, "utf-8")) ?? {}) as Record<string, unknown>)
+        : {};
+      const testEnv = Object.fromEntries(
+        Object.entries((meta.test_env as Record<string, unknown>) ?? {}).map(([k, v]) => [
+          k,
+          String(v),
+        ]),
+      );
+      const { unsuppliedRequired } = launchToCompose(
+        readLaunch(readFileSync(file, "utf-8")),
+        { testEnv },
+      );
+      for (const v of unsuppliedRequired) failures.push(`${app} [${v.component}]: ${v.key}`);
+    }
+    expect(failures).toEqual([]);
   });
 });

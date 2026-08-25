@@ -334,9 +334,16 @@ export async function launchBootstrap(
 		// after the last `up`) is persisted before the command runs, so
 		// `up`/`env`/`bootstrap` keep agreeing on it.
 		const component = launch.components[name]!;
-		const env = resolveComponentEnv(component, context, resourceMap);
+		const { env, unsupplied } = resolveComponentEnv(component, context, resourceMap);
 		const minted = await resolveGenerators(component, env, name, (state.generatedEnv ??= {}));
 		if (minted) await saveState(projectDir, state);
+		// `up` took its `required:` values from the launching environment; read the
+		// same channel so bootstrap really does see the running component's env.
+		for (const { key } of unsupplied) {
+			const supplied = process.env[key];
+			if (supplied !== undefined) env[key] = supplied;
+		}
+
 		const port = state.ports[name];
 		if (port && !env.PORT) env.PORT = String(port);
 

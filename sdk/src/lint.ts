@@ -39,6 +39,22 @@ interface ResourceDecl {
 	req: NormalizedRequirement;
 }
 
+/** Options for {@link lintLaunch}. */
+export interface LintOptions {
+	/**
+	 * Whether this file is being evaluated as read from a temp/cache location
+	 * rather than the app's own source checkout (PROVIDERS.md § Source
+	 * acquisition) — the input the D-43 case needs, which a static reader
+	 * can't infer on its own. Default `false` (attached): an ordinary local
+	 * `validate <path>` read is attached per PROVIDERS.md rule 2, so the D-43
+	 * case stays silent unless the caller explicitly marks the read detached
+	 * (e.g. a standalone catalog/distribution check).
+	 */
+	detached?: boolean;
+	/** Silences the D-40/D-43 reduced-portability diagnostics only; every other check keeps firing. */
+	suppressPortabilityWarnings?: boolean;
+}
+
 /** Stable string form of a `config` object for divergence comparison. */
 function configKey(config: Record<string, unknown> | undefined): string {
 	if (!config) return "";
@@ -141,6 +157,55 @@ function checkResourceProperties(
 }
 
 /**
+ * Reduced-portability diagnostics (D-40, D-43) — see PROVIDERS.md §6.
+ * `validate`-only, non-fatal, suppressible; never affects `valid`.
+ *
+ * D-40: a component has no portable build path when it declares no
+ * `runtime` and no `commands.build`/`commands.install` — its only build
+ * path is either a prebuilt `image:` or a provider-discovered in-repo
+ * recipe (a Dockerfile), neither of which every provider can build from.
+ *
+ * D-43: a component is source-needing (no `image:`) with no app-level
+ * `repository:` to fall back to. This only strands a remote provider when
+ * the file is evaluated detached (PROVIDERS.md § Source acquisition rule
+ * 2) — an attached read has the source tree right there — so `opts.detached`
+ * gates it; the default local `validate <path>` read is attached and stays
+ * silent here.
+ */
+function checkPortability(
+	launch: NormalizedLaunch,
+	warnings: string[],
+	opts: LintOptions,
+): void {
+	if (opts.suppressPortabilityWarnings) return;
+
+	for (const [componentName, component] of Object.entries(launch.components)) {
+		const where = componentName === "default" ? "(top-level)" : componentName;
+
+		if (
+			!component.runtime &&
+			!component.commands?.build &&
+			!component.commands?.install
+		) {
+			const sub = component.image
+				? "a prebuilt `image:`"
+				: "an in-repo build recipe";
+			warnings.push(
+				`${where}: builds only from ${sub} — no \`runtime\`, \`commands.build\`, or ` +
+					`\`commands.install\` (D-40)`,
+			);
+		}
+
+		if (opts.detached && !component.image && !launch.repository) {
+			warnings.push(
+				`${where}: source-needing with no \`repository:\` — unreachable by remote ` +
+					`providers when distributed standalone (D-43)`,
+			);
+		}
+	}
+}
+
+/**
  * Lint a normalized Launch, returning non-fatal warning strings (empty = clean).
  *
  * Checks:
@@ -155,11 +220,16 @@ function checkResourceProperties(
  *   names a known host capability is warned about: host capabilities require
  *   the `host:` marker so the privilege surface stays machine-extractable.
  * - Non-standard resource properties (D-46): see {@link checkResourceProperties}.
+ * - Reduced-portability build path and source reachability (D-40, D-43): see
+ *   {@link checkPortability}. Suppressible via `opts.suppressPortabilityWarnings`.
  *
  * Also checks every duration-valued field against the ratified duration
  * grammar — see {@link lintDurations}.
  */
-export function lintLaunch(launch: NormalizedLaunch): string[] {
+export function lintLaunch(
+	launch: NormalizedLaunch,
+	opts: LintOptions = {},
+): string[] {
 	const warnings: string[] = [...lintDurations(launch)];
 
 	// Collect every requires/supports declaration grouped by resolved name.
@@ -216,6 +286,7 @@ export function lintLaunch(launch: NormalizedLaunch): string[] {
 	}
 
 	checkResourceProperties(launch, warnings);
+	checkPortability(launch, warnings, opts);
 
 	return warnings;
 }
