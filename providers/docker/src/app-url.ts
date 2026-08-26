@@ -12,11 +12,29 @@
 import { deriveAppUrlProperties, type NormalizedLaunch } from "@launchfile/sdk";
 
 /**
+ * Mask credential-bearing runs in URL-shaped text: any run of non-delimiter
+ * characters ending in `@` collapses to `***@`. This catches WHATWG userinfo
+ * (`https://user:pass@host`), the slash-less special-scheme form the parser
+ * accepts (`http:user:pass@host`), and userinfo-shaped text in strings that
+ * failed to parse at all. Over-masking a harmless `@` elsewhere in the value
+ * is accepted — D-18's fail-closed posture: the display exists so the
+ * operator recognizes their input, not to preserve it byte-for-byte.
+ */
+function maskUserinfo(text: string): string {
+	return text.replace(/[^/?#\s]+@/g, "***@");
+}
+
+/**
  * A refused `appUrl` (#290). The provider cannot compute any correct `$app.*`
  * from a malformed publication URL, and every degraded alternative — warning
  * and proceeding, falling back to localhost, or the `""` authority/scheme/tls
  * half-resolution — hands the app a wrong public address, which is D-52's
  * fabrication in URL form. So it refuses, naming the option.
+ *
+ * The constructor masks userinfo in the displayed value itself, so no refusal
+ * path — including ones added later — can echo an embedded credential into
+ * terminal output or diagnostics (D-18, CWE-532). Call sites pass the raw
+ * value; masking is not their job.
  */
 export class InvalidAppUrlError extends Error {
 	/** An operator-fixable precondition, not a crash — see `ExpectedRefusal`. */
@@ -24,7 +42,7 @@ export class InvalidAppUrlError extends Error {
 
 	constructor(display: string, reason: string) {
 		super(
-			`Invalid appUrl "${display}": ${reason}.\n` +
+			`Invalid appUrl "${maskUserinfo(display)}": ${reason}.\n` +
 				"The publication URL must be an absolute http:// or https:// URL with no userinfo,\n" +
 				"query, or fragment (e.g. https://notes.example.com). Refusing to derive $app.* from\n" +
 				"it — a degraded or guessed value would configure the app with a wrong public\n" +
@@ -61,12 +79,7 @@ export function normalizeAppUrl(value: string): string {
 		);
 	}
 	if (url.username !== "" || url.password !== "") {
-		// The userinfo can be a live credential — mask it, never echo it back
-		// (D-18, CWE-532).
-		throw new InvalidAppUrlError(
-			`${url.protocol}//***@${url.host}${path}`,
-			"userinfo is not allowed",
-		);
+		throw new InvalidAppUrlError(value, "userinfo is not allowed");
 	}
 	if (url.search !== "") {
 		throw new InvalidAppUrlError(value, "a query string is not allowed");

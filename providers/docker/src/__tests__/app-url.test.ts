@@ -85,6 +85,36 @@ describe("normalizeAppUrl (#290)", () => {
 		expect(err!.message).toContain("userinfo");
 	});
 
+	it("never echoes a credential from ANY refusal branch", () => {
+		// The mask lives in the InvalidAppUrlError constructor, so every branch
+		// is covered — including ones where userinfo is not the refusal reason.
+		const cases: Array<[string, string]> = [
+			// scheme branch fires before the userinfo check
+			["ftp://admin:hunter2@example.com", 'scheme "ftp"'],
+			// slash-less special-scheme form the WHATWG parser still accepts
+			["ftp:admin:hunter2@example.com", 'scheme "ftp"'],
+			// parse failure — no URL object, textual mask only
+			["http://admin:hunter2@[invalid", "not a parseable"],
+			// userinfo-shaped text inside a refused query / fragment
+			["https://example.com/?next=admin:hunter2@internal", "query"],
+			["https://example.com/#admin:hunter2@internal", "fragment"],
+		];
+		for (const [bad, reason] of cases) {
+			const err = (() => {
+				try {
+					normalizeAppUrl(bad);
+					return null;
+				} catch (e) {
+					return e as Error;
+				}
+			})();
+			expect(err).toBeInstanceOf(InvalidAppUrlError);
+			expect(err!.message).not.toContain("hunter2");
+			expect(err!.message).toContain("***@");
+			expect(err!.message).toContain(reason);
+		}
+	});
+
 	it("refuses a query string", () => {
 		expect(() => normalizeAppUrl("https://example.com/?x=1")).toThrow(
 			InvalidAppUrlError,
