@@ -91,7 +91,7 @@ Output: **ACCEPT** / **REJECT** / **DEFER** with structured reasoning.
 
 ### 5. Merge mechanics
 
-Every pull request into `main` must pass the `steward/review` status check plus the repository's required CI checks. The `steward/review` check is named here because this document explains what it means; the CI check names are not, because they change as jobs are added or consolidated. The merge box on your PR always shows the current list.
+Every pull request into `main` must pass the `steward/review` status check plus the repository's required CI checks. The merge box on your PR always shows the current list.
 
 What the `steward/review` state in your PR's merge box means, and what to do:
 
