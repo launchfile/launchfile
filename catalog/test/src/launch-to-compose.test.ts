@@ -79,11 +79,15 @@ env:
     expect(env.SECONDARY).toBe(env.PRIMARY);
   });
 
-  it("resolves $app.* host-shaped properties (D-33/D-35) and degrades the unknown ones to ''", () => {
+  it("resolves $app.* via the docker provider's derivation (D-33/D-35, P-9)", () => {
     const env = envOf(
       `version: launch/v1
 name: app3
 image: nginx:alpine
+provides:
+  - protocol: http
+    port: 8080
+    exposed: true
 env:
   PUBLIC_URL:
     default: "$app.url"
@@ -91,17 +95,40 @@ env:
     default: "$app.authority"
   SCHEME:
     default: "$app.scheme"
-  PORT_UNKNOWN:
+  PORT:
     default: "$app.port"
 `,
       "app3",
     );
-    expect(env.PUBLIC_URL).toBe("http://localhost");
-    expect(env.AUTH).toBe("localhost");
+    // The harness passes no host ports (they are runtime-ephemeral), so the
+    // provider's documented fallback answers: the declared container port of
+    // the first `exposed: true` component.
+    expect(env.PUBLIC_URL).toBe("http://localhost:8080");
+    expect(env.AUTH).toBe("localhost:8080");
     expect(env.SCHEME).toBe("http");
-    // The harness assigns ephemeral host ports, so the real app port is unknown
-    // here — like a real provider, an unresolved $app.* degrades to "" (L-4).
-    expect(env.PORT_UNKNOWN).toBe("");
+    expect(env.PORT).toBe("8080");
+  });
+
+  it("degrades every $app.* to '' when nothing is exposed — the provider's rule (L-4)", () => {
+    const env = envOf(
+      `version: launch/v1
+name: app4
+image: nginx:alpine
+env:
+  PUBLIC_URL:
+    default: "$app.url"
+  AUTH:
+    default: "$app.authority"
+  PORT:
+    default: "$app.port"
+`,
+      "app4",
+    );
+    // No exposed endpoint means the provider has no public address to assert —
+    // url/authority resolve to "" and port to 0, never a guessed localhost.
+    expect(env.PUBLIC_URL).toBe("");
+    expect(env.AUTH).toBe("");
+    expect(env.PORT).toBe("0");
   });
 });
 
@@ -151,7 +178,9 @@ requires:
     );
     expect(env.CACHE_DIR).toBe("/data/mix");
     expect(env.TOKEN).toMatch(HEX64);
-    expect(env.ORIGIN).toBe("http://localhost");
+    // mixapp exposes nothing, so the provider's $app.url is "" — the harness
+    // shares the provider's derivation and must not invent a localhost origin.
+    expect(env.ORIGIN).toBe("");
     expect(env.REDIS_URL).toBe("redis://mixapp-redis:6379");
   });
 });

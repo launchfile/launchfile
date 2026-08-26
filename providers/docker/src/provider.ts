@@ -7,6 +7,7 @@ import { writeFile } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
 import { createInterface } from "node:readline";
 import { readLaunch, selectionClosure } from "@launchfile/sdk";
+import { normalizeAppUrl } from "./app-url.js";
 import { checkPrereqs, composeSupportsIgnoreBuildable } from "./prereqs.js";
 import { resolveSource } from "./source-resolver.js";
 import {
@@ -74,6 +75,16 @@ export interface DockerUpOpts {
 	 * config channel added later slots in below it, never above.
 	 */
 	storage?: Record<string, string>;
+	/**
+	 * Orchestrator-supplied publication context (#290): the public URL of the
+	 * app's PRIMARY endpoint when routing is owned outside the compose project
+	 * (reverse proxy, tunnel, edge). Feeds `ComposeOpts.appUrl` — see its
+	 * docblock for the semantics, the single-primary-endpoint fence, and the
+	 * refuse-never-degrade validation — and is persisted in `DockerState` so
+	 * bootstrap and re-runs resolve the same `$app.*` (D-49). A run that omits
+	 * it keeps the recorded value; supply a different one to replace it.
+	 */
+	appUrl?: string;
 }
 
 /**
@@ -275,6 +286,12 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 	// anything exists.
 	const slug = instanceSlug(resolved.slug, opts.name);
 
+	// Publication context (#290): validated and normalized before anything is
+	// provisioned — a malformed URL is an expected refusal (InvalidAppUrlError),
+	// never a degraded $app.* or a silent localhost fallback.
+	const suppliedAppUrl =
+		opts.appUrl === undefined ? undefined : normalizeAppUrl(opts.appUrl);
+
 	const key = dockerErrorKey({ slug });
 
 	// Anything that escapes without a phase still gets a record, tagged
@@ -425,6 +442,14 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 			if (sourceInfo.sourceUrl !== undefined) state.sourceUrl = sourceInfo.sourceUrl;
 		}
 
+		// Publication context (#290), same preservation rule as the source info
+		// above: a supplied value replaces the recorded one — the derived $app.*
+		// env recomputes below from it (D-49) — while omission keeps what is
+		// recorded, so a later plain `up` cannot silently flip a proxied
+		// deployment back to localhost.
+		if (suppliedAppUrl !== undefined) state.appUrl = suppliedAppUrl;
+		const appUrl = state.appUrl;
+
 		// Allocate host ports. The deterministic-fallback seed for a named
 		// instance is the effective slug, so two instances of one app prefer
 		// distinct ports before probing (D-55). Unnamed deployments keep the
@@ -454,6 +479,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 				projectDir: resolved.dir,
 				operatorEnv: process.env,
 				storagePaths,
+				appUrl,
 			}),
 		);
 
@@ -624,6 +650,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 			services: result.services,
 			hostPorts: result.ports,
 			secrets: state.secrets,
+			appUrl,
 			only: summaryOnly,
 		});
 		if (releasePlan.length > 0) {

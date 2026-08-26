@@ -1,0 +1,19 @@
+services:
+  appurltest-web:
+    image: nginx:1.27
+    ports:
+      - 49400:8080
+    environment:
+      PUBLIC_URL: http://localhost:49400
+      DOMAIN: localhost:49400
+      USE_TLS: "false"
+      APP_HOST: localhost
+      APP_PORT: "49400"
+      APP_SCHEME: http
+      APP_NAME: appurltest
+    restart: unless-stopped
+    networks:
+      - launchfile-appurltest-net
+networks:
+  launchfile-appurltest-net:
+    driver: bridge

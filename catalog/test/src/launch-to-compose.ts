@@ -10,9 +10,9 @@ import { stringify } from "yaml";
 import {
   resolveExpression,
   isExpression,
-  deriveAppUrlProperties,
   type ResolverContext,
 } from "../../../sdk/src/resolver.ts";
+import { computeAppProperties } from "../../../providers/docker/src/app-url.ts";
 import { unsuppliedRequiredEnv } from "../../../sdk/src/env.ts";
 import type {
   NormalizedLaunch,
@@ -416,18 +416,15 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
       }
     }
 
-    // Best-effort $app.* context (D-33/D-35). The harness assigns ephemeral host
-    // ports at generation time, so the real public URL/port aren't known here —
-    // provide the host-shaped fields a localhost deploy would expose; unknown
-    // $app.* (e.g. the actual port) degrade to "" via the resolver, as on a real
-    // provider. The component context (secrets, storage, app) is shared by both
-    // `env:` defaults and `set_env`, exactly as the providers resolve them.
-    const appCtx: Record<string, string | number> = {
-      name: launch.name,
-      host: "localhost",
-      url: "http://localhost",
-      ...deriveAppUrlProperties("http://localhost"),
-    };
+    // $app.* context (D-33/D-35) — the docker provider's own derivation,
+    // imported so this harness cannot drift from the rule it exercises (P-9).
+    // Host ports here are runtime-ephemeral ("0:<port>" mappings), so none are
+    // passed: the provider's documented fallback answers — the declared
+    // container port of the first `exposed: true` component,
+    // http://localhost:<port>. The component context (secrets, storage, app)
+    // is shared by both `env:` defaults and `set_env`, exactly as the
+    // providers resolve them.
+    const appCtx: Record<string, string | number> = computeAppProperties(launch, undefined);
     const baseCtx: ResolverContext = { secrets: secretValues, storage: storageCtx, app: appCtx, components };
 
     // Resolve env vars from the Launchfile
