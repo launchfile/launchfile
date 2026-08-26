@@ -32,7 +32,7 @@ body:
     id: principles
     attributes:
       label: Principle Check
-      description: Required for spec proposals — walk P-1 through P-14 and note alignment or tensions.
+      description: Required. For a spec change, walk P-1 through P-14 and note alignment or tensions. For a process, documentation, or catalog-fix proposal, write "no principle applies" — P-1 through P-14 govern the Launchfile format, not project process.
       placeholder: "e.g. Aligns with P-2 (incrementally adoptable) — new optional field. Tension with P-1 if this is too infra-specific."
     validations:
       required: true
