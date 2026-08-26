@@ -176,6 +176,21 @@ jobs:
   # Catches invalid YAML in workflow files before it gets merged and breaks
   # the CI/release pipeline. actionlint alone is not sufficient here — it
   # silently accepted the invalid release.yml that motivated this job (PR #23).
+  spec-citations:
+    name: Spec Citations
+    runs-on: ubuntu-latest
+    # Reads issue state to tell a live tracker from a closed one. `contents` is
+    # inherited as read; `issues: read` is the only addition this job needs.
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Forward-looking citations must name an open issue
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/lint-spec-citations.mjs spec
+
   workflow-lint:
     name: Workflow Lint
     runs-on: ubuntu-latest

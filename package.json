@@ -8,5 +8,8 @@
   "devDependencies": {
     "@changesets/changelog-github": "^1.0.0",
     "@changesets/cli": "^3.0.1"
+  },
+  "scripts": {
+    "lint:spec-citations": "node scripts/lint-spec-citations.mjs spec"
   }
 }
