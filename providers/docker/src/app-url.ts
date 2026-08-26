@@ -11,17 +11,44 @@
 
 import { deriveAppUrlProperties, type NormalizedLaunch } from "@launchfile/sdk";
 
+/** URL delimiters that a userinfo run cannot cross. */
+function isMaskDelimiter(c: string): boolean {
+	return (
+		c === "/" || c === "?" || c === "#" || c === " " || c === "\t" || c === "\n" || c === "\r"
+	);
+}
+
 /**
- * Mask credential-bearing runs in URL-shaped text: any run of non-delimiter
- * characters ending in `@` collapses to `***@`. This catches WHATWG userinfo
- * (`https://user:pass@host`), the slash-less special-scheme form the parser
- * accepts (`http:user:pass@host`), and userinfo-shaped text in strings that
- * failed to parse at all. Over-masking a harmless `@` elsewhere in the value
- * is accepted — D-18's fail-closed posture: the display exists so the
- * operator recognizes their input, not to preserve it byte-for-byte.
+ * Mask credential-bearing runs in URL-shaped text: any non-empty run of
+ * non-delimiter characters ending in `@` collapses to `***@`. This catches
+ * WHATWG userinfo (`https://user:pass@host`), the slash-less special-scheme
+ * form the parser accepts (`http:user:pass@host`), and userinfo-shaped text
+ * in strings that failed to parse at all. Over-masking a harmless `@`
+ * elsewhere in the value is accepted — D-18's fail-closed posture: the
+ * display exists so the operator recognizes their input, not to preserve it
+ * byte-for-byte.
+ *
+ * Single pass, no regex — the value is untrusted input and an equivalent
+ * `[^/?#\s]+@` replace is a polynomial-backtracking surface
+ * (js/polynomial-redos).
  */
 function maskUserinfo(text: string): string {
-	return text.replace(/[^/?#\s]+@/g, "***@");
+	let out = "";
+	let run = ""; // current run of non-delimiter characters, not yet emitted
+	for (const c of text) {
+		if (isMaskDelimiter(c)) {
+			out += run + c;
+			run = "";
+		} else if (c === "@" && run !== "") {
+			out += "***@"; // drop the run — it is (or may contain) the credential
+			run = "";
+		} else if (c === "@") {
+			out += "@";
+		} else {
+			run += c;
+		}
+	}
+	return out + run;
 }
 
 /**
