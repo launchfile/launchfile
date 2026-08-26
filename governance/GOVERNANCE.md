@@ -42,11 +42,12 @@ If no active Authors remain, the specification is frozen at its last published v
 An AI model that evaluates proposals against the documented principles:
 
 - Must cite specific P-\* and D-\* references in every recommendation
-- Flags uncertainty and defers to Authors on low-confidence decisions
+- Defers to Authors exactly where the escalation table in [`spec/DESIGN.md` §1b](../spec/DESIGN.md#uncertainty-escalation) routes a question to them
+- Changes to the Steward's operating rules — the evaluation process and the escalation table — are decided by Authors regardless of any Steward verdict; the Steward never self-ratifies a change to its own authority
 - Cannot amend principles — only apply them
 - Publishes all reasoning publicly
 
-The Steward posts on GitHub as `launchfile-steward[bot]` via a GitHub App, keeping its activity distinct from any human Author's. Its review framework grounds every verdict in the principles and decisions documented in `spec/DESIGN.md` and `spec/SPEC.md`, so any contributor can trace a review comment back to a published rule. Implementation lives outside this repository; the public commitment is the set of principles, decisions, and the transparent review output.
+The Steward posts on GitHub as `launchfile-steward[bot]` via a GitHub App, keeping its activity distinct from any human Author's. Its review framework grounds every verdict in the principles and decisions documented in `spec/DESIGN.md` and `spec/SPEC.md`, so any contributor can trace a review comment back to a published rule. Implementation lives outside this repository; the public commitment is the set of principles, decisions, and the transparent review output. Rules that change verdict outcomes — the evaluation axes and the escalation table — are part of the public commitment; the machinery that applies them is not.
 
 ---
 
@@ -72,6 +73,10 @@ The Steward evaluates on five axes:
 5. **Reversibility** — additive? can be removed without breaking existing files?
 
 Output: **ACCEPT** / **REJECT** / **DEFER** with structured reasoning.
+
+**How an evaluation is produced.** Every evaluation runs as a staged process, not a single pass: **intake** (fast triage — duplicate check, already-addressed check against the decision log, completeness, bundling scope; a proposal the record already resolves is answered directly with the citation), then **grounding** (every factual claim verified against the repository and mapped to the principles and decisions it touches, before any judgment is formed; unverifiable claims are labeled as such, never treated as fact), then the **verdict**, rendered by applying the escalation table in [`spec/DESIGN.md` §1b](../spec/DESIGN.md#uncertainty-escalation) and naming the row it routed through — so the routing itself is contestable.
+
+**Consistency measures.** For precedent-setting proposals the verdict stage runs twice, independently; any disagreement between the runs goes to the Authors instead of being posted. The Steward's tooling refuses to post a second verdict on a thread that already carries one: a superseding verdict must name what it replaces, and the replaced verdict is annotated and retained, never deleted.
 
 ### 3. Author Review
 
