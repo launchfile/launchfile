@@ -99,7 +99,8 @@ What the `steward/review` state in your PR's merge box means, and what to do:
 - **In progress** — a steward review is running.
 - **Green** — the steward accepted this exact commit.
 - **Red** — the review found blockers. Read the review and its inline suggestions; suggestions can be committed with one click.
-- **"Action required"** — an Author decision is pending. No verdict has been posted.
+- **"Action required"** — the review did not reach a decision on this commit. Check the pull request conversation and the linked proposal issue: either a point is with the Authors to decide, or the review returned the PR to you as incomplete or already covered elsewhere — in that case the next move is yours.
+- **Cancelled** — a review started on this commit and stopped before reaching a decision. Merging stays blocked until a review concludes on your current commit; a maintainer re-runs it. If it stays cancelled, ask in a comment.
 
 The check binds to the head commit. Pushing new commits dismisses the previous review and returns the merge box to "Expected": the new commit is unreviewed, and that is expected behavior, not a malfunction.
 
