@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Proposals are evaluated against the [13 design principles](https://github.com/launchfile/launchfile/blob/main/spec/DESIGN.md) by an AI Steward. See [GOVERNANCE.md](https://github.com/launchfile/launchfile/blob/main/spec/GOVERNANCE.md) for how decisions are made.
+        Proposals are evaluated against the [14 design principles](https://github.com/launchfile/launchfile/blob/main/spec/DESIGN.md) by an AI Steward. See [GOVERNANCE.md](https://github.com/launchfile/launchfile/blob/main/governance/GOVERNANCE.md) for how decisions are made.
   - type: textarea
     id: problem
     attributes:
@@ -31,6 +31,8 @@ body:
   - type: textarea
     id: principles
     attributes:
-      label: Principle Check (optional)
-      description: Does this align with the design principles? Note any tensions.
+      label: Principle Check
+      description: Required. For a spec change, walk P-1 through P-14 and note alignment or tensions. For a process, documentation, or catalog-fix proposal, write "no principle applies" — P-1 through P-14 govern the Launchfile format, not project process.
       placeholder: "e.g. Aligns with P-2 (incrementally adoptable) — new optional field. Tension with P-1 if this is too infra-specific."
+    validations:
+      required: true

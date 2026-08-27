@@ -17,6 +17,7 @@ export {
 	type DockerUpOpts,
 	type DockerUpResult,
 } from "./provider.js";
+export { computeAppProperties, InvalidAppUrlError, normalizeAppUrl } from "./app-url.js";
 export {
 	declaredEnvKeys,
 	DOCKER_PROVIDER,

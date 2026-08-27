@@ -1,6 +1,6 @@
 {
   "name": "@launchfile/docker",
-  "version": "0.4.0",
+  "version": "0.6.0",
   "description": "Docker provider for Launchfile — run any catalog app with one command via Docker Compose",
   "type": "module",
   "main": "dist/index.js",

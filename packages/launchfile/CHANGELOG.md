@@ -1,5 +1,19 @@
 # launchfile
 
+## 0.6.0
+
+### Patch Changes
+
+- Updated dependencies [[`b6e6e09`](https://github.com/launchfile/launchfile/commit/b6e6e099ecaee591207a7cb5981a3d07ed171875)]:
+  - @launchfile/docker@0.6.0
+
+## 0.5.0
+
+### Patch Changes
+
+- Updated dependencies [[`e25c4dc`](https://github.com/launchfile/launchfile/commit/e25c4dcdcd1dc067c897d2e7a446e9b6bf731578)]:
+  - @launchfile/docker@0.5.0
+
 ## 0.4.0
 
 ### Minor Changes

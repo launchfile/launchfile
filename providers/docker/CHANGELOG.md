@@ -1,5 +1,17 @@
 # @launchfile/docker
 
+## 0.6.0
+
+### Minor Changes
+
+- [#292](https://github.com/launchfile/launchfile/pull/292) [`b6e6e09`](https://github.com/launchfile/launchfile/commit/b6e6e099ecaee591207a7cb5981a3d07ed171875) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - `ComposeOpts.appUrl` / `DockerUpOpts.appUrl`: orchestrator-supplied publication context ([#290](https://github.com/launchfile/launchfile/issues/290)). When routing is owned outside the compose project (reverse proxy, tunnel, edge), the orchestrator can now hand the provider the app's public URL, and `$app.*` — `url`, `host`, `port`, `authority`, `scheme`, `tls` — resolves from it instead of `http://localhost:<hostPort>`, identically across env generation, bootstrap, and release. The value is persisted in state so later verbs and re-runs agree; a different value on a subsequent `up` replaces it and recomputes the derived env, while omitting it preserves what is recorded. A malformed URL (non-http(s) scheme, userinfo, query, fragment, or unparseable) is refused with `InvalidAppUrlError` — never degraded, never a silent localhost fallback. Unset, output is byte-for-byte unchanged. The URL asserts the primary endpoint's public address only.
+
+## 0.5.0
+
+### Minor Changes
+
+- [#293](https://github.com/launchfile/launchfile/pull/293) [`e25c4dc`](https://github.com/launchfile/launchfile/commit/e25c4dcdcd1dc067c897d2e7a446e9b6bf731578) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - `ComposeOpts.resources` lets an orchestrator satisfy a `requires`/`supports` entry with a resource it already owns ([#289](https://github.com/launchfile/launchfile/issues/289)): a property map speaking the standard resource-property vocabulary (D-7/D-46), keyed by the entry's `name ?? type`. A supplied entry wins over the provider's own provisioning — always, including for types the provider has a factory for: no backing service, `depends_on`, volume, or image pull is emitted, the entry's `set_env` resolves against the supplied properties, and a `requires:` type this provider has no factory for becomes satisfiable. Satisfaction is per entry; readiness of the supplied resource is the orchestrator's precondition and the provider does not verify it exists (the D-50/D-52 posture). Gaps warn instead of dropping silently: a supplied key matching no entry, a `set_env`-referenced property the supplied entry lacks (resolves `""`), `requires.config` on a satisfied entry — and a non-host `supports:` entry nothing satisfies, whose bindings previously dropped with no warning at all. Credential-bearing supplied properties are registered with the redactor before anything is generated, classified by name against the D-46 registry: credentials and unknown names register (fail closed), structural properties stay readable in diagnostics.
+
 ## 0.4.0
 
 ### Minor Changes
