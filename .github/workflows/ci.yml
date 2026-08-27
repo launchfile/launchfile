@@ -173,6 +173,28 @@ jobs:
           for i in $(seq 1 30); do curl -sf "$SEARCH_BASE_URL/" >/dev/null && break; sleep 0.5; done
           bunx playwright test browser/
 
+  spec-citations:
+    name: Spec Citations
+    runs-on: ubuntu-latest
+    # Reads issue state to tell a live tracker from a closed one. A job-level
+    # permissions block replaces the workflow-level one (line 23) rather than
+    # merging with it, so all three scopes are listed: contents: read for
+    # checkout, issues: read for the lookup, pull-requests: read for a cited
+    # number that turns out to be a PR.
+    permissions:
+      contents: read
+      issues: read
+      # A cited number may be a PR. The issues endpoint serves it, but reading it
+      # needs this scope; without it the fetch 404s and --strict turns a correct
+      # exemption into a red check.
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Forward-looking citations must name an open issue
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/lint-spec-citations.mjs spec --strict
+
   # Catches invalid YAML in workflow files before it gets merged and breaks
   # the CI/release pipeline. actionlint alone is not sufficient here — it
   # silently accepted the invalid release.yml that motivated this job (PR #23).
