@@ -2,9 +2,22 @@
 "@launchfile/docker": patch
 ---
 
-A backing service's volume is mounted where that service actually stores its data. Every `requires:`-provisioned service was given `<name>-data:/data` regardless of type — correct for redis, minio and s3, wrong for every other type this provider can provision. These images declare their own `VOLUME`, so Docker mounted an anonymous volume at the real data path and the named `<name>-data` volume sat at `/data` holding nothing. `docker compose down` discards anonymous volumes, so a `requires: postgres` app came back from `up`, `down`, `up` with an empty database — while `down` printed "Data volumes preserved." The paths now used are each image's own declared `VOLUME`: postgres `/var/lib/postgresql/data`, mysql and mariadb `/var/lib/mysql`, mongodb `/data/db`, clickhouse `/var/lib/clickhouse`, rabbitmq `/var/lib/rabbitmq`, elasticsearch `/usr/share/elasticsearch/data` (its image declares none; this is `path.data` under the image's WORKDIR). `memcache` is in-memory and now gets no volume at all instead of an unused one.
+A backing service's volume is mounted where that service actually stores its data. Every `requires:`-provisioned service was given `<name>-data:/data` regardless of type — correct for redis, minio and s3, wrong for every other type this provider can provision. These images declare their own `VOLUME`, so Docker mounted an anonymous volume at the real data path and the named `<name>-data` volume sat at `/data` holding nothing. `docker compose down` removes the container, and the next `up` builds a new one with a new anonymous volume — so a `requires: postgres` app came back from `up`, `down`, `up` with an empty database, while `down` printed "Data volumes preserved." The paths now used are each image's own declared `VOLUME`: postgres `/var/lib/postgresql/data`, mysql and mariadb `/var/lib/mysql`, mongodb `/data/db`, clickhouse `/var/lib/clickhouse`, rabbitmq `/var/lib/rabbitmq`, elasticsearch `/usr/share/elasticsearch/data` (its image declares none; this is `path.data` under the image's WORKDIR). `memcache` is in-memory and now gets no volume at all instead of an unused one.
 
-**Behavior change:** an app already running a non-redis backing service gets a different compose file, and its containers recreate on the next `up` with the volume mounted at the real data path. Data written before the upgrade lives in an anonymous volume and does not survive that recreate — it would not have survived any other `down` either. Back up anything you need (`docker compose exec <service> pg_dump …`) before upgrading a deployment whose data you care about.
+**Behavior change:** an app already running a non-redis backing service gets a different compose file, and its containers recreate on the next `up` with the volume mounted at the real data path. 
+
+**Data written before this fix is not lost.** Each earlier `up` left it in an anonymous volume that is orphaned, not deleted. Recover it before upgrading:
+
+```sh
+docker volume ls -f dangling=true            # find the orphan
+docker run -d --name lf-recover \
+  -v <volume-id>:/var/lib/postgresql/data \
+  -e POSTGRES_PASSWORD=unused postgres:16-alpine
+docker exec lf-recover pg_dump -U launchfile <app-name> > backup.sql
+docker rm -f lf-recover
+```
+
+The upgrade itself does not touch the orphaned volume, but `launchfile down --destroy` and `docker volume prune` both remove it.
 
 The data path is a required field on each service definition, so a type added later cannot silently inherit a wrong default.
 
