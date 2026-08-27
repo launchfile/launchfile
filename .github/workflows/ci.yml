@@ -195,6 +195,9 @@ jobs:
   # Catches invalid YAML in workflow files before it gets merged and breaks
   # the CI/release pipeline. actionlint alone is not sufficient here — it
   # silently accepted the invalid release.yml that motivated this job (PR #23).
+  # Catches invalid YAML in workflow files before it gets merged and breaks
+  # the CI/release pipeline. actionlint alone is not sufficient here — it
+  # silently accepted the invalid release.yml that motivated this job (PR #23).
   workflow-lint:
     name: Workflow Lint
     runs-on: ubuntu-latest
