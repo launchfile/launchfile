@@ -34,6 +34,17 @@ import type { StateEndpoint } from "./state.js";
 
 interface BackingService {
 	image: string;
+	/**
+	 * Where this service keeps its state INSIDE the container — the path the
+	 * generated volume is mounted at. Every value below is the image's own
+	 * declared VOLUME, read from its config rather than from memory.
+	 *
+	 * `null` means the service holds no state worth a volume (a cache), and no
+	 * volume is emitted for it. Required rather than optional on purpose: a new
+	 * factory that forgets it fails to compile, where a default would silently
+	 * mount the wrong path and lose the data the volume exists to keep.
+	 */
+	dataPath: string | null;
 	environment: Record<string, string>;
 	properties: Record<string, string>;
 	healthcheck?: ComposeHealthcheck;
@@ -204,6 +215,7 @@ function createBackingServices(
 			const pw = getPassword("postgres");
 			return {
 				image: "postgres:16-alpine",
+				dataPath: "/var/lib/postgresql/data",
 				environment: {
 					POSTGRES_USER: "launchfile",
 					POSTGRES_PASSWORD: pw,
@@ -230,6 +242,7 @@ function createBackingServices(
 			const pw = getPassword("mysql");
 			return {
 				image: "mysql:8",
+				dataPath: "/var/lib/mysql",
 				environment: {
 					MYSQL_ROOT_PASSWORD: pw,
 					MYSQL_USER: "launchfile",
@@ -257,6 +270,7 @@ function createBackingServices(
 			const pw = getPassword("mariadb");
 			return {
 				image: "mariadb:11",
+				dataPath: "/var/lib/mysql",
 				environment: {
 					MARIADB_ROOT_PASSWORD: pw,
 					MARIADB_USER: "launchfile",
@@ -282,6 +296,7 @@ function createBackingServices(
 
 		redis: (_name) => ({
 			image: "redis:7-alpine",
+			dataPath: "/data",
 			environment: {},
 			properties: {
 				host: `${_name}-redis`,
@@ -304,6 +319,9 @@ function createBackingServices(
 			const pw = getPassword("mongodb");
 			return {
 				image: "mongo:7",
+				// The image also declares /data/configdb; a single-node deployment keeps its
+				// metadata alongside its data.
+				dataPath: "/data/db",
 				environment: {
 					MONGO_INITDB_ROOT_USERNAME: "launchfile",
 					MONGO_INITDB_ROOT_PASSWORD: pw,
@@ -327,6 +345,7 @@ function createBackingServices(
 
 		clickhouse: (name) => ({
 			image: "clickhouse/clickhouse-server:latest",
+			dataPath: "/var/lib/clickhouse",
 			environment: {},
 			properties: {
 				// The image's shipped defaults: the `default` user with an empty
@@ -352,6 +371,10 @@ function createBackingServices(
 			const pw = getPassword("elasticsearch");
 			return {
 				image: "elasticsearch:8.17.0",
+				// The one entry not taken from a VOLUME declaration: this image declares none. It
+				// is `path.data` under the image's WORKDIR, which is what Elastic's own container
+				// documentation mounts.
+				dataPath: "/usr/share/elasticsearch/data",
 				environment: {
 					"discovery.type": "single-node",
 					"xpack.security.enabled": "true",
@@ -382,6 +405,8 @@ function createBackingServices(
 			const secretKey = getPassword("minio-secret");
 			return {
 				image: "minio/minio:latest",
+				// Matches the `server /data` command below.
+				dataPath: "/data",
 				environment: {
 					MINIO_ROOT_USER: accessKey,
 					MINIO_ROOT_PASSWORD: secretKey,
@@ -415,6 +440,8 @@ function createBackingServices(
 			const secretKey = getPassword("s3-secret");
 			return {
 				image: "minio/minio:latest",
+				// Matches the `server /data` command below.
+				dataPath: "/data",
 				environment: {
 					MINIO_ROOT_USER: accessKey,
 					MINIO_ROOT_PASSWORD: secretKey,
@@ -445,6 +472,8 @@ function createBackingServices(
 
 		memcache: (_name) => ({
 			image: "memcached:1-alpine",
+			// In-memory by design: no volume.
+			dataPath: null,
 			environment: {},
 			properties: {
 				host: `${_name}-memcache`,
@@ -465,6 +494,7 @@ function createBackingServices(
 			const pw = getPassword("rabbitmq");
 			return {
 				image: "rabbitmq:3-alpine",
+				dataPath: "/var/lib/rabbitmq",
 				environment: {
 					RABBITMQ_DEFAULT_USER: "launchfile",
 					RABBITMQ_DEFAULT_PASS: pw,
@@ -1454,9 +1484,11 @@ function addBackingService(
 			Object.assign(service, backing.extra);
 		}
 
-		const volName = `${serviceName}-data`;
-		service.volumes = [`${volName}:/data`];
-		volumes[volName] = {};
+		if (backing.dataPath !== null) {
+			const volName = `${serviceName}-data`;
+			service.volumes = [`${volName}:${backing.dataPath}`];
+			volumes[volName] = {};
+		}
 
 		services[serviceName] = service;
 	}
