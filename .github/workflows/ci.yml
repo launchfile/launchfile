@@ -176,8 +176,10 @@ jobs:
   spec-citations:
     name: Spec Citations
     runs-on: ubuntu-latest
-    # Reads issue state to tell a live tracker from a closed one. `contents` is
-    # inherited as read; `issues: read` is the only addition this job needs.
+    # Reads issue state to tell a live tracker from a closed one. A job-level
+    # permissions block replaces the workflow-level one (line 23) rather than
+    # merging with it, so both scopes are listed: contents: read for checkout,
+    # issues: read for the lookup.
     permissions:
       contents: read
       issues: read
