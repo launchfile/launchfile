@@ -7,3 +7,5 @@ A backing service's volume is mounted where that service actually stores its dat
 **Behavior change:** an app already running a non-redis backing service gets a different compose file, and its containers recreate on the next `up` with the volume mounted at the real data path. Data written before the upgrade lives in an anonymous volume and does not survive that recreate — it would not have survived any other `down` either. Back up anything you need (`docker compose exec <service> pg_dump …`) before upgrading a deployment whose data you care about.
 
 The data path is a required field on each service definition, so a type added later cannot silently inherit a wrong default.
+
+One consequence for postgres: `config.extensions` is applied by an init script that postgres runs only when its data directory is empty. Now that the data directory persists, adding an extension to a deployment that has already run does not apply it. Recreate that service's data volume, or add the extension by hand with `CREATE EXTENSION`.
