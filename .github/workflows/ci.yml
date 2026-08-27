@@ -181,6 +181,10 @@ jobs:
     permissions:
       contents: read
       issues: read
+      # A cited number may be a PR. The issues endpoint serves it, but reading it
+      # needs this scope; without it the fetch 404s and --strict turns a correct
+      # exemption into a red check.
+      pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Forward-looking citations must name an open issue
