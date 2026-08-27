@@ -32,7 +32,7 @@ const ghostYaml = ghostYamlRaw.replace(/^#.*\n/gm, "").trim();
 <h2 id="provides">The <code>provides</code> field</h2>
 
 <p>
-  Your app listens on a port. But the world outside your container doesn't know which one, what protocol it speaks, or whether it should be reachable from the internet. The <GlossaryTip term="provides" definition="A list of network endpoints your app exposes. Each entry declares a protocol, port, and visibility."><code>provides</code></GlossaryTip> field makes all of that explicit.
+  Your app listens on a port. But the world outside your container doesn't know which one, what protocol it speaks, or whether it should be reachable from outside the deployment. The <GlossaryTip term="provides" definition="A list of network endpoints your app exposes. Each entry declares a protocol, port, and visibility."><code>provides</code></GlossaryTip> field makes all of that explicit.
 </p>
 
 <p>
@@ -228,9 +228,9 @@ env:
 <Quiz
   question="What does exposed: true mean on a provides entry?"
   options={[
-    { text: "The port is publicly accessible from the internet", correct: true, explanation: "Correct! exposed: true declares that the internet should reach this port — how that happens (routing, domains, TLS) is the platform's decision." },
+    { text: "The port should be reachable from outside the deployment", correct: true, explanation: "Correct! exposed: true declares intent — this port should be reachable from outside the deployment, not just by sibling components. What 'outside' reaches (your machine, a LAN, a VPN, the public internet) and whether traffic is encrypted are both the platform's decision. The spec guarantees neither, so check what your provider actually does before relying on it." },
     { text: "The port is logged for debugging", correct: false, explanation: "Not quite. Exposed controls network visibility, not logging." },
-    { text: "The container port is mapped to the host", correct: false, explanation: "That's an implementation detail of how a specific provider works. Exposed is a higher-level declaration about intent — should the internet be able to reach this port?" },
+    { text: "The container port is mapped to the host", correct: false, explanation: "That's one way a provider might satisfy it, not what the field means. Exposed is a higher-level declaration about intent — should anything outside the deployment be able to reach this port? The provider chooses the mechanism." },
     { text: "The health check is enabled", correct: false, explanation: "Health checks are configured separately via the health field. Exposed is about network access." },
   ]}
 />
@@ -243,7 +243,7 @@ env:
     <li><strong><code>content: operator</code></strong> marks a volume you fill yourself — the provider binds your directory (<code>--storage &lt;volume&gt;=&lt;path&gt;</code>) or refuses the component, and never creates the volume empty.</li>
     <li><strong><code>$storage.&lt;name&gt;.path</code></strong> resolves to the real path the volume was actually provisioned at — reference it in <code>env</code> instead of hardcoding the path in two places.</li>
     <li><strong><code>health</code></strong> describes how your app's readiness is checked. Use the string shorthand for simple cases, the object form for tuning — with <code>path</code> for HTTP checks or <code>command</code> for everything else.</li>
-    <li><strong><code>exposed: true</code></strong> means "the internet should reach this." Default is <code>false</code> (internal only).</li>
+    <li><strong><code>exposed: true</code></strong> means "something outside the deployment should reach this." Where that reaches, and whether it is encrypted, are the platform's call. Default is <code>false</code> (internal only).</li>
   </ul>
 </div>
 
