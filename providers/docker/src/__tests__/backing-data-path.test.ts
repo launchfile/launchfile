@@ -1,9 +1,11 @@
 /**
  * A backing service's volume must be mounted where that service actually keeps
  * its state. Mounted anywhere else it persists nothing, and silently: these
- * images declare their own VOLUME, so Docker mounts an anonymous volume at the
- * real path and `compose down` discards it, while the named volume survives
- * holding whatever the service never wrote there.
+ * images declare their own VOLUME, so Docker attaches an anonymous volume at
+ * the real path. `compose down` removes the container, the next `up` builds a
+ * new one with a new anonymous volume, and the previous one is left orphaned —
+ * while the named volume survives holding whatever the service never wrote to
+ * it.
  *
  * The expected paths below are each image's own declared VOLUME (elasticsearch
  * excepted — it declares none, so its documented `path.data` stands in). Change
