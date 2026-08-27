@@ -40,6 +40,8 @@ const PATTERNS = [
 	{ name: "awaiting #N", re: /\bawait(?:s|ing)\s+\[?#(\d+)/gi },
 	{ name: "blocked on #N", re: /\bblocked\s+on\s+\[?#(\d+)/gi },
 	{ name: "is #N (tracking assignment)", re: /\bis\s+\[#(\d+)\]/gi },
+	{ name: "runs/runs as #N", re: /\bruns(?:\s+as)?\s+\[?#(\d+)/gi },
+	{ name: "settled by #N", re: /\bsettled\s+by\s+\[?#(\d+)/gi },
 ];
 
 function walk(path) {
@@ -55,16 +57,21 @@ async function issueState(number) {
 		const res = await fetch(`https://api.github.com/repos/${REPO}/issues/${number}`, { headers });
 		if (!res.ok) return null;
 		const body = await res.json();
-		// A PR is also an issue here. A merged PR is a legitimate archive target
-		// ("shipped in #220"), so only real issues are candidates for the rule.
-		if (body.pull_request) return "pull_request";
+		// A PR is also an issue on this endpoint. A MERGED PR is a legitimate
+		// archive target ("shipped in #220"); a closed-unmerged one shipped
+		// nothing, so it fails like any other closed tracker.
+		if (body.pull_request) return body.pull_request.merged_at ? "merged_pr" : body.state;
 		return body.state;
 	} catch {
 		return null;
 	}
 }
 
-const targets = process.argv.slice(2);
+const argv = process.argv.slice(2);
+// CI carries a token and expects zero unresolvable citations, so an API failure
+// there is a broken check, not a clean run. Local runs stay lenient.
+const STRICT = argv.includes("--strict");
+const targets = argv.filter((a) => a !== "--strict");
 const files = (targets.length ? targets : ["spec"]).flatMap(walk).sort();
 
 const hits = [];
@@ -95,9 +102,12 @@ for (const h of hits) {
 }
 
 if (unknown.length > 0) {
-	console.warn(
-		`\nwarning: could not resolve ${unknown.length} citation(s) against GitHub; not failing on those.`,
-	);
+	const how = STRICT ? "error" : "warning";
+	console.warn(`\n${how}: could not resolve ${unknown.length} citation(s) against GitHub.`);
+	if (STRICT) {
+		console.error("--strict: an unresolvable citation is a broken check, not a pass.");
+		process.exit(2);
+	}
 }
 
 if (violations.length === 0) {
