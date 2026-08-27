@@ -178,8 +178,9 @@ jobs:
     runs-on: ubuntu-latest
     # Reads issue state to tell a live tracker from a closed one. A job-level
     # permissions block replaces the workflow-level one (line 23) rather than
-    # merging with it, so both scopes are listed: contents: read for checkout,
-    # issues: read for the lookup.
+    # merging with it, so all three scopes are listed: contents: read for
+    # checkout, issues: read for the lookup, pull-requests: read for a cited
+    # number that turns out to be a PR.
     permissions:
       contents: read
       issues: read
@@ -194,9 +195,6 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/lint-spec-citations.mjs spec --strict
 
-  # Catches invalid YAML in workflow files before it gets merged and breaks
-  # the CI/release pipeline. actionlint alone is not sufficient here — it
-  # silently accepted the invalid release.yml that motivated this job (PR #23).
   # Catches invalid YAML in workflow files before it gets merged and breaks
   # the CI/release pipeline. actionlint alone is not sufficient here — it
   # silently accepted the invalid release.yml that motivated this job (PR #23).

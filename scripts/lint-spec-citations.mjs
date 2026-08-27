@@ -40,7 +40,6 @@ const PATTERNS = [
 	{ name: "awaiting #N", re: /\bawait(?:s|ing)\s+\[?#(\d+)/gi },
 	{ name: "blocked on #N", re: /\bblocked\s+on\s+\[?#(\d+)/gi },
 	{ name: "is #N (tracking assignment)", re: /\bis\s+\[#(\d+)\]/gi },
-	{ name: "runs as #N", re: /\bruns\s+as\s+\[?#(\d+)/gi },
 	{ name: "runs/runs as #N", re: /\bruns(?:\s+as)?\s+\[?#(\d+)/gi },
 	{ name: "settled by #N", re: /\bsettled\s+by\s+\[?#(\d+)/gi },
 ];
