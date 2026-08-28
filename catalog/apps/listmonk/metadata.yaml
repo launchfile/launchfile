@@ -2,18 +2,18 @@ category: Email
 tagline: High-performance self-hosted newsletter and mailing list manager
 homepage: https://listmonk.app
 test_results:
-  last_tested: 2026-04-08
-  pull_time_seconds: 3
-  startup_time_seconds: 8
-  total_disk_mb: 292
-  health_check_passed: true
-  notes: ""
+  last_tested: 2026-08-28
+  pull_time_seconds: 2
+  startup_time_seconds: 7
+  total_disk_mb: 123
+  health_check_passed: false
+  notes: Harness result only. The harness does not execute commands.release, so listmonk starts over an uninstalled schema and never serves. Verified passing with the reference Docker provider, which does run release (D-48).
 images:
   - name: listmonk/listmonk:latest
-    size_mb: 33
+    size_mb: 14
     platform:
       - linux/arm64
   - name: postgres:16-alpine
-    size_mb: 259
+    size_mb: 109
     platform:
       - linux/arm64
