@@ -4,7 +4,7 @@
 
 A backing service's volume is mounted where that service actually stores its data. Every `requires:`-provisioned service was given `<name>-data:/data` regardless of type — correct for redis, minio and s3, wrong for every other type this provider can provision. These images declare their own `VOLUME`, so Docker mounted an anonymous volume at the real data path and the named `<name>-data` volume sat at `/data` holding nothing. `docker compose down` removes the container, and the next `up` builds a new one with a new anonymous volume — so a `requires: postgres` app came back from `up`, `down`, `up` with an empty database, while `down` printed "Data volumes preserved." The paths now used are each image's own declared `VOLUME`: postgres `/var/lib/postgresql/data`, mysql and mariadb `/var/lib/mysql`, mongodb `/data/db`, clickhouse `/var/lib/clickhouse`, rabbitmq `/var/lib/rabbitmq`, elasticsearch `/usr/share/elasticsearch/data` (its image declares none; this is `path.data` under the image's WORKDIR). `memcache` is in-memory and now gets no volume at all instead of an unused one.
 
-**Behavior change:** an app already running a non-redis backing service gets a different compose file, and its containers recreate on the next `up` with the volume mounted at the real data path. 
+**Behavior change:** an app already running a non-redis backing service gets a different compose file, and its containers recreate on the next `up` with the volume mounted at the real data path.
 
 **Data written before this fix is not lost.** Each earlier `up` left it in an anonymous volume that is orphaned, not deleted. Recover it before upgrading:
 
@@ -17,7 +17,9 @@ docker exec lf-recover pg_dump -U launchfile <app-name> > backup.sql
 docker rm -f lf-recover
 ```
 
-The upgrade itself does not touch the orphaned volume, but `launchfile down --destroy` and `docker volume prune` both remove it.
+If the deployment set `config.extensions`, it ran a dedicated image (pgvector, postgis) rather than stock postgres — use that image in the recovery container, since the data directory belongs to it.
+
+The upgrade itself does not touch the orphaned volume, and neither does `launchfile down --destroy`. That command runs `docker compose down -v --remove-orphans`: `-v` removes the named volumes plus the anonymous volumes attached to the containers being removed, and the orphan is attached to nothing, while `--remove-orphans` removes orphaned containers, not volumes. `docker volume prune` does remove the orphan, because it is dangling — recover it before you prune.
 
 The data path is a required field on each service definition, so a type added later cannot silently inherit a wrong default.
 
