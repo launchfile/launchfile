@@ -20,4 +20,5 @@ env:
     sensitive: true
   NEXT_PUBLIC_BASE_URL:
     default: "http://localhost:3000"
+health: /api/status
 restart: always
