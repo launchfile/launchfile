@@ -1,5 +1,44 @@
 # @launchfile/docker
 
+## 0.7.0
+
+### Patch Changes
+
+- [#315](https://github.com/launchfile/launchfile/pull/315) [`78e654d`](https://github.com/launchfile/launchfile/commit/78e654dee040d6eb2e1aa18bb850b219de777996) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - `@launchfile/macos-dev` implements the D-50 operator-supplied storage channel ([#296](https://github.com/launchfile/launchfile/issues/296)), the last of the three surfaces D-50's conformance paragraph named. `provisionStorage` previously `mkdir`ed every declared volume and never read `volume.content`, so a `storage.<name>.content: operator` volume was created empty and the app started against it — the silent success the marker exists to catch.
+  
+  **`launchfile up --native --storage <volume>=<path>` now works** where it previously exited with "not yet supported". All four D-50 states hold: a supplied path becomes the volume's path, a marked volume with no path fails the launch naming the flag that satisfies it, a supplied path that is absent or unreadable fails the launch and is never created, and an unmarked volume keeps its `.launchfile/storage/<component>/<name>` path byte-for-byte. Because this provider runs processes on the host, the grant is the path injected as `$storage.<name>.path` (D-39) rather than a mount. The refusal lands before state, directories, resources, ports, runtimes or processes exist, so `--dry-run` refuses too. `launchfile env` reports the bound path from provider state, not a `.launchfile/` path the app never read.
+  
+  **A Launchfile with a `content: operator` volume that ran under the native provider before now fails until its paths are supplied.** That is the point of the change: what those runs produced was an empty directory standing in for the operator's content.
+  
+  `@launchfile/sdk` gains `indexOperatorStoragePaths` — D-50 rule 1's key rule, previously implemented separately in the docker provider and the catalog harness — along with `UnboundOperatorStorageError`, `MissingOperatorStoragePathError`, `StorageBind` and `UnboundOperatorVolume`, moved from `@launchfile/docker` so one caller-side catch covers every provider that raises them.
+  
+  `@launchfile/docker` reads both from the SDK instead of defining them. Its public API, refusal messages, warning text and generated compose are unchanged.
+
+- [#316](https://github.com/launchfile/launchfile/pull/316) [`0a94497`](https://github.com/launchfile/launchfile/commit/0a9449773fb5efca4f1c90ea647785de76354beb) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - A backing service's volume is mounted where that service actually stores its data. Every `requires:`-provisioned service was given `<name>-data:/data` regardless of type — correct for redis, minio and s3, wrong for every other type this provider can provision. These images declare their own `VOLUME`, so Docker mounted an anonymous volume at the real data path and the named `<name>-data` volume sat at `/data` holding nothing. `docker compose down` removes the container, and the next `up` builds a new one with a new anonymous volume — so a `requires: postgres` app came back from `up`, `down`, `up` with an empty database, while `down` printed "Data volumes preserved." The paths now used are each image's own declared `VOLUME`: postgres `/var/lib/postgresql/data`, mysql and mariadb `/var/lib/mysql`, mongodb `/data/db`, clickhouse `/var/lib/clickhouse`, rabbitmq `/var/lib/rabbitmq`, elasticsearch `/usr/share/elasticsearch/data` (its image declares none; this is `path.data` under the image's WORKDIR). `memcache` is in-memory and now gets no volume at all instead of an unused one.
+  
+  **Behavior change:** an app already running a non-redis backing service gets a different compose file, and its containers recreate on the next `up` with the volume mounted at the real data path.
+  
+  **Data written before this fix is not lost.** Each earlier `up` left it in an anonymous volume that is orphaned, not deleted. Recover it before upgrading. The commands below are the postgres case; every other affected type follows the same three steps — find the dangling volume, mount it into a throwaway container of that service's own image at that type's data path listed above, then dump it with that service's own tool (`mysqldump` for mysql and mariadb, `mongodump` for mongodb, and so on):
+  
+  ```sh
+  docker volume ls -f dangling=true            # find the orphan
+  docker run -d --name lf-recover \
+    -v <volume-id>:/var/lib/postgresql/data \
+    -e POSTGRES_PASSWORD=unused postgres:16-alpine
+  docker exec lf-recover pg_dump -U launchfile <app-name> > backup.sql
+  docker rm -f lf-recover
+  ```
+  
+  If the deployment declared the `vector` (`pgvector`) or `postgis` extension in `config.extensions`, it ran a dedicated image — `pgvector/pgvector:pg16` or `postgis/postgis:16-3.4` — rather than stock postgres. Use that image in the recovery container, since the data directory belongs to it. Any other extension leaves the service on stock `postgres:16-alpine`, so the command above is already correct as written.
+  
+  The upgrade itself does not touch the orphaned volume, and neither does `launchfile down --destroy`. That command runs `docker compose down -v --remove-orphans`: `-v` removes the named volumes plus the anonymous volumes attached to the containers being removed, and the orphan is attached to nothing, while `--remove-orphans` removes orphaned containers, not volumes. `docker volume prune` does remove the orphan, because it is dangling — recover it before you prune.
+  
+  The data path is a required field on each service definition, so a type added later cannot silently inherit a wrong default.
+  
+  One consequence for postgres: `config.extensions` is applied by an init script that postgres runs only when its data directory is empty. Now that the data directory persists, adding an extension to a deployment that has already run does not apply it. Recreate that service's data volume, or add the extension by hand with `CREATE EXTENSION`.
+- Updated dependencies [[`78e654d`](https://github.com/launchfile/launchfile/commit/78e654dee040d6eb2e1aa18bb850b219de777996)]:
+  - @launchfile/sdk@0.7.0
+
 ## 0.6.0
 
 ### Minor Changes
