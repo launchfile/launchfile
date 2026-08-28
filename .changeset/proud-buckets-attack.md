@@ -6,7 +6,7 @@ A backing service's volume is mounted where that service actually stores its dat
 
 **Behavior change:** an app already running a non-redis backing service gets a different compose file, and its containers recreate on the next `up` with the volume mounted at the real data path.
 
-**Data written before this fix is not lost.** Each earlier `up` left it in an anonymous volume that is orphaned, not deleted. Recover it before upgrading:
+**Data written before this fix is not lost.** Each earlier `up` left it in an anonymous volume that is orphaned, not deleted. Recover it before upgrading. The commands below are the postgres case; every other affected type follows the same three steps — find the dangling volume, mount it into a throwaway container of that service's own image at that type's data path listed above, then dump it with that service's own tool (`mysqldump` for mysql and mariadb, `mongodump` for mongodb, and so on):
 
 ```sh
 docker volume ls -f dangling=true            # find the orphan
@@ -17,7 +17,7 @@ docker exec lf-recover pg_dump -U launchfile <app-name> > backup.sql
 docker rm -f lf-recover
 ```
 
-If the deployment set `config.extensions`, it ran a dedicated image (pgvector, postgis) rather than stock postgres — use that image in the recovery container, since the data directory belongs to it.
+If the deployment declared the `vector` (`pgvector`) or `postgis` extension in `config.extensions`, it ran a dedicated image — `pgvector/pgvector:pg16` or `postgis/postgis:16-3.4` — rather than stock postgres. Use that image in the recovery container, since the data directory belongs to it. Any other extension leaves the service on stock `postgres:16-alpine`, so the command above is already correct as written.
 
 The upgrade itself does not touch the orphaned volume, and neither does `launchfile down --destroy`. That command runs `docker compose down -v --remove-orphans`: `-v` removes the named volumes plus the anonymous volumes attached to the containers being removed, and the orphan is attached to nothing, while `--remove-orphans` removes orphaned containers, not volumes. `docker volume prune` does remove the orphan, because it is dangling — recover it before you prune.
 
