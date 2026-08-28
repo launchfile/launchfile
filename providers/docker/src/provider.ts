@@ -6,7 +6,12 @@ import { accessSync, constants as fsConstants, realpathSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
 import { createInterface } from "node:readline";
-import { readLaunch, selectionClosure } from "@launchfile/sdk";
+import {
+	MissingOperatorStoragePathError,
+	readLaunch,
+	selectionClosure,
+	UnboundOperatorStorageError,
+} from "@launchfile/sdk";
 import { normalizeAppUrl } from "./app-url.js";
 import { checkPrereqs, composeSupportsIgnoreBuildable } from "./prereqs.js";
 import { resolveSource } from "./source-resolver.js";
@@ -26,7 +31,6 @@ import { allocatePorts } from "./port-allocator.js";
 import {
 	launchToCompose,
 	type StorageBind,
-	type UnboundOperatorVolume,
 	type UnsuppliedRequiredVar,
 } from "./compose-generator.js";
 import { planReleases, runReleases } from "./release.js";
@@ -135,62 +139,9 @@ export class ForeignSourceError extends Error {
 	}
 }
 
-/**
- * A deploy refused because a `content: operator` volume arrived with no host
- * path (D-50 rule 2, row 2). Creating the volume empty and starting anyway is
- * D-52's fabrication in storage form — the silent success this refusal closes.
- * Each line names the volume and the exact flag that satisfies it.
- */
-export class UnboundOperatorStorageError extends Error {
-	/** An operator-fixable precondition, not a crash — see `ExpectedRefusal`. */
-	readonly expectedRefusal = true as const;
-	readonly volumes: UnboundOperatorVolume[];
-
-	constructor(volumes: UnboundOperatorVolume[]) {
-		const lines = volumes.map(
-			({ component, volume, flag }) => `  - ${component}: ${volume} — supply it with ${flag}`,
-		);
-		super(
-			`Cannot launch: ${volumes.length} volume${volumes.length === 1 ? "" : "s"} marked ` +
-				"`content: operator` had no host path.\n" +
-				`${lines.join("\n")}\n` +
-				"The Launchfile declares that you supply this content (D-50); this provider will not\n" +
-				"create an empty volume in its place. Provide each path and run `up` again.",
-		);
-		this.name = "UnboundOperatorStorageError";
-		this.volumes = volumes;
-	}
-}
-
-/**
- * A deploy refused because an operator-supplied storage path is absent or
- * unreadable on the host (D-50 rule 2, row 3). The directory is never
- * created: a silently minted empty `~/Music` would reintroduce the
- * empty-library failure through this channel's own flag.
- */
-export class MissingOperatorStoragePathError extends Error {
-	/** An operator-fixable precondition, not a crash — see `ExpectedRefusal`. */
-	readonly expectedRefusal = true as const;
-	readonly binds: StorageBind[];
-
-	constructor(binds: StorageBind[]) {
-		const lines = binds.map(
-			({ component, volume, key, hostPath }) =>
-				`  - ${component}: ${volume} — --storage ${key}=${hostPath}`,
-		);
-		super(
-			(binds.length === 1
-				? "Cannot launch: a supplied storage path does not exist or is not readable."
-				: `Cannot launch: ${binds.length} supplied storage paths do not exist or are not readable.`) +
-				`\n${lines.join("\n")}\n` +
-				"The volume is marked `content: operator` (D-50), so this provider refuses to create\n" +
-				"the directory — an empty one here is the missing-content failure the marker exists\n" +
-				"to catch. Check each path and run `up` again.",
-		);
-		this.name = "MissingOperatorStoragePathError";
-		this.binds = binds;
-	}
-}
+// Both D-50 refusals are the SDK's, so one CLI catch serves every provider
+// that raises them. Re-exported here to keep this module's public API stable.
+export { MissingOperatorStoragePathError, UnboundOperatorStorageError };
 
 export interface ForeignSourceDetails {
 	slug: string;

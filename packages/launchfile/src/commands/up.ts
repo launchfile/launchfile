@@ -8,11 +8,15 @@ import {
 	dockerUp,
 	type DockerUpOpts,
 	type DockerUpResult,
-	MissingOperatorStoragePathError,
-	UnboundOperatorStorageError,
 	UnsuppliedRequiredEnvError,
 } from "@launchfile/docker";
-import { isLaunchError, type LaunchPhase } from "@launchfile/sdk";
+// The two D-50 refusals come from the SDK, so one catch covers both providers.
+import {
+	isLaunchError,
+	type LaunchPhase,
+	MissingOperatorStoragePathError,
+	UnboundOperatorStorageError,
+} from "@launchfile/sdk";
 import { detectProvider } from "../detect-provider.js";
 import { resolveUpTarget } from "../resolve-target.js";
 import {
@@ -228,16 +232,6 @@ export async function handleUp(
 			);
 			process.exit(1);
 		}
-		// D-50's channel has no macOS implementation yet: refusing beats silently
-		// dropping the operator's paths and provisioning provider-owned storage
-		// where their content belongs — the silent-drop D-50 forbids.
-		if (flags.storage && Object.keys(flags.storage).length > 0) {
-			console.error("--storage is not yet supported by the macOS native provider.");
-			console.error(
-				"It provisions provider-owned storage only. Use the Docker provider (--docker) to bind operator-supplied content (D-50).",
-			);
-			process.exit(1);
-		}
 		// The import is what "provider not available" describes, so only the
 		// import is caught here. Wrapping the launch in the same try reported
 		// every genuine launch failure — a failed Postgres provision, a failed
@@ -245,10 +239,29 @@ export async function handleUp(
 		const { launchUp } = await loadMacosProvider(deps.importMacos);
 
 		const projectDir = upTarget.dir ?? process.cwd();
-		await withFailureRecord(
-			() => launchUp({ projectDir, dryRun: flags.dryRun, detach: flags.detach }),
-			recordDir,
-		);
+		try {
+			await withFailureRecord(
+				() =>
+					launchUp({
+						projectDir,
+						dryRun: flags.dryRun,
+						detach: flags.detach,
+						storage: flags.storage,
+					}),
+				recordDir,
+			);
+		} catch (err) {
+			// Same two D-50 refusals the docker branch prints: an operator's
+			// problem to fix, so it gets the provider's message, not a trace.
+			if (
+				err instanceof UnboundOperatorStorageError ||
+				err instanceof MissingOperatorStoragePathError
+			) {
+				console.error(`\n${err.message}`);
+				process.exit(1);
+			}
+			throw err;
+		}
 
 		if (!flags.dryRun) {
 			await record({
