@@ -1,5 +1,13 @@
 # launchfile
 
+## 0.7.1
+
+### Patch Changes
+
+- [#326](https://github.com/launchfile/launchfile/pull/326) [`3c02b37`](https://github.com/launchfile/launchfile/commit/3c02b377e610e92660d2fc70534d29c66116efa6) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Stop compiling and publishing tests with the CLI. `packages/launchfile` built with plain `tsc`, so `src/__tests__/*.test.ts` landed in `dist/` and — via the `dist/**/*.js` files allowlist — in the npm tarball: 20 of `launchfile@0.7.0`'s 54 published files are compiled test artifacts. That same `dist/__tests__` tree also made Vitest collect every suite twice (20 test files instead of 10), doubling the work each CI run does. The package now builds with a `tsconfig.build.json` that excludes `src/**/__tests__/**` — byte-for-byte the config `@launchfile/docker` and `@launchfile/macos-dev` use, while `@launchfile/sdk` and `@launchfile/aws` build the same way with their own exclude lists. No runtime behavior changes.
+- Updated dependencies [[`d0774c0`](https://github.com/launchfile/launchfile/commit/d0774c05785c2b09138849ff1c9b55325b94e960)]:
+  - @launchfile/docker@0.7.1
+
 ## 0.7.0
 
 ### Minor Changes

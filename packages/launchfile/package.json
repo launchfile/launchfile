@@ -1,6 +1,6 @@
 {
   "name": "launchfile",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Launchfile CLI — describe your app, deploy it anywhere",
   "type": "module",
   "bin": {
@@ -39,7 +39,7 @@
   },
   "dependencies": {
     "@launchfile/sdk": "^0.7.0",
-    "@launchfile/docker": "^0.7.0"
+    "@launchfile/docker": "^0.7.1"
   },
   "optionalDependencies": {
     "@launchfile/macos-dev": "^0.7.0"
