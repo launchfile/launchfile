@@ -1,5 +1,11 @@
 # @launchfile/docker
 
+## 0.7.1
+
+### Patch Changes
+
+- [#328](https://github.com/launchfile/launchfile/pull/328) [`d0774c0`](https://github.com/launchfile/launchfile/commit/d0774c05785c2b09138849ff1c9b55325b94e960) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Fix a crash at module load when `@launchfile/docker` is imported from a compiled standalone binary. The logger built its destinations with pino's worker-thread transport API, and transport workers resolve their scripts from on-disk `node_modules` at runtime. A consumer built with `bun build --compile` has no `node_modules`, so pino threw before the provider finished loading. The destinations are now built in-process with `pino.multistream`, using `pino-pretty` as a stream and `pino.destination` for the file sink. Output is unchanged: pretty logs to stderr, and NDJSON at mode 0600 under `LAUNCHFILE_LOG_DIR` when that is set. Log records are identical, but pretty-printing and the file write now run on the main thread instead of in a worker thread.
+
 ## 0.7.0
 
 ### Patch Changes
