@@ -25,6 +25,7 @@ import { isAbsolute, join } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import pino from "pino";
+import pinoPretty from "pino-pretty";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -71,38 +72,37 @@ if (rawLogDir !== undefined) validateLogDir(rawLogDir);
 const logDir = rawLogDir;
 
 /**
- * Build pino's transport config. Uses the pino worker-thread transport API
- * which is ESM-safe (works without `require` in Node's native ESM).
+ * Build the destination streams in-process (pino.multistream), not via the
+ * worker-thread transport API: transport workers load their scripts from
+ * on-disk node_modules, which does not exist inside a compiled binary
+ * (`bun build --compile`), so a transport-based logger crashes any consumer
+ * that ships as a standalone executable the moment this module is imported.
  */
-function buildTransport(): pino.TransportMultiOptions | pino.TransportSingleOptions {
-	const prettyTarget = {
-		target: "pino-pretty",
-		options: {
-			colorize: true,
-			translateTime: "HH:MM:ss.l",
-			ignore: "pid,hostname,service",
-			destination: 2, // stderr — keeps structured logs off stdout (CLI UI)
+function buildStream(): pino.MultiStreamRes {
+	const streams: pino.StreamEntry[] = [
+		{
+			level: level as pino.Level,
+			stream: pinoPretty({
+				colorize: true,
+				translateTime: "HH:MM:ss.l",
+				ignore: "pid,hostname,service",
+				destination: 2, // stderr — keeps structured logs off stdout (CLI UI)
+			}),
 		},
-	};
+	];
 
 	if (logDir) {
-		return {
-			targets: [
-				{ ...prettyTarget, level: level as pino.Level },
-				{
-					target: "pino/file",
-					options: {
-						destination: join(logDir, "launchfile-docker.log"),
-						mkdir: true,
-						mode: 0o600,
-					},
-					level: "trace" as pino.Level,
-				},
-			],
-		};
+		streams.push({
+			level: "trace" as pino.Level,
+			stream: pino.destination({
+				dest: join(logDir, "launchfile-docker.log"),
+				mkdir: true,
+				mode: 0o600,
+			}),
+		});
 	}
 
-	return prettyTarget;
+	return pino.multistream(streams);
 }
 
 // ---------------------------------------------------------------------------
@@ -144,18 +144,20 @@ export const REDACT_CONFIG = {
 // Root logger
 // ---------------------------------------------------------------------------
 
-export const logger: pino.Logger = pino({
-	// When a file target is active, keep the root level at trace and let each
-	// transport target filter independently. Otherwise honour the configured level.
-	level: logDir ? "trace" : level,
-	transport: buildTransport(),
-	base: { service: "launchfile-docker" },
-	timestamp: pino.stdTimeFunctions.isoTime,
-	redact: {
-		paths: [...REDACT_PATHS],
-		censor: REDACT_CONFIG.censor,
+export const logger: pino.Logger = pino(
+	{
+		// When a file stream is active, keep the root level at trace and let each
+		// multistream entry filter independently. Otherwise honour the configured level.
+		level: logDir ? "trace" : level,
+		base: { service: "launchfile-docker" },
+		timestamp: pino.stdTimeFunctions.isoTime,
+		redact: {
+			paths: [...REDACT_PATHS],
+			censor: REDACT_CONFIG.censor,
+		},
 	},
-});
+	buildStream(),
+);
 
 // ---------------------------------------------------------------------------
 // Span / tracing via AsyncLocalStorage
@@ -230,8 +232,8 @@ export function endSpan(
 	const durationMs = Math.round(performance.now() - span.startedAt);
 
 	if (outcome === "error" && error && isExpectedRefusal(error)) {
-		// Recorded at debug: the file transport (trace level) keeps it, and the
-		// default stderr transport stays out of the CLI's way.
+		// Recorded at debug: the file stream (trace level) keeps it, and the
+		// default stderr stream stays out of the CLI's way.
 		span.logger.debug({ durationMs, refusal: error.message }, "span refused");
 	} else if (outcome === "error" && error) {
 		span.logger.error({ durationMs, err: error }, "span failed");
