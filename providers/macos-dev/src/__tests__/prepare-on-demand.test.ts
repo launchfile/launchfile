@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readLaunch } from "@launchfile/sdk";
+import { isLaunchError, readLaunch } from "@launchfile/sdk";
 import { beforeEach, describe, expect, it } from "vitest";
 import { prepareFingerprint } from "../prepare-fingerprint.js";
 import { runSourcePrepare, type SourcePrepareContext } from "../provider.js";
@@ -255,6 +255,32 @@ components:
 		const retry = recorder();
 		await prepare(SINGLE, retry);
 		expect(retry.commands).toEqual(["bun install"]);
+	});
+
+	it("tags a failing command with the prepare slot and the component when a capture is given", async () => {
+		const failing: SourcePrepareContext["run"] = async () => {
+			throw Object.assign(new Error("Command failed: bun install"), {
+				result: { exitCode: 1, stdout: "", stderr: "lockfile mismatch" },
+				display: "bun install",
+			});
+		};
+		const err = await runSourcePrepare(readLaunch(SINGLE), {
+			projectDir: dir,
+			state,
+			envs: {},
+			run: failing,
+			save: async () => {},
+			capture: (component) => ({ key: "src-test", app: "demo", component }),
+		}).catch((e: unknown) => e);
+
+		expect(isLaunchError(err)).toBe(true);
+		if (!isLaunchError(err)) return;
+		expect(err.context.phase).toBe("prepare");
+		expect(err.context.component).toBe("web");
+		expect(err.context.key).toBe("src-test");
+		expect(err.context.command).toBe("bun install");
+		expect(err.context.exitCode).toBe(1);
+		expect(state.prepared).toEqual({});
 	});
 
 	it("persists after each successful component so a later failure keeps the record", async () => {
