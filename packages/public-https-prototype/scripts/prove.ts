@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { planPublicHttps } from "../src/planner.js";
+import { planPublicHttps, type PublicHttpsOptions } from "../src/planner.js";
 import { probePublicHttps, type RouteEvidence } from "../src/probe.js";
 import { createFixture } from "./fixture.js";
 
@@ -11,8 +11,23 @@ let evidence: RouteEvidence | undefined;
 const plan = (publicUrl: string) => planPublicHttps(file, { publicUrl });
 const probeOptions = { ca: fixture.ca, expectedBody: fixture.marker };
 try {
-  assert.throws(() => plan(fixture.appUrl), /must use HTTPS/);
-  checks.push("Public HTTP rejected before probing");
+  assert.equal(plan(fixture.appUrl).status, "unmet");
+  checks.push("Known public HTTP reported unmet without declaring the app invalid");
+  const cases: Array<[PublicHttpsOptions, string, string]> = [
+    [{}, "unresolved", "publication-not-supplied"],
+    [{ publication: "no-channel" }, "unresolved", "no-publication-channel"],
+    [{ publication: "after-apply" }, "unresolved", "address-available-after-apply"],
+    [{ mode: "translate" }, "not-evaluated", "translation-only"],
+  ];
+  for (const [options, status, reason] of cases) {
+    const pending = planPublicHttps(file, options);
+    assert.equal(pending.status, status);
+    assert.equal(pending.requirements[0]?.reason, reason);
+    assert.equal(pending.requirements[0]?.url, undefined);
+    await assert.rejects(probePublicHttps(pending, probeOptions));
+    assert.equal(fixture.appRequests(), 0);
+    checks.push(`${reason}: ${status}, no fabricated URL or probe`);
+  }
   const unresolved = plan(fixture.edgeUrl);
   assert.equal(unresolved.status, "unresolved");
   assert.equal(fixture.appRequests(), 0);

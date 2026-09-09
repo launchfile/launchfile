@@ -17,6 +17,19 @@ it("prints only an unresolved plan from the real CLI", async () => {
 });
 
 it.each([
+  { args: [], status: "unresolved", reason: "publication-not-supplied" },
+  { args: ["--publication=no-channel"], status: "unresolved", reason: "no-publication-channel" },
+  { args: ["--publication=after-apply"], status: "unresolved", reason: "address-available-after-apply" },
+  { args: ["--mode=translate"], status: "not-evaluated", reason: "translation-only" },
+  { args: ["--public-url", "http://app.example"], status: "unmet", reason: "supplied-origin-not-https" },
+])("reports $reason without misclassifying the app as invalid", async ({ args, status, reason }) => {
+  const result = await execute("bun", ["run", "plan", "examples/Launchfile", ...args], { cwd });
+  const output = JSON.parse(result.stdout);
+  expect(output.status).toBe(status);
+  expect(output.requirements[0].reason).toBe(reason);
+});
+
+it.each([
   "name: broken\nenv:\n  TOKEN: [SECRET_SENTINEL,\n",
   "name: SECRET_SENTINEL\nprovides: [{ port: SECRET_SENTINEL }]\n",
 ])("does not quote secret-bearing YAML or schema failures", async (file) => {

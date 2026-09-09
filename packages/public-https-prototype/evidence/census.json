@@ -1,0 +1,22 @@
+{
+  "counts": {
+    "apps": 72,
+    "drafts": 41,
+    "total": 113
+  },
+  "markerMatches": [
+    "apps/hedgedoc/Launchfile",
+    "apps/remote-claude-concentrator/Launchfile",
+    "apps/vaultwarden/Launchfile"
+  ],
+  "sourceReviewedMotivations": [
+    "vaultwarden web-vault/Web Crypto",
+    "remote-claude-concentrator passkey/WebAuthn UI"
+  ],
+  "excludedCounterexample": "hedgedoc: CMD_PROTOCOL_USESSL tracks a scheme; it does not require HTTPS",
+  "caveat": "Marker coverage is not total demand for a currently unexpressible feature. The two examples motivate a secure browser origin; they do not prove strict HTTPS is invariant across all supported modes. No third example is claimed.",
+  "vaultwardenSchemaValidation": {
+    "result": "passed",
+    "name": "vaultwarden"
+  }
+}

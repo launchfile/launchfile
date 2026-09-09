@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readLaunch } from "@launchfile/sdk";
-import { planPublicHttps, publicationOrigin } from "../planner.js";
+import { planPublicHttps, publicationOrigin, type PublicHttpsOptions } from "../planner.js";
 
 const base = `name: test
 image: example/app:demo
@@ -14,7 +14,7 @@ describe("public HTTPS requirement preprocessing", () => {
   it("leaves an HTTP listener unchanged and cannot verify an HTTPS string", () => {
     const plan = planPublicHttps(base + requirement, url);
     expect(plan.status).toBe("unresolved");
-    expect(plan.requirements).toEqual([{ component: "default", endpoint: "web", scheme: "https", url: "https://app.example", status: "unresolved" }]);
+    expect(plan.requirements).toEqual([{ component: "default", endpoint: "web", scheme: "https", url: "https://app.example", status: "unresolved", reason: "route-unverified" }]);
     expect(plan.launch.components.default?.provides?.[0]?.protocol).toBe("http");
     expect(plan.launch.components.default?.requires).toEqual([]);
   });
@@ -129,8 +129,8 @@ components:
     expect(() => planPublicHttps(base.replace("protocol: http", "tls: server-cert, protocol: http") + requirement, url)).toThrow("separate");
   });
 
-  it.each([undefined, "http://app.example", "ftp://app.example", "https:app.example", "https:///", "https:///app.example", "https://@app.example", "https://user:secret@app.example", "https://app.example/path", "https://app.example?x=y", "https://app.example?", "https://app.example#fragment", "https://app.example#", "https://app.example\\bad", "https://app.example\n"]) (
-    "requires a supplied HTTPS origin: %s", (publicUrl) => {
+  it.each(["ftp://app.example", "https:app.example", "https:///", "https:///app.example", "https://@app.example", "https://user:secret@app.example", "https://app.example/path", "https://app.example?x=y", "https://app.example?", "https://app.example#fragment", "https://app.example#", "https://app.example\\bad", "https://app.example\n"]) (
+    "refuses a malformed supplied origin: %s", (publicUrl) => {
       expect(() => planPublicHttps(base + requirement, { publicUrl })).toThrow();
     },
   );
@@ -138,4 +138,43 @@ components:
   it("normalizes a valid origin", () => {
     expect(publicationOrigin("HTTPS://App.Example:443/")).toBe("https://app.example");
   });
+
+  it.each<[PublicHttpsOptions, string, string]>([
+    [{}, "unresolved", "publication-not-supplied"],
+    [{ publication: "no-channel" }, "unresolved", "no-publication-channel"],
+    [{ publication: "after-apply" }, "unresolved", "address-available-after-apply"],
+    [{ mode: "translate" }, "not-evaluated", "translation-only"],
+    [{ mode: "translate", publication: "no-channel" }, "not-evaluated", "translation-only"],
+    [{ mode: "translate", publication: "after-apply" }, "not-evaluated", "translation-only"],
+  ])("reports unavailable publication context without inventing a URL: %j", (options, status, reason) => {
+    const plan = planPublicHttps(base + requirement, options);
+    expect(plan.status).toBe(status);
+    expect(plan.requirements[0]).toEqual({ component: "default", endpoint: "web", scheme: "https", status, reason });
+    expect(plan.requirements[0]).not.toHaveProperty("url");
+  });
+
+  it("reports a known HTTP mismatch as an unmet requirement, not an invalid app file", () => {
+    const plan = planPublicHttps(base + requirement, { publicUrl: "http://app.example" });
+    expect(plan.status).toBe("unmet");
+    expect(plan.requirements[0]?.reason).toBe("supplied-origin-not-https");
+    expect(plan.launch.components.default?.provides?.[0]?.protocol).toBe("http");
+  });
+
+  it.each(["http://app.example", "https://app.example"])("does not evaluate fulfillment in translation mode with %s", (publicUrl) => {
+    const plan = planPublicHttps(base + requirement, { mode: "translate", publicUrl });
+    expect(plan.status).toBe("not-evaluated");
+    expect(plan.requirements[0]?.url).toBe(publicUrl);
+  });
+
+  it.each<PublicHttpsOptions>([{}, { publication: "no-channel" }, { publication: "after-apply" }, { mode: "translate" }])(
+    "still validates the declared target without deployment context: %j", (options) => {
+      expect(() => planPublicHttps(base.replace("name: web", "name: other") + requirement, options)).toThrow("exactly one");
+    },
+  );
+
+  it.each<PublicHttpsOptions>([{ publication: "no-channel", publicUrl: "https://app.example" }, { publication: "after-apply", publicUrl: "https://app.example" }])(
+    "rejects contradictory consumer context: %j", (options) => {
+      expect(() => planPublicHttps(base + requirement, options)).toThrow("conflicts");
+    },
+  );
 });

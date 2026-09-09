@@ -8,7 +8,8 @@
     "test": "vitest run",
     "verify": "bun run build:sdk && bun run typecheck && bun run test",
     "plan": "bun run src/cli.ts",
-    "prove": "bun run scripts/prove.ts"
+    "prove": "bun run scripts/prove.ts",
+    "census": "bun run scripts/census.ts"
   },
   "dependencies": {
     "@launchfile/sdk": "workspace:*"

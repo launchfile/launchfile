@@ -4,19 +4,31 @@ type ObjectValue = Record<string, unknown>;
 const NAME = /^[a-z][a-z0-9-]{0,62}$/;
 const own = (value: object, key: string): boolean => Object.hasOwn(value, key);
 
+export type EvaluationStatus = "unresolved" | "not-evaluated" | "unmet";
+export type EvaluationReason = "publication-not-supplied" | "no-publication-channel" |
+  "address-available-after-apply" | "translation-only" | "route-unverified" | "supplied-origin-not-https";
+
+export interface PublicHttpsOptions {
+  publicUrl?: string;
+  /** Visibility belongs to the consumer; neither case invalidates an app file. */
+  publication?: "no-channel" | "after-apply";
+  mode?: "plan" | "translate";
+}
+
 export interface PublicHttpsRequirement {
   component: string;
   endpoint: string;
   scheme: "https";
-  url: string;
-  status: "unresolved";
+  url?: string;
+  status: EvaluationStatus;
+  reason: EvaluationReason;
 }
 
 export interface PublicHttpsPlan {
   launch: NormalizedLaunch;
   requirements: PublicHttpsRequirement[];
   /** Translation cannot establish the existence or identity of a public route. */
-  status: "unresolved" | "no-public-https-requirement";
+  status: EvaluationStatus | "no-public-https-requirement";
 }
 
 function object(value: unknown, label: string): ObjectValue {
@@ -47,7 +59,16 @@ export function publicationOrigin(value: string | undefined): string {
 }
 
 /** Preprocess the proposed contract before today's reader can discard its marker. */
-export function planPublicHttps(yaml: string, options: { publicUrl?: string } = {}): PublicHttpsPlan {
+export function planPublicHttps(yaml: string, options: PublicHttpsOptions = {}): PublicHttpsPlan {
+  if (options.mode !== undefined && !["plan", "translate"].includes(options.mode)) {
+    throw new Error("Unsupported evaluation mode");
+  }
+  if (options.publication !== undefined && !["no-channel", "after-apply"].includes(options.publication)) {
+    throw new Error("Unsupported publication visibility");
+  }
+  if (options.publication !== undefined && options.publicUrl !== undefined) {
+    throw new Error("A supplied URL conflicts with unavailable publication context");
+  }
   const raw = object(parseLaunchYaml(yaml), "Launchfile");
   const components = raw.components === undefined ? undefined : object(raw.components, "components");
   const multi = components !== undefined && Object.keys(components).length > 0;
@@ -107,8 +128,21 @@ export function planPublicHttps(yaml: string, options: { publicUrl?: string } = 
   const endpoints = Object.entries(launch.components).flatMap(([component, value]) =>
     (value.provides ?? []).map((endpoint) => ({ component, endpoint })));
   const primary = endpoints.find(({ endpoint }) => endpoint.exposed === true);
-  const publicUrl = publicationOrigin(options.publicUrl);
-  if (new URL(publicUrl).protocol !== "https:") throw new Error("The required public origin must use HTTPS");
+  // Validate supplied values, but do not invent a URL when the consumer has none.
+  const publicUrl = options.publicUrl === undefined ? undefined : publicationOrigin(options.publicUrl);
+  let status: EvaluationStatus = "unresolved";
+  let reason: EvaluationReason = "publication-not-supplied";
+  if (options.mode === "translate") {
+    status = "not-evaluated";
+    reason = "translation-only";
+  } else if (options.publication === "no-channel") {
+    reason = "no-publication-channel";
+  } else if (options.publication === "after-apply") {
+    reason = "address-available-after-apply";
+  } else if (publicUrl !== undefined) {
+    if (new URL(publicUrl).protocol === "https:") reason = "route-unverified";
+    else { status = "unmet"; reason = "supplied-origin-not-https"; }
+  }
 
   const requirements: PublicHttpsRequirement[] = declared.map((requirement) => {
     const matches = endpoints.filter(({ component, endpoint }) =>
@@ -118,7 +152,7 @@ export function planPublicHttps(yaml: string, options: { publicUrl?: string } = 
     if (target.endpoint.exposed !== true) throw new Error("public.endpoint must be explicitly exposed");
     if (!["http", "https"].includes(target.endpoint.protocol)) throw new Error("public.endpoint must be an HTTP(S) listener");
     if (target !== primary) throw new Error("Only the primary endpoint has publication context; other endpoints need a separate contract");
-    return { ...requirement, scheme: "https", url: publicUrl, status: "unresolved" };
+    return { ...requirement, scheme: "https", ...(publicUrl === undefined ? {} : { url: publicUrl }), status, reason };
   });
-  return { launch, requirements, status: "unresolved" };
+  return { launch, requirements, status };
 }

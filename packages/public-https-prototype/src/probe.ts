@@ -33,6 +33,9 @@ export async function probePublicHttps(plan: PublicHttpsPlan, options: ProbeOpti
     throw new Error("Probe requires one unresolved public HTTPS requirement");
   }
   const requirement = plan.requirements[0]!;
+  if (requirement.reason !== "route-unverified" || requirement.url === undefined) {
+    throw new Error("Probe requires a supplied HTTPS origin; unavailable publication context cannot be probed");
+  }
   const origin = publicationOrigin(requirement.url);
   if (new URL(origin).protocol !== "https:") throw new Error("Probe requires an HTTPS origin");
   const timeoutMs = options.timeoutMs ?? 3000;

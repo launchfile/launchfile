@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { planPublicHttps } from "../planner.js";
+import { planPublicHttps, type PublicHttpsOptions } from "../planner.js";
 import { probePublicHttps } from "../probe.js";
 import { createFixture, type EdgeBehavior } from "../../scripts/fixture.js";
 
@@ -79,4 +79,12 @@ describe("authenticated public-route observation", () => {
   it("refuses a plan without the requirement", async () => {
     await expect(probePublicHttps(planPublicHttps("name: ordinary"), options())).rejects.toThrow("one unresolved");
   });
+
+  it.each<PublicHttpsOptions>([{}, { publication: "no-channel" }, { publication: "after-apply" }, { mode: "translate" }, { publicUrl: "http://app.example" }])(
+    "does not probe unavailable, unevaluated, or mismatched publication context: %j", async (context) => {
+      const prior = fixture.appRequests();
+      await expect(probePublicHttps(planPublicHttps(file, context), options())).rejects.toThrow();
+      expect(fixture.appRequests()).toBe(prior);
+    },
+  );
 });

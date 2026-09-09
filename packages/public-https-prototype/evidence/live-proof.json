@@ -1,7 +1,11 @@
 {
   "result": "passed",
   "checks": [
-    "Public HTTP rejected before probing",
+    "Known public HTTP reported unmet without declaring the app invalid",
+    "publication-not-supplied: unresolved, no fabricated URL or probe",
+    "no-publication-channel: unresolved, no fabricated URL or probe",
+    "address-available-after-apply: unresolved, no fabricated URL or probe",
+    "translation-only: not-evaluated, no fabricated URL or probe",
     "HTTPS publication string remains unresolved; planning performs no I/O",
     "CA and hostname verified at the HTTPS edge; fresh response traversed the HTTP app",
     "App listener remains HTTP and route evidence does not mutate the pure plan",
@@ -17,11 +21,11 @@
   "routeEvidence": {
     "component": "default",
     "endpoint": "web",
-    "url": "https://127.0.0.1:63049",
-    "observedAt": "2026-09-09T14:36:55.953Z",
+    "url": "https://127.0.0.1:54537",
+    "observedAt": "2026-09-09T17:49:22.172Z",
     "status": "observed-authenticated-route",
     "tlsProtocol": "TLSv1.3",
-    "peerFingerprint256": "37:3F:1C:B1:0B:F7:3C:7F:00:52:42:88:37:09:68:D8:40:87:68:AB:AC:91:34:20:D7:32:14:A4:50:D9:89:93",
+    "peerFingerprint256": "B9:9C:E4:F0:97:D3:60:49:69:90:F0:E5:A8:0F:1C:CC:D9:52:DA:D6:18:30:BB:79:BE:94:2E:5C:76:0B:F6:2F",
     "responseStatus": 200,
     "expectedResponseMatched": true,
     "limitation": "Point-in-time evidence from this client. Trust and hostname plus caller-supplied response expectation; not proof of public reachability, routing ownership, deployment identity, or browser behavior."
