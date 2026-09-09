@@ -400,6 +400,40 @@ describe("the macOS branch's failure records", () => {
 		expect(await readLaunchErrorRecord(undefined, recordDir)).toBeNull();
 	});
 
+	it("prints the provider's own message, then the capture hint, and rethrows what the CLI prints", async () => {
+		// The provider throws a prereq failure rather than exiting, so the run
+		// crosses `withFailureRecord` and then the CLI's top-level handler, and
+		// each adds a line after the provider's own. The sequence is pinned so a
+		// change to it fails a test rather than surprising a script.
+		const thrown = await handleUp(
+			projectDir,
+			{ native: true },
+			macosDeps(() => {
+				console.error("Missing prerequisites:");
+				console.error("  - Homebrew is not installed");
+				return Promise.reject(
+					macosError("prereq", "Missing prerequisites: Homebrew is not installed"),
+				);
+			}),
+		).then(
+			() => undefined,
+			(e: unknown) => e as Error,
+		);
+
+		expect(output).toEqual([
+			"Missing prerequisites:",
+			"  - Homebrew is not installed",
+			"\n  Captured. Run `launchfile diagnose` for the full context.",
+		]);
+		// cli.ts's `main().catch` prints `\nError: ${err.message}` and exits 1, so
+		// this message is the third thing a user sees — the itemized list restated
+		// on one line.
+		expect(thrown?.message).toBe("Missing prerequisites: Homebrew is not installed");
+
+		const record = await readLaunchErrorRecord(sourceErrorKey(projectDir), recordDir);
+		expect(record?.phase).toBe("prereq");
+	});
+
 	it("keys two checkouts of one app separately", async () => {
 		const other = await mkdtemp(join(tmpdir(), "lf-project-"));
 		await writeFile(join(other, "Launchfile"), "name: gov23\n");
