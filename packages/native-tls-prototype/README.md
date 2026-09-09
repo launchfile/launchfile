@@ -40,13 +40,13 @@ supports:
 
 `tls: server-cert` expands to `tls: { certificate: server-cert }`. Adding `port: 3443` to that object replaces the selected listener's port; it does not add a second listener. `$port` wires the selected value into the app's actual configuration. Explicit HTTP baseline settings allow a return from HTTPS even when the app persists configuration.
 
-| Consumer mode | Public connection               | App listener | Certificate at app |
-| ------------- | ------------------------------- | ------------ | ------------------ |
-| off           | Direct HTTP                     | HTTP         | No                 |
-| edge          | HTTPS terminates at proxy       | HTTP         | No                 |
-| native        | Direct HTTPS                    | HTTPS        | Yes                |
-| passthrough   | Client TLS session reaches app  | HTTPS        | Yes                |
-| reencrypt     | Proxy opens authenticated TLS   | HTTPS        | Yes                |
+| Consumer mode | Public connection              | App listener | Certificate at app |
+| ------------- | ------------------------------ | ------------ | ------------------ |
+| off           | Direct HTTP                    | HTTP         | No                 |
+| edge          | HTTPS terminates at proxy      | HTTP         | No                 |
+| native        | Direct HTTPS                   | HTTPS        | Yes                |
+| passthrough   | Client TLS session reaches app | HTTPS        | Yes                |
+| reencrypt     | Proxy opens authenticated TLS  | HTTPS        | Yes                |
 
 For native planning, pass `--tls=native --url=https://localhost:33000 --cert=/absolute/server.pem --key=/absolute/server.key --ca=/absolute/root.pem`. The optional `--compose-file=/absolute/compose.yaml` validates material and emits an artifact with mode `0600`, refusing overwrite. No route or app is started. The command reports planning/compilation status rather than successful deployment.
 
