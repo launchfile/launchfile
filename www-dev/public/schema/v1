@@ -302,10 +302,10 @@
       "properties": {
         "path": { "type": "string", "description": "HTTP path to check" },
         "command": { "type": "string", "description": "Command for non-HTTP checks. If both path and command are present, path takes precedence." },
-        "interval": { "type": "string", "description": "Check interval (e.g., '30s')" },
-        "timeout": { "type": "string", "description": "Timeout per check" },
+        "interval": { "type": "string", "description": "Check interval — a duration: an integer immediately followed by one unit ms|s|m|h, e.g. '30s'. No spaces, no compound values like '1m30s' (D-48)." },
+        "timeout": { "type": "string", "description": "Timeout per check — a duration: an integer immediately followed by one unit ms|s|m|h, e.g. '5s'. No spaces, no compound values like '1m30s' (D-48)." },
         "retries": { "type": "integer", "minimum": 1, "description": "Failures before unhealthy" },
-        "start_period": { "type": "string", "description": "Grace period before failures count" }
+        "start_period": { "type": "string", "description": "Grace period before failures count — a duration: an integer immediately followed by one unit ms|s|m|h, e.g. '30s'. No spaces, no compound values like '1m30s' (D-48)." }
       },
       "additionalProperties": false
     },
@@ -320,7 +320,7 @@
       "required": ["command"],
       "properties": {
         "command": { "type": "string" },
-        "timeout": { "type": "string" },
+        "timeout": { "type": "string", "description": "Command timeout — a duration: an integer immediately followed by one unit ms|s|m|h, e.g. '5m'. No spaces, no compound values like '1m30s' (D-48)." },
         "capture": {
           "type": "object",
           "description": "Named captures extracted from this command's stdout via regex (D-34). Supersedes the top-level outputs: placement from D-23.",
