@@ -32,10 +32,11 @@ describe("inspect CLI", () => {
     const dir = mkdtempSync(join(tmpdir(), "variants-cli-"));
     const file = join(dir, "Launchfile");
     try {
-      writeFileSync(file, "name: app\nimage: app\nsecrets:\n  key:\n    generator: secret\nenv:\n  TOKEN: literal-private\n  OTHER:\n    sensitive: true\n    default: also-private\n  REF: $secrets.key\n");
+      writeFileSync(file, "name: app\nimage: app\nsecrets:\n  key:\n    generator: secret\nenv:\n  TOKEN: literal-private\n  OTHER:\n    sensitive: true\n    default: also-private\n  REF: $secrets.key\nrequires:\n  - type: postgres\n    set_env:\n      PASSWORD: '${password:-FALLBACK_SECRET_SENTINEL}'\n");
       const result = spawnSync("bun", ["run", "inspect", file], { cwd, encoding: "utf8", env: { ...process.env, TOKEN: "environment-private" } });
       expect(result.status).toBe(0);
       expect(result.stdout).not.toMatch(/literal-private|also-private|environment-private/);
+      expect(result.stdout).not.toContain("FALLBACK_SECRET_SENTINEL");
       expect(result.stdout).toContain("$secrets.key");
       expect(result.stdout).toContain("[redacted]");
     } finally { unlinkSync(file); rmdirSync(dir); }

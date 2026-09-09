@@ -219,7 +219,10 @@ export function redactPreview(preview: VariantPreview): VariantPreview {
     }
     for (const entry of [...(component.requires ?? []), ...(component.supports ?? [])]) {
       for (const [key, value] of Object.entries(entry.set_env ?? {})) {
-        if (sensitiveKey.test(key) && parseExpression(value).kind !== "reference") entry.set_env![key] = "[redacted]";
+        const parsed = parseExpression(value);
+        if ((sensitiveKey.test(key) || component.env?.[key]?.sensitive) && (parsed.kind !== "reference" || parsed.fallback !== undefined)) {
+          entry.set_env![key] = "[redacted]";
+        }
       }
     }
   }

@@ -166,4 +166,15 @@ describe("explicit prototype boundaries", () => {
     expect(redacted.launch.components.default!.env!.REF!.default).toBe("$secrets.key");
     expect(preview.launch.components.default!.env!.TOKEN!.default).toBe("do-not-display");
   });
+
+  it("redacts credential-bearing fallbacks, including explicitly sensitive binding targets", () => {
+    const preview = expandVariants({
+      ...minimal(), env: { CONNECTION: { sensitive: true } },
+      requires: [{ type: "postgres", set_env: { PASSWORD: "${password:-FALLBACK_SECRET_SENTINEL}", CONNECTION: "${url:-CONNECTION_SECRET_SENTINEL}", TOKEN: "$password" } }],
+    });
+    const redacted = redactPreview(preview);
+    expect(JSON.stringify(redacted)).not.toContain("SECRET_SENTINEL");
+    expect(redacted.launch.components.default!.requires![0]!.set_env!.TOKEN).toBe("$password");
+    expect(preview.launch.components.default!.requires![0]!.set_env!.PASSWORD).toContain("FALLBACK_SECRET_SENTINEL");
+  });
 });
