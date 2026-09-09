@@ -23,7 +23,8 @@ import {
 import { allocatePorts } from "../port-allocator.js";
 
 // The first entry is internal, the second is the public one. Reading provides[0]
-// answers 9000 here; reading the exposed endpoint answers 8080.
+// answers 39000 here; reading the exposed endpoint answers 38080. Both sit above
+// the registered-port range, so the allocator finds them free on any machine.
 const TWO_ENDPOINT_FIXTURE = `
 version: launch/v1
 name: cross-provider-fixture
@@ -33,10 +34,10 @@ components:
     provides:
       - name: internal
         protocol: http
-        port: 9000
+        port: 39000
       - name: public
         protocol: http
-        port: 8080
+        port: 38080
         exposed: true
 `;
 
@@ -44,16 +45,18 @@ describe("$app.* agrees across providers (P-5, D-27)", () => {
 	it("docker and macos-dev name the same port for the same file", async () => {
 		const launch = readLaunch(TWO_ENDPOINT_FIXTURE);
 
-		// macos-dev: pin the allocation so the comparison is about the anchor
-		// rule, not about whether 8080 happens to be free on this machine.
-		const ports = await allocatePorts(launch.components, launch.name, { web: 8080 });
+		// macos-dev: no saved port, so the allocator runs the anchor rule this
+		// test exists for. A saved port takes the reuse branch above it, and the
+		// comparison would then hold whichever endpoint the anchor picked.
+		const ports = await allocatePorts(launch.components, launch.name);
 		const macos = computeAppProperties(launch, ports);
 
-		// docker: same file, its own routing strategy, no orchestrator appUrl.
-		const docker = dockerAppProperties(launch, { web: 8080 });
+		// docker: same file, no host-port map, so its number comes from the
+		// declared exposed endpoint rather than from what macos-dev allocated.
+		const docker = dockerAppProperties(launch, undefined);
 
-		expect(macos.port).toBe(8080);
-		expect(docker.port).toBe(8080);
+		expect(docker.port).toBe(38080);
+		expect(macos.port).toBe(38080);
 		expect(macos.url).toBe(docker.url);
 		expect(macos.authority).toBe(docker.authority);
 	});
