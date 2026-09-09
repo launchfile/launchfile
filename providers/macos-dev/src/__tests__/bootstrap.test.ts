@@ -1,14 +1,18 @@
-import { readFileSync } from "node:fs";
-import { describe, it, expect } from "vitest";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { parseDuration as parseHealthDuration } from "../health.js";
 import {
 	BOOTSTRAP_SHELL,
 	DEFAULT_BOOTSTRAP_TIMEOUT_MS,
 	extractCaptures,
 	parseDuration,
+	launchBootstrap,
 	planBootstraps,
 } from "../bootstrap.js";
 import { buildResolverContext, computeAppProperties } from "../env-writer.js";
+import { clearRegisteredSecrets, REDACTED } from "../redact.js";
 import { type CaptureEntry, readLaunch, type ResolverContext } from "@launchfile/sdk";
 
 describe("extractCaptures (D-34)", () => {
@@ -229,5 +233,80 @@ describe("paperclip bootstrap regression (issue #185)", () => {
 		expect(item.command).toBe(PAPERCLIP_BOOTSTRAP);
 		expect(item.argv).toEqual([BOOTSTRAP_SHELL, "-c", PAPERCLIP_BOOTSTRAP]);
 		expect(item.error).toBeUndefined();
+	});
+});
+
+describe("launchBootstrap — the returned command carries no live credential (D-18, D-next)", () => {
+	// Hyphenated on purpose: `$secrets.api-key` is the form that resolves
+	// mid-string, so a live value reaches the command where a dotted-only
+	// resolver would have left an empty string.
+	const API_KEY = "sk-live-9f3c1d7a5b2e4086";
+	const LAUNCHFILE = `name: acme
+version: "1.0"
+components:
+  api:
+    commands:
+      start: "node server.js"
+      bootstrap:
+        command: "acme-cli register --key $secrets.api-key"
+  worker:
+    commands:
+      start: "node worker.js"
+      bootstrap:
+        command: "acme-cli seed --key $secrets.api-key"
+        timeout: "5 minutes"
+`;
+
+	let projectDir: string;
+
+	beforeEach(() => {
+		projectDir = mkdtempSync(join(tmpdir(), "lf-bootstrap-redaction-"));
+		writeFileSync(join(projectDir, "Launchfile"), LAUNCHFILE);
+		mkdirSync(join(projectDir, ".launchfile"), { recursive: true });
+		const now = new Date().toISOString();
+		writeFileSync(
+			join(projectDir, ".launchfile", "state.json"),
+			JSON.stringify({
+				version: 1,
+				appName: "acme",
+				launchfileHash: "0".repeat(16),
+				createdAt: now,
+				updatedAt: now,
+				resources: {},
+				secrets: { "api-key": API_KEY },
+				ports: { api: 3000, worker: 3001 },
+			}),
+		);
+	});
+
+	afterEach(() => {
+		rmSync(projectDir, { recursive: true, force: true });
+		clearRegisteredSecrets();
+		vi.restoreAllMocks();
+	});
+
+	it("redacts the resolved secret on both the executed and the unrunnable path", async () => {
+		vi.spyOn(console, "log").mockImplementation(() => {});
+		vi.spyOn(console, "error").mockImplementation(() => {});
+
+		const ran: string[][] = [];
+		const results = await launchBootstrap({
+			projectDir,
+			exec: async (cmd, args) => {
+				ran.push([cmd, ...args]);
+				return { exitCode: 0, stdout: "", stderr: "" };
+			},
+		});
+
+		// The command that actually ran still carries the live value.
+		expect(ran).toEqual([["/bin/sh", "-c", `acme-cli register --key ${API_KEY}`]]);
+
+		expect(results).toHaveLength(2);
+		for (const result of results) {
+			expect(result.command).not.toContain(API_KEY);
+			expect(result.command).toContain(REDACTED);
+		}
+		// One executed, one reported as unrunnable — both push sites covered.
+		expect(results.map((r) => r.ok)).toEqual([true, false]);
 	});
 });
