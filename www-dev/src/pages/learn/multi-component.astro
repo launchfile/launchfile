@@ -154,14 +154,14 @@ components:
   Sometimes you don't want the whole app — you're iterating on the backend and the frontend would just be noise. Name the component and you get it <em>plus everything it needs</em>, and nothing more:
 </p>
 
-<pre><code>launchfile up backend</code></pre>
+<pre><code>launchfile up --components backend</code></pre>
 
 <p>
   That starts <code>backend</code>, its <code>depends_on</code> targets, and their required services (Postgres here) — but not <code>frontend</code>. The closure runs <GlossaryTip term="downward closure" definition="The selected components plus everything they depend on, followed transitively. Never the components that depend on them.">downward only</GlossaryTip>: you get what you asked for and what it needs, never what needs it. Dependencies that are already running are left alone, so repeating the command is safe.
 </p>
 
 <Callout type="info" title="Why not start only what you named?">
-  <p>Because the file itself says the component can't work without its dependencies — <code>depends_on</code> is a hard startup prerequisite, and starting <code>backend</code> without Postgres would hand you a broken process. Every provider computes the same start-set from the same rule, so <code>up backend</code> produces the same running topology everywhere. A future <code>--no-deps</code> flag may let operators who manage dependencies themselves opt out.</p>
+  <p>Because the file itself says the component can't work without its dependencies — <code>depends_on</code> is a hard startup prerequisite, and starting <code>backend</code> without Postgres would hand you a broken process. Every provider computes the same start-set from the same rule, so <code>up --components backend</code> produces the same running topology everywhere. A future <code>--no-deps</code> flag may let operators who manage dependencies themselves opt out.</p>
 </Callout>
 
 <h2 id="in-the-wild">In the wild</h2>
@@ -197,7 +197,7 @@ components:
     <li><code>depends_on</code> controls startup order — a component waits until its dependency is healthy.</li>
     <li><code>$components.&lt;name&gt;.url</code> lets components discover each other without hardcoded addresses.</li>
     <li>Only public-facing components need <code>exposed: true</code> — keep backends internal.</li>
-    <li><code>launchfile up &lt;component&gt;</code> starts that component plus its downward dependency closure — its dependencies and their services, never the components that depend on it.</li>
+    <li><code>launchfile up --components &lt;component&gt;</code> starts that component plus its downward dependency closure — its dependencies and their services, never the components that depend on it.</li>
   </ul>
 </div>
 
