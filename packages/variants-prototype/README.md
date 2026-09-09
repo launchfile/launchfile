@@ -41,6 +41,14 @@ Both commands print JSON with `selected`, `available`, `validated`, `requiredInp
 
 The output is an inspection preview, not a provider deployment plan. `$app.url`, `$password`, and `$secrets.key` remain expressions. It loads no environment values, generates no secrets, and writes no files. Explicitly sensitive defaults and common credential-named defaults/bindings are redacted. Redaction cannot identify arbitrary secrets hidden under innocent names: use references and declarations, never actual credential material, in these demonstration files.
 
+## Validation coverage and prototype ownership
+
+Local verification of the implementation at [fe6f19a](https://github.com/launchfile/launchfile/commit/fe6f19adb1e6360eea01718738d8611c9b81c89d) passes SDK build, strict TypeScript, and **96 prototype tests**. This is a recorded local result, not a CI guarantee. The repository's workflows do not build, typecheck, or test `packages/variants-prototype`; the `packages/**` smoke-workflow trigger tests published packages instead. Green repository checks therefore do not establish that this experiment still works after SDK or dependency changes. Run `bun run --cwd packages/variants-prototype verify` from the repository root before relying on a changed checkout or reporting fresh evidence.
+
+Ownership stays with PR #453's author while this disposable experiment is used for RFC #447 research; it creates no ongoing production-maintainer support obligation. Author rejection of the concept, supersession by a separately reviewed production implementation, or abandonment without someone maintaining its local verification are removal triggers. The owner should propose a separate reviewed cleanup of this private package and its Bun-managed lockfile entries at that point. No automatic deletion or production migration is implemented here.
+
+Approval of this PR as demonstration material does not accept RFC #447, ratify `variants` syntax or the proposed D-36 fourth home, supply the missing catalog motivations, or make this package a format precedent. Any accepted production feature needs its own specification/SDK/provider review; the research issue remains unresolved until its decision gates are met.
+
 ## Exact prototype rules
 
 - One image-based component; at most 32 named variants; one explicit selection. `baseline` is reserved for the no-selection result. There is no automatic choice, variant combination, or inheritance between variants.
