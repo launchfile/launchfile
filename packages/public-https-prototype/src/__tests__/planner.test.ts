@@ -66,12 +66,12 @@ describe("public HTTPS requirement preprocessing", () => {
     [base.replace(", exposed: true", ""), "explicitly exposed"],
     [base.replace("protocol: http", "protocol: tcp"), "HTTP(S)"],
     [base + "  - { name: web, protocol: http, port: 3001, exposed: true }\n", "exactly one"],
-    [base.replace("provides:\n", "provides:\n  - { name: first, protocol: tcp, port: 8080, exposed: true }\n"), "primary"],
+    [base.replace("provides:\n", "provides:\n  - { name: first, protocol: tcp, port: 8080, exposed: true }\n"), "This prototype accepts public requirements only on the first exposed endpoint"],
   ])("refuses a wrong, ambiguous, private, non-HTTP, or secondary endpoint", (file, error) => {
     expect(() => planPublicHttps(file + requirement, url)).toThrow(error);
   });
 
-  it("does not reuse primary publication context for a different component", () => {
+  it("labels refusal of another exposed component as a prototype scope choice", () => {
     const file = `name: multi
 components:
   frontend:
@@ -80,7 +80,7 @@ components:
     provides: [{ name: web, protocol: http, port: 3001, exposed: true }]
     requires: [{ public: { endpoint: web, scheme: https } }]
 `;
-    expect(() => planPublicHttps(file, url)).toThrow("primary");
+    expect(() => planPublicHttps(file, url)).toThrow("endpoint scope remains undecided for RFC #446");
   });
 
   it("does not resolve a missing local endpoint against another component", () => {
@@ -94,7 +94,7 @@ components:
     expect(() => planPublicHttps(file, url)).toThrow("exactly one");
   });
 
-  it("accepts a requirement on the primary component", () => {
+  it("accepts a requirement on the component with the first exposed endpoint", () => {
     const file = `name: multi
 components:
   frontend:
@@ -118,7 +118,7 @@ components:
     requires: [{ public: { endpoint: web, scheme: https } }]
   second: *app
 `;
-    expect(() => planPublicHttps(file, url)).toThrow("primary");
+    expect(() => planPublicHttps(file, url)).toThrow("first exposed endpoint");
   });
 
   it("also permits an already declared HTTPS listener without native TLS syntax", () => {

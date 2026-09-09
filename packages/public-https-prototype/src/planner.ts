@@ -123,11 +123,13 @@ export function planPublicHttps(yaml: string, options: PublicHttpsOptions = {}):
     return { launch, requirements: [], status: "no-public-https-requirement" };
   }
 
-  // D-58 publication context is for the first exposed endpoint, in declaration
-  // order. A later HTTP endpoint cannot borrow an earlier endpoint's address.
+  // Prototype scope choice: use the first exposed endpoint in declaration order.
+  // D-58 rule 4 limits provider derivation from one supplied URL; it does not
+  // define "primary" or impose this heuristic on app declarations. RFC #446's
+  // endpoint scope remains an unaccepted proposal, not a consequence of D-58.
   const endpoints = Object.entries(launch.components).flatMap(([component, value]) =>
     (value.provides ?? []).map((endpoint) => ({ component, endpoint })));
-  const primary = endpoints.find(({ endpoint }) => endpoint.exposed === true);
+  const firstExposed = endpoints.find(({ endpoint }) => endpoint.exposed === true);
   // Validate supplied values, but do not invent a URL when the consumer has none.
   const publicUrl = options.publicUrl === undefined ? undefined : publicationOrigin(options.publicUrl);
   let status: EvaluationStatus = "unresolved";
@@ -151,7 +153,7 @@ export function planPublicHttps(yaml: string, options: PublicHttpsOptions = {}):
     const target = matches[0]!;
     if (target.endpoint.exposed !== true) throw new Error("public.endpoint must be explicitly exposed");
     if (!["http", "https"].includes(target.endpoint.protocol)) throw new Error("public.endpoint must be an HTTP(S) listener");
-    if (target !== primary) throw new Error("Only the primary endpoint has publication context; other endpoints need a separate contract");
+    if (target !== firstExposed) throw new Error("This prototype accepts public requirements only on the first exposed endpoint; endpoint scope remains undecided for RFC #446");
     return { ...requirement, scheme: "https", ...(publicUrl === undefined ? {} : { url: publicUrl }), status, reason };
   });
   return { launch, requirements, status };
