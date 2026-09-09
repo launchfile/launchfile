@@ -39,8 +39,10 @@ interface BackingService {
 	image: string;
 	/**
 	 * Where this service keeps its state INSIDE the container — the path the
-	 * generated volume is mounted at. Every value below is the image's own
-	 * declared VOLUME, read from its config rather than from memory.
+	 * generated volume is mounted at. Each value is a path from the image's own
+	 * config, read rather than assumed from memory. Where an image declares
+	 * more than one VOLUME, the factory's own comment says which are mounted
+	 * and why — see `mongodb` below for the one case this applies to today.
 	 *
 	 * `null` means the service holds no state worth a volume (a cache), and no
 	 * volume is emitted for it. Required rather than optional on purpose: a new
@@ -322,8 +324,13 @@ function createBackingServices(
 			const pw = getPassword("mongodb");
 			return {
 				image: "mongo:7",
-				// The image also declares /data/configdb; a single-node deployment keeps its
-				// metadata alongside its data.
+				// The image declares two volumes: /data/db and /data/configdb. Only
+				// /data/db is mounted here. /data/configdb is written only by
+				// `mongod --configsvr`, which this provider never runs, so it stays
+				// on an anonymous volume deliberately — not a gap in the #270
+				// invariant. If this factory ever runs mongo as a config server or
+				// in a sharded/replica-set topology, /data/configdb needs its own
+				// named volume at that point.
 				dataPath: "/data/db",
 				environment: {
 					MONGO_INITDB_ROOT_USERNAME: "launchfile",

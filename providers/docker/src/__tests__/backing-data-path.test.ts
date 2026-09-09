@@ -58,6 +58,18 @@ describe("backing service data paths", () => {
 		});
 	}
 
+	it("mounts only /data/db for mongodb — /data/configdb is deliberately unmounted", () => {
+		// mongo:7 declares both /data/db and /data/configdb (`docker image
+		// inspect mongo:7 -f '{{json .Config.Volumes}}'`). Only /data/db is
+		// mounted: /data/configdb is written only by `mongod --configsvr`,
+		// which this provider never runs. See the mongodb factory in
+		// compose-generator.ts for the full rationale.
+		const doc = composeFor("mongodb");
+		expect(doc.services["app-mongodb"]?.volumes).toEqual([
+			"app-mongodb-data:/data/db",
+		]);
+	});
+
 	it("emits no volume for a service that holds nothing", () => {
 		const doc = composeFor("memcache");
 		expect(doc.services["app-memcache"]?.volumes).toBeUndefined();
