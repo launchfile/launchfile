@@ -16,6 +16,8 @@ supports:
   - type: postgres
     set_env:
       GITEA__database__DB_TYPE: postgres
+      # Gitea folds host and port into one setting; the shipped catalog entry
+      # binds $host alone (see #456). Keep the documented pair here.
       GITEA__database__HOST: ${host}:${port}
       GITEA__database__NAME: $name
       GITEA__database__USER: $user
