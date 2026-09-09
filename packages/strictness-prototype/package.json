@@ -1,0 +1,23 @@
+{
+  "name": "@launchfile/strictness-prototype",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:dependencies": "bun run --cwd ../../sdk build && bun run --cwd ../../providers/docker build && bun run --cwd ../../providers/aws build && bun run --cwd ../../providers/macos-dev build",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "verify": "bun run build:dependencies && bun run typecheck && bun run test",
+    "demo": "bun run src/demo.ts",
+    "plan": "bun run src/cli.ts"
+  },
+  "dependencies": {
+    "@launchfile/aws": "workspace:*",
+    "@launchfile/docker": "workspace:*",
+    "@launchfile/macos-dev": "workspace:*",
+    "@launchfile/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "typescript": "^7.0.2"
+  }
+}
