@@ -10,6 +10,7 @@
  */
 
 import { launchUp, launchDown, launchStatus, launchEnv } from "./provider.js";
+import { parseComponentsFlag, selectorRefusal } from "./cli-args.js";
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -22,28 +23,17 @@ function getArg(index: number): string | undefined {
 	return args[index];
 }
 
-/**
- * The D-41 component selector, or undefined when no name is given — an absent
- * flag and an empty value both mean every component. Comma-separated and
- * repeatable forms compose. The unified `launchfile` CLI accepts the same
- * spelling: both entry points must reach `selectionClosure` with the same
- * names, or one Launchfile yields two running topologies (P-5).
- */
+/** The D-41 component selector for this invocation. */
 function componentsFlag(): string[] | undefined {
-	const names: string[] = [];
-	const inlinePrefix = "--components=";
-	for (let i = 0; i < args.length; i++) {
-		const arg = args[i]!;
-		let raw: string | undefined;
-		if (arg === "--components") raw = args[i + 1];
-		else if (arg.startsWith(inlinePrefix)) raw = arg.slice(inlinePrefix.length);
-		if (raw === undefined) continue;
-		for (const part of raw.split(",")) {
-			const name = part.trim();
-			if (name.length > 0 && !names.includes(name)) names.push(name);
-		}
-	}
-	return names.length > 0 ? names : undefined;
+	return parseComponentsFlag(args);
+}
+
+/** Exit 1 when the selector reaches a verb that acts on the whole deployment. */
+function refuseSelector(verb: string, action: string): void {
+	const lines = selectorRefusal(args, verb, action);
+	if (lines === undefined) return;
+	for (const line of lines) console.error(line);
+	process.exit(1);
 }
 
 async function main(): Promise<void> {
@@ -59,12 +49,14 @@ async function main(): Promise<void> {
 			break;
 
 		case "down":
+			refuseSelector("down", "stops the whole deployment");
 			await launchDown({
 				destroy: hasFlag("destroy"),
 			});
 			break;
 
 		case "status":
+			refuseSelector("status", "reports the whole deployment");
 			await launchStatus();
 			break;
 
