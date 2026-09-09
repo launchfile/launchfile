@@ -42,7 +42,7 @@ import {
 	usePropertyKeys,
 	withCoveredUses,
 } from "./resource-uses.js";
-import { stringify } from "yaml";
+import { Scalar, stringify } from "yaml";
 import {
 	computeAppContext,
 	HTTPS_ORIGIN,
@@ -135,6 +135,14 @@ function generatePort(): string {
 	const limit = Math.floor(0x1_0000_0000 / range) * range;
 	while (buf[0]! >= limit) crypto.getRandomValues(buf);
 	return String(10_000 + (buf[0]! % range));
+}
+
+// Forces double quotes on an emitted scalar. Compose values that are YAML 1.1
+// booleans (`no`, `yes`, `on`, `off`) round-trip as strings only when quoted.
+function quotedScalar(value: string): Scalar<string> {
+	const scalar = new Scalar(value);
+	scalar.type = Scalar.QUOTE_DOUBLE;
+	return scalar;
 }
 
 // --- requires.config handling ---
@@ -1416,8 +1424,14 @@ export function launchToCompose(
 		}
 
 		if (component.schedule) {
+			// The restart clause is only true when the provider chose the policy.
+			// With an explicit `restart:` the author owns it, and claiming
+			// otherwise would make the warning false.
+			const restartClause = component.restart
+				? ""
+				: '; it runs once with `restart: "no"`, so the command is not re-run on exit';
 			warnings.push(
-				`${componentName}: declares a schedule (\`${component.schedule}\`) — this provider will not run it on a timer; if the component does not schedule itself, the job will not run`,
+				`${componentName}: declares a schedule (\`${component.schedule}\`) — this provider will not run it on a timer${restartClause}; if the component does not schedule itself, the job will not run`,
 			);
 		}
 
@@ -1854,11 +1868,15 @@ export function launchToCompose(
 			}
 		}
 
-		if (component.restart) {
-			service.restart = component.restart;
-		} else {
-			service.restart = "unless-stopped";
-		}
+		// A component carrying `schedule:` declares a one-shot job body, not a
+		// daemon. `unless-stopped` re-runs that body on every clean exit, so the
+		// job repeats in a backoff loop instead of running once (D-next). An
+		// explicit `restart:` always wins — a self-scheduling daemon stays
+		// authorable.
+		const restart =
+			component.restart ?? (component.schedule ? "no" : "unless-stopped");
+		// `no` is quoted: a YAML 1.1 loader reads the bare token as boolean false.
+		service.restart = restart === "no" ? quotedScalar("no") : restart;
 
 		services[serviceName] = service;
 		componentServices[componentName] = serviceName;
