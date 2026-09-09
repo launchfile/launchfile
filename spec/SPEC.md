@@ -161,6 +161,16 @@ Declares what network endpoints a component exposes. Value is an array of object
 | `exposed` | `boolean` | no | `false` | Whether the port is reachable from outside the host. Most components in a multi-component app are internal services — only frontends and API gateways typically need `exposed: true`. |
 | `spec` | `map<string, string>` | no | -- | API spec references (e.g. `openapi: file:docs/openapi.yaml`) |
 
+Each `provides` entry's `protocol` describes what that component's own listener
+speaks on that entry's `port`, in the configuration this Launchfile describes. It
+never describes a public endpoint's scheme. A provider may publish an `https://`
+URL while forwarding cleartext HTTP to a component declaring `protocol: http`;
+that is not a mismatch and no tool may report it as one. The app's primary public
+scheme is `$app.scheme`, derived from `$app.url`; other published endpoints have
+no declared public address (D-58 rule 4). Declaring one listener configuration
+says nothing about the other configurations an app supports — a consumer MUST NOT
+infer from `protocol: http` that a component cannot be configured to serve TLS.
+
 ```yaml
 provides:
   - name: api
