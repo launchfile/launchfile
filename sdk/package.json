@@ -23,6 +23,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && mkdir -p schema && cp ../spec/schema/launchfile.schema.json ../spec/schema/resource-properties.json schema/",
+    "check:exports": "bun run scripts/check-readme-exports.ts",
+    "pretest": "bun run check:exports",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",

@@ -18,18 +18,10 @@ bun run build      # Compile to dist/
 
 ## Public API
 
-```typescript
-import {
-  readLaunch,       // Parse YAML string → NormalizedLaunch
-  validateLaunch,   // Validate parsed object → NormalizedLaunch
-  writeLaunch,      // NormalizedLaunch → compact YAML string
-  parseExpression,  // Parse $prop expression → AST
-  resolveExpression,// Resolve expression against context → string
-  isExpression,     // Check if string contains $ references
-  parseDotPath,     // Parse "a.b.c" → ["a", "b", "c"]
-  LaunchSchema,     // Zod schema for validation
-} from "launchfile";
-```
+See [`README.md`](./README.md) → "API" for the full, checked list. Every value
+export of `src/index.ts` is a row there or an explicit exclusion in
+`scripts/check-readme-exports.ts` — `bun run check:exports` fails the build if
+the two go out of sync, so this file doesn't keep a second copy of the list.
 
 ## Architecture
 
