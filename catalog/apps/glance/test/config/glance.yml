@@ -1,0 +1,4 @@
+pages:
+  - name: Home
+    columns:
+      - size: full
