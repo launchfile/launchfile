@@ -37,3 +37,17 @@ it("does not expose raw YAML or a stack when parsing fails before redaction regi
     rmdirSync(directory);
   }
 });
+it("refuses foreign contracts before strict policy can report success", () => {
+  const directory = mkdtempSync(join(tmpdir(), "strictness-foreign-"));
+  const path = join(directory, "Launchfile");
+  writeFileSync(path, "name: foreign\nimage: example/app\nvariants: {}\n");
+  try {
+    const result = Bun.spawnSync([process.execPath, "run", "src/cli.ts", "docker", path, "--strict"], { cwd });
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout.toString()).toBe("");
+    expect(result.stderr.toString()).toContain("require their separate demonstrations");
+  } finally {
+    unlinkSync(path);
+    rmdirSync(directory);
+  }
+});

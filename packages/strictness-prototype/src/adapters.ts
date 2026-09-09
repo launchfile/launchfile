@@ -48,6 +48,8 @@ function refusedHosts(launch: NormalizedLaunch): Diagnostic[] {
  * These sidecar adapters exercise actual provider functions but do not install a
  * flag in any provider. A production change must emit these records natively at
  * the source of each gap, then route all three lifecycles through the policy.
+ * The caller owns normalization; use readStrictnessLaunch before this boundary
+ * when accepting raw YAML so sibling proposal contracts cannot be discarded.
  */
 export function observe(provider: Provider, launch: NormalizedLaunch): Observation {
   let original: Observation["original"];
