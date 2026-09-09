@@ -145,6 +145,8 @@ export interface EnvVar {
 	generator?: Generator;
 	/** Whether this value should be stored in a secrets manager */
 	sensitive?: boolean;
+	/** Example value showing expected format (informational, D-31) */
+	example?: string;
 }
 
 // --- Build ---
@@ -398,6 +400,7 @@ export interface NormalizedEnvVar {
 	required?: boolean;
 	generator?: Generator;
 	sensitive?: boolean;
+	example?: string;
 }
 
 /** Fully expanded requirement (no string shorthand) */

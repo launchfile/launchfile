@@ -123,6 +123,22 @@ env:
 		expect(env?.NAME).toEqual({ default: "my-app" });
 	});
 
+	it("reads the D-31 example field the published schema defines", () => {
+		const result = readLaunch(`
+name: my-app
+env:
+  API_KEY:
+    description: The key
+    example: "sk-live-abc123"
+    required: true
+`);
+		expect(result.components.default?.env?.API_KEY).toEqual({
+			description: "The key",
+			example: "sk-live-abc123",
+			required: true,
+		});
+	});
+
 	// Multi-component
 	it("reads multi-component apps", () => {
 		const result = readLaunch(`
@@ -429,6 +445,18 @@ commands:
 		const launch = readLaunch(`name: my-app\nenv:\n  PORT: "8080"`);
 		const yaml = writeLaunch(launch);
 		expect(yaml).toContain("PORT: \"8080\"");
+	});
+
+	it("carries the D-31 example field through parse → serialize", () => {
+		const yaml = `version: launch/v1
+name: my-app
+runtime: node
+env:
+  API_KEY:
+    default: "sk-live-default"
+    example: "sk-live-abc123"
+`;
+		expect(writeLaunch(readLaunch(yaml))).toContain("example: sk-live-abc123");
 	});
 
 	// Keeps object form when extra fields present

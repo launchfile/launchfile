@@ -158,7 +158,8 @@ function denormalizeEnv(
 			!val.label &&
 			!val.required &&
 			!val.generator &&
-			!val.sensitive
+			!val.sensitive &&
+			!val.example
 		) {
 			result[key] = val.default;
 		} else {
@@ -169,6 +170,7 @@ function denormalizeEnv(
 			if (val.required) obj.required = val.required;
 			if (val.generator) obj.generator = val.generator;
 			if (val.sensitive) obj.sensitive = val.sensitive;
+			if (val.example) obj.example = val.example;
 			result[key] = obj;
 		}
 	}
