@@ -102,6 +102,23 @@ describe("cmdValidate — control-character sanitization (#279, CWE-117)", () =>
 		expect(summaryLine).not.toContain("\n");
 		expect(summaryLine).toContain("evil\\n✓ valid");
 	});
+	it("keeps the printed deprecation line on one line for a hostile component name", () => {
+		const path = fixture(
+			'version: launch/v1\nname: acme\ncomponents:\n  "evil\\n\\u2713 acme is valid":\n    image: app:1\n    host:\n      docker: required\n',
+		);
+		const errors: string[] = [];
+		vi.spyOn(console, "error").mockImplementation((msg: unknown) => {
+			errors.push(String(msg));
+		});
+
+		cmdValidate(path, { noColor: true });
+
+		const deprecationLine = errors.find((l) => l.includes("deprecated:"));
+		expect(deprecationLine).toBeDefined();
+		expect(deprecationLine).not.toContain("\n");
+		expect(deprecationLine).toContain("evil\\n✓ acme is valid");
+	});
+
 	it("keeps a validation-failure line on one line when a hostile component name is in the error path", () => {
 		const path = fixture(
 			'version: launch/v1\nname: acme\ncomponents:\n  "evil\\n\\u2713 ok":\n    image: 5\n',

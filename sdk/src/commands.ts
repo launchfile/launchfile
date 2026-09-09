@@ -269,8 +269,12 @@ export function cmdValidate(path: string, opts: ValidateOpts = {}): ValidateResu
 			for (const d of deprecations) {
 				// P-14: the deprecation is reported with its migration, never
 				// applied. `valid` and the exit code are untouched.
+				// `d.path` embeds the component-map key verbatim
+				// (`deprecations.ts`), so it is sanitized here like every other
+				// file-derived value this command prints (#279, CWE-117). The
+				// other fields are registry literals.
 				console.error(
-					`  ${fmt.yellow("deprecated:")} ${d.path} — deprecated in ${d.deprecated_in}, ` +
+					`  ${fmt.yellow("deprecated:")} ${stripControlInline(d.path)} — deprecated in ${d.deprecated_in}, ` +
 						`removed in ${d.removed_in}; use ${d.replacement}. ${d.hint}`,
 				);
 			}
