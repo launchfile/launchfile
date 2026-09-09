@@ -83,9 +83,9 @@ Resources (`requires`) have **no source form** — provisioned identically in bo
 
 ## 5. Component selection & `--deps-only`
 
-`up`/`down`/`status`/`dev` accept an optional **component selector** (verb argument, not a file field — D-37).
+`up`/`down`/`status`/`dev` accept an optional **component selector** (verb argument, not a file field — D-37). 🔶 — the reference CLIs implement it on `up`/`dev` only; `down`/`status` refuse a selector rather than accepting it and acting on every component.
 
-The reference CLIs spell the selector as the flag `--components <name>[,<name>…]` on `up`/`dev` (comma-separated, repeatable), not as a trailing positional: `up` already takes a target (a path or catalog slug), so a bare name could not be told apart from it. `--component` (singular) is a different verb's argument — `bootstrap`'s single-component limiter — and the two are not interchangeable; each command refuses the other's spelling rather than parsing it and doing nothing.
+The reference CLIs spell the selector as the flag `--components <name>[,<name>…]` on `up`/`dev` (comma-separated, repeatable), not as a trailing positional: `up` already takes a target (a path or catalog slug), so a bare name could not be told apart from it. `--component` (singular) is a different verb's argument — `bootstrap`'s single-component limiter — and the two are not interchangeable. No verb parses a selector it does not implement and then ignores it: `up`/`dev` refuse `--component`, `bootstrap` refuses `--components`, and `down`/`status` refuse both.
 
 - Selecting a component starts it **plus its transitive downward dependency closure** — its `depends_on` target components and every closure member's `requires` backing services (**D-41**). Selecting nothing acts on all components. ✅ (docker, macos-dev — `selectComponents()` / `selectionClosure()` in the SDK)
 - The closure is **downward only**: `up --components backend` never starts `frontend` (a reverse-dependency) or unrelated components, and **already-running dependencies are left untouched** (idempotent). `depends_on` is honored as a hard prerequisite (D-16), so a selected component's `depends_on` targets come along — they are not left down for the operator to satisfy. A future `--no-deps` opt-out starts only the directly-named components.
