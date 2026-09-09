@@ -14,6 +14,7 @@ export const VALUE_FLAGS: ReadonlySet<string> = new Set([
 	"component",
 	"schema-path",
 	"storage",
+	"url",
 ]);
 
 export function hasFlag(args: readonly string[], flag: string): boolean {

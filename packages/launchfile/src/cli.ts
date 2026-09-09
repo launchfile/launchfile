@@ -61,6 +61,26 @@ function getNameFlag(): string | undefined {
 	return value;
 }
 
+/**
+ * The D-58 publication URL, or undefined when --url was not given. The value
+ * is passed to the provider untouched — normalization and refusal belong to
+ * `normalizeAppUrl`, one implementation for every provider. A `--url` with no
+ * value is an error rather than a silent omission: the provider would resolve
+ * `$app.*` from its own routing answer, which is exactly the wrong public
+ * address the flag exists to correct.
+ */
+function getUrlFlag(): string | undefined {
+	if (!argsFlagPresent(args, "url")) return undefined;
+	const value = getFlagValue("url");
+	if (!value || value.startsWith("-")) {
+		console.error(
+			"--url requires a value, e.g. --url https://notes.example.com",
+		);
+		process.exit(1);
+	}
+	return value;
+}
+
 /** The D-50 `--storage` volume-to-path map, or undefined when the flag is absent. */
 const storageFlag = (): Record<string, string> | undefined => {
 	const values = argsGetFlagValues(args, "storage");
@@ -103,6 +123,10 @@ Options:
                     supply its content; the provider binds it there instead of
                     creating an empty volume. Repeat per volume; spell the key
                     <component>.<volume> where the volume name is ambiguous
+  --url <public-url>
+                   Public URL the app is reached at when a reverse proxy,
+                    tunnel, or edge in front of it owns routing — $app.* then
+                    resolves from it instead of the local address (with up, dev)
   --component <n>  Limit bootstrap to a single component
   --reveal         (bootstrap) Print captures marked \`sensitive\` instead of
                     masking them — they never reach logs or state either way
@@ -118,6 +142,8 @@ Environment:
 Examples:
   launchfile up ghost                Run Ghost from the catalog
   launchfile up                      Run the app in the current directory
+  launchfile up --url https://notes.example.com
+                                     Run it behind your own proxy at that URL
   launchfile diagnose                Explain the last failed launch
   launchfile diagnose --json         The same record, for a script
   launchfile down --destroy          Stop and remove everything
@@ -145,6 +171,7 @@ async function main(): Promise<void> {
 				dryRun: hasFlag("dry-run"),
 				name: getNameFlag(),
 				storage: storageFlag(),
+				url: getUrlFlag(),
 			});
 			break;
 
@@ -158,6 +185,7 @@ async function main(): Promise<void> {
 				dryRun: hasFlag("dry-run"),
 				name: getNameFlag(),
 				storage: storageFlag(),
+				url: getUrlFlag(),
 			});
 			break;
 
