@@ -25,6 +25,17 @@ const LOCKFILE_ORDER: PackageManager[] = [
 	{ name: "uv", installCommand: "uv sync", lockfile: "uv.lock" },
 ];
 
+/**
+ * Every lockfile name this provider knows, deduplicated. Dependency-change
+ * detection (D-38 on-demand prepare) reads them all rather than only the one
+ * `detectPackageManager` selects: a polyglot component can carry more than one,
+ * and priority order decides which install command to run, not which files
+ * count as dependency inputs.
+ */
+export function lockfileNames(): string[] {
+	return [...new Set(LOCKFILE_ORDER.map((pm) => pm.lockfile))];
+}
+
 async function fileExists(path: string): Promise<boolean> {
 	try {
 		await access(path);
