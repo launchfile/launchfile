@@ -661,6 +661,20 @@ export interface ComposeResult {
 	/** Map of component name → generated compose service name (skipped components absent) */
 	services: Record<string, string>;
 	/**
+	 * Every compose service name the generator emitted, mapped to whether that
+	 * service carries a `healthcheck:` block. Backing services (`requires:`)
+	 * are in here alongside components — compose starts them too, so the gate
+	 * has to classify them.
+	 *
+	 * The health gate reads this instead of inferring the fact from `docker
+	 * compose ps`, whose `Health` field is `""` for BOTH "this service declares
+	 * no check" and "this service declares a check that has not been evaluated
+	 * yet" — the second is what a restarting container reports, and reading it
+	 * as the first passes a crash loop (#325). Derived from the services that
+	 * were actually emitted, so it cannot drift from the YAML above it.
+	 */
+	healthchecks: Record<string, boolean>;
+	/**
 	 * `required:` variables that arrived from neither the Launchfile nor
 	 * `opts.operatorEnv` (D-52, PROVIDERS.md §10 rule 8). Their keys are ABSENT
 	 * from the emitted compose — never `""`, never a substitute.
@@ -1257,6 +1271,12 @@ export function launchToCompose(
 		ports,
 		endpoints,
 		services: componentServices,
+		healthchecks: Object.fromEntries(
+			Object.entries(services).map(([name, service]) => [
+				name,
+				service.healthcheck !== undefined,
+			]),
+		),
 		unsuppliedRequired,
 		storageBinds,
 		unboundOperatorVolumes,
