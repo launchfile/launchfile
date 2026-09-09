@@ -34,6 +34,7 @@ implements the `translate` verb and nothing else (no `up`/`down`/`status`).
 - `cli.ts` — `translate <Launchfile>` → writes `main.tf` + `CONFORMANCE.md`
 - `translate.ts` — the core: `NormalizedLaunch` → Terraform document + a `Conformance` ledger
 - `hcl.ts` — a tiny, pure, tested HCL emitter (blocks, attrs, strings, refs, heredocs)
+- `prior-stack.ts` — reads the output dir (`terraform.tfstate`, then `main.tf`) for the `random_*` types already minted, so a re-translate preserves a secret instead of rotating it (D-49). Types and names only — never a value
 - `gaps.ts` — the `Conformance` ledger + Markdown report rendering
 - `conformance.ts` — sweeps spec examples + catalog apps → aggregate `CONFORMANCE.md`
 - `logger.ts` — pino to stderr (translation is mostly pure, so logging is sparse)
