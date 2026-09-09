@@ -8,6 +8,7 @@
    - The Launchfile
    - A brief description of the app and what services it needs
    - Confirmation that you tested it validates against the schema
+4. Run `cd providers/aws && bun run conformance` and commit the regenerated `providers/aws/CONFORMANCE.md` — the report covers every `catalog/apps/**/Launchfile`, and CI fails when it is stale
 
 ## Launchfile Template
 
@@ -104,7 +105,7 @@ entry, including the ones upstream still patches.
 
 ## Updating an Existing App
 
-If an app's configuration changes (new env vars, different ports, etc.), update the Launchfile and note what changed in the PR description.
+If an app's configuration changes (new env vars, different ports, etc.), update the Launchfile and note what changed in the PR description. Regenerate `providers/aws/CONFORMANCE.md` the same way as for a new app.
 
 ## Reporting Gaps
 
