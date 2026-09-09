@@ -708,6 +708,20 @@ The change is **annotation-only**. No `type`, `enum`, `required`, or `default` u
 
 ---
 
+### D-59: `provides.protocol` describes the component's own listener
+
+**Decision**: Each `provides` entry's `protocol` describes the component's own listener on that entry's `port`, in the configuration represented by the Launchfile. It never describes a public endpoint's scheme. Publishing an HTTPS URL while forwarding cleartext HTTP to a `protocol: http` listener is not a mismatch, and tools must not report it as one. A consumer MUST NOT infer from `protocol: http` that the component cannot be configured to serve TLS. This records the existing meaning, as accepted in [#314](https://github.com/launchfile/launchfile/issues/314#issuecomment-5602689174).
+
+**Why**: The sibling `port` field already names the container port. The same listener/publication boundary appears in [D-33](#d-33-app-prefix-for-platform-injected-app-properties): `$components.<this>.url` describes the component-side address, while `$app.url` describes the public address. [D-35](#d-35-appauthority--appscheme--apptls-promoted-into-the-standard-app-set) derives `$app.scheme` from that public URL, and [D-58](#d-58-orchestrator-supplied-publication-context--app-under-an-owning-orchestrator) rule 4 limits supplied publication context to the primary endpoint; other published endpoints have no declared public address. [D-27](#d-27-exposed-false-by-default)'s publication intent does not turn listener metadata into proxy configuration. This preserves the app/platform boundary ([P-1](#p-1-app-focused-not-infra-focused), [P-11](#p-11-separate-intent-from-execution)) and changes no existing file's meaning ([P-13](#p-13-additive-extensibility)).
+
+**Rejected**: *Reading `protocol` as a public endpoint's scheme* — duplicates `$app.scheme`, fails the [P-1](#p-1-app-focused-not-infra-focused) litmus by changing when the same app moves behind a TLS proxy, and places proxy configuration in the file where [D-5](#d-5-proxy-is-a-platform-concern-not-an-app-concern) and [D-15](#d-15-routing-is-a-deployment-concern-not-an-app-concern) keep it out.
+
+**Not settled**: This decision does not decide whether `protocol` stays required. It creates no way to declare a capability or a TLS requirement, leaving native TLS capability (A), public HTTPS requirements (B), and named application variants (D) in [#314](https://github.com/launchfile/launchfile/issues/314) open and unprejudiced. It gives providers no new obligation; correcting component URLs built from hardcoded `http://` remains [#391](https://github.com/launchfile/launchfile/issues/391)'s scope, and `PROVIDERS.md` is unchanged.
+
+**Limitation**: The enum has no TLS-bearing member alongside `ws` and `grpc`, so a component terminating TLS on a WebSocket listener still cannot express that fact.
+
+---
+
 ## 4. Known Limitations
 
 Each limitation includes the problem, current stance, and future considerations.

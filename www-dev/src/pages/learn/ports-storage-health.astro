@@ -40,7 +40,7 @@ const ghostYaml = ghostYamlRaw.replace(/^#.*\n/gm, "").trim();
 </p>
 
 <ul>
-  <li><strong><code>protocol</code></strong> — What the endpoint speaks: <code>http</code>, <code>https</code>, <code>tcp</code>, or <code>grpc</code>.</li>
+  <li><strong><code>protocol</code></strong> — What your app's own listener speaks on this port: <code>http</code>, <code>https</code>, <code>tcp</code>, <code>udp</code>, <code>grpc</code>, or <code>ws</code>. It is not the scheme a browser shows — that is <code>$app.scheme</code>, which the platform decides.</li>
   <li><strong><code>port</code></strong> — The port number your app listens on inside the container.</li>
   <li><strong><code>bind</code></strong> — Optional. The address to bind to (defaults to <code>0.0.0.0</code>).</li>
   <li><strong><code>exposed</code></strong> — When <code>true</code>, this port is meant to be <GlossaryTip term="exposed" definition="An exposed port is reachable from outside the deployment, not just from other services in the same deployment.">reachable from outside</GlossaryTip> the deployment — your app's public entry point. When <code>false</code> (the default), it's only reachable by other components in the same deployment.</li>
