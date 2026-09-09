@@ -132,8 +132,11 @@ function formatZodErrors(err: unknown): string[] {
 	) {
 		return (err as { issues: Array<{ path: (string | number)[]; message: string }> }).issues.map(
 			(issue) => {
+				// A component name is a `z.record` key, so it reaches the issue path
+				// verbatim from the document. `cmdValidate` prints these lines raw
+				// under "Validation failed" (#279, CWE-117).
 				const path = issue.path.length > 0 ? issue.path.join(".") : "(root)";
-				return `${path}: ${issue.message}`;
+				return stripControlInline(`${path}: ${issue.message}`);
 			},
 		);
 	}
@@ -234,10 +237,19 @@ export function cmdValidate(path: string, opts: ValidateOpts = {}): ValidateResu
 		}
 
 		if (!opts.quiet) {
-			console.log(`${fmt.green("✓")} ${fmt.bold(launch.name)} is valid`);
-			console.log(`  ${fmt.dim("components:")} ${componentNames.join(", ")}`);
+			// Component names are unconstrained map keys (`z.record(z.string(), ...)`)
+			// and a requirement `type:` is any 1-256 character string, so both reach
+			// this line carrying whatever the document author wrote (#279, CWE-117).
+			// `launch.name` is pattern-constrained and cannot, but is wrapped too so
+			// no value printed here is an exception.
+			console.log(`${fmt.green("✓")} ${fmt.bold(stripControlInline(launch.name))} is valid`);
+			console.log(
+				`  ${fmt.dim("components:")} ${componentNames.map(stripControlInline).join(", ")}`,
+			);
 			if (allRequires.length > 0) {
-				console.log(`  ${fmt.dim("requires:")}   ${allRequires.join(", ")}`);
+				console.log(
+					`  ${fmt.dim("requires:")}   ${allRequires.map(stripControlInline).join(", ")}`,
+				);
 			}
 			if (hostCapabilities.length > 0) {
 				// The D-44 privilege-surface audit line — always emitted when any

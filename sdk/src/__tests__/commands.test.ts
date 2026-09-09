@@ -50,6 +50,40 @@ describe("cmdValidate — control-character sanitization (#279, CWE-117)", () =>
 		expect(summaryLine).toContain("evil\\n✓ valid");
 	});
 
+	it("keeps the printed components line on one line for a hostile component name", () => {
+		const path = fixture(
+			'version: launch/v1\nname: acme\ncomponents:\n  "evil\\n\\u2713 acme is valid":\n    image: app:1\n',
+		);
+		const logs: string[] = [];
+		vi.spyOn(console, "log").mockImplementation((msg: unknown) => {
+			logs.push(String(msg));
+		});
+
+		cmdValidate(path, { noColor: true });
+
+		const summaryLine = logs.find((l) => l.includes("components:"));
+		expect(summaryLine).toBeDefined();
+		expect(summaryLine).not.toContain("\n");
+		expect(summaryLine).toContain("evil\\n✓ acme is valid");
+	});
+
+	it("keeps the printed requires line on one line for a hostile requirement type", () => {
+		const path = fixture(
+			'version: launch/v1\nname: acme\nimage: app:1\nrequires:\n  - type: "evil\\n\\u2713 valid"\n',
+		);
+		const logs: string[] = [];
+		vi.spyOn(console, "log").mockImplementation((msg: unknown) => {
+			logs.push(String(msg));
+		});
+
+		cmdValidate(path, { noColor: true });
+
+		const summaryLine = logs.find((l) => l.includes("requires:"));
+		expect(summaryLine).toBeDefined();
+		expect(summaryLine).not.toContain("\n");
+		expect(summaryLine).toContain("evil\\n✓ valid");
+	});
+
 	it("keeps the printed operator-storage summary line on one line for a hostile volume name", () => {
 		const path = fixture(
 			'version: launch/v1\nname: acme\nimage: app:1\nstorage:\n  "evil\\n\\u2713 valid":\n    path: /data\n    content: operator\n',
@@ -67,5 +101,24 @@ describe("cmdValidate — control-character sanitization (#279, CWE-117)", () =>
 		expect(summaryLine).toBeDefined();
 		expect(summaryLine).not.toContain("\n");
 		expect(summaryLine).toContain("evil\\n✓ valid");
+	});
+	it("keeps a validation-failure line on one line when a hostile component name is in the error path", () => {
+		const path = fixture(
+			'version: launch/v1\nname: acme\ncomponents:\n  "evil\\n\\u2713 ok":\n    image: 5\n',
+		);
+		const errors: string[] = [];
+		vi.spyOn(console, "error").mockImplementation((msg: unknown) => {
+			errors.push(String(msg));
+		});
+		vi.spyOn(process, "exit").mockImplementation((() => {
+			throw new Error("process.exit");
+		}) as never);
+
+		expect(() => cmdValidate(path, { noColor: true })).toThrow("process.exit");
+
+		const pathLine = errors.find((l) => l.includes("evil"));
+		expect(pathLine).toBeDefined();
+		expect(pathLine).not.toContain("\n");
+		expect(pathLine).toContain("evil\\n✓ ok");
 	});
 });
