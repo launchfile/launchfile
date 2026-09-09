@@ -167,7 +167,7 @@ never describes a public endpoint's scheme. A provider may publish an `https://`
 URL while forwarding cleartext HTTP to a component declaring `protocol: http`;
 that is not a mismatch and no tool may report it as one. The app's primary public
 scheme is `$app.scheme`, derived from `$app.url`; other published endpoints have
-no declared public address (D-58 rule 4). Declaring one listener configuration
+no declared public address ([D-58](DESIGN.md#d-58-orchestrator-supplied-publication-context--app-under-an-owning-orchestrator) rule 4). Declaring one listener configuration
 says nothing about the other configurations an app supports — a consumer MUST NOT
 infer from `protocol: http` that a component cannot be configured to serve TLS.
 
