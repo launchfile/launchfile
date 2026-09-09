@@ -181,6 +181,19 @@ ${extra}`);
 		});
 	});
 
+	it('quotes an explicit restart: "no" on a component with no schedule', () => {
+		const plain = readLaunch(`
+name: one-shot
+image: alpine:3
+restart: "no"
+commands:
+  start: "sh -c 'echo tick'"
+`);
+		// Read the raw YAML: yaml@2 resolves the bare token `no` to the string
+		// "no", so the parsed value cannot tell quoted from unquoted.
+		expect(launchToCompose(plain).yaml).toContain('restart: "no"');
+	});
+
 	it("adds a bridge network", async () => {
 		const launch = await loadApp("audiobookshelf");
 		const result = launchToCompose(launch);
