@@ -67,9 +67,31 @@ export interface BootstrapResult {
  * CLI tools that detect a TTY will emit color codes that would otherwise
  * break simple patterns like `https?://\S+`.
  */
-function stripAnsi(s: string): string {
+// CSI, OSC, and the single-character escapes a terminal writes into captured
+// output. Every repetition is bounded, and the OSC payload stops at ESC.
+//
+// Unbounded, the OSC branch `\][^\u0007]*` is quadratic: each `ESC ]` in the
+// input rescans the whole remainder looking for a BEL that a hostile log line
+// never supplies, and bootstrap stdout is exactly where a hostile log line
+// arrives (CWE-1333). A run of 40 000 `ESC ]` pairs took 1.8s; bounded it takes
+// 0ms.
+//
+// Excluding ESC from the payload also closes a swallow: ECMA-48 ends an OSC
+// string at BEL or ST (`ESC \`), and nothing between may contain ESC. The
+// unbounded class ran straight past an ST into the next OSC, so an OSC 8
+// hyperlink lost its link text — and with it the URL a `capture` pattern is
+// looking for.
+//
+// The bounds exclude nothing a terminal writes. A CSI carries a handful of
+// parameter bytes (`ESC [ 38;2;255;255;255 m` is 18) and ECMA-48 permits only a
+// few intermediates; an OSC 8 hyperlink URL is the longest realistic payload and
+// sits far under 1024.
+const ANSI_ESCAPE =
 	// biome-ignore lint/suspicious/noControlCharactersInRegex: intentional ANSI match
-	return s.replace(/\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07/g, "");
+	/\u001B(?:\[[0-9;?]{0,32}[ -/]{0,8}[@-~]|\][^\u0007\u001B]{0,1024}(?:\u0007|\u001B\\)|[@-Z\\-_])/g;
+
+function stripAnsi(s: string): string {
+	return s.replace(ANSI_ESCAPE, "");
 }
 
 /**
