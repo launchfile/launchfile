@@ -253,10 +253,11 @@ jobs:
               + glob.glob('.github/workflows/*.yaml')
           )
           failed = []
+          parsed = {}
           for f in files:
               try:
                   with open(f) as fh:
-                      yaml.safe_load(fh)
+                      parsed[f] = yaml.safe_load(fh)
                   print(f'  ok  {f}')
               except yaml.YAMLError as e:
                   failed.append((f, str(e)))
@@ -265,4 +266,75 @@ jobs:
               print(f'\n{len(failed)} workflow file(s) failed YAML validation', file=sys.stderr)
               sys.exit(1)
           print(f'\n{len(files)} workflow file(s) parsed cleanly')
+
+          # ci-required is the only CI context the `Protect main` ruleset
+          # requires, and it gates exactly what it waits on. A job missing from
+          # its `needs:` list runs, reports, and blocks nothing. Assert the list
+          # names every other job in ci.yml, in both directions.
+          ci = parsed.get('.github/workflows/ci.yml') or {}
+          jobs = ci.get('jobs') or {}
+          if 'ci-required' not in jobs:
+              print('::error::ci.yml has no ci-required job', file=sys.stderr)
+              sys.exit(1)
+          needs = (jobs['ci-required'] or {}).get('needs') or []
+          if isinstance(needs, str):
+              needs = [needs]
+          expected = set(jobs) - {'ci-required'}
+          missing = sorted(expected - set(needs))
+          extra = sorted(set(needs) - expected)
+          for j in missing:
+              print(
+                  f"::error::ci.yml job '{j}' is missing from ci-required's "
+                  'needs: — it would gate nothing',
+                  file=sys.stderr,
+              )
+          for j in extra:
+              print(
+                  f"::error::ci-required needs '{j}', which is not a job in "
+                  'ci.yml',
+                  file=sys.stderr,
+              )
+          if missing or extra:
+              sys.exit(1)
+          print(f'ci-required waits on all {len(expected)} other ci.yml jobs')
           PY
+
+  # The single required status check on the `Protect main` ruleset. A ruleset
+  # matches a required check by its rendered name, so requiring the jobs
+  # directly makes merge policy track matrix membership: add a matrix entry and
+  # it reports a name nothing requires, remove one and a required name never
+  # reports at all. This job's name never changes, so the ruleset needs one
+  # context and this workflow decides what "CI passed" means. The workflow-lint
+  # job asserts the needs: list below names every other job here.
+  ci-required:
+    name: CI required
+    needs:
+      - sdk
+      - providers
+      - aws-terraform-validate
+      - cli
+      - catalog
+      - websites
+      - spec-citations
+      - workflow-lint
+    # Without always() this job is skipped the moment anything it needs fails,
+    # and a skipped required check never reports — the merge box would wait for
+    # a result that is not coming.
+    if: always()
+    runs-on: ubuntu-latest
+    # Reads no code, calls no API.
+    permissions: {}
+    steps:
+      - name: Fail unless every CI job succeeded
+        env:
+          # Through env, not interpolated into the script body. A result is one
+          # of success / failure / cancelled / skipped.
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "upstream job results: $RESULTS"
+          for result in $RESULTS; do
+            if [ "$result" != "success" ]; then
+              echo "::error::A required CI job reported '$result' (expected success)."
+              exit 1
+            fi
+          done
