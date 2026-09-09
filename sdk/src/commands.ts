@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { lintDeprecations } from "./deprecations.js";
 import type { Deprecation } from "./deprecations.js";
+import { stripControlInline } from "./errors.js";
 import { lintLaunch, lintUnknownStorageKeys } from "./lint.js";
 import { parseLaunchYaml, readLaunch, validateLaunch } from "./reader.js";
 import type { NormalizedLaunch } from "./types.js";
@@ -202,13 +203,17 @@ export function cmdValidate(path: string, opts: ValidateOpts = {}): ValidateResu
 		const allRequires = collectRequires(launch);
 		const hostCapabilities = collectHostCapabilities(launch);
 		const operatorStorage = collectOperatorStorage(launch);
+		// Every emitter embeds strings taken verbatim from the parsed (or raw)
+		// YAML document (resource types, storage keys, component names). A
+		// single sanitization pass here — rather than per-emitter — covers the
+		// whole lint surface, and any future check, for free (#279, CWE-117).
 		const warnings = [
 			...lintLaunch(launch, {
 				detached: opts.detached,
 				suppressPortabilityWarnings: envFlag("LAUNCHFILE_NO_PORTABILITY_WARNINGS"),
 			}),
 			...lintUnknownStorageKeys(raw),
-		];
+		].map(stripControlInline);
 		const deprecations = lintDeprecations(launch);
 
 		const result: ValidateResult = {
@@ -238,7 +243,7 @@ export function cmdValidate(path: string, opts: ValidateOpts = {}): ValidateResu
 				// The D-44 privilege-surface audit line — always emitted when any
 				// capability is requested, in either spelling (entry or legacy block).
 				console.log(
-					`  ${fmt.dim("host capabilities requested:")} ${hostCapabilities.join(", ")}`,
+					`  ${fmt.dim("host capabilities requested:")} ${hostCapabilities.map(stripControlInline).join(", ")}`,
 				);
 			}
 			if (operatorStorage.length > 0) {
@@ -246,7 +251,7 @@ export function cmdValidate(path: string, opts: ValidateOpts = {}): ValidateResu
 				// D-44 line above. The grant or refusal itself is a launch-time
 				// fact the provider reports (PROVIDERS.md §11).
 				console.log(
-					`  ${fmt.dim("operator-supplied storage:")}   ${operatorStorage.join(", ")}`,
+					`  ${fmt.dim("operator-supplied storage:")}   ${operatorStorage.map(stripControlInline).join(", ")}`,
 				);
 			}
 			for (const d of deprecations) {

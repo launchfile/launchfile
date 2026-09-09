@@ -223,6 +223,23 @@ export function stripControl(text: string): string {
 	return text.replace(ANSI_ESCAPE, "").replace(CONTROL_CHARS, "");
 }
 
+/**
+ * Sanitize file-derived text for a diagnostic that must render as exactly one
+ * line — a lint warning, or a CLI summary line built from resource types,
+ * storage keys, or component names taken verbatim from a parsed Launchfile.
+ * `stripControl` alone is insufficient here: it deliberately keeps `\t` and
+ * `\n` for multi-line command-output tails (see above), but a single-line
+ * diagnostic has no legitimate embedded newline — a hostile key containing one
+ * (`"evil\n✓ valid"`) would otherwise render as a second, trusted-looking line
+ * of terminal output (CWE-117). Escaping `\t`/`\n` into their visible two-
+ * character form closes that without dropping any information.
+ */
+export function stripControlInline(text: string): string {
+	return stripControl(text).replace(/[\t\n]/g, (ch) =>
+		ch === "\n" ? "\\n" : "\\t",
+	);
+}
+
 /** Keep the last `max` lines of `text`. */
 export function tailLines(text: string, max: number = TAIL_LINES): string {
 	const lines = text.split("\n");

@@ -35,6 +35,7 @@ export {
 	type Redactor,
 	slotForCommand,
 	stripControl,
+	stripControlInline,
 	TAIL_LINES,
 	tailLines,
 	type UnsuppliedRequirement,
