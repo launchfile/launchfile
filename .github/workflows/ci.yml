@@ -102,6 +102,47 @@ jobs:
       - name: Verify dist/cli.js exists
         run: test -f packages/launchfile/dist/cli.js || (echo "dist/cli.js missing!" && exit 1)
 
+  # The catalog's own gate, in two halves that share one checkout.
+  #
+  # `catalog/test` is a Vitest suite for the Launchfile → compose harness, and
+  # `validate-catalog` is static analysis of every catalog Launchfile — schema
+  # plus the image-reference policy in catalog/CONTRIBUTING.md. Neither pulls an
+  # image or starts a container; the docker-compose runs stay local.
+  #
+  # No `needs:` edge. Jobs share no filesystem, so `needs:` would reuse nothing
+  # and only add queue latency — the same reasoning the aws-terraform-validate
+  # job records above. This job builds the SDK and the Docker provider itself:
+  # catalog/test's harness imports providers/docker/src/app-url.ts, which
+  # imports the bare package @launchfile/sdk and resolves only to sdk/dist.
+  catalog:
+    name: Catalog
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The two WARNING checks only look at Launchfiles this change adds or
+          # edits, so the base commit has to be in history to diff against.
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - name: Build SDK and Docker provider (local dependencies)
+        run: |
+          cd sdk && bun install --frozen-lockfile && bun run build
+          cd ../providers/docker && bun install --frozen-lockfile && bun run build
+      - run: cd catalog/test && bun install --frozen-lockfile
+      # Vitest strips types instead of checking them, and this harness reaches
+      # into sdk/src and providers/docker/src by relative path — without a
+      # typecheck a cross-package signature change breaks silently.
+      - run: cd catalog/test && bun run typecheck
+      # `bun run test`, never `bun test`: catalog/test/bunfig.toml preloads a
+      # guard that exits 1 when Bun's built-in runner is used instead of Vitest.
+      - run: cd catalog/test && bun run test
+      - name: Validate catalog Launchfiles and image references
+        env:
+          # The PR's merge base on a pull_request; the previous main tip on a
+          # push. Read through env, not interpolated into the script body.
+          CATALOG_DIFF_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: cd catalog/test && bun run validate-catalog
+
   websites:
     name: "Website (${{ matrix.site }})"
     runs-on: ubuntu-latest
