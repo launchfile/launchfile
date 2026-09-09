@@ -4,9 +4,9 @@
 
 ## Summary
 
-- **84** Launchfile(s) translated
-- **163** field mappings
-- **90** gaps logged (never silently dropped)
+- **85** Launchfile(s) translated
+- **164** field mappings
+- **91** gaps logged (never silently dropped)
 - **8** specializations safely ignored
 
 ### Distinct gaps
@@ -1063,6 +1063,18 @@
 
 - `build.dockerfile/target/args` _(backend)_: OCI specialization ignored — EC2 builds from the portable runtime+commands contract (D-40 / RFC C)
 - `build.dockerfile/target/args` _(frontend)_: OCI specialization ignored — EC2 builds from the portable runtime+commands contract (D-40 / RFC C)
+
+### media-server
+
+> Source: `spec/examples/operator-content.yaml` — 1 mapped, 1 gap(s), 0 ignored
+
+| Launchfile field | → Terraform | Component |
+|---|---|---|
+| `provides.exposed` | `aws_lb (ALB)` | — |
+
+**Gaps**
+
+- 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
 
 ### my-app
 
