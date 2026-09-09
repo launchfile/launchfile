@@ -1,5 +1,5 @@
 ---
-"@launchfile/docker": patch
+"@launchfile/docker": minor
 ---
 
 Warn when postgres `config.extensions` cannot apply. The extensions reach postgres through an init script mounted into `/docker-entrypoint-initdb.d/`, and postgres reads that directory only while it initializes an empty data directory. Since the data directory moved onto the named volume that `launchfile down` preserves, an extension added to a deployment that has already run was never created — the image swapped to `pgvector/pgvector:pg16`, the SQL never ran, and nothing said so until the app's first query failed.
