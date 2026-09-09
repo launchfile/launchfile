@@ -15,6 +15,7 @@ import {
 	isLaunchError,
 	type LaunchPhase,
 	MissingOperatorStoragePathError,
+	sourceErrorKey,
 	UnboundOperatorStorageError,
 } from "@launchfile/sdk";
 import { detectProvider } from "../detect-provider.js";
@@ -263,7 +264,14 @@ export async function handleUp(
 			throw err;
 		}
 
+		// Retention (#44 §H), same rule as the docker branch: the previous record
+		// for this project directory describes a launch that no longer exists.
+		// `@launchfile/macos-dev` keys its records by project directory — one
+		// instance per directory is the provider's identity model — and derives
+		// that key from the same SDK helper, so the two cannot drift.
 		if (!flags.dryRun) {
+			await clearLaunchErrorRecord(sourceErrorKey(projectDir), recordDir);
+
 			await record({
 				appName: inferAppName(upTarget.value),
 				provider: "macos",

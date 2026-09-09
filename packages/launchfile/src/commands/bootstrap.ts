@@ -17,7 +17,11 @@ import {
 	dockerLaunchError,
 	loadDockerSource,
 } from "@launchfile/docker";
-import { type NormalizedLaunch, readLaunch } from "@launchfile/sdk";
+import {
+	type NormalizedLaunch,
+	readLaunch,
+	sourceErrorKey,
+} from "@launchfile/sdk";
 import { resolveDeploymentTarget } from "../resolve-target.js";
 import { writeLaunchErrorRecord } from "../state/errors.js";
 import { dockerSlugFor, type DeploymentEntry } from "../state/index.js";
@@ -70,14 +74,36 @@ export async function handleBootstrap(
 
 	if (deployment.entry.provider === "macos") {
 		try {
-			const { launchBootstrap } = await import("@launchfile/macos-dev");
-			const results = await launchBootstrap({
-				projectDir: deployment.entry.source,
+			const macos = await import("@launchfile/macos-dev");
+			const projectDir = deployment.entry.source;
+			const results = await macos.launchBootstrap({
+				projectDir,
 				component: flags.component,
 			});
 			if (results.length === 0) process.exit(0);
-			const anyFailed = results.some((r) => !r.ok);
-			process.exit(anyFailed ? 1 : 0);
+			const failed = results.find((r) => !r.ok);
+			if (failed) {
+				// Redaction runs in this process, against the macos provider's live
+				// registry — hence the provider's own error builder rather than the
+				// docker one a few lines up (#44).
+				const content = await readFile(join(projectDir, "Launchfile"), "utf-8");
+				const launch = readLaunch(content);
+				const error = macos.macosLaunchError({
+					phase: "bootstrap",
+					key: sourceErrorKey(projectDir),
+					app: launch.name,
+					component: failed.component,
+					message: `bootstrap [${failed.component}] failed with exit code ${failed.exitCode}`,
+					command: failed.command,
+					exitCode: failed.exitCode,
+					stdout: failed.stdout,
+					stderr: failed.stderr,
+					env: macos.declaredEnvKeys(launch, failed.component),
+				});
+				await writeLaunchErrorRecord(error.context).catch(() => undefined);
+				console.error("  Captured. Run `launchfile diagnose` for the full context.");
+			}
+			process.exit(failed ? 1 : 0);
 		} catch (err) {
 			console.error(`Error: ${(err as Error).message}`);
 			process.exit(1);

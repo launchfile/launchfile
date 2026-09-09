@@ -50,4 +50,30 @@ declare module "@launchfile/macos-dev" {
 		component?: string;
 		projectDir?: string;
 	}): Promise<BootstrapResult[]>;
+
+	/**
+	 * Build a redacted `LaunchError` against this provider's live secret
+	 * registry (#44). The CLI calls it for a failure the provider reports
+	 * instead of throwing — a bootstrap failure, which D-48 keeps out of deploy
+	 * status — so the scrub still happens in the process that ran the command.
+	 */
+	export function macosLaunchError(input: {
+		phase: import("@launchfile/sdk").LaunchPhase;
+		key: string;
+		message: string;
+		app?: string;
+		slug?: string;
+		component?: string;
+		command?: string;
+		exitCode?: number;
+		stdout?: string;
+		stderr?: string;
+		env?: Readonly<Record<string, unknown>>;
+	}): import("@launchfile/sdk").LaunchError;
+
+	/** Declared env var **names** — never a value (see `EnvKeyList`). */
+	export function declaredEnvKeys(
+		launch: import("@launchfile/sdk").NormalizedLaunch,
+		component?: string,
+	): Record<string, 0>;
 }
