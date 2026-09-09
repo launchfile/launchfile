@@ -29,6 +29,14 @@ export {
 	tfName,
 } from "./hcl.js";
 export {
+	GENERATOR_RESOURCES,
+	type GeneratorResource,
+	type PriorStack,
+	readPriorStack,
+} from "./prior-stack.js";
+export {
+	type GeneratorSite,
+	SecretRotationError,
 	type TranslateOptions,
 	type TranslateResult,
 	translate,

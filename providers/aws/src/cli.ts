@@ -14,7 +14,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { readLaunch } from "@launchfile/sdk";
 import { type ConformanceEntry, renderConformanceReport } from "./gaps.js";
-import { translate } from "./translate.js";
+import { readPriorStack } from "./prior-stack.js";
+import { SecretRotationError, translate } from "./translate.js";
 
 function flag(args: string[], name: string): string | undefined {
 	const i = args.indexOf(`--${name}`);
@@ -43,7 +44,27 @@ function main(): void {
 
 	const yaml = readFileSync(resolve(file), "utf8");
 	const launch = readLaunch(yaml);
-	const { hcl, conformance } = translate(launch, region ? { region } : {});
+
+	// What the output directory already holds decides whether a `generator:`
+	// value is minted fresh or preserved. Only resource types and names are
+	// read — never a value (prior-stack.ts).
+	const priorStack = readPriorStack(outDir);
+
+	let result: ReturnType<typeof translate>;
+	try {
+		result = translate(launch, {
+			...(region ? { region } : {}),
+			...(priorStack ? { priorStack } : {}),
+		});
+	} catch (err) {
+		if (err instanceof SecretRotationError) {
+			// Refuse rather than emit HCL whose apply destroys a live secret.
+			process.stderr.write(`${err.message}\n`);
+			process.exit(1);
+		}
+		throw err;
+	}
+	const { hcl, conformance, preservedSecrets } = result;
 
 	mkdirSync(outDir, { recursive: true });
 	writeFileSync(resolve(outDir, "main.tf"), hcl);
@@ -60,7 +81,11 @@ function main(): void {
 
 	process.stdout.write(
 		`Translated ${launch.name} → ${outDir}/main.tf\n` +
-			`  ${conformance.mapped.length} mapped · ${conformance.gaps.length} gap(s) · ${conformance.ignored.length} ignored\n`,
+			`  ${conformance.mapped.length} mapped · ${conformance.gaps.length} gap(s) · ${conformance.ignored.length} ignored\n` +
+			(preservedSecrets.length > 0
+				? `  ${preservedSecrets.length} secret(s) preserved from the existing stack (pre-D-47 shape kept so the deployed value survives):\n` +
+					preservedSecrets.map((a) => `    ${a}\n`).join("")
+				: ""),
 	);
 }
 
