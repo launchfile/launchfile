@@ -102,9 +102,11 @@ npx launchfile up --native
   <Code lang="bash" theme="github-dark" code={`npx launchfile diagnose --json | jq .phase
 # "release"`} />
 
-  <p><code>--json</code> writes the raw record to stdout and nothing else, so it pipes cleanly. Records live at <code>~/.launchfile/errors/</code>, one per app, and are cleared by the next successful <code>up</code>.</p>
+  <p><code>--json</code> writes the raw record to stdout and nothing else, so it pipes cleanly. Records live at <code>~/.launchfile/errors/</code> and are cleared by the next successful <code>up</code>, or by <code>down --destroy</code>.</p>
 
-  <p>One failure has its own phase: <code>health</code>. A component that never becomes healthy fails the launch, so <code>up</code> exits non-zero and names the components that never passed. Their containers stay running so you can look at them, and the deployment is listed as <code>unhealthy</code> — <code>launchfile status</code>, <code>launchfile logs</code>, and <code>launchfile down</code> all reach it. A component that declares no health check counts as healthy once its container is running.</p>
+  <p>Both providers record failures. A Docker launch files its record under the app; a <code>--native</code> launch files one per <em>project directory</em>, because the native provider runs one instance per directory — two checkouts of the same app keep separate diagnoses.</p>
+
+  <p>One failure has its own phase: <code>health</code>, and it belongs to the Docker provider — the native provider has no launch-wide health gate. A component that never becomes healthy fails the launch, so <code>up</code> exits non-zero and names the components that never passed. Their containers stay running so you can look at them, and the deployment is listed as <code>unhealthy</code> — <code>launchfile status</code>, <code>launchfile logs</code>, and <code>launchfile down</code> all reach it. A component that declares no health check counts as healthy once its container is running.</p>
 
   <h2 id="next-steps">Next steps</h2>
 
