@@ -10,6 +10,7 @@ import { join } from "node:path";
 import {
 	type AppEndpointProperties,
 	deriveAppUrlProperties,
+	endpointProperties,
 	resolveExpression,
 	isExpression,
 	type NormalizedComponent,
@@ -124,12 +125,39 @@ export function computeAppEndpoints(
 }
 
 /**
+ * The `provides` entries this provider can name a reachable port for, or
+ * `undefined` when it can name none.
+ *
+ * macos-dev allocates exactly one host port per component and hands it to the
+ * process as `PORT`. That port belongs to whichever declared endpoint the
+ * allocator anchored on; the rest are unallocated, and the process binds the
+ * ports they declare. When the component's preferred port was taken, the
+ * allocator moves it to a free port outside the declared set — then no declared
+ * endpoint can be named at that port, so the component reports no per-endpoint
+ * properties rather than an endpoint address nothing listens on (L-4). A
+ * container provider has no such collapse: it binds every declared port.
+ */
+function allocatedEndpoints(
+	component: NormalizedComponent | undefined,
+	allocatedPort: number,
+): NormalizedComponent["provides"] {
+	const provides = component?.provides;
+	if (!provides?.some((entry) => entry.port === allocatedPort)) return undefined;
+	return provides;
+}
+
+/**
  * Build a ResolverContext from provisioned resources, component ports,
  * secrets, (D-33) the platform-injected app properties, (D-63) the
  * per-endpoint map — `computeAppEndpoints`, which under this provider is
  * every named published endpoint resolving `""` — and the `uses` each
  * resource entry declares (`declaredUses`), which the resolver reads to
  * resolve `$<resource>.<use>.<property>` strictly.
+ *
+ * `declared` carries the declared components, whose `provides` entries are
+ * what the named-endpoint form `$components.<name>.<endpoint>.<prop>`
+ * (D-6, D-66) resolves against. Omit it and only the primary
+ * `url`/`host`/`port` are registered.
  */
 export function buildResolverContext(
 	resourceMap: Record<string, ResourceProperties>,
@@ -138,6 +166,7 @@ export function buildResolverContext(
 	app: Record<string, string | number>,
 	appEndpoints: Record<string, AppEndpointProperties> = {},
 	uses: Record<string, readonly string[]> = {},
+	declared?: Record<string, NormalizedComponent>,
 ): ResolverContext {
 	// Build components map from ports
 	const components: Record<string, Record<string, string | number>> = {};
@@ -146,6 +175,10 @@ export function buildResolverContext(
 			url: `http://localhost:${port}`,
 			host: "localhost",
 			port,
+			...endpointProperties(
+				allocatedEndpoints(declared?.[name], port),
+				"localhost",
+			),
 		};
 	}
 
@@ -262,6 +295,7 @@ export function resolverContextFor(
 		appProperties,
 		computeAppEndpoints(launch),
 		declaredUses(launch),
+		launch.components,
 	);
 }
 
