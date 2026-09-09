@@ -2,6 +2,8 @@
 
 Steward follow-up verified from `codex/demo-native-tls`. The branch includes the D-59 listener-definition documentation merge [bae761d4c562e703da959b733dfd432602a10a96](https://github.com/launchfile/launchfile/commit/bae761d4c562e703da959b733dfd432602a10a96); it changes no production code from the initial proof base. The live report records its own UTC execution timestamp.
 
+The documentation follow-up on 2026-09-10 re-ran `bun run verify`: 115 tests passed on Bun 1.4.0 / Node.js 24.14.1, with the workspace SDK 0.7.0 and Docker provider 0.7.1 built first. No implementation changed in that follow-up. The seven-deployment proof remains the earlier recorded run preserved at [0a87583](https://github.com/launchfile/launchfile/commit/0a87583ec333dcf7dbbb7406f1fc47318f61dec7); it was not re-run for the documentation edit. These are manual verification records: no CI job runs this package.
+
 | Check                  | Result                                          |
 | ---------------------- | ----------------------------------------------- |
 | `bun run verify`       | SDK/Docker builds, strict TypeScript, 115 tests |
