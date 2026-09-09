@@ -33,6 +33,7 @@ import {
 	flagPresent as argsFlagPresent,
 	parseComponentNames,
 	parseStoragePairs,
+	selectorRefusal,
 } from "./cli-args.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -85,6 +86,18 @@ const componentsFlag = (): string[] | undefined => {
  */
 const flagAsTyped = (flag: string): string | undefined =>
 	argsFlagPresent(args, flag) ? (getFlagValue(flag) ?? "") : undefined;
+
+/**
+ * Exit 1 when a selector spelling reaches a verb that acts on the whole
+ * deployment. The declared-flag table is global, so the flag parses here and
+ * its value would otherwise be dropped without a word.
+ */
+const refuseSelector = (verb: string, action: string): void => {
+	const lines = selectorRefusal(args, verb, action);
+	if (lines === undefined) return;
+	for (const line of lines) console.error(line);
+	process.exit(1);
+};
 
 const command = getPositional(0);
 const target = getPositional(1);
@@ -189,12 +202,14 @@ async function main(): Promise<void> {
 			break;
 
 		case "down":
+			refuseSelector("down", "stops the whole deployment");
 			await handleDown(target, {
 				destroy: hasFlag("destroy"),
 			});
 			break;
 
 		case "status":
+			refuseSelector("status", "reports the whole deployment");
 			await handleStatus(target);
 			break;
 

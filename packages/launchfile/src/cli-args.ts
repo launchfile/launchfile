@@ -105,6 +105,36 @@ export function parseComponentNames(values: readonly string[]): string[] {
 	return names;
 }
 
+/** What each selector spelling means, and to which verb it belongs. */
+const SELECTOR_OWNERS: ReadonlyArray<readonly [flag: string, meaning: string]> = [
+	["components", "selects which components `up`/`dev` start"],
+	["component", "limits `bootstrap` to a single component"],
+];
+
+/**
+ * The refusal a verb owes when a selector spelling appears on it but nothing
+ * reads the value, or undefined when neither spelling is present.
+ *
+ * `VALUE_FLAGS` is global, so `--components web` parses on EVERY verb and
+ * `getPositional` skips its value. A verb that never reads it would therefore
+ * drop the name and act on every component — `down --destroy --components web`
+ * would remove the whole app while the operator named one. Silent acceptance
+ * is not an option (D-41, #232).
+ */
+export function selectorRefusal(
+	args: readonly string[],
+	verb: string,
+	action: string,
+): readonly [string, string] | undefined {
+	const owner = SELECTOR_OWNERS.find(([flag]) => flagPresent(args, flag));
+	if (owner === undefined) return undefined;
+	const [flag, meaning] = owner;
+	return [
+		`--${flag} ${meaning}; \`${verb}\` ${action}.`,
+		`Run \`${verb}\` with no selector.`,
+	] as const;
+}
+
 /**
  * The Nth positional argument: skips flags AND the value token of any
  * `VALUE_FLAGS` flag written in the `--flag value` form (`--flag=value` is a
