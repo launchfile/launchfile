@@ -1,6 +1,6 @@
 # Public HTTPS requirement demonstration
 
-Private, unshipped experiment for [RFC B (#446)](https://github.com/launchfile/launchfile/issues/446), split from [#314](https://github.com/launchfile/launchfile/issues/314). It is review evidence, not an accepted `launch/v1` extension or a production deployer. The listener-definition clarification in [PR #443](https://github.com/launchfile/launchfile/pull/443) is a separate, pending prerequisite for RFC review.
+Private, unshipped experiment for [RFC B (#446)](https://github.com/launchfile/launchfile/issues/446), split from [#314](https://github.com/launchfile/launchfile/issues/314). It is review evidence, not an accepted `launch/v1` extension or a production deployer. The listener-definition clarification in [PR #443](https://github.com/launchfile/launchfile/pull/443) has merged as D-59; RFC B remains a separate, unaccepted proposal.
 
 ```yaml
 name: app
