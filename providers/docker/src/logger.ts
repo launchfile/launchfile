@@ -148,15 +148,19 @@ export const REDACT_CONFIG = {
  * serializer output and runs `redactSecrets()` over every string it finds, so
  * a credential embedded in prose is caught the same way a `token` field is.
  */
-function deepRedact(value: unknown): unknown {
+function deepRedact(value: unknown, seen = new WeakSet<object>()): unknown {
 	if (typeof value === "string") return redactSecrets(value);
-	if (Array.isArray(value)) return value.map(deepRedact);
-	if (value !== null && typeof value === "object") {
-		return Object.fromEntries(
-			Object.entries(value).map(([key, val]) => [key, deepRedact(val)]),
-		);
-	}
-	return value;
+	if (value === null || typeof value !== "object") return value;
+	if (seen.has(value)) return "[Circular]";
+	seen.add(value);
+	if (Array.isArray(value)) return value.map((item) => deepRedact(item, seen));
+	const entries = Object.entries(value);
+	// Date, Map, Set and Buffer expose no own enumerable string leaves to
+	// scrub, and rebuilding them from entries() erases or explodes them.
+	if (entries.length === 0 || Buffer.isBuffer(value)) return value;
+	return Object.fromEntries(
+		entries.map(([key, val]) => [key, deepRedact(val, seen)]),
+	);
 }
 
 /** `serializers.err` — see `deepRedact` for why `redact.paths` isn't enough. */

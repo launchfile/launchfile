@@ -195,6 +195,39 @@ describe("err serializer", () => {
 		expect(serialized.message).toBe("container exited with code 137");
 	});
 
+	it("returns rather than throws on a self-referential attached property", () => {
+		registerSecret("registered-secret-value");
+		const response: Record<string, unknown> = {
+			name: "res",
+			detail: "denied for registered-secret-value",
+		};
+		response.self = response;
+		const err = Object.assign(new Error("boom"), { response });
+
+		const serialized = serializeErr(err);
+
+		const attached = serialized.response as Record<string, unknown>;
+		expect(attached.detail).toBe("denied for [REDACTED]");
+		expect(attached.self).toBe("[Circular]");
+	});
+
+	it("returns Date, Map, Set and Buffer values unchanged", () => {
+		const date = new Date("2026-01-01T00:00:00.000Z");
+		const err = Object.assign(new Error("boom"), {
+			date,
+			map: new Map([["k", "v"]]),
+			set: new Set(["v"]),
+			buf: Buffer.from("abcd"),
+		});
+
+		const serialized = serializeErr(err);
+
+		expect(serialized.date).toBe(date);
+		expect(serialized.map).toBeInstanceOf(Map);
+		expect(serialized.set).toBeInstanceOf(Set);
+		expect(Buffer.isBuffer(serialized.buf)).toBe(true);
+	});
+
 	it("is wired into the root logger for the `err` field", () => {
 		const lines: string[] = [];
 		const stream = new Writable({
