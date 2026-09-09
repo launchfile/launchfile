@@ -50,6 +50,15 @@ jobs:
       - run: cd providers/${{ matrix.provider }} && bun install --frozen-lockfile
       - run: cd providers/${{ matrix.provider }} && bun run typecheck
       - run: cd providers/${{ matrix.provider }} && bun run test
+      # CONFORMANCE.md is generated from spec/examples/** and every
+      # catalog/apps/**/Launchfile, so a PR touching either corpus makes it
+      # stale. `--check` regenerates in memory and exits 1 on any difference.
+      # It rides the aws leg of this matrix rather than a job of its own: a new
+      # job name has to be added to the branch ruleset's required-checks list by
+      # hand (#309).
+      - name: AWS CONFORMANCE.md is up to date
+        if: matrix.provider == 'aws'
+        run: cd providers/aws && bun run conformance --check
 
   # The AWS provider is translation-only: prove the emitted HCL is valid Terraform
   # against the real AWS provider schema (no credentials — init only fetches the
@@ -194,6 +203,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/lint-spec-citations.mjs spec --strict
+      # www-dev/public/schema/v1 is served at https://launchfile.dev/schema/v1 —
+      # the $schema URL every catalog Launchfile points at — and is a
+      # hand-maintained copy of the canonical schema. Nothing generates it, so
+      # the two are asserted byte-identical here (#431 tracks generating it
+      # instead). This job needs no bun and no install, which is why the check
+      # lives here rather than in a build job.
+      - name: Published schema copy matches the canonical schema
+        run: |
+          diff -u spec/schema/launchfile.schema.json www-dev/public/schema/v1 \
+            || { echo "www-dev/public/schema/v1 is out of sync — copy spec/schema/launchfile.schema.json over it"; exit 1; }
 
   # Catches invalid YAML in workflow files before it gets merged and breaks
   # the CI/release pipeline. actionlint alone is not sufficient here — it
