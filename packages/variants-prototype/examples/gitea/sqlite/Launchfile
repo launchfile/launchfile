@@ -1,0 +1,18 @@
+# Ordinary equivalent of the baseline; no variants syntax.
+name: gitea
+image: gitea/gitea:latest
+provides:
+  - name: web
+    protocol: http
+    port: 3000
+    exposed: true
+env:
+  GITEA__database__DB_TYPE: sqlite3
+  GITEA__database__PATH: /data/gitea/gitea.db
+  GITEA__server__ROOT_URL: $app.url
+  GITEA__server__DISABLE_SSH: true
+storage:
+  data:
+    path: /data
+    persistent: true
+health: /api/healthz

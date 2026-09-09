@@ -1,0 +1,21 @@
+{
+  "name": "@launchfile/variants-prototype",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "inspect": "bun src/cli.ts",
+    "demo:sqlite": "bun run inspect examples/gitea/Launchfile",
+    "demo:postgres": "bun run inspect examples/gitea/Launchfile --variant=postgres",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "verify": "bun run --cwd ../../sdk build && bun run typecheck && bun run test"
+  },
+  "dependencies": {
+    "@launchfile/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
+  }
+}
