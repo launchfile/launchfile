@@ -77,12 +77,12 @@ const EXCLUDED_EXPORTS: Record<string, string> = {
 	isLaunchError:
 		"provider error-context vocabulary (PROVIDERS.md §8), not the parse/validate/serialize surface",
 
-	// Deprecation-registry internals: data tables consumed through
-	// `lintDeprecations`, not meant to be read directly.
-	DEPRECATED_IN: "deprecation-registry internal, consumed via lintDeprecations",
+	// Deprecation-registry data: the version constants and the registry table
+	// that `lintDeprecations` reads. Callers use `lintDeprecations`.
+	DEPRECATED_IN: "deprecation-registry data, read via lintDeprecations",
 	DEPRECATION_REGISTRY:
-		"deprecation-registry internal, consumed via lintDeprecations",
-	REMOVED_IN: "deprecation-registry internal, consumed via lintDeprecations",
+		"deprecation-registry data, read via lintDeprecations",
+	REMOVED_IN: "deprecation-registry data, read via lintDeprecations",
 };
 
 interface ExportStatement {
@@ -108,6 +108,21 @@ function parseExportStatements(source: string): ExportStatement[] {
 			.map((s) => s.trim())
 			.filter((s) => s.length > 0);
 		statements.push({ specifiers, typeOnly: statementIsTypeOnly });
+	}
+
+	// Any other export form — `export * from "…"`, `export const`,
+	// `export function`, `export default` — names values this parser cannot
+	// see, so the coverage check would pass while documenting nothing. The
+	// barrel-only shape of index.ts is what makes the two regexes above
+	// sufficient, so enforce it here rather than assuming it.
+	const leftover = withoutWildcards
+		.replace(namedExportRe, "")
+		.match(/^[ \t]*export\b.*$/m);
+	if (leftover) {
+		throw new Error(
+			`src/index.ts has an export form this check cannot parse: ${leftover[0].trim()}\n` +
+				`index.ts must stay barrel-only ('export { … } from "…";'), or parseExportStatements must learn the new form.`,
+		);
 	}
 
 	return statements;
