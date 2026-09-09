@@ -33,6 +33,7 @@ export {
 	launchToCompose,
 	type ComposeResult,
 	type ComposeOpts,
+	type InitOnlyExtensions,
 	type StorageBind,
 	type UnboundOperatorVolume,
 	type UnsuppliedRequiredVar,
