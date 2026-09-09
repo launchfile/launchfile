@@ -61,7 +61,7 @@ describe("redactSecrets", () => {
 
 	it("stays linear on a long run of scheme-legal characters (CWE-1333)", () => {
 		// No `://` ever arrives, so every starting offset is a candidate scheme.
-		// Unbounded, the scan was quadratic: 80 000 characters took 3.3s.
+		// Unbounded, the scan was quadratic: 80 000 characters took 895 ms.
 		const hostile = `${"a".repeat(80_000)}!`;
 		const t0 = performance.now();
 		expect(redactSecrets(hostile)).toBe(hostile);

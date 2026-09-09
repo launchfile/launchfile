@@ -71,6 +71,20 @@ describe("extractCaptures (D-34)", () => {
 		expect(extractCaptures(stdout, captures)).toEqual({ invite_link: url });
 	});
 
+	it("strips a CSI that sets a truecolor foreground and background together", () => {
+		const esc = String.fromCharCode(27);
+		const captures: Record<string, CaptureEntry> = {
+			invite_link: { pattern: "https?://\\S+" },
+		};
+		// 33 parameter bytes — one past a 32-byte bound, comfortably under 64.
+		// A theme-aware CLI emits this whenever it sets both colours at once,
+		// and an unstripped CSI leaves its bytes inside the captured value.
+		const sgr = `${esc}[38;2;255;255;255;48;2;240;240;240m`;
+		const url = "https://example.com/invite/abc123";
+		const stdout = `Invite: ${sgr}${url}${sgr}\n`;
+		expect(extractCaptures(stdout, captures)).toEqual({ invite_link: url });
+	});
+
 	it("strips a BEL-terminated OSC title", () => {
 		const esc = String.fromCharCode(27);
 		const bel = String.fromCharCode(7);
@@ -87,7 +101,7 @@ describe("extractCaptures (D-34)", () => {
 			token: { pattern: "token=(\\S+)" },
 		};
 		// Every `ESC ]` opens an OSC string no BEL ever closes. Unbounded, each
-		// start rescanned the whole remainder — quadratic: 40 000 pairs took 1.8s.
+		// start rescanned the whole remainder — quadratic: 40 000 pairs took 366 ms.
 		const stdout = `${`${esc}]`.repeat(40_000)}token=s3cret`;
 		const t0 = performance.now();
 		expect(extractCaptures(stdout, captures)).toEqual({ token: "s3cret" });
