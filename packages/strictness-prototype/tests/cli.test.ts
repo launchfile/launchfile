@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { mkdtempSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 
 const cwd = fileURLToPath(new URL("..", import.meta.url));
 for (const provider of ["docker", "aws", "macos-dev"]) {
@@ -27,11 +28,18 @@ it("does not expose raw YAML or a stack when parsing fails before redaction regi
   const sentinel = "EXAMPLE_PRIVATE_SENTINEL_NEVER_PRINT";
   writeFileSync(path, `name: invalid\nenv:\n  PASSWORD: [${sentinel}\n`);
   try {
-    const result = Bun.spawnSync([process.execPath, "run", "src/cli.ts", "docker", path], { cwd });
-    expect(result.exitCode).toBe(2);
-    expect(result.stdout.toString()).toBe("");
-    expect(result.stderr.toString()).toBe("Cannot evaluate Launchfile. Check the file path and syntax; no application was started.\n");
-    expect(result.stderr.toString()).not.toContain(sentinel);
+    for (const forceColor of ["0", "1"]) {
+      const env: NodeJS.ProcessEnv = { ...process.env, FORCE_COLOR: forceColor };
+      // Conflicting caller color settings produce a runtime warning before the
+      // CLI runs. Control only these settings; keep its real stderr observable.
+      delete env.NO_COLOR;
+      const result = Bun.spawnSync([process.execPath, "run", "src/cli.ts", "docker", path], { cwd, env });
+      const stderr = result.stderr.toString();
+      expect(result.exitCode).toBe(2);
+      expect(result.stdout.toString()).toBe("");
+      expect(stripVTControlCharacters(stderr)).toBe("Cannot evaluate Launchfile. Check the file path and syntax; no application was started.\n");
+      expect(stderr).not.toContain(sentinel);
+    }
   } finally {
     unlinkSync(path);
     rmdirSync(directory);

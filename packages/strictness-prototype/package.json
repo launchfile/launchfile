@@ -6,7 +6,8 @@
     "build:dependencies": "bun run --cwd ../../sdk build && bun run --cwd ../../providers/docker build && bun run --cwd ../../providers/aws build && bun run --cwd ../../providers/macos-dev build",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "verify": "bun run build:dependencies && bun run typecheck && bun run test",
+    "runtime": "bun run scripts/runtime.ts",
+    "verify": "bun run runtime && bun run build:dependencies && bun run typecheck && bun run test",
     "demo": "bun run src/demo.ts",
     "plan": "bun run src/cli.ts"
   },

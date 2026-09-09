@@ -16,7 +16,7 @@ schedule: "0 2 * * *"
 
 The fixture also includes portable runtime/commands so the AWS translator can exercise its source-contract path and macOS can illustrate its source-mode seam. This is an illustrative job, not a catalog motivation or a runnable container image. The experiment never fetches the image or executes those commands.
 
-From this package directory, after `bun install` at the repository root:
+From this package directory, after `bun install --frozen-lockfile` at the repository root:
 
 ```sh
 bun run verify
@@ -77,8 +77,12 @@ Principles: P-1/P-11 put policy with the operator; P-5 motivates one record and 
 
 ## Verification and limits
 
-`bun run verify` builds the SDK and all three providers, checks this package under strict TypeScript, and runs **54 tests** covering unchanged real translator output, three-provider diagnostic shape, warning-before-refusal ordering, no continuation on strict refusal, mandatory env/host and validation failures, satisfied synthetic scheduling, excluded/future codes, redaction, parser-error secrecy, refusal of foreign proposal contracts, unsupported policy, and subprocess exit behavior.
+`bun run verify` prints the Bun version/revision and host platform/architecture, builds the SDK and all three providers, checks this package under strict TypeScript, and runs **54 tests** covering unchanged real translator output, three-provider diagnostic shape, warning-before-refusal ordering, no continuation on strict refusal, mandatory env/host and validation failures, satisfied synthetic scheduling, excluded/future codes, redaction, parser-error secrecy, refusal of foreign proposal contracts, unsupported policy, and subprocess exit behavior. The malformed-YAML test runs with color disabled and forced: it checks the exact diagnostic after removing terminal control sequences and separately checks the original stderr for the secret sentinel.
 
-No real scheduler, deployment, Terraform validation, release/build integration, cleanup integration, or complete gap inventory is provided. The fulfilled-schedule test passes a synthetic capability fact; none of the three current providers gained scheduling. The macOS seam uses internal compiled exports and will need a supported shared interface before production adoption. There is no evidence here that a generalized strict policy is ready to ship.
+Local verification on **2026-09-10**, **Bun 1.4.0** (`34cbb9a40b4bd1bd767d134a7065e66c2432a676`), **macOS arm64**, passed **54 tests / 128 assertions** in both default and forced-color runs. These are results for that runtime, not a guarantee for every Bun version. See [verification evidence](evidence/verification.md) for the reproduction and workflow checks.
+
+The [CI workflow](../../.github/workflows/ci.yml) has a dedicated `strictness-prototype` job on `macos-latest`. It installs the frozen lockfile and runs this same verification with forced color. It follows the repository's Bun setup action convention and reports the resolved version instead of assuming it stays fixed. The job owns its ephemeral runner; tests own and remove their temporary input files. Neither starts an application or provider-managed service. Keep this job with the private experiment while it is retained; removing the experiment also requires removing its job and workspace lockfile entry. CI coverage does not authorize shipping the proposed policy.
+
+No real scheduler, deployment, Terraform validation, production release integration, cleanup integration, or complete gap inventory is provided. The fulfilled-schedule test passes a synthetic capability fact; none of the three current providers gained scheduling. The macOS seam uses internal compiled exports and will need a supported shared interface before production adoption. There is no evidence here that a generalized strict policy is ready to ship.
 
 The lockfile was generated with Bun. Besides the private workspace entry and current Bun types, Bun refreshed stale workspace versions to match the existing package manifests; no production manifest was edited.
