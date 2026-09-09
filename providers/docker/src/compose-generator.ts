@@ -8,6 +8,7 @@
 
 import { resolve as resolvePath } from "node:path";
 import {
+	indexOperatorStoragePaths,
 	isExpression,
 	type NormalizedEnvVar,
 	type NormalizedHealth,
@@ -17,6 +18,8 @@ import {
 	RESOURCE_PROPERTY_VOCABULARY,
 	type ResolverContext,
 	resolveExpression,
+	type StorageBind,
+	type UnboundOperatorVolume,
 	unsuppliedRequiredEnv,
 } from "@launchfile/sdk";
 import { stringify } from "yaml";
@@ -34,6 +37,17 @@ import type { StateEndpoint } from "./state.js";
 
 interface BackingService {
 	image: string;
+	/**
+	 * Where this service keeps its state INSIDE the container — the path the
+	 * generated volume is mounted at. Every value below is the image's own
+	 * declared VOLUME, read from its config rather than from memory.
+	 *
+	 * `null` means the service holds no state worth a volume (a cache), and no
+	 * volume is emitted for it. Required rather than optional on purpose: a new
+	 * factory that forgets it fails to compile, where a default would silently
+	 * mount the wrong path and lose the data the volume exists to keep.
+	 */
+	dataPath: string | null;
 	environment: Record<string, string>;
 	properties: Record<string, string>;
 	healthcheck?: ComposeHealthcheck;
@@ -204,6 +218,7 @@ function createBackingServices(
 			const pw = getPassword("postgres");
 			return {
 				image: "postgres:16-alpine",
+				dataPath: "/var/lib/postgresql/data",
 				environment: {
 					POSTGRES_USER: "launchfile",
 					POSTGRES_PASSWORD: pw,
@@ -230,6 +245,7 @@ function createBackingServices(
 			const pw = getPassword("mysql");
 			return {
 				image: "mysql:8",
+				dataPath: "/var/lib/mysql",
 				environment: {
 					MYSQL_ROOT_PASSWORD: pw,
 					MYSQL_USER: "launchfile",
@@ -257,6 +273,7 @@ function createBackingServices(
 			const pw = getPassword("mariadb");
 			return {
 				image: "mariadb:11",
+				dataPath: "/var/lib/mysql",
 				environment: {
 					MARIADB_ROOT_PASSWORD: pw,
 					MARIADB_USER: "launchfile",
@@ -282,6 +299,7 @@ function createBackingServices(
 
 		redis: (_name) => ({
 			image: "redis:7-alpine",
+			dataPath: "/data",
 			environment: {},
 			properties: {
 				host: `${_name}-redis`,
@@ -304,6 +322,9 @@ function createBackingServices(
 			const pw = getPassword("mongodb");
 			return {
 				image: "mongo:7",
+				// The image also declares /data/configdb; a single-node deployment keeps its
+				// metadata alongside its data.
+				dataPath: "/data/db",
 				environment: {
 					MONGO_INITDB_ROOT_USERNAME: "launchfile",
 					MONGO_INITDB_ROOT_PASSWORD: pw,
@@ -327,6 +348,7 @@ function createBackingServices(
 
 		clickhouse: (name) => ({
 			image: "clickhouse/clickhouse-server:latest",
+			dataPath: "/var/lib/clickhouse",
 			environment: {},
 			properties: {
 				// The image's shipped defaults: the `default` user with an empty
@@ -352,6 +374,10 @@ function createBackingServices(
 			const pw = getPassword("elasticsearch");
 			return {
 				image: "elasticsearch:8.17.0",
+				// The one entry not taken from a VOLUME declaration: this image declares none. It
+				// is `path.data` under the image's WORKDIR, which is what Elastic's own container
+				// documentation mounts.
+				dataPath: "/usr/share/elasticsearch/data",
 				environment: {
 					"discovery.type": "single-node",
 					"xpack.security.enabled": "true",
@@ -382,6 +408,8 @@ function createBackingServices(
 			const secretKey = getPassword("minio-secret");
 			return {
 				image: "minio/minio:latest",
+				// Matches the `server /data` command below.
+				dataPath: "/data",
 				environment: {
 					MINIO_ROOT_USER: accessKey,
 					MINIO_ROOT_PASSWORD: secretKey,
@@ -415,6 +443,8 @@ function createBackingServices(
 			const secretKey = getPassword("s3-secret");
 			return {
 				image: "minio/minio:latest",
+				// Matches the `server /data` command below.
+				dataPath: "/data",
 				environment: {
 					MINIO_ROOT_USER: accessKey,
 					MINIO_ROOT_PASSWORD: secretKey,
@@ -445,6 +475,8 @@ function createBackingServices(
 
 		memcache: (_name) => ({
 			image: "memcached:1-alpine",
+			// In-memory by design: no volume.
+			dataPath: null,
 			environment: {},
 			properties: {
 				host: `${_name}-memcache`,
@@ -465,6 +497,7 @@ function createBackingServices(
 			const pw = getPassword("rabbitmq");
 			return {
 				image: "rabbitmq:3-alpine",
+				dataPath: "/var/lib/rabbitmq",
 				environment: {
 					RABBITMQ_DEFAULT_USER: "launchfile",
 					RABBITMQ_DEFAULT_PASS: pw,
@@ -594,23 +627,9 @@ export interface ComposeOpts {
 	resources?: Record<string, { properties: Record<string, string> }>;
 }
 
-/** A `content: operator` volume bound to an operator-supplied host path (D-50 row 1). */
-export interface StorageBind {
-	component: string;
-	volume: string;
-	/** The `storagePaths` key that supplied the path, as the operator wrote it. */
-	key: string;
-	hostPath: string;
-	containerPath: string;
-}
-
-/** A `content: operator` volume no supplied path covers (D-50 row 2). */
-export interface UnboundOperatorVolume {
-	component: string;
-	volume: string;
-	/** The exact flag that satisfies the volume, e.g. `--storage music=<path>`. */
-	flag: string;
-}
+// D-50 row 1 and row 2 shapes are the SDK's — every provider reports the same
+// two. Re-exported so this module's public API is unchanged.
+export type { StorageBind, UnboundOperatorVolume };
 
 /** A `required:` variable neither the Launchfile nor the operator supplied. */
 export interface UnsuppliedRequiredVar {
@@ -692,30 +711,11 @@ export function launchToCompose(
 	const storageBinds: StorageBind[] = [];
 	const unboundOperatorVolumes: UnboundOperatorVolume[] = [];
 
-	// D-50 storage-path keys, classified once against the component set: a key
-	// whose first-dot left half names a component is component-qualified;
-	// anything else — no dot, or a left half naming no component — is a bare
-	// volume name, dots included.
-	const componentSet = new Set(Object.keys(launch.components));
-	const qualifiedPaths = new Map<string, { path: string; key: string }>();
-	const barePaths = new Map<string, { path: string; key: string }>();
-	for (const [key, path] of Object.entries(opts.storagePaths ?? {})) {
-		const dot = key.indexOf(".");
-		if (dot > 0 && componentSet.has(key.slice(0, dot))) {
-			qualifiedPaths.set(key, { path, key });
-		} else {
-			barePaths.set(key, { path, key });
-		}
-	}
+	// D-50 storage-path keys, indexed once. Only components this generator
+	// actually translates ask the index, so a skipped one's marked volume never
+	// reaches a refusal.
+	const storageIndex = indexOperatorStoragePaths(launch, opts.storagePaths);
 	const usedStorageKeys = new Set<string>();
-	// How many components declare a volume of each name — an ambiguous name gets
-	// the `component.volume` spelling in the refusal's suggested flag.
-	const volumeNameCount = new Map<string, number>();
-	for (const comp of Object.values(launch.components)) {
-		for (const volName of Object.keys(comp.storage ?? {})) {
-			volumeNameCount.set(volName, (volumeNameCount.get(volName) ?? 0) + 1);
-		}
-	}
 	// Set by any component that declares `provides` and is actually translated,
 	// so a component skipped earlier (refused capability, non-local build
 	// context) can't be mistaken for a missing `exposed: true`.
@@ -1158,18 +1158,12 @@ export function launchToCompose(
 			const svcVolumes: string[] = [];
 			for (const [volName, vol] of Object.entries(component.storage)) {
 				if (vol.content === "operator") {
-					const bound =
-						qualifiedPaths.get(`${componentName}.${volName}`) ??
-						barePaths.get(volName);
+					const bound = storageIndex.lookup(componentName, volName);
 					if (!bound) {
-						const flagKey =
-							(volumeNameCount.get(volName) ?? 0) > 1
-								? `${componentName}.${volName}`
-								: volName;
 						unboundOperatorVolumes.push({
 							component: componentName,
 							volume: volName,
-							flag: `--storage ${flagKey}=<path>`,
+							flag: storageIndex.flagFor(componentName, volName),
 						});
 						continue;
 					}
@@ -1218,12 +1212,10 @@ export function launchToCompose(
 	// behind is refused separately, so this alone never masks a refusal). Only
 	// `content: operator` volumes are bindable: row 4 keeps unmarked volumes
 	// byte-identical, so a key naming one is unused too.
-	for (const key of Object.keys(opts.storagePaths ?? {})) {
-		if (!usedStorageKeys.has(key)) {
-			warnings.push(
-				`--storage ${key} matches no \`content: operator\` volume — ignored`,
-			);
-		}
+	for (const key of storageIndex.unusedKeys(usedStorageKeys)) {
+		warnings.push(
+			`--storage ${key} matches no \`content: operator\` volume — ignored`,
+		);
 	}
 
 	// Same sweep for the supplied-resource channel: a key that satisfied no
@@ -1454,9 +1446,11 @@ function addBackingService(
 			Object.assign(service, backing.extra);
 		}
 
-		const volName = `${serviceName}-data`;
-		service.volumes = [`${volName}:/data`];
-		volumes[volName] = {};
+		if (backing.dataPath !== null) {
+			const volName = `${serviceName}-data`;
+			service.volumes = [`${volName}:${backing.dataPath}`];
+			volumes[volName] = {};
+		}
 
 		services[serviceName] = service;
 	}

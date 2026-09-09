@@ -50,6 +50,15 @@ export {
 	unsuppliedRequiredEnv,
 } from "./env.js";
 export { lintLaunch, lintUnknownStorageKeys } from "./lint.js";
+export {
+	indexOperatorStoragePaths,
+	MissingOperatorStoragePathError,
+	type OperatorStorageIndex,
+	type StorageBind,
+	type SuppliedStoragePath,
+	UnboundOperatorStorageError,
+	type UnboundOperatorVolume,
+} from "./operator-storage.js";
 export { parseLaunchYaml, readLaunch, validateLaunch } from "./reader.js";
 export { parseRepository } from "./repository.js";
 export type { RepositoryRef } from "./repository.js";

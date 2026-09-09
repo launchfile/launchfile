@@ -451,6 +451,8 @@ Platforms execute well-known commands in this order: **build → release → sta
 | `seed` | Seed the database with initial data | On demand (first deploy or explicit trigger) |
 | `test` | Run the test suite | On demand (CI or explicit trigger) |
 
+One-time initialization that must complete before the app serves (schema install, first-run setup) belongs in `release`. Guard it with the app's own idempotent flags (install-if-needed) so it is safe to run on every deploy — the same idempotency recommendation the spec makes for [bootstrap](#bootstrap-stage). The stakes differ: `bootstrap` is user-invoked and non-deploy-failing, while `release` runs automatically on every deploy and a non-zero exit fails that deploy.
+
 Additional named commands are allowed and invoked on demand.
 
 ```yaml

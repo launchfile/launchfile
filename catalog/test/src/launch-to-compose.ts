@@ -12,6 +12,7 @@ import {
   isExpression,
   type ResolverContext,
 } from "../../../sdk/src/resolver.ts";
+import { indexOperatorStoragePaths } from "../../../sdk/src/operator-storage.ts";
 import { computeAppProperties } from "../../../providers/docker/src/app-url.ts";
 import { unsuppliedRequiredEnv } from "../../../sdk/src/env.ts";
 import type {
@@ -275,21 +276,10 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
   const services: Record<string, Record<string, unknown>> = {};
   const volumes: Record<string, Record<string, unknown>> = {};
 
-  // D-50 storage-path keys, classified once against the component set — the
-  // same first-dot rule as the Docker provider's compose-generator: a key
-  // whose left half names a component is component-qualified; anything else
-  // is a bare volume name, dots included.
-  const componentSet = new Set(Object.keys(launch.components));
-  const qualifiedPaths = new Map<string, { path: string; key: string }>();
-  const barePaths = new Map<string, { path: string; key: string }>();
-  for (const [key, path] of Object.entries(opts.storagePaths ?? {})) {
-    const dot = key.indexOf(".");
-    if (dot > 0 && componentSet.has(key.slice(0, dot))) {
-      qualifiedPaths.set(key, { path, key });
-    } else {
-      barePaths.set(key, { path, key });
-    }
-  }
+  // D-50 storage-path keys, indexed by the SDK so this harness applies the
+  // same key rule the providers do — a harness that matched keys its own way
+  // could certify a compose file no provider would produce.
+  const storageIndex = indexOperatorStoragePaths(launch, opts.storagePaths);
   const usedStorageKeys = new Set<string>();
 
   // Pre-generate app-wide secrets
@@ -534,8 +524,7 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
       const svcVolumes: string[] = [];
       for (const [volName, vol] of Object.entries(component.storage)) {
         if (vol.content === "operator") {
-          const bound =
-            qualifiedPaths.get(`${componentName}.${volName}`) ?? barePaths.get(volName);
+          const bound = storageIndex.lookup(componentName, volName);
           if (!bound) {
             storageRefusals.push({
               component: componentName,
@@ -602,10 +591,8 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
   // `content: operator` volumes are bindable, and a typo'd name should not
   // vanish silently (the unbound marked volume it left behind is refused
   // separately, so this alone never masks a refusal).
-  for (const key of Object.keys(opts.storagePaths ?? {})) {
-    if (!usedStorageKeys.has(key)) {
-      warnings.push(`storagePaths key "${key}" matches no \`content: operator\` volume — ignored`);
-    }
+  for (const key of storageIndex.unusedKeys(usedStorageKeys)) {
+    warnings.push(`storagePaths key "${key}" matches no \`content: operator\` volume — ignored`);
   }
 
   const compose: Record<string, unknown> = { services };

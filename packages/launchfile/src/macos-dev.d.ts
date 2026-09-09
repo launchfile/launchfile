@@ -1,6 +1,10 @@
 /**
  * Type declarations for the optional macOS dev provider.
  * The actual package is dynamically imported at runtime.
+ *
+ * Hand-maintained, and narrower than the package's own `LaunchUpOpts` — it
+ * only has to cover what this CLI passes. Anything added here must exist
+ * there; nothing here is checked against it.
  */
 declare module "@launchfile/macos-dev" {
 	export function launchUp(opts?: {
@@ -9,6 +13,8 @@ declare module "@launchfile/macos-dev" {
 		detach?: boolean;
 		withOptional?: boolean;
 		noBuild?: boolean;
+		/** Host paths for `content: operator` volumes (D-50 rule 1). */
+		storage?: Record<string, string>;
 	}): Promise<void>;
 
 	export function launchDown(opts?: {

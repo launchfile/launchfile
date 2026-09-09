@@ -1,8 +1,7 @@
 /**
  * The D-50 `--storage` channel at the command layer (#281): the parsed
- * volume-to-path map reaches the docker provider as typed, and the macOS
- * provider refuses the flag instead of silently dropping the operator's
- * paths and provisioning provider-owned storage where their content belongs.
+ * volume-to-path map reaches either provider as typed, and both providers'
+ * rule-2 refusals reach the operator as a message rather than a stack.
  *
  * Directories are injected temp paths — nothing touches the real
  * ~/.launchfile and nothing talks to docker.
@@ -12,6 +11,10 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { DockerUpOpts, DockerUpResult } from "@launchfile/docker";
+import {
+	MissingOperatorStoragePathError,
+	UnboundOperatorStorageError,
+} from "@launchfile/sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { handleUp } from "../commands/up.js";
 
@@ -70,11 +73,37 @@ describe("up --storage reaches the docker provider (D-50)", () => {
 	});
 });
 
-describe("the macOS provider refuses --storage (D-50 silent-drop ban)", () => {
-	it("errors clearly before anything launches", async () => {
+describe("up --storage reaches the macOS provider (D-50)", () => {
+	it("threads the volume-to-path map into the provider opts, keys as typed", async () => {
+		const calls: { storage?: Record<string, string> }[] = [];
+		await handleUp(
+			projectDir,
+			{ native: true, storage: { music: "/srv/music", "web.books": "/srv/books" } },
+			{
+				importMacos: async () =>
+					({
+						launchUp: async (opts: { storage?: Record<string, string> }) => {
+							calls.push(opts);
+						},
+					}) as unknown as typeof import("@launchfile/macos-dev"),
+				indexDir,
+				recordDir,
+			},
+		);
+		expect(calls).toHaveLength(1);
+		expect(calls[0]!.storage).toEqual({ music: "/srv/music", "web.books": "/srv/books" });
+	});
+});
+
+describe("the macOS provider's D-50 refusals reach the operator (rule 2)", () => {
+	/**
+	 * The provider throws; the command prints the message and stops. Without
+	 * the catch this lands as an unhandled rejection with a stack, burying the
+	 * one instruction the operator needs.
+	 */
+	async function expectRefusalPrinted(err: Error): Promise<string> {
 		const exit = process.exit;
 		let exited: number | undefined;
-		let launched = false;
 		process.exit = (code?: number) => {
 			exited = code;
 			throw new Error("exited");
@@ -83,12 +112,12 @@ describe("the macOS provider refuses --storage (D-50 silent-drop ban)", () => {
 			await expect(
 				handleUp(
 					projectDir,
-					{ native: true, storage: { music: "/srv/music" } },
+					{ native: true },
 					{
 						importMacos: async () =>
 							({
 								launchUp: async () => {
-									launched = true;
+									throw err;
 								},
 							}) as unknown as typeof import("@launchfile/macos-dev"),
 						indexDir,
@@ -99,11 +128,31 @@ describe("the macOS provider refuses --storage (D-50 silent-drop ban)", () => {
 		} finally {
 			process.exit = exit;
 		}
-
 		expect(exited).toBe(1);
-		expect(launched).toBe(false);
-		expect(output.join("\n")).toContain(
-			"--storage is not yet supported by the macOS native provider",
+		return output.join("\n");
+	}
+
+	it("prints an unbound-volume refusal with no stack", async () => {
+		const printed = await expectRefusalPrinted(
+			new UnboundOperatorStorageError([
+				{ component: "default", volume: "music", flag: "--storage music=<path>" },
+			]),
 		);
+		expect(printed).toContain("supply it with --storage music=<path>");
+	});
+
+	it("prints a missing-path refusal with no stack", async () => {
+		const printed = await expectRefusalPrinted(
+			new MissingOperatorStoragePathError([
+				{
+					component: "default",
+					volume: "music",
+					key: "music",
+					hostPath: "/srv/gone",
+					containerPath: "/music",
+				},
+			]),
+		);
+		expect(printed).toContain("does not exist or is not readable");
 	});
 });

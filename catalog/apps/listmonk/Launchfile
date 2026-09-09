@@ -29,5 +29,10 @@ env:
     generator: secret
     sensitive: true
     description: "Admin password"
-health: /api/health
+  LISTMONK_db__ssl_mode:
+    default: "disable"
+    description: "Postgres SSL mode. listmonk sets no default and omits empty fields from the DSN, so without this the release command connects with sslmode unset"
+commands:
+  release: "./listmonk --install --idempotent --yes --config '' && ./listmonk --upgrade --yes --config ''"
+health: /health
 restart: always

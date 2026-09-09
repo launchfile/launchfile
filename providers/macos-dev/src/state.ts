@@ -68,6 +68,18 @@ export interface LaunchState {
 	 * compatibility: older state files omit it and load as a first run.
 	 */
 	generatedEnv?: Record<string, string>;
+	/**
+	 * Host paths bound to `content: operator` volumes on the last successful
+	 * `up` (D-50), as `component → volume → path`. Recorded so `env` reports
+	 * the directory the app actually reads, not the `.launchfile/` path an
+	 * unmarked volume would have taken.
+	 *
+	 * It is not a substitute for supplying the paths: a later `up` without them
+	 * refuses again, matching `@launchfile/docker`, which persists `appUrl` but
+	 * never its storage paths. Optional for backward compatibility: state files
+	 * written before this existed omit it.
+	 */
+	operatorStorage?: Record<string, Record<string, string>>;
 }
 
 const STATE_DIR = ".launchfile";

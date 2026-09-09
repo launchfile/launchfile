@@ -14,4 +14,5 @@ storage:
   config:
     path: /app/data
     persistent: true
+health: /api/healthz
 restart: always

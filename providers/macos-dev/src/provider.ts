@@ -5,13 +5,19 @@
  * installs runtimes, and starts all components.
  */
 
+import { accessSync, constants as fsConstants } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve as resolvePath } from "node:path";
 import {
+	indexOperatorStoragePaths,
+	MissingOperatorStoragePathError,
 	readLaunch,
 	resolveSourcePrepareCommand,
 	resolveSourceRunCommand,
 	selectionClosure,
+	type StorageBind,
+	UnboundOperatorStorageError,
+	type UnboundOperatorVolume,
 	unsuppliedRequiredEnv,
 	type NormalizedLaunch,
 	type NormalizedComponent,
@@ -77,6 +83,22 @@ export interface LaunchUpOpts {
 	 * so both yield the identical running topology (P-5). Empty = all components.
 	 */
 	components?: string[];
+	/**
+	 * Host paths for `content: operator` volumes (D-50 rule 1), keyed as the
+	 * operator typed them: `<volume>`, or `<component>.<volume>` where a volume
+	 * name is ambiguous. Relative paths resolve against the current directory.
+	 */
+	storage?: Record<string, string>;
+}
+
+/** Whether a path exists and this process can read it (D-50 rule 2, row 3). */
+function isReadable(path: string): boolean {
+	try {
+		accessSync(path, fsConstants.R_OK);
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 /**
@@ -312,6 +334,70 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		process.exit(1);
 	}
 
+	// 2d. Operator-supplied storage (D-50 rules 1–2), settled here — before
+	// state, directories, resources, ports, runtimes or processes exist, and so
+	// before `--dry-run` returns. A marked volume with no path, or with one that
+	// is not on disk, fails the launch: an empty directory where the operator's
+	// library belongs is D-52's fabrication in storage form, and this provider
+	// creates neither.
+	//
+	// Scoped to the components this provider will actually run. An artifact
+	// component is warned about and skipped at step 16, so refusing the whole
+	// launch over storage it will never read would be a refusal about nothing —
+	// the same reason `@launchfile/docker` only examines components it
+	// translates. Its volumes simply stay unprovisioned at step 11.
+	//
+	// Unlike the host-capability refusal above, this throws rather than dropping
+	// the component: `@launchfile/docker` fails the whole launch for the same
+	// file, and one Launchfile must not yield two topologies (P-5).
+	const suppliedStorage = opts.storage
+		? Object.fromEntries(
+				Object.entries(opts.storage).map(([key, path]) => [key, resolvePath(path)]),
+			)
+		: undefined;
+	const storageIndex = indexOperatorStoragePaths(launch, suppliedStorage);
+	const usedStorageKeys = new Set<string>();
+	const unboundVolumes: UnboundOperatorVolume[] = [];
+	const storageBinds: StorageBind[] = [];
+	const operatorStorage: Record<string, Record<string, string>> = {};
+	for (const [name, component] of Object.entries(launch.components)) {
+		if (!isSourceRunnable(component)) continue;
+		for (const [volName, vol] of Object.entries(component.storage ?? {})) {
+			if (vol.content !== "operator") continue;
+			const supplied = storageIndex.lookup(name, volName);
+			if (!supplied) {
+				unboundVolumes.push({
+					component: name,
+					volume: volName,
+					flag: storageIndex.flagFor(name, volName),
+				});
+				continue;
+			}
+			usedStorageKeys.add(supplied.key);
+			storageBinds.push({
+				component: name,
+				volume: volName,
+				key: supplied.key,
+				hostPath: supplied.path,
+				containerPath: vol.path,
+			});
+			(operatorStorage[name] ??= {})[volName] = supplied.path;
+		}
+	}
+	if (unboundVolumes.length > 0) {
+		throw new UnboundOperatorStorageError(unboundVolumes);
+	}
+	const unreadableBinds = storageBinds.filter((bind) => !isReadable(bind.hostPath));
+	if (unreadableBinds.length > 0) {
+		throw new MissingOperatorStoragePathError(unreadableBinds);
+	}
+	// A supplied key that bound nothing would otherwise vanish without a trace,
+	// so a typo'd name surfaces here. Row 4 keeps unmarked volumes untouched, so
+	// a key naming one is unused too.
+	for (const key of storageIndex.unusedKeys(usedStorageKeys)) {
+		console.warn(`  Warning: --storage ${key} matches no \`content: operator\` volume — ignored`);
+	}
+
 	// 3. Load or init state
 	let state = await loadState(projectDir);
 	if (!state) {
@@ -427,7 +513,12 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	// so it can be injected as $storage.<name>.path (D-39). Scoped per component.
 	const componentStorage: Record<string, Record<string, Record<string, string>>> = {};
 	for (const [name, component] of Object.entries(launch.components)) {
-		const volumeMap = await provisionStorage(component.storage, name, projectDir);
+		const volumeMap = await provisionStorage(
+			component.storage,
+			name,
+			projectDir,
+			operatorStorage[name],
+		);
 		const storageCtx: Record<string, Record<string, string>> = {};
 		for (const [volName, localPath] of Object.entries(volumeMap)) {
 			storageCtx[volName] = { path: localPath };
@@ -475,6 +566,9 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	}
 
 	// 13. Save state before build (in case build fails, we still have resource state)
+	// The bound operator paths ride along so `env` can report the directory the
+	// app actually reads (D-50); a later `up` still has to supply them again.
+	state.operatorStorage = operatorStorage;
 	await saveState(projectDir, state);
 
 	if (opts.dryRun) {
@@ -711,9 +805,11 @@ export async function launchEnv(opts: { component?: string; projectDir?: string 
 
 		// Resolved storage paths (D-39) — computed, not provisioned (no mkdir):
 		// `launchfile env` only prints, and the dirs already exist from `up`.
+		// A `content: operator` volume reads back the host path `up` bound
+		// (D-50), so what prints here is what the running app was given.
 		const storageCtx: Record<string, Record<string, string>> = {};
 		for (const [volName, localPath] of Object.entries(
-			storagePaths(component.storage, name, projectDir),
+			storagePaths(component.storage, name, projectDir, state.operatorStorage?.[name]),
 		)) {
 			storageCtx[volName] = { path: localPath };
 		}

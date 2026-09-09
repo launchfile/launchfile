@@ -1,5 +1,33 @@
 # launchfile
 
+## 0.7.1
+
+### Patch Changes
+
+- [#326](https://github.com/launchfile/launchfile/pull/326) [`3c02b37`](https://github.com/launchfile/launchfile/commit/3c02b377e610e92660d2fc70534d29c66116efa6) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Stop compiling and publishing tests with the CLI. `packages/launchfile` built with plain `tsc`, so `src/__tests__/*.test.ts` landed in `dist/` and — via the `dist/**/*.js` files allowlist — in the npm tarball: 20 of `launchfile@0.7.0`'s 54 published files are compiled test artifacts. That same `dist/__tests__` tree also made Vitest collect every suite twice (20 test files instead of 10), doubling the work each CI run does. The package now builds with a `tsconfig.build.json` that excludes `src/**/__tests__/**` — byte-for-byte the config `@launchfile/docker` and `@launchfile/macos-dev` use, while `@launchfile/sdk` and `@launchfile/aws` build the same way with their own exclude lists. No runtime behavior changes.
+- Updated dependencies [[`d0774c0`](https://github.com/launchfile/launchfile/commit/d0774c05785c2b09138849ff1c9b55325b94e960)]:
+  - @launchfile/docker@0.7.1
+
+## 0.7.0
+
+### Minor Changes
+
+- [#315](https://github.com/launchfile/launchfile/pull/315) [`78e654d`](https://github.com/launchfile/launchfile/commit/78e654dee040d6eb2e1aa18bb850b219de777996) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - `@launchfile/macos-dev` implements the D-50 operator-supplied storage channel ([#296](https://github.com/launchfile/launchfile/issues/296)), the last of the three surfaces D-50's conformance paragraph named. `provisionStorage` previously `mkdir`ed every declared volume and never read `volume.content`, so a `storage.<name>.content: operator` volume was created empty and the app started against it — the silent success the marker exists to catch.
+  
+  **`launchfile up --native --storage <volume>=<path>` now works** where it previously exited with "not yet supported". All four D-50 states hold: a supplied path becomes the volume's path, a marked volume with no path fails the launch naming the flag that satisfies it, a supplied path that is absent or unreadable fails the launch and is never created, and an unmarked volume keeps its `.launchfile/storage/<component>/<name>` path byte-for-byte. Because this provider runs processes on the host, the grant is the path injected as `$storage.<name>.path` (D-39) rather than a mount. The refusal lands before state, directories, resources, ports, runtimes or processes exist, so `--dry-run` refuses too. `launchfile env` reports the bound path from provider state, not a `.launchfile/` path the app never read.
+  
+  **A Launchfile with a `content: operator` volume that ran under the native provider before now fails until its paths are supplied.** That is the point of the change: what those runs produced was an empty directory standing in for the operator's content.
+  
+  `@launchfile/sdk` gains `indexOperatorStoragePaths` — D-50 rule 1's key rule, previously implemented separately in the docker provider and the catalog harness — along with `UnboundOperatorStorageError`, `MissingOperatorStoragePathError`, `StorageBind` and `UnboundOperatorVolume`, moved from `@launchfile/docker` so one caller-side catch covers every provider that raises them.
+  
+  `@launchfile/docker` reads both from the SDK instead of defining them. Its public API, refusal messages, warning text and generated compose are unchanged.
+
+### Patch Changes
+
+- Updated dependencies [[`78e654d`](https://github.com/launchfile/launchfile/commit/78e654dee040d6eb2e1aa18bb850b219de777996), [`0a94497`](https://github.com/launchfile/launchfile/commit/0a9449773fb5efca4f1c90ea647785de76354beb)]:
+  - @launchfile/sdk@0.7.0
+  - @launchfile/docker@0.7.0
+
 ## 0.6.0
 
 ### Patch Changes
