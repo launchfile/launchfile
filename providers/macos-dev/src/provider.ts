@@ -24,7 +24,7 @@ import {
 } from "@launchfile/sdk";
 
 import { checkPrereqs } from "./prereqs.js";
-import { loadState, initState, saveState, ensureDirs } from "./state.js";
+import { loadState, initState, saveState, ensureDirs, type LaunchState } from "./state.js";
 import {
 	buildResolverContext,
 	computeAppProperties,
@@ -38,6 +38,7 @@ import { getProvisioner, type ResourceProperties } from "./resources/index.js";
 import { allocatePorts } from "./port-allocator.js";
 import { getRuntimeInstaller } from "./runtimes/index.js";
 import { detectPackageManager } from "./lockfile-detect.js";
+import { prepareFingerprint } from "./prepare-fingerprint.js";
 import { provisionStorage, storagePaths } from "./storage.js";
 import { ProcessManager } from "./process-manager.js";
 import { stopRecordedProcesses } from "./process-stopper.js";
@@ -174,6 +175,84 @@ export function applyHostCapabilityRefusals(
 		Object.entries(launch.components).filter(([n]) => !refused.has(n)),
 	);
 	return Object.keys(launch.components).length === 0 ? "none-left" : "ok";
+}
+
+/** What {@link runSourcePrepare} needs from the surrounding `up`. */
+export interface SourcePrepareContext {
+	projectDir: string;
+	/** Mutated in place: successful runs are recorded under `state.prepared`. */
+	state: LaunchState;
+	/** Resolved environment per component, as `prepare` should see it. */
+	envs: Record<string, Record<string, string>>;
+	/** Package-manager install command used where a component declares none. */
+	fallbackCommand?: string;
+	/** Prefix progress lines with the component name (multi-component apps). */
+	labelComponents?: boolean;
+	/** Runs one command. Injected so tests can observe without a real shell. */
+	run?: (command: string, opts: { cwd: string; env?: Record<string, string>; timeout?: number }) => Promise<unknown>;
+	/** Persists state after each successful prepare. */
+	save?: (projectDir: string, state: LaunchState) => Promise<void>;
+}
+
+/**
+ * Run the source-mode prepare slot (`install ?? build`, D-38) for every
+ * component that declares one, **on demand**: on first launch, and afterwards
+ * only when the prepare inputs changed.
+ *
+ * The demand signal is {@link prepareFingerprint} — the command plus the
+ * dependency manifests and lockfiles in its working directory. `state.prepared`
+ * holds the fingerprint of each component's last successful run, so an
+ * unchanged component is skipped rather than reinstalled on every `up`.
+ *
+ * Components resolving to the same working directory and command share one
+ * prepare, so it runs once per `up` (D-38) even on a first launch, when neither
+ * has a recorded fingerprint yet.
+ *
+ * A failing command throws, which fails the launch (SPEC.md § Failure
+ * semantics): the prepare slot fails the invocation. Nothing is recorded for
+ * it, so the next `up` retries.
+ */
+export async function runSourcePrepare(
+	launch: NormalizedLaunch,
+	ctx: SourcePrepareContext,
+): Promise<void> {
+	const run = ctx.run ?? shellScript;
+	const save = ctx.save ?? saveState;
+	const prepared = (ctx.state.prepared ??= {});
+	const ranThisUp = new Set<string>();
+
+	for (const [name, component] of Object.entries(launch.components)) {
+		const prepare = resolveSourcePrepareCommand(component);
+		const command = prepare?.command ?? ctx.fallbackCommand;
+		if (!command) continue;
+
+		const label = ctx.labelComponents ? ` [${name}]` : "";
+		const sourceDir = join(component.source ?? component.build?.context ?? ".");
+		const cwd = join(ctx.projectDir, sourceDir);
+		// Identifies a shared prepare: same directory, same command.
+		const sharedKey = `${sourceDir}\u0000${command}`;
+		const fingerprint = await prepareFingerprint(cwd, command);
+
+		if (prepared[name] === fingerprint || ranThisUp.has(sharedKey)) {
+			prepared[name] = fingerprint;
+			console.log(`  \u2713 Prepare up to date${label} (no dependency change)`);
+			continue;
+		}
+
+		console.log(`  \u2193 Preparing${label}...`);
+		await run(command, {
+			cwd,
+			env: ctx.envs[name],
+			// Installs/compiles routinely exceed the 2-minute shell default;
+			// honor a declared timeout, else allow 10 minutes.
+			timeout: declaredTimeout(prepare?.timeout, `prepare [${name}]`) ?? 600_000,
+		});
+		ranThisUp.add(sharedKey);
+		// Recorded as each command succeeds: a later component can fail the
+		// launch, and that must not discard the record of work already done.
+		prepared[name] = fingerprint;
+		await save(ctx.projectDir, ctx.state);
+	}
 }
 
 export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
@@ -577,22 +656,17 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		return;
 	}
 
-	// 14. Run source-mode prepare \u2014 `install ?? build` (D-38), on demand
+	// 14. Run source-mode prepare \u2014 `install ?? build` (D-38), on demand.
+	// `--no-build` stays the explicit opt-out; it records nothing, since nothing
+	// ran, so a later `up` without it still prepares.
 	if (!opts.noBuild) {
-		for (const [name, component] of Object.entries(launch.components)) {
-			const prepare = resolveSourcePrepareCommand(component);
-			const cmd = prepare?.command ?? pm?.installCommand;
-			if (cmd) {
-				console.log(`  \u2193 Preparing${componentNames.length > 1 ? ` [${name}]` : ""}...`);
-				await shellScript(cmd, {
-					cwd: join(projectDir, component.source ?? component.build?.context ?? "."),
-					env: allEnvs[name],
-					// Installs/compiles routinely exceed the 2-minute shell default;
-					// honor a declared timeout, else allow 10 minutes.
-					timeout: declaredTimeout(prepare?.timeout, `prepare [${name}]`) ?? 600_000,
-				});
-			}
-		}
+		await runSourcePrepare(launch, {
+			projectDir,
+			state,
+			envs: allEnvs,
+			fallbackCommand: pm?.installCommand,
+			labelComponents: componentNames.length > 1,
+		});
 	}
 
 	// 15. Run release commands (migrations) \u2014 mode-invariant (D-38)

@@ -80,6 +80,19 @@ export interface LaunchState {
 	 * written before this existed omit it.
 	 */
 	operatorStorage?: Record<string, Record<string, string>>;
+	/**
+	 * Fingerprint of the prepare inputs (`install ?? build` command plus the
+	 * dependency manifests and lockfiles in its working directory) at the last
+	 * successful prepare, keyed by component name. It is what makes prepare run
+	 * on demand rather than on every `up` (D-38): a component whose current
+	 * fingerprint matches its recorded one has nothing to install.
+	 *
+	 * An entry is written only after its command exits zero, so a failed prepare
+	 * is retried on the next `up`. Optional for backward compatibility: a state
+	 * file written before this existed has no entries, so the next `up` prepares
+	 * every component once and records them.
+	 */
+	prepared?: Record<string, string>;
 }
 
 const STATE_DIR = ".launchfile";
