@@ -13,6 +13,7 @@ import {
 	certificateBindings,
 	indexOperatorStoragePaths,
 	MissingOperatorStoragePathError,
+	normalizeAppUrl,
 	readLaunch,
 	resolveSourcePrepareCommand,
 	resolveSourceRunCommand,
@@ -91,6 +92,24 @@ export interface LaunchUpOpts {
 	 * name is ambiguous. Relative paths resolve against the current directory.
 	 */
 	storage?: Record<string, string>;
+	/**
+	 * Orchestrator-supplied publication context (D-58): the public URL of the
+	 * app's PRIMARY endpoint when routing is owned outside this host — a reverse
+	 * proxy, tunnel, or edge in front of the processes this provider starts.
+	 * `$app.*` then resolves from it instead of from `http://localhost:<port>`,
+	 * this provider's own routing answer, which upstream routing has made no
+	 * longer the address anyone reaches the app at.
+	 *
+	 * Absolute `http`/`https` WHATWG URL, no userinfo, query, or fragment; a
+	 * malformed value is refused (`InvalidAppUrlError`), never degraded into a
+	 * guessed or localhost `$app.*` (D-58 rule 3). One URL asserts the primary
+	 * endpoint only (rule 4) — per-component addresses stay `$components.*`.
+	 * Persisted in `.launchfile/state.json` so `env` and `bootstrap` resolve
+	 * what the `up` that set it resolved; a later run that omits it keeps the
+	 * recorded value, and one that supplies a different value replaces it
+	 * (D-49), matching `@launchfile/docker`.
+	 */
+	appUrl?: string;
 }
 
 /** Whether a path exists and this process can read it (D-50 rule 2, row 3). */
@@ -293,6 +312,13 @@ export function applyCertificateRefusals(
 
 export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
+
+	// Publication context (D-58): validated and normalized before anything is
+	// checked, provisioned, or started — a malformed URL is an expected refusal
+	// (InvalidAppUrlError), never a degraded $app.* or a silent fallback to this
+	// provider's own localhost answer.
+	const suppliedAppUrl =
+		opts.appUrl === undefined ? undefined : normalizeAppUrl(opts.appUrl);
 
 	// 1. Check prerequisites
 	const prereqs = await checkPrereqs();
@@ -615,8 +641,15 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const componentPorts = await allocatePorts(launch.components, launch.name, state.ports);
 	state.ports = componentPorts;
 
+	// Publication context (D-58), the same preservation rule the docker provider
+	// applies: a supplied value replaces the recorded one — the derived $app.*
+	// env recomputes below from it (D-49) — while omission keeps what is
+	// recorded, so a later plain `up` cannot silently flip a proxied deployment
+	// back to localhost.
+	if (suppliedAppUrl !== undefined) state.appUrl = suppliedAppUrl;
+
 	// 8. Build resolver context (including $app.* properties from D-33)
-	const appProperties = computeAppProperties(launch, componentPorts);
+	const appProperties = computeAppProperties(launch, componentPorts, state.appUrl);
 	const context = buildResolverContext(resourceMap, componentPorts, state.secrets, appProperties);
 
 	// 9. Install runtimes
@@ -930,7 +963,10 @@ export async function launchEnv(opts: { component?: string; projectDir?: string 
 		}
 	}
 
-	const appProperties = computeAppProperties(launch, state.ports);
+	// `env` reports what the running app has, so `$app.*` comes from the same
+	// publication context the last `up` recorded (D-58), not from this
+	// provider's localhost answer.
+	const appProperties = computeAppProperties(launch, state.ports, state.appUrl);
 	const context = buildResolverContext(resourceMap, state.ports, state.secrets, appProperties);
 
 	// `env` reports what the running app has, so it reads minted generator
