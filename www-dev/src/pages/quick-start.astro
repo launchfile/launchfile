@@ -106,7 +106,7 @@ npx launchfile up --native
 
   <p>Both providers record failures. A Docker launch files its record under the app; a <code>--native</code> launch files one per <em>project directory</em>, because the native provider runs one instance per directory — two checkouts of the same app keep separate diagnoses.</p>
 
-  <p>One failure has its own phase: <code>health</code>, and it belongs to the Docker provider — the native provider has no launch-wide health gate. A component that never becomes healthy fails the launch, so <code>up</code> exits non-zero and names the components that never passed. Their containers stay running so you can look at them, and the deployment is listed as <code>unhealthy</code> — <code>launchfile status</code>, <code>launchfile logs</code>, and <code>launchfile down</code> all reach it. A component that declares no health check counts as healthy once its container is running.</p>
+  <p>One failure has its own phase: <code>health</code>. Under Docker, a component that never becomes healthy fails the launch, so <code>up</code> exits non-zero and names the components that never passed. Their containers stay running so you can look at them, and the deployment is listed as <code>unhealthy</code> — <code>launchfile status</code>, <code>launchfile logs</code>, and <code>launchfile down</code> all reach it. A component that declares no health check counts as healthy once its container is running. The native provider does not yet apply this gate: a component that never becomes healthy does not currently fail a <code>--native</code> launch (<a href="https://github.com/launchfile/launchfile/issues/376">#376</a>).</p>
 
   <h2 id="next-steps">Next steps</h2>
 
