@@ -130,6 +130,7 @@ The file declares *intent*; the provider supplies *values* (P-11). A provider MU
 | `$app.endpoints.<name>.*` — `url`, `host`, `port`, `scheme`, `authority`, `tls` | the public address of the named published endpoint, from the same derivation as `$app.*`; `""` where the provider publishes no per-endpoint address | **D-63** |
 | `$secrets.<name>` | an app-wide generated secret | D-18 |
 | `$components.<name>.*` | a sibling component's endpoint, resolved by **consumer vantage** (§8) | — |
+| `$components.<name>.<endpoint>.*` — `host`, `port`, `protocol`, `url` | the same sibling endpoint identified by its D-6 `name`, registered for **every declared endpoint** independent of D-27 publication; `url` only when the endpoint's `protocol` names a URL scheme | **D-next** |
 | `$storage.<name>.path` | the filesystem path the provider provisioned for the named volume | **D-39** |
 | `$<resource>.<prop>` / enclosing `$url`, `$host`, … | a provisioned resource's connection properties | D-7 |
 
