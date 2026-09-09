@@ -21,6 +21,8 @@
  *    than merely avoided.
  */
 
+import { createHash } from "node:crypto";
+
 // ---------------------------------------------------------------------------
 // Phases, slots, dispositions
 // ---------------------------------------------------------------------------
@@ -162,6 +164,28 @@ export function dispositionForPhase(phase: LaunchPhase): LaunchDisposition {
 		default:
 			return "failed-invocation";
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Record keys
+// ---------------------------------------------------------------------------
+
+/**
+ * The record key for a failure that has no provider slug to file itself under.
+ *
+ * Two callers need the same answer for the same source and cannot get it from
+ * each other: the provider, which writes the record inside the failing process,
+ * and the CLI, which later clears or reads it. A second implementation of the
+ * derivation is a silent divergence — the record is written under one name and
+ * looked up under another — so the derivation lives here, where both already
+ * depend.
+ *
+ * `source` is whatever identifies the app to the provider that failed: the
+ * source string for `@launchfile/docker` before a slug exists, the project
+ * directory for `@launchfile/macos-dev`, whose instances are directories.
+ */
+export function sourceErrorKey(source: string): string {
+	return `src-${createHash("sha256").update(source).digest("hex").slice(0, 16)}`;
 }
 
 // ---------------------------------------------------------------------------
