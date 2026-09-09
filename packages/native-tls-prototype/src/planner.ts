@@ -6,6 +6,7 @@ import {
 	type NormalizedRequirement,
 	type Provides,
 } from "@launchfile/sdk";
+import { bindListenerPort } from "./listener.js";
 
 export type TlsMode = "off" | "edge" | "native" | "passthrough" | "reencrypt";
 
@@ -93,7 +94,7 @@ function normalizePublicUrl(value: string, mode: TlsMode): string {
 	return `${url.protocol}//${url.host}${url.pathname === "/" ? "" : url.pathname}`;
 }
 
-function certificateProperties(input: CertificateInput | undefined, name: string, port: number) {
+function certificateProperties(input: CertificateInput | undefined, name: string) {
 	if (!input) throw new Error(`Native TLS requires supplied certificate material for ${name}`);
 	for (const key of ["certFile", "keyFile", "caFile"] as const) {
 		const path = input[key];
@@ -102,7 +103,8 @@ function certificateProperties(input: CertificateInput | undefined, name: string
 			throw new Error(`Certificate ${name}.${key} must be an absolute container file path without traversal`);
 		}
 	}
-	return { cert_file: input.certFile, key_file: input.keyFile, ca_file: input.caFile, port: String(port) };
+	// The trust root belongs to the consumer's probe, not server presentation.
+	return { cert_file: input.certFile, key_file: input.keyFile };
 }
 
 function label(endpoint: Endpoint): string {
@@ -132,8 +134,9 @@ function choose(endpoints: Endpoint[], selector: string | undefined, component?:
 
 /**
  * Compile the proposed TLS syntax to today's SDK representation, without I/O.
- * A successful plan states the routing contract; the deploying adapter must
- * validate certificate bytes, provision that route, and verify its handshake.
+ * A successful plan states a configuration, not successful deployment. The
+ * owning consumer can verify material and routing separately; D-56 does not
+ * assign supplied-resource verification to the translating provider.
  */
 export function planTls(yaml: string, options: TlsOptions): TlsPlan {
 	if (!MODES.includes(options.mode)) throw new Error(`Unsupported TLS mode: ${options.mode}`);
@@ -219,6 +222,33 @@ export function planTls(yaml: string, options: TlsOptions): TlsPlan {
 		}
 		resolvedDependencies.set(endpoint, matches[0]!);
 	}
+	const boundCertificates = new Set<string>();
+	for (const endpoint of resolvedDependencies.keys()) {
+		const name = endpoint.binding!.certificate;
+		if (boundCertificates.has(name)) throw new Error(`Certificate ${name} is shared by multiple endpoints; one binding must have one listener`);
+		boundCertificates.add(name);
+	}
+	// Check namespace scope before inactive capabilities are removed. Selecting
+	// HTTP must not hide invalid wiring in an author's optional TLS declaration.
+	for (const [component, scope] of Object.entries(launch.components)) {
+		const expressions = [
+			...Object.entries(scope.env ?? {}).flatMap(([key, value]) => typeof value.default === "string"
+				? [{ label: `${component}.env.${key}`, value: value.default, entry: undefined }] : []),
+			...[...(scope.requires ?? []), ...(scope.supports ?? [])].flatMap((entry) =>
+				Object.entries(entry.set_env ?? {}).map(([key, value]) => ({ label: `${component}.set_env.${key}`, value, entry }))),
+		];
+		for (const expression of expressions) {
+			const bound = [...resolvedDependencies.values()].some(({ entry }) => entry === expression.entry);
+			for (const ref of references(expression.value)) {
+				if (ref.path[0] === "listener" && (!bound || ref.path.length !== 2 || ref.path[1] !== "port")) {
+					throw new Error(`${expression.label}: $listener.port is valid only inside a bound certificate's set_env`);
+				}
+				if (bound && ref.path.length === 1 && ref.path[0] === "port") {
+					throw new Error(`${expression.label}: $port belongs to the resource; use $listener.port for the bound listener`);
+				}
+			}
+		}
+	}
 
 	const native = ["native", "passthrough", "reencrypt"].includes(options.mode);
 	if (!native && selected.value.protocol !== "http") {
@@ -228,9 +258,6 @@ export function planTls(yaml: string, options: TlsOptions): TlsPlan {
 	const certificate = native ? selected.binding!.certificate : undefined;
 	const active = native ? resolvedDependencies.get(selected) : undefined;
 	if (certificate) {
-		if (endpoints.some((endpoint) => endpoint !== selected && endpoint.binding?.certificate === certificate)) {
-			throw new Error(`Certificate ${certificate} is shared by multiple endpoints; coordinated activation is outside this prototype`);
-		}
 		// Resources are supplied to today's provider by global name. Refuse a
 		// collision even across components instead of accidentally satisfying it.
 		for (const [component, scope] of Object.entries(launch.components)) {
@@ -272,8 +299,12 @@ export function planTls(yaml: string, options: TlsOptions): TlsPlan {
 		throw new Error(`Resolved listener ${label(selected)} conflicts with another endpoint on port ${port}`);
 	}
 	const resources: TlsPlan["resources"] = certificate
-		? { [certificate]: { properties: certificateProperties(options.certificates?.[certificate], certificate, port) } }
+		? { [certificate]: { properties: certificateProperties(options.certificates?.[certificate], certificate) } }
 		: {};
+	if (active?.entry.set_env) {
+		active.entry.set_env = Object.fromEntries(Object.entries(active.entry.set_env).map(([key, value]) =>
+			[key, bindListenerPort(value, port)]));
+	}
 	for (const [component, scope] of Object.entries(launch.components)) {
 		const expressions = [
 			...Object.entries(scope.env ?? {}).flatMap(([key, value]) => typeof value.default === "string"

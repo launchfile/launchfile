@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
+import { redactSecrets, registerDeclaredSecret } from "@launchfile/docker";
 import { compileDockerTls } from "./docker.js";
 import { planTls, type CertificateInput, type TlsMode } from "./planner.js";
 
@@ -16,7 +17,7 @@ Modes: off, edge, native, passthrough, reencrypt
   --ca <path>             PEM issuing root CA (prototype: no intermediates)
   --resource <name>       Certificate resource name (default server-cert)
   --host-port <port>      Loopback host port for Compose output (default 33000)
-  --compose-file <path>   Write an isolated Compose file; validates certificates
+  --compose-file <path>   Write an isolated Compose file; does not inspect material
   --json                 Machine-readable plan summary
 
 This planner does not start containers or configure public routing.
@@ -47,6 +48,7 @@ async function main(): Promise<void> {
   const certificates: Record<string, CertificateInput> = {};
   if (values.cert && values.key && values.ca) {
     certificates[values.resource] = { certFile: resolve(values.cert), keyFile: resolve(values.key), caFile: resolve(values.ca) };
+    registerDeclaredSecret(certificates[values.resource]!.keyFile);
   }
   const source = await readFile(resolve(positionals[0]!), "utf8");
   const options = {
@@ -65,7 +67,7 @@ async function main(): Promise<void> {
     listener: `${plan.protocol}:${plan.port}`,
     certificate: plan.certificate ?? null,
     warnings: compiled?.warnings ?? plan.warnings,
-    status: compiled ? "compiled; deployment not executed" : "planned; material and routing not verified",
+    status: compiled ? "compiled; material and routing not verified; deployment not executed" : "planned; material and routing not verified",
   };
   if (compiled && values["compose-file"]) {
     await writeFile(resolve(values["compose-file"]), compiled.compose, { mode: 0o600, flag: "wx" });
@@ -83,6 +85,6 @@ async function main(): Promise<void> {
 }
 
 main().catch(error => {
-  console.error(error instanceof Error ? error.message : "TLS planning failed");
+  console.error(redactSecrets(error instanceof Error ? error.message : "TLS planning failed"));
   process.exitCode = 1;
 });

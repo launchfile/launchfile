@@ -1,3 +1,4 @@
+import { validateCertificate } from "../src/certificate-verification.js";
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -232,16 +233,18 @@ try {
   const certificateBindings = { 'server-cert': certificates.backend };
   const unsupported = structuredClone(fixture);
   delete unsupported.provides.find((endpoint: { name: string }) => endpoint.name === 'web').tls;
+  unsupported.supports = unsupported.supports.filter((entry: { type: string }) => entry.type !== 'certificate');
   await compilationRejects('Unsupported native TLS is rejected before Docker starts', stringify(unsupported), {
     ...baseOptions, mode: 'native', publicUrl: `https://localhost:${backendPort}`, certificates: certificateBindings,
   }, /does not declare native TLS support/);
   await compilationRejects('Missing certificate material is rejected before Docker starts', yaml, {
     ...baseOptions, mode: 'native', publicUrl: `https://localhost:${backendPort}`,
   }, /requires supplied certificate material|Missing certificate material/);
-  await compilationRejects('Client-only certificate is rejected before Docker starts', yaml, {
-    ...baseOptions, mode: 'native', publicUrl: `https://localhost:${backendPort}`,
-    certificates: { 'server-cert': certificates.clientOnly },
-  }, /TLS server certificate verification failed/);
+  await Promise.all([validateCertificate(certificates.backend, "localhost"), validateCertificate(certificates.edge, "localhost")]);
+  let consumerError = "";
+  try { await validateCertificate(certificates.clientOnly, "localhost"); } catch(error) { consumerError = cleanError(error); }
+  verify("Supplying consumer rejects a client-only certificate before Docker starts",
+    /TLS server certificate verification failed/.test(consumerError) && !startedDocker, consumerError);
   const image = JSON.parse(await docker(['image', 'inspect', fixture.image]))[0];
   report.image = { reference: fixture.image, id: image.Id, digests: image.RepoDigests ?? [] };
   const marker = randomUUID();

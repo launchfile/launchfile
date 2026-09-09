@@ -1,0 +1,40 @@
+# Proposed RFC #445 input for the private native-TLS prototype only.
+# Derived from catalog/apps/vaultwarden/Launchfile; this optional syntax is unaccepted.
+version: launch/v1
+name: vaultwarden
+description: Self-hosted password manager — works with all Bitwarden apps and
+  browser extensions
+repository: https://github.com/dani-garcia/vaultwarden
+logo: https://raw.githubusercontent.com/dani-garcia/vaultwarden/main/resources/vaultwarden-icon.svg
+image: vaultwarden/server:latest
+provides:
+  - protocol: http
+    port: 80
+    exposed: true
+    tls: server-cert
+supports:
+  - type: postgres
+    set_env:
+      DATABASE_URL: $url
+  - name: server-cert
+    type: certificate
+    set_env:
+      ROCKET_PORT: $listener.port
+      ROCKET_TLS: '{certs="${cert_file}",key="${key_file}"}'
+env:
+  ADMIN_TOKEN:
+    generator: secret
+    sensitive: true
+    description: Token for accessing the admin panel
+  SIGNUPS_ALLOWED:
+    default: "true"
+    description: Whether new user signups are allowed
+  DOMAIN:
+    default: $app.url
+    description: Public URL vaultwarden is served from (required for WebAuthn/U2F)
+  ROCKET_PORT: "80"
+storage:
+  data:
+    path: /data
+    persistent: true
+restart: always

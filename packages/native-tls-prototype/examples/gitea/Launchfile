@@ -14,7 +14,7 @@ supports:
     type: certificate
     set_env:
       GITEA__server__PROTOCOL: https
-      GITEA__server__HTTP_PORT: $port
+      GITEA__server__HTTP_PORT: $listener.port
       GITEA__server__CERT_FILE: $cert_file
       GITEA__server__KEY_FILE: $key_file
 

@@ -1,14 +1,7 @@
-import { createPrivateKey, X509Certificate } from "node:crypto";
-import { execFile } from "node:child_process";
-import { readFile, stat } from "node:fs/promises";
-import { isIP } from "node:net";
-import { isAbsolute } from "node:path";
-import { promisify } from "node:util";
-import { launchToCompose } from "@launchfile/docker";
+import { launchToCompose, redactSecrets } from "@launchfile/docker";
 import { parse, stringify } from "yaml";
 import { planTls, type CertificateInput, type TlsMode, type TlsPlan } from "./planner.js";
-
-const execute = promisify(execFile);
+import { registerBindingProperties } from "./redaction.js";
 
 export interface DockerTlsOptions {
   mode: TlsMode;
@@ -27,61 +20,23 @@ export interface DockerTlsResult {
   warnings: string[];
 }
 
-async function readMaterial(path: string): Promise<string> {
-  if (!isAbsolute(path)) throw new Error("Certificate material paths must be absolute");
-  const metadata = await stat(path);
-  if (!metadata.isFile() || metadata.size > 1_048_576) {
-    throw new Error("Certificate material must be a regular file smaller than 1 MiB");
-  }
-  return readFile(path, "utf8");
-}
-
-/** This prototype deliberately supports one root CA and one directly signed leaf. */
-export async function validateCertificate(input: CertificateInput, serverName: string): Promise<void> {
-  const [certPem, keyPem, caPem] = await Promise.all([
-    readMaterial(input.certFile), readMaterial(input.keyFile), readMaterial(input.caFile),
-  ]);
-  if ((certPem.match(/BEGIN CERTIFICATE/g) ?? []).length !== 1 ||
-      (caPem.match(/BEGIN CERTIFICATE/g) ?? []).length !== 1) {
-    throw new Error("Prototype certificate validation supports one leaf and one root CA, without intermediates");
-  }
-  let leaf: X509Certificate;
-  let ca: X509Certificate;
-  try {
-    leaf = new X509Certificate(certPem);
-    ca = new X509Certificate(caPem);
-    if (!leaf.checkPrivateKey(createPrivateKey(keyPem))) throw new Error("mismatch");
-  } catch {
-    throw new Error("Invalid certificate/private key pair");
-  }
-  const now = Date.now();
-  for (const cert of [leaf, ca]) {
-    if (Date.parse(cert.validFrom) > now || Date.parse(cert.validTo) <= now) {
-      throw new Error("Certificate is expired or not yet valid");
-    }
-  }
-  if (!ca.ca || !leaf.checkIssued(ca) || !leaf.verify(ca.publicKey)) {
-    throw new Error("Certificate is not signed by the supplied trust root");
-  }
-  if (!(isIP(serverName) ? leaf.checkIP(serverName) : leaf.checkHost(serverName))) {
-    throw new Error(`Certificate does not authenticate server name ${serverName}`);
-  }
-  // A valid signature and hostname do not authorize server use: a client-only
-  // leaf can pass both. Delegate purpose/key-usage checks to the TLS verifier.
-  try {
-    await execute("openssl", ["verify", "-purpose", "sslserver", "-CAfile", input.caFile, input.certFile],
-      { timeout: 10_000, maxBuffer: 64 * 1024 });
-  } catch {
-    throw new Error("TLS server certificate verification failed; check certificate purpose and OpenSSL availability");
-  }
-}
-
 const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
 // Replacement strings interpret $$ themselves; a callback preserves both dollars for Compose.
 const composeLiteral = (value: string): string => value.replaceAll("$", () => "$$");
 
-/** Compile proposed syntax to the existing provider, then attach validated material and a TLS-aware probe. */
+/** Compile proposed syntax to the existing provider, then attach supplied paths and a TLS-aware app health check, without reading certificate bytes. */
 export async function compileDockerTls(yaml: string, options: DockerTlsOptions): Promise<DockerTlsResult> {
+  // Register supplied values before the provider can emit anything. Even if a
+  // future registry knows key_file, the explicit credential rule still wins.
+  for (const input of Object.values(options.certificates ?? {})) {
+    registerBindingProperties({ cert_file: input.certFile, key_file: input.keyFile, ca_file: input.caFile },
+      ["cert_file", "key_file", "ca_file"]);
+  }
+  try { return await compileSuppliedPaths(yaml, options); }
+  catch (error) { throw new Error(redactSecrets(error instanceof Error ? error.message : "TLS compilation failed")); }
+}
+
+async function compileSuppliedPaths(yaml: string, options: DockerTlsOptions): Promise<DockerTlsResult> {
   if (!Number.isInteger(options.hostPort) || options.hostPort < 1 || options.hostPort > 65535) {
     throw new Error("hostPort must be an integer from 1 to 65535");
   }
@@ -93,11 +48,21 @@ export async function compileDockerTls(yaml: string, options: DockerTlsOptions):
     containerInputs[name] = { certFile: `${directory}/cert.pem`, keyFile: `${directory}/key.pem`, caFile: `${directory}/ca.pem` };
   }
   const plan = planTls(yaml, { ...options, certificates: containerInputs });
+  for (const resource of Object.values(plan.resources)) {
+    registerBindingProperties(resource.properties, ["cert_file", "key_file", "ca_file"]);
+  }
   const serverName = options.serverName ?? new URL(plan.publicUrl).hostname;
   if (plan.certificate) {
     const certificate = options.certificates?.[plan.certificate];
     if (!certificate) throw new Error(`Missing certificate material for ${plan.certificate}`);
-    await validateCertificate(certificate, serverName);
+    // Contents, existence, and readiness are the supplying consumer’s responsibility (D-56).
+    for (const key of ["certFile", "keyFile", "caFile"] as const) {
+      const path = certificate[key];
+      if (typeof path !== "string" || !path.startsWith("/") || path.endsWith("/") || /[\u0000-\u001f\u007f]/.test(path) ||
+          path.split("/").some(part => part === "." || part === "..")) {
+        throw new Error(`Certificate binding ${plan.certificate}.${key} requires an absolute file path without traversal`);
+      }
+    }
   }
 
   const launch = structuredClone(plan.launch);
@@ -122,7 +87,7 @@ export async function compileDockerTls(yaml: string, options: DockerTlsOptions):
   if (Object.keys(launch.components).some((name) => !generated.services[name])) {
     throw new Error("The provider refused a component; this prototype cannot emit a partial application");
   }
-  const warnings = [...plan.warnings, ...generated.warnings];
+  const warnings = [...plan.warnings, ...generated.warnings].map(redactSecrets);
   const serviceName = generated.services[plan.component];
   if (!serviceName) throw new Error("The provider refused the selected component");
   const compose = parse(generated.yaml) as {

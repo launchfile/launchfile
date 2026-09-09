@@ -1,17 +1,19 @@
 # Verification record
 
-Verified on 2026-09-09 from `codex/demo-native-tls`. The branch includes the D-59 listener-definition documentation merge [bae761d4c562e703da959b733dfd432602a10a96](https://github.com/launchfile/launchfile/commit/bae761d4c562e703da959b733dfd432602a10a96); it changes no production code from the initial proof base.
+Steward follow-up verified from `codex/demo-native-tls`. The branch includes the D-59 listener-definition documentation merge [bae761d4c562e703da959b733dfd432602a10a96](https://github.com/launchfile/launchfile/commit/bae761d4c562e703da959b733dfd432602a10a96); it changes no production code from the initial proof base. The live report records its own UTC execution timestamp.
 
-| Check                  | Result                                         |
-| ---------------------- | ---------------------------------------------- |
-| `bun run verify`       | SDK/Docker builds, strict TypeScript, 89 tests |
-| SDK `bun run test`     | 425 passed                                     |
-| Docker `bun run test`  | 352 passed                                     |
-| `bun run prove`        | Seven real Gitea deployments, 58 assertions    |
-| Owned resource cleanup | Containers, volumes, proxies, temp files gone  |
+| Check                  | Result                                          |
+| ---------------------- | ----------------------------------------------- |
+| `bun run verify`       | SDK/Docker builds, strict TypeScript, 115 tests |
+| SDK `bun run test`     | 425 passed                                      |
+| Docker `bun run test`  | 352 passed                                      |
+| `bun run prove`        | Seven real Gitea deployments, 58 assertions     |
+| Owned resource cleanup | Containers, volumes, proxies, temp files gone   |
 
 The recorded [live proof](live-proof.json) uses `gitea/gitea:latest` resolved to `sha256:87a67ee09d3ae0d1df5fda5dcda3e2a1f9236a45b0a59025d6e00e46adc43bef`. It authenticates CA chains and hostnames, distinguishes edge/backend certificates, rejects bad trust/identity without plaintext fallback, preserves a data sentinel through all switches, and verifies Gitea's version endpoint plus Docker health. Certificate paths include a literal dollar sign to exercise Compose escaping. No system trust was installed.
 
-The seven arrangements are HTTP, edge termination, native HTTPS, passthrough, re-encryption, native HTTPS on port 3443, and return to HTTP on port 3000. The final test suite additionally checks refusal of a partial app when any component is skipped, preservation of required-environment failures, and secret-safe parse diagnostics. The live proof now also refuses a client-authentication-only certificate before Docker starts; certificate-purpose verification uses [OpenSSL verify](https://docs.openssl.org/3.0/man1/openssl-verify/).
+The seven arrangements are HTTP, edge termination, native HTTPS, passthrough, re-encryption, native HTTPS on port 3443, and return to HTTP on port 3000. The supplying consumer rejects a client-authentication-only certificate before Docker starts; its separate verification helper uses [OpenSSL verify](https://docs.openssl.org/3.0/man1/openssl-verify/). Provider compilation does not call that helper or read certificate bytes. A test compiles nonexistent supplied paths successfully while retaining an explicitly unverified status; missing binding fields still refuse with a named error.
+
+The revised tests cover `$listener.port` scope without changing resource-local `$port`, inactive malformed/shared bindings, retained expression transforms/escapes, and key-file redaction even with a registered vocabulary. Four catalog-derived candidate files preserve shipped dependency/storage/listener baselines and demonstrate documented wiring across five planned arrangements and changed native ports. Those are authoring/plan checks; only Gitea has live TLS deployment evidence. Existing SDK 425 and Docker 352 tests passed during the original extraction; neither production codebase changed in this follow-up.
 
 The proof intentionally excludes public-HTTPS requirements and strictness; those are separate RFC demonstrations. This is not evidence of production-wide provider integration, general certificate lifecycle management, intermediate chains, multi-endpoint routing, or variants. See the package README for limits and commands.

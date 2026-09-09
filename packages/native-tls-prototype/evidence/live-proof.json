@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-09-09T14:41:08.481Z",
+  "timestamp": "2026-09-09T22:43:57.393Z",
   "runtime": "Bun 1.4.0",
   "image": {
     "reference": "gitea/gitea:latest",
@@ -28,7 +28,7 @@
       "detail": "Native TLS requires supplied certificate material for server-cert"
     },
     {
-      "name": "Client-only certificate is rejected before Docker starts",
+      "name": "Supplying consumer rejects a client-only certificate before Docker starts",
       "passed": true,
       "detail": "TLS server certificate verification failed; check certificate purpose and OpenSSL availability"
     },

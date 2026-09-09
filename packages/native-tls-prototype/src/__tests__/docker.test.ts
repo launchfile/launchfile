@@ -3,7 +3,10 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { parse } from "yaml";
-import { compileDockerTls, validateCertificate } from "../docker.js";
+import { compileDockerTls } from "../docker.js";
+import { validateCertificate } from "../certificate-verification.js";
+import { redactSecrets } from "@launchfile/docker";
+import { isCredentialProperty, registerBindingProperties } from "../redaction.js";
 import { createCertificates } from "../../scripts/certificates.js";
 
 const fixture = await readFile(new URL("../../examples/gitea/Launchfile", import.meta.url), "utf8");
@@ -33,11 +36,34 @@ describe("existing Docker provider integration", () => {
     expect(result.plan.resources).toEqual({});
   });
 
-  test("native mode refuses nonexistent material before generating artifacts", async () => {
-    await expect(compileDockerTls(fixture, {
+  test("native compilation accepts supplied paths without inspecting existence or certificate contents", async () => {
+    const result = await compileDockerTls(fixture, {
       mode: "native", publicUrl: "https://localhost:34000", hostPort: 34000, projectName: "tls-native-test",
       certificates: { "server-cert": { certFile: "/nonexistent/cert", keyFile: "/nonexistent/key", caFile: "/nonexistent/ca" } },
-    })).rejects.toThrow();
+    });
+    expect(result.plan.protocol).toBe("https");
+    expect(result.compose).toContain("/nonexistent/cert");
+    expect(redactSecrets("missing /nonexistent/key")).toBe("missing [REDACTED]");
+    expect(result.warnings.join(" ")).not.toContain("/nonexistent/key");
+  });
+
+  test.each(["certFile", "keyFile", "caFile"])("refuses an unsupplied %s without inspecting other paths", async (field) => {
+    await expect(compileDockerTls(fixture, {
+      mode: "native", publicUrl: "https://localhost:34000", hostPort: 34000, projectName: "tls-missing-test",
+      certificates: { "server-cert": { certFile: "/not-read/cert", keyFile: "/not-read/key", caFile: "/not-read/ca", [field]: "" } },
+    })).rejects.toThrow(`Certificate binding server-cert.${field} requires an absolute file path`);
+  });
+
+  test("registered key vocabulary cannot disable redaction of supplied values", () => {
+    const properties = { key_file: "/private/key-sentinel", signing_key: "private-material-sentinel", client_key_file: "/private/client-sentinel" };
+    const vocabulary = Object.keys(properties);
+    registerBindingProperties(properties, vocabulary);
+    for (const [name, value] of Object.entries(properties)) {
+      expect(isCredentialProperty(name, vocabulary)).toBe(true);
+      expect(redactSecrets(`diagnostic: ${value}`)).toBe("diagnostic: [REDACTED]");
+    }
+    expect(isCredentialProperty("cert_file", ["cert_file"])).toBe(false);
+    expect(isCredentialProperty("unknown_extension", [])).toBe(true);
   });
 
   test("preserves provider warnings without adding an operator strictness policy", async () => {

@@ -18,7 +18,7 @@ function document() {
 		],
 		supports: [{
 			name: "server-cert", type: "certificate",
-			set_env: { PROTOCOL: "https", CERT: "$cert_file", KEY: "$key_file", HTTP_PORT: "$port" },
+			set_env: { PROTOCOL: "https", CERT: "$cert_file", KEY: "$key_file", HTTP_PORT: "$listener.port" },
 		}],
 		env: { PROTOCOL: "http", ROOT_URL: "$app.url" },
 		health: "/api/healthz",
@@ -53,7 +53,7 @@ describe("TLS plans", () => {
 		expect(effective.HTTP_PORT).toBe(active ? "3000" : undefined);
 		expect(component.health).toEqual(readLaunch(stringify(document())).components.default!.health);
 		expect(plan.resources).toEqual(active ? { "server-cert": { properties: {
-			cert_file: material.certFile, key_file: material.keyFile, ca_file: material.caFile, port: "3000",
+			cert_file: material.certFile, key_file: material.keyFile,
 		} } } : {});
 	});
 
@@ -80,7 +80,8 @@ describe("TLS plans", () => {
 		expect(plan.port).toBe(3443);
 		expect(plan.launch.components.default!.provides).toHaveLength(1);
 		expect(plan.launch.components.default!.provides![0]!.port).toBe(3443);
-		expect(plan.resources["server-cert"]!.properties.port).toBe("3443");
+		expect(plan.launch.components.default!.supports![0]!.set_env!.HTTP_PORT).toBe("3443");
+		expect(plan.resources["server-cert"]!.properties).not.toHaveProperty("port");
 		expect(planTls(stringify(app), options("off")).port).toBe(3000);
 	});
 
@@ -169,6 +170,43 @@ describe("fail closed before legacy normalization", () => {
 });
 
 describe("explicit deployment contracts", () => {
+	it.each(["native", "off"] as const)("rejects legacy overloaded $port even when %s is selected", (mode) => {
+		const app = document(); app.supports[0]!.set_env.HTTP_PORT = "$port";
+		expect(() => planTls(stringify(app), options(mode))).toThrow(/\$port belongs to the resource; use \$listener.port/);
+	});
+
+	it.each(["$listener.host", "$listener.port.extra", "$listener"])("refuses unsupported listener reference %s", (reference) => {
+		const app = document(); app.supports[0]!.set_env.HTTP_PORT = reference;
+		expect(() => planTls(stringify(app), options("off"))).toThrow(/valid only inside/);
+	});
+
+	it.each(["native", "off"] as const)("refuses the listener namespace in ordinary env in %s mode", (mode) => {
+		const app = document();
+		const source = stringify({ ...app, env: { ...app.env, PORT: "$listener.port" } });
+		expect(() => planTls(source, options(mode))).toThrow(/valid only inside/);
+	});
+
+	it("does not let another resource borrow the certificate's listener namespace", () => {
+		const source = stringify({ ...document(), requires: [{ type: "redis", set_env: { REDIS_PORT: "$listener.port" } }] });
+		expect(() => planTls(source, options())).toThrow(/valid only inside/);
+	});
+
+	it("resolves the listener namespace while preserving ordinary resource references, transforms, and escaped dollars", () => {
+		const app = document();
+		app.provides[0]!.tls = { certificate: "server-cert", port: 3443 };
+		app.supports[0]!.set_env.HTTP_PORT = "$$literal:${listener.port}:${cert_file}:${listener.port|base64}";
+		const plan = planTls(stringify(app), options());
+		const value = plan.launch.components.default!.supports![0]!.set_env!.HTTP_PORT!;
+		expect(resolveExpression(value, { resource: plan.resources["server-cert"]!.properties }))
+			.toBe(`$literal:3443:${material.certFile}:${Buffer.from("3443", "hex").toString("base64")}`);
+	});
+
+	it("keeps $port as the ordinary backing resource port", () => {
+		const source = stringify({ ...document(), requires: [{ type: "postgres", set_env: { PG_PORT: "$port" } }] });
+		const plan = planTls(source, options());
+		expect(plan.launch.components.default!.requires![0]!.set_env!.PG_PORT).toBe("$port");
+	});
+
 	it.each(["off", "edge"] as const)("a required certificate rejects %s", (mode) => {
 		const { supports, ...app } = document();
 		expect(() => planTls(stringify({ ...app, requires: supports }), options(mode)))
@@ -212,7 +250,7 @@ describe("explicit deployment contracts", () => {
 	it("refuses native mode when an app has no native TLS binding", () => {
 		const app = document();
 		const { tls: _tls, ...web } = app.provides[0]!;
-		expect(() => planTls(stringify({ ...app, provides: [web] }), options())).toThrow(/does not declare native TLS/);
+		expect(() => planTls(stringify({ ...app, provides: [web], supports: [] }), options())).toThrow(/does not declare native TLS/);
 	});
 
 	it("cannot infer an HTTP configuration from an HTTPS base listener", () => {
@@ -284,7 +322,7 @@ describe("endpoint and component scope", () => {
 		const app = document();
 		app.provides.push({ name: "admin", protocol: "http", port: 3001, exposed: false, tls: "server-cert" });
 		expect(() => planTls(stringify(app), options())).toThrow(/shared by multiple endpoints/);
-		expect(planTls(stringify(app), options("off")).protocol).toBe("http");
+		expect(() => planTls(stringify(app), options("off"))).toThrow(/shared by multiple endpoints/);
 	});
 
 	it("refuses cross-component collisions in the provider's global resource map", () => {
