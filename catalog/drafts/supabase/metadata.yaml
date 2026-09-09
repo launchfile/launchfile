@@ -1,3 +1,10 @@
 category: Backend
 tagline: "Open-source Firebase alternative"
 homepage: https://supabase.com
+known_issues:
+  - "Does not deploy. `auth.GOTRUE_DB_DATABASE_URL`, `rest.PGRST_DB_URI`, and
+    `studio.STUDIO_PG_META_URL` are Postgres DSNs pointing at the hand-authored
+    `postgres` sibling component, not a provider-provisioned resource. `requires:`
+    (D-7) has nothing to bind to, and cross-component reference (D-6) reaches a
+    sibling's `provides:` endpoint properties, never its `generator:`-minted secret.
+    The mechanism they need is tracked by #236."

@@ -1,6 +1,9 @@
 category: AI/ML
 tagline: "AI chat platform supporting multiple LLM providers"
 homepage: https://www.librechat.ai
+test_env:
+  OPENAI_API_KEY: "not-a-real-key-librechat-harness-fixture"
+  ANTHROPIC_API_KEY: "not-a-real-key-librechat-harness-fixture"
 test_results:
   last_tested: 2026-04-06
   pull_time_seconds: 13
