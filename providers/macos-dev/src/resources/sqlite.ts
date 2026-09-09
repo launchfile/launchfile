@@ -3,10 +3,15 @@
  */
 
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 import type { NormalizedRequirement } from "@launchfile/sdk";
 import type { ResourceState } from "../state.js";
-import type { ProvisionOpts, ResourceProperties, ResourceProvisioner } from "./types.js";
+import type {
+	DestroyOpts,
+	ProvisionOpts,
+	ResourceProperties,
+	ResourceProvisioner,
+} from "./types.js";
 
 export class SqliteProvisioner implements ResourceProvisioner {
 	readonly type = "sqlite";
@@ -43,10 +48,26 @@ export class SqliteProvisioner implements ResourceProvisioner {
 		return { properties, state };
 	}
 
-	async destroy(state: ResourceState): Promise<void> {
-		if (state.dbName) {
-			const { rm } = await import("node:fs/promises");
-			await rm(state.dbName, { force: true });
+	async destroy(state: ResourceState, opts: DestroyOpts): Promise<void> {
+		if (!state.dbName) return;
+
+		// state.json is repo-supplied and parsed without validation (state.ts),
+		// so dbName is untrusted here. provision() puts the file under
+		// .launchfile/data/sqlite/; anything else is refused, not deleted.
+		// The trailing separator matters: a bare startsWith(root) would leave a
+		// sibling directory named `sqlite-evil` deletable.
+		const root = resolve(
+			join(opts.projectDir, ".launchfile", "data", "sqlite"),
+		);
+		const target = resolve(state.dbName);
+		if (!target.startsWith(root + sep)) {
+			console.warn(
+				`  ! sqlite: refusing to delete ${target} — outside ${root}`,
+			);
+			return;
 		}
+
+		const { rm } = await import("node:fs/promises");
+		await rm(target, { force: true });
 	}
 }

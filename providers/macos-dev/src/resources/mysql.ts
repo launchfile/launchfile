@@ -12,6 +12,7 @@ import {
 } from "./identifiers.js";
 import type { ResourceState } from "../state.js";
 import type {
+	DestroyOpts,
 	ProvisionOpts,
 	ResourceProperties,
 	ResourceProvisioner,
@@ -126,7 +127,7 @@ export class MysqlProvisioner implements ResourceProvisioner {
 		return { properties, state };
 	}
 
-	async destroy(state: ResourceState): Promise<void> {
+	async destroy(state: ResourceState, _opts: DestroyOpts): Promise<void> {
 		// Security: state values come from disk (state.json) — validate before SQL interpolation
 		if (state.dbName && SAFE_IDENTIFIER.test(state.dbName)) {
 			await this.#shell(
