@@ -44,6 +44,7 @@ This package is a library consumed by the unified `launchfile` CLI (`packages/la
 - `source-resolver.ts` — Resolves slugs, URLs, or paths to Launchfile YAML
 - `port-allocator.ts` — Finds available host ports for container bindings
 - `state.ts` — Persists state at `~/.launchfile/docker/{slug}/`
+- `secrets-namespace.ts` — Which persisted values are addressable as `$secrets.<name>`, and the migration that splits a pre-#237 state file
 - `prereqs.ts` — Checks Docker and docker compose availability
 - `shell.ts` — Shell execution helper
 
@@ -51,7 +52,7 @@ This package is a library consumed by the unified `launchfile` CLI (`packages/la
 
 `~/.launchfile/docker/{slug}/` contains:
 - `docker-compose.yml` — generated compose file
-- `state.json` — secrets, ports, timestamps
+- `state.json` — declared-secret values, backing-service passwords (`resourcePasswords`, a namespace of its own so no value in it resolves as `$secrets.<name>`), ports, timestamps
 
 ## Dependencies
 

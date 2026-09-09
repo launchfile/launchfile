@@ -31,6 +31,11 @@ import {
 } from "./env-secrets.js";
 import { publishedEndpoints } from "./port-allocator.js";
 import { registerSecret } from "./redact.js";
+import {
+	declaredSecrets,
+	migrateResourcePasswords,
+	type ResourcePasswordKey,
+} from "./secrets-namespace.js";
 import type { StateEndpoint } from "./state.js";
 
 // --- Backing service definitions ---
@@ -197,19 +202,23 @@ function applyPostgresConfig(
 
 /**
  * Create a backing service factory with pre-generated or cached passwords.
- * Passwords are per-app to ensure consistency across restarts.
+ * Passwords are per-app to ensure consistency across restarts, and live in
+ * their own state map (`DockerState.resourcePasswords`) — never in `secrets`,
+ * which is the namespace `$secrets.<name>` resolves from.
  *
  * Each factory's `properties` map is this provider's answer to SPEC.md
  * § Resource Property Vocabulary; `resourcePropertyKeys()` reads it back.
  */
 function createBackingServices(
-	savedSecrets: Record<string, string>,
+	savedPasswords: Record<string, string>,
 ): Record<string, (name: string) => BackingService> {
-	// Use saved password or generate a new one
-	const getPassword = (key: string): string => {
-		if (savedSecrets[key]) return savedSecrets[key]!;
+	// Use saved password or generate a new one. Keyed by `ResourcePasswordKey`,
+	// so a factory can only mint under a key `DockerState.resourcePasswords`
+	// and the migration both know about.
+	const getPassword = (key: ResourcePasswordKey): string => {
+		if (savedPasswords[key]) return savedPasswords[key]!;
 		const pw = randomPassword();
-		savedSecrets[key] = pw;
+		savedPasswords[key] = pw;
 		return pw;
 	};
 
@@ -529,8 +538,8 @@ function createBackingServices(
  * `spec/schema/resource-properties.json`, and a hand-maintained copy would
  * drift from the factories, which is the drift the check exists to catch.
  *
- * Calling this generates throwaway passwords into a local secrets map. They are
- * never returned and never reach a compose file.
+ * Calling this generates throwaway passwords into a local map. They are never
+ * returned and never reach a compose file.
  */
 export function resourcePropertyKeys(): Record<string, string[]> {
 	const factories = createBackingServices({});
@@ -544,8 +553,19 @@ export function resourcePropertyKeys(): Record<string, string[]> {
 // --- Main generator ---
 
 export interface ComposeOpts {
-	/** Pre-existing secrets to reuse (mutated with new secrets) */
+	/**
+	 * Values already minted for the names the Launchfile's `secrets:` block
+	 * declares (mutated with newly minted ones). A backing-service password
+	 * carried here by a pre-split state file is moved to `resourcePasswords`
+	 * before anything resolves.
+	 */
 	secrets?: Record<string, string>;
+	/**
+	 * Backing-service passwords to reuse, keyed by `ResourcePasswordKey`
+	 * (mutated with newly minted ones). Separate from `secrets` so a database
+	 * password is never reachable as `$secrets.<name>`.
+	 */
+	resourcePasswords?: Record<string, string>;
 	/**
 	 * Persisted `env:`-level generator values to reuse, keyed
 	 * `<component>.<ENV_NAME>` (mutated with newly minted values).
@@ -645,8 +665,13 @@ export interface ComposeResult {
 	images: string[];
 	/** Service names that must be built from a `build:` config before start */
 	builds: string[];
-	/** Secrets generated during composition (save to state) */
+	/** Declared-secret values minted or reused during composition (save to state) */
 	secrets: Record<string, string>;
+	/**
+	 * Backing-service passwords minted or reused during composition (save to
+	 * state). Includes any moved out of a pre-split state file's `secrets`.
+	 */
+	resourcePasswords: Record<string, string>;
 	/** `env:`-level generator values minted or reused during composition (save to state) */
 	generatedEnv: Record<string, string>;
 	/**
@@ -703,6 +728,7 @@ export function launchToCompose(
 	// serviceName → serialized req.config it was created with (shared-service dedup)
 	const appliedConfigs = new Map<string, string>();
 	const secrets = opts.secrets ?? {};
+	const resourcePasswords = opts.resourcePasswords ?? {};
 	const generatedEnv = opts.generatedEnv ?? {};
 	const ports: Record<string, number> = {};
 	const componentServices: Record<string, string> = {};
@@ -756,7 +782,20 @@ export function launchToCompose(
 	}
 	const usedResourceKeys = new Set<string>();
 
-	const backingServices = createBackingServices(secrets);
+	// A state file written before the two namespaces split carries its
+	// backing-service passwords in `secrets`. Move them across before anything
+	// mints or resolves, so a reused password is found where it now belongs and
+	// no undeclared name survives into the resolver context.
+	warnings.push(
+		...migrateResourcePasswords(
+			secrets,
+			resourcePasswords,
+			new Set(Object.keys(launch.secrets ?? {})),
+			launch.name,
+		),
+	);
+
+	const backingServices = createBackingServices(resourcePasswords);
 
 	// Pre-generate app-wide secrets
 	if (launch.secrets) {
@@ -784,7 +823,10 @@ export function launchToCompose(
 	const resolverContext: ResolverContext = {
 		resources: resourceMap,
 		components: componentMap,
-		secrets,
+		// Declared names only. The resolver looks up whatever map it is given
+		// without checking that the name was declared, so handing it the raw
+		// state map would answer `$secrets.postgres` from a leftover entry.
+		secrets: declaredSecrets(launch.secrets, secrets),
 		app: appProperties,
 	};
 
@@ -1253,6 +1295,7 @@ export function launchToCompose(
 		images: [...new Set(images)],
 		builds,
 		secrets,
+		resourcePasswords,
 		generatedEnv,
 		ports,
 		endpoints,

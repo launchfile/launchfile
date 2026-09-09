@@ -26,6 +26,7 @@ import {
 } from "@launchfile/sdk";
 import { computeAppProperties } from "./app-url.js";
 import { redactSecrets } from "./redact.js";
+import { declaredSecrets } from "./secrets-namespace.js";
 import { loadState, composeProject } from "./state.js";
 
 /** Default budget for a bootstrap command when no `timeout` is declared. */
@@ -120,6 +121,11 @@ export function planBootstraps(
 	opts: {
 		/** Component name → allocated host port (for $app.* resolution). */
 		hostPorts: Record<string, number>;
+		/**
+		 * Persisted secret values. Narrowed to the names the Launchfile declares
+		 * before it becomes a resolver context — `$secrets.<name>` addresses a
+		 * declared name and nothing else.
+		 */
 		secrets: Record<string, string>;
 		/**
 		 * Orchestrator-supplied publication context (#290) — the recorded
@@ -132,7 +138,7 @@ export function planBootstraps(
 	},
 ): BootstrapPlanItem[] {
 	const resolverContext: ResolverContext = {
-		secrets: opts.secrets,
+		secrets: declaredSecrets(launch.secrets, opts.secrets),
 		app: computeAppProperties(launch, opts.hostPorts, opts.appUrl),
 	};
 
