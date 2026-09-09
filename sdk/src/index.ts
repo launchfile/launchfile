@@ -61,6 +61,7 @@ export {
 	parseLaunchErrorContext,
 	type Redactor,
 	slotForCommand,
+	sourceErrorKey,
 	stripControl,
 	stripControlInline,
 	TAIL_LINES,
