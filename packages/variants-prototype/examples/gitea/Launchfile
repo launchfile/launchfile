@@ -1,4 +1,5 @@
 # Experimental input for this package only. Existing Launchfile tools do not support variants.
+# Proposed author edit: the shipped catalog entry requires PostgreSQL; this SQLite baseline is new.
 name: gitea
 image: gitea/gitea:latest
 provides:

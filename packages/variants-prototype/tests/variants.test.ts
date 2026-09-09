@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { readLaunch } from "@launchfile/sdk";
 import { describe, expect, it } from "vitest";
-import { expandVariants, readVariants, redactPreview } from "../src/variants.js";
+import { expandVariants, readVariants, redactPreview, type SelectionContext } from "../src/variants.js";
 
 const fixture = (relative: string) => readFileSync(new URL(`../examples/gitea/${relative}`, import.meta.url), "utf8");
 const example = fixture("Launchfile");
@@ -176,5 +176,46 @@ describe("explicit prototype boundaries", () => {
     expect(JSON.stringify(redacted)).not.toContain("SECRET_SENTINEL");
     expect(redacted.launch.components.default!.requires![0]!.set_env!.TOKEN).toBe("$password");
     expect(preview.launch.components.default!.requires![0]!.set_env!.PASSWORD).toContain("FALLBACK_SECRET_SENTINEL");
+  });
+});
+
+describe("caller-supplied deployment selection history", () => {
+  it("reports that an ordinary inspection has no lifecycle claim", () => {
+    expect(readVariants(example).lifecycle).toEqual({ check: "not-requested" });
+  });
+
+  it.each([
+    { selected: undefined, previousSelection: null },
+    { selected: "postgres", previousSelection: "postgres" },
+  ])("permits unchanged selection $previousSelection and preserves the expanded result", ({ selected, previousSelection }) => {
+    const before = readVariants(example, selected);
+    const after = readVariants(example, selected, { previousSelection });
+    expect(after.launch).toEqual(before.launch);
+    expect(after.lifecycle).toEqual({ check: "same-selection", previousSelection });
+  });
+
+  it.each([
+    { selected: "postgres", previousSelection: null },
+    { selected: undefined, previousSelection: "postgres" },
+    { selected: "other", previousSelection: "postgres" },
+  ])("refuses an existing selection change $previousSelection -> $selected before YAML parsing", ({ selected, previousSelection }) => {
+    expect(() => readVariants("invalid: [YAML", selected, { previousSelection })).toThrow("changing the selected configuration");
+  });
+
+  it("refuses a change before inspecting or normalizing the input object", () => {
+    const unreadable = { get name(): string { throw new Error("input was inspected"); } };
+    expect(() => expandVariants(unreadable, "postgres", { previousSelection: null })).toThrow("changing the selected configuration");
+  });
+
+  it("still validates every candidate on an unchanged selection", () => {
+    expect(() => expandVariants({ ...minimal(), variants: { broken: { env: { DB: "$missing.url" } } } }, undefined, { previousSelection: null })).toThrow("variants.broken.env.DB");
+  });
+
+  it.each([undefined, 123, "", "baseline", "prod/us"])("rejects malformed explicitly supplied history %j", (previousSelection) => {
+    expect(() => readVariants(example, undefined, { previousSelection } as SelectionContext)).toThrow("previousSelection");
+  });
+
+  it("refuses unknown history fields instead of loading an implied state source", () => {
+    expect(() => readVariants(example, undefined, { stateFile: "deployment.json" } as SelectionContext)).toThrow("unsupported field");
   });
 });

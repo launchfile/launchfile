@@ -22,7 +22,13 @@ export interface VariantPreview {
   available: string[];
   validated: string[];
   requiredInputs: string[];
+  lifecycle: { check: "not-requested" } | { check: "same-selection"; previousSelection: string | null };
   launch: NormalizedLaunch;
+}
+
+export interface SelectionContext {
+  /** Caller-supplied history for the existing deployment; null means the baseline. */
+  previousSelection?: string | null;
 }
 
 function fail(where: string, message: string): never {
@@ -38,6 +44,20 @@ function keys(value: unknown, allowed: readonly string[], where: string): void {
   for (const key of Object.keys(record(value, where))) {
     if (!allowed.includes(key)) fail(`${where}.${key}`, "unsupported field in this prototype");
   }
+}
+
+/** A supplied history asserts an existing deployment. This package owns no state. */
+function checkSelectionChange(selection: string | undefined, context: SelectionContext): VariantPreview["lifecycle"] {
+  keys(context, ["previousSelection"], "selection context");
+  if (!Object.hasOwn(context, "previousSelection")) return { check: "not-requested" };
+  const previous = context.previousSelection;
+  if (previous !== null && (typeof previous !== "string" || !NAME.test(previous) || previous === "baseline")) {
+    fail("selection context", "previousSelection must be a supported name or null for the baseline");
+  }
+  if (previous !== (selection ?? null)) {
+    fail("selection", "changing the selected configuration of an existing deployment is refused; no expansion, recreation, or migration was performed");
+  }
+  return { check: "same-selection", previousSelection: previous };
 }
 
 // Aliases may share objects, but cyclic graphs and magic object keys cannot be input.
@@ -169,7 +189,8 @@ function validateCandidate(raw: RecordValue, where: string): NormalizedLaunch {
 }
 
 /** Expand one author-named configuration; never resolve values or run providers. */
-export function expandVariants(input: unknown, selection?: string): VariantPreview {
+export function expandVariants(input: unknown, selection?: string, context: SelectionContext = {}): VariantPreview {
+  const lifecycle = checkSelectionChange(selection, context);
   checkGraph(input);
   const raw = record(input, "Launchfile");
   keys(raw, [...ROOT_FIELDS, "variants"], "Launchfile");
@@ -192,6 +213,7 @@ export function expandVariants(input: unknown, selection?: string): VariantPrevi
     selected,
     available: Object.keys(variants),
     validated: ["baseline", ...Object.keys(variants)],
+    lifecycle,
     requiredInputs: Object.entries(launch.components.default!.env ?? {})
       .filter(([key, value]) => value.required && value.default === undefined && !value.generator && !bindings.has(key))
       .map(([key]) => key),
@@ -199,14 +221,16 @@ export function expandVariants(input: unknown, selection?: string): VariantPrevi
   };
 }
 
-export function readVariants(yaml: string, selection?: string): VariantPreview {
+export function readVariants(yaml: string, selection?: string, context: SelectionContext = {}): VariantPreview {
+  // Refuse a changed selection before even parsing or normalizing the new document.
+  checkSelectionChange(selection, context);
   let raw: unknown;
   try {
     raw = parseLaunchYaml(yaml);
   } catch {
     fail("Launchfile", "invalid YAML or parser size/alias limit exceeded");
   }
-  return expandVariants(raw, selection);
+  return expandVariants(raw, selection, context);
 }
 
 /** Presentation copy only; generated secrets and resource values never enter this program. */

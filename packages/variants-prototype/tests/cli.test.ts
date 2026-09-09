@@ -61,4 +61,35 @@ describe("inspect CLI", () => {
     expect(result.stdout).toBe("");
     expect(result.stderr).toContain("Usage:");
   });
+
+  it("accepts caller-supplied unchanged deployment selection in either flag order", () => {
+    for (const args of [["--variant=postgres", "--previous-variant=postgres"], ["--previous-variant=postgres", "--variant=postgres"]]) {
+      const result = spawnSync("bun", ["run", "inspect", "examples/gitea/Launchfile", ...args], { cwd, encoding: "utf8" });
+      expect(result.status).toBe(0);
+      expect(JSON.parse(result.stdout).lifecycle).toEqual({ check: "same-selection", previousSelection: "postgres" });
+    }
+  });
+
+  it.each([
+    { args: ["--previous-variant=baseline", "--variant=postgres"] },
+    { args: ["--previous-variant=postgres"] },
+  ])("refuses changed deployment selection without a partial preview: $args", ({ args }) => {
+    const result = spawnSync("bun", ["run", "inspect", "examples/gitea/Launchfile", ...args], { cwd, encoding: "utf8" });
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("changing the selected configuration");
+  });
+
+  it("represents the existing baseline explicitly without treating it as absent history", () => {
+    const result = spawnSync("bun", ["run", "inspect", "examples/gitea/Launchfile", "--previous-variant=baseline"], { cwd, encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout).lifecycle).toEqual({ check: "same-selection", previousSelection: null });
+  });
+
+  it("refuses duplicate previous-selection arguments", () => {
+    const result = spawnSync("bun", ["run", "inspect", "examples/gitea/Launchfile", "--previous-variant=baseline", "--previous-variant=postgres"], { cwd, encoding: "utf8" });
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("Usage:");
+  });
 });

@@ -6,6 +6,8 @@
     "inspect": "bun src/cli.ts",
     "demo:sqlite": "bun run inspect examples/gitea/Launchfile",
     "demo:postgres": "bun run inspect examples/gitea/Launchfile --variant=postgres",
+    "demo:catalog": "bun run inspect examples/gitea/catalog-edit/Launchfile",
+    "demo:catalog-sqlite": "bun run inspect examples/gitea/catalog-edit/Launchfile --variant=sqlite",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "verify": "bun run --cwd ../../sdk build && bun run typecheck && bun run test"

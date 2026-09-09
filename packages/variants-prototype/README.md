@@ -1,30 +1,23 @@
 # Named application variants: runnable concept D
 
-**Experimental, unaccepted demonstration for [#447](https://github.com/launchfile/launchfile/issues/447), related to [#314](https://github.com/launchfile/launchfile/issues/314).** This private package lets reviewers try the proposed author/consumer interaction. It does not add a feature to `launch/v1`, establish a format decision, or change the production SDK, parser, schema, or providers.
+**Deferred research demonstration for [#447](https://github.com/launchfile/launchfile/issues/447), related to [#314](https://github.com/launchfile/launchfile/issues/314).** The [Steward review](https://github.com/launchfile/launchfile/issues/447#issuecomment-5604015259) identifies missing catalog motivation and an Author decision under D-36. This private package lets reviewers inspect the mechanics; it does not meet the adoption bar, add a feature to `launch/v1`, or change the production SDK, parser, schema, or providers.
 
 The author defines supported app configurations together. The consumer selects one name:
 
 ```yaml
-name: gitea
-image: gitea/gitea:latest
-env:
-  GITEA__database__DB_TYPE: sqlite3
-  GITEA__server__ROOT_URL: $app.url
+# Append to the shipped Gitea entry; its required PostgreSQL baseline stays intact.
 variants:
-  postgres:
-    requires:
-      - type: postgres
-        set_env:
-          GITEA__database__DB_TYPE: postgres
-          GITEA__database__HOST: ${host}:${port}
-          GITEA__database__NAME: $name
-          GITEA__database__USER: $user
-          GITEA__database__PASSWD: $password
+  sqlite:
+    requires: []
     env:
+      GITEA__database__DB_TYPE: sqlite3
+      GITEA__database__PATH: /data/gitea/gitea.db
       GITEA__server__ROOT_URL: $app.url
 ```
 
-This abbreviated example shows the choice. [The complete example](examples/gitea/Launchfile) also declares the HTTP listener, persistent storage, SQLite path, health check, and disabled SSH. Its database settings follow [Gitea's configuration reference](https://docs.gitea.com/administration/config-cheat-sheet/). It compares against two complete ordinary Launchfiles: [SQLite](examples/gitea/sqlite/Launchfile) and [PostgreSQL](examples/gitea/postgres/Launchfile).
+**The shipped `catalog/apps/gitea/Launchfile` requires PostgreSQL and defaults `DB_TYPE` to `postgres`; it declares no SQLite choice.** [The proposed edit](examples/gitea/catalog-edit/Launchfile) keeps that exact SDK-normalized baseline and adds a new, explicitly selected SQLite configuration. This is an author edit to assess, not a claim about the existing catalog or a tested SQLite deployment. Gitea's upstream [configuration reference](https://docs.gitea.com/administration/config-cheat-sheet/) documents the database alternatives.
+
+The original [SQLite-first mechanics example](examples/gitea/Launchfile) remains for comparison with two complete ordinary files, but is expressly a proposed different baseline. [An alternative using existing `supports`/`set_env`](examples/gitea/supports/Launchfile) supplies the same PostgreSQL bindings without variants. [The three-app assessment](evidence/catalog-assessment.md) explains why Gitea, Flowise, and Mealie do not establish three unmet needs for this mechanism.
 
 ## Try it
 
@@ -33,18 +26,18 @@ From this repository's root:
 ```sh
 bun install --frozen-lockfile
 bun run --cwd packages/variants-prototype verify
-bun run --cwd packages/variants-prototype demo:sqlite
-bun run --cwd packages/variants-prototype demo:postgres
+bun run --cwd packages/variants-prototype demo:catalog
+bun run --cwd packages/variants-prototype demo:catalog-sqlite
 ```
 
 For another file, run from this package:
 
 ```sh
 bun run inspect path/to/Launchfile
-bun run inspect path/to/Launchfile --variant=postgres
+bun run inspect path/to/Launchfile --variant=sqlite
 ```
 
-Both commands print JSON with `selected`, `available`, `validated`, `requiredInputs`, and an SDK-normalized `launch`. No selection chooses the baseline. The PostgreSQL selection removes the SQLite environment map and binds the required database's properties. A `requiredInputs` entry identifies a consumer value still needed; the prototype never invents that value. Empty `requiredInputs` does not prove deployability or that a provider can supply the declared backing services.
+Both commands print JSON with `selected`, `available`, `validated`, `requiredInputs`, `lifecycle`, and an SDK-normalized `launch`. No selection chooses the baseline. In the proposed catalog edit, `--variant=sqlite` removes the mandatory PostgreSQL entry and replaces the environment map. A `requiredInputs` entry identifies a consumer value still needed; the prototype never invents that value. Empty `requiredInputs` does not prove deployability or that a provider can supply the declared backing services.
 
 The output is an inspection preview, not a provider deployment plan. `$app.url`, `$password`, and `$secrets.key` remain expressions. It loads no environment values, generates no secrets, and writes no files. Explicitly sensitive defaults and common credential-named defaults/bindings are redacted. Redaction cannot identify arbitrary secrets hidden under innocent names: use references and declarations, never actual credential material, in these demonstration files.
 
@@ -59,9 +52,31 @@ The output is an inspection preview, not a provider deployment plan. `$app.url`,
 
 The selected `launch` has the same normalized structure as a complete ordinary equivalent file. The wrapper's selection metadata is not passed into Launchfile semantics.
 
+## Existing deployment boundary
+
+An integration checking an existing deployment must supply that deployment's previous selection through the separate `SelectionContext` argument. `null` means an existing baseline; an absent property means no lifecycle check was requested, which the output reports explicitly. The CLI exposes this caller assertion as `--previous-variant=<name|baseline>`:
+
+```sh
+# Existing PostgreSQL baseline, still selected: preview allowed.
+bun run inspect examples/gitea/catalog-edit/Launchfile --previous-variant=baseline
+
+# Existing PostgreSQL baseline, now requesting SQLite: refused before expansion.
+bun run inspect examples/gitea/catalog-edit/Launchfile --previous-variant=baseline --variant=sqlite
+```
+
+Changing the selection of an existing deployment is refused before YAML parsing or normalization. The baseline is a real selection, so baseline-to-name and name-to-baseline both refuse. The same selection remains subject to all normal candidate checks. Selecting a different configuration belongs to a separate, user-controlled new-deployment lifecycle with explicit data handling; this package implements no destruction, recreation, or migration.
+
+The caller owns history lookup, persistence, and association with the correct deployment identity. The package reads no sidecar/state file or environment values. Omitted history proves nothing about redeploy safety. Comparing names cannot detect a changed definition under the same name, a changed image, or changed storage contents, so an allowed preview is never a data-compatibility claim.
+
+## Author decision and terminology
+
+If pursued, this proposes a **fourth D-36 home**: app-authored alternative configurations selected by the consumer. That would amend D-36's current exhaustive three-home rule; it is not an interpretation of home #1, whose variation is source/artifact execution intent. No Author amendment has been accepted.
+
+This document calls the proposal an **in-file configuration choice**. D-43's **source declaration variant** is a separate whole Launchfile with its own repository baseline `#ref`. D-43 explicitly fences off general in-file baseline configuration; this choice mechanism therefore needs its own decision under that fence. Existing experimental `variants`/`--variant` spellings remain only for comparing the prototype, not as a terminology decision. D-37 remains binary source/artifact. L-3's possible `Launchfile.override` for orchestrator config values is neither implemented nor assigned precedence by this work; reusing D-25's replacement rule here does not decide a future override mechanism.
+
 ## What this proves, and what remains open
 
-The tests compare actual expansion with the existing SDK reading two independently written complete Gitea configurations. They also check invalid nonselected variants, dangling references after clears, unknown contracts, port/name ambiguity, alias mutation, CLI failures, unresolved expressions, and redaction.
+The tests compare actual expansion with the existing SDK reading two independently written complete Gitea configurations and preserve the shipped PostgreSQL baseline in the proposed catalog edit. They check existing optional database bindings in tested-tier Flowise/Mealie entries, compare the existing-syntax Gitea alternative, and cover redeploy refusal, invalid nonselected variants, dangling references after clears, unknown contracts, port/name ambiguity, alias mutation, CLI failures, unresolved expressions, and redaction.
 
 This does **not** launch Gitea, PostgreSQL, or any provider. Selecting PostgreSQL for an existing SQLite installation does **not** migrate data, validate a database connection, or make changing a persisted installation safe. The examples are configuration comparisons; no live transition is claimed. The image tag is illustrative and is never pulled by these scripts.
 

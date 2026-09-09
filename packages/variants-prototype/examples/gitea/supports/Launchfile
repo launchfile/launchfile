@@ -1,0 +1,27 @@
+# Proposed alternative using existing syntax; the shipped catalog currently requires PostgreSQL.
+# This is a configuration comparison, not a tested database transition or catalog replacement.
+name: gitea
+image: gitea/gitea:latest
+provides:
+  - name: web
+    protocol: http
+    port: 3000
+    exposed: true
+env:
+  GITEA__database__DB_TYPE: sqlite3
+  GITEA__database__PATH: /data/gitea/gitea.db
+  GITEA__server__ROOT_URL: $app.url
+  GITEA__server__DISABLE_SSH: true
+supports:
+  - type: postgres
+    set_env:
+      GITEA__database__DB_TYPE: postgres
+      GITEA__database__HOST: ${host}:${port}
+      GITEA__database__NAME: $name
+      GITEA__database__USER: $user
+      GITEA__database__PASSWD: $password
+storage:
+  data:
+    path: /data
+    persistent: true
+health: /api/healthz
