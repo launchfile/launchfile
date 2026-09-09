@@ -16,6 +16,7 @@ provides:
     port: 51820
 env:
   WG_HOST:
+    default: $app.host
     required: true
     description: "Public hostname or IP for WireGuard"
   PASSWORD_HASH:
