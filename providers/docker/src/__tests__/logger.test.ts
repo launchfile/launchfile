@@ -1,7 +1,10 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Writable } from "node:stream";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import pino from "pino";
-import { REDACT_CONFIG } from "../logger.js";
+import { REDACT_CONFIG, serializeErr } from "../logger.js";
+import { clearRegisteredSecrets, registerSecret } from "../redact.js";
 
 /**
  * Build an in-memory pino logger for testing JSON output and redaction.
@@ -139,6 +142,145 @@ describe("logger redaction", () => {
 		// If this becomes a requirement, enumerate concrete paths.
 		const two = entry!.two as Record<string, Record<string, unknown>>;
 		expect(two.inner!.password).toBe("two-deep");
+	});
+});
+
+describe("err serializer", () => {
+	beforeEach(() => {
+		clearRegisteredSecrets();
+	});
+
+	it("redacts a credential embedded in the error message and stack", () => {
+		const err = new Error(
+			"failed to pull https://user:ghp_abc123@registry.example.com/img",
+		);
+		const serialized = serializeErr(err);
+		expect(serialized.message).not.toContain("ghp_abc123");
+		expect(serialized.message).toBe(
+			"failed to pull https://user:[REDACTED]@registry.example.com/img",
+		);
+		expect(serialized.stack).not.toContain("ghp_abc123");
+	});
+
+	it("redacts a registered secret embedded in the message", () => {
+		registerSecret("registered-secret-value");
+		const err = new Error("refused: registered-secret-value");
+		const serialized = serializeErr(err);
+		expect(serialized.message).toBe("refused: [REDACTED]");
+	});
+
+	it("redacts secrets in properties attached to the error object", () => {
+		registerSecret("registered-secret-value");
+		const err = Object.assign(new Error("command failed"), {
+			result: { stdout: "token=registered-secret-value", exitCode: 1 },
+			display: "curl -H registered-secret-value",
+		});
+		const serialized = serializeErr(err);
+		const result = serialized.result as Record<string, unknown>;
+		expect(result.stdout).toBe("token=[REDACTED]");
+		expect(serialized.display).toBe("curl -H [REDACTED]");
+	});
+
+	it("keeps pino's standard error record shape", () => {
+		const err = new Error("plain failure");
+		const serialized = serializeErr(err);
+		expect(serialized).toHaveProperty("type", "Error");
+		expect(serialized).toHaveProperty("message", "plain failure");
+		expect(serialized).toHaveProperty("stack");
+	});
+
+	it("leaves non-sensitive text untouched", () => {
+		const err = new Error("container exited with code 137");
+		const serialized = serializeErr(err);
+		expect(serialized.message).toBe("container exited with code 137");
+	});
+
+	it("is wired into the root logger for the `err` field", () => {
+		const lines: string[] = [];
+		const stream = new Writable({
+			write(chunk, _encoding, callback) {
+				lines.push(chunk.toString().trim());
+				callback();
+			},
+		});
+		const testLogger = pino(
+			{
+				level: "trace",
+				timestamp: pino.stdTimeFunctions.isoTime,
+				redact: { paths: [...REDACT_CONFIG.paths], censor: REDACT_CONFIG.censor },
+				serializers: { err: serializeErr },
+			},
+			stream,
+		);
+
+		registerSecret("registered-secret-value");
+		testLogger.error(
+			{ err: new Error("boom: registered-secret-value") },
+			"span failed",
+		);
+
+		const [entry] = lines.map((line) => JSON.parse(line));
+		const loggedErr = entry.err as Record<string, unknown>;
+		expect(loggedErr.message).toBe("boom: [REDACTED]");
+	});
+});
+
+describe("err serializer — NDJSON file", () => {
+	// LAUNCHFILE_LOG_DIR is validated against a sensitive-path blocklist that
+	// includes "/var" — os.tmpdir() resolves to /var/folders/... on macOS, so
+	// the file goes under the package directory instead, cleaned up after.
+	//
+	// The module builds its file stream from LAUNCHFILE_LOG_DIR at import
+	// time, so getting a logger that writes to our temp dir means forcing a
+	// fresh module instance with vi.resetModules() — and resetting again
+	// afterwards so later tests (`span system`, below) re-import a logger
+	// that was never pointed at a directory this test just deleted.
+	let dir: string;
+
+	beforeEach(() => {
+		dir = mkdtempSync(join(process.cwd(), "lf-logger-ndjson-"));
+	});
+
+	afterEach(async () => {
+		rmSync(dir, { recursive: true, force: true });
+		delete process.env.LAUNCHFILE_LOG_DIR;
+		vi.resetModules();
+	});
+
+	it("scrubs a credential-bearing error from the on-disk NDJSON file", async () => {
+		process.env.LAUNCHFILE_LOG_DIR = dir;
+		vi.resetModules();
+		const fresh = await import("../logger.js");
+		const freshRedact = await import("../redact.js");
+		freshRedact.registerSecret("registered-secret-value");
+
+		const err = Object.assign(
+			new Error(
+				"failed https://user:hunter2pass@host.example.com/x and registered-secret-value",
+			),
+			{ display: "curl registered-secret-value" },
+		);
+		fresh.logger.error({ err }, "span failed");
+
+		// The file destination opens and writes asynchronously (mkdir + fd
+		// open happen off the constructor call), so poll rather than assume
+		// a single flush() call has already landed the write.
+		const logPath = join(dir, "launchfile-docker.log");
+		let contents = "";
+		const deadline = Date.now() + 3000;
+		while (Date.now() < deadline) {
+			try {
+				contents = readFileSync(logPath, "utf8");
+				if (contents.includes("span failed")) break;
+			} catch {
+				// file not created yet
+			}
+			await new Promise((resolve) => setTimeout(resolve, 20));
+		}
+		expect(contents).not.toContain("hunter2pass");
+		expect(contents).not.toContain("registered-secret-value");
+		expect(contents).toContain("[REDACTED]");
+		expect(contents).toContain("span failed");
 	});
 });
 

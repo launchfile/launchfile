@@ -26,6 +26,7 @@ import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import pino from "pino";
 import pinoPretty from "pino-pretty";
+import { redactSecrets } from "./redact.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -140,6 +141,30 @@ export const REDACT_CONFIG = {
 	censor: "[REDACTED]",
 } as const;
 
+/**
+ * `redact` above only matches object paths — it never sees text inside an
+ * `Error.message` or `Error.stack`, or a value copied onto the error object
+ * (`shell.ts` attaches `result`/`display`). This walks pino's standard error
+ * serializer output and runs `redactSecrets()` over every string it finds, so
+ * a credential embedded in prose is caught the same way a `token` field is.
+ */
+function deepRedact(value: unknown): unknown {
+	if (typeof value === "string") return redactSecrets(value);
+	if (Array.isArray(value)) return value.map(deepRedact);
+	if (value !== null && typeof value === "object") {
+		return Object.fromEntries(
+			Object.entries(value).map(([key, val]) => [key, deepRedact(val)]),
+		);
+	}
+	return value;
+}
+
+/** `serializers.err` — see `deepRedact` for why `redact.paths` isn't enough. */
+export function serializeErr(err: unknown): Record<string, unknown> {
+	const serialized = pino.stdSerializers.err(err as Error) as Record<string, unknown>;
+	return deepRedact(serialized) as Record<string, unknown>;
+}
+
 // ---------------------------------------------------------------------------
 // Root logger
 // ---------------------------------------------------------------------------
@@ -155,6 +180,7 @@ export const logger: pino.Logger = pino(
 			paths: [...REDACT_PATHS],
 			censor: REDACT_CONFIG.censor,
 		},
+		serializers: { err: serializeErr },
 	},
 	buildStream(),
 );
