@@ -708,7 +708,7 @@ The change is **annotation-only**. No `type`, `enum`, `required`, or `default` u
 
 ---
 
-### D-next: `provides.protocol` describes the component's own listener
+### D-59: `provides.protocol` describes the component's own listener
 
 **Decision**: Each `provides` entry's `protocol` describes the component's own listener on that entry's `port`, in the configuration represented by the Launchfile. It never describes a public endpoint's scheme. Publishing an HTTPS URL while forwarding cleartext HTTP to a `protocol: http` listener is not a mismatch, and tools must not report it as one. A consumer MUST NOT infer from `protocol: http` that the component cannot be configured to serve TLS. This records the existing meaning, as accepted in [#314](https://github.com/launchfile/launchfile/issues/314#issuecomment-5602689174).
 
