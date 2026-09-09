@@ -8,7 +8,14 @@
  * directory `provision()` writes to.
  */
 
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import {
+	mkdir,
+	mkdtemp,
+	readFile,
+	rm,
+	symlink,
+	writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { NormalizedRequirement } from "@launchfile/sdk";
@@ -88,6 +95,36 @@ describe("SqliteProvisioner.destroy", () => {
 		);
 
 		expect(await exists(loot)).toBe(true);
+	});
+
+	it("refuses a path whose directory is a symlink out of the project", async () => {
+		// resolve() is lexical, so a symlinked data directory passes a
+		// string-prefix check while fs.rm follows it at the OS layer. The repo
+		// supplies .launchfile/, so it can ship that symlink.
+		const { projectDir } = await provisionedProject();
+		const victimDir = await mkdtemp(join(tmpdir(), "lf-victim-"));
+		const victim = join(victimDir, "id_ed25519");
+		await writeFile(victim, "private key");
+
+		const dataDir = join(projectDir, ".launchfile", "data", "sqlite");
+		await rm(dataDir, { recursive: true, force: true });
+		await symlink(victimDir, dataDir);
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+		await new SqliteProvisioner().destroy(
+			{
+				type: "sqlite",
+				name: "db",
+				port: 0,
+				dbName: join(dataDir, "id_ed25519"),
+			},
+			{ projectDir },
+		);
+
+		expect(await exists(victim)).toBe(true);
+		expect(warn).toHaveBeenCalledWith(
+			expect.stringContaining("refusing to delete"),
+		);
 	});
 
 	it("does nothing when the state carries no dbName", async () => {
