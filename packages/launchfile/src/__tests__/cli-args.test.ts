@@ -15,6 +15,7 @@ import {
 	getFlagValues,
 	getPositional,
 	hasFlag,
+	parseComponentNames,
 	parseStoragePairs,
 	suggestFlag,
 	unknownFlags,
@@ -57,6 +58,14 @@ describe("getPositional (#248)", () => {
 		expect(getPositional(args, 0)).toBe("up");
 		expect(getPositional(args, 1)).toBeUndefined();
 		expect(getPositional(["up", "--url", "https://x.example.com", "ghost"], 1)).toBe("ghost");
+	});
+
+	it("skips --components values so a name is never the up target (D-41)", () => {
+		const args = ["up", "--components", "web"];
+		expect(getPositional(args, 0)).toBe("up");
+		// `web` is the selector's value; the target stays the cwd.
+		expect(getPositional(args, 1)).toBeUndefined();
+		expect(getPositional(["up", "--components", "web", "ghost"], 1)).toBe("ghost");
 	});
 
 	it("skips --storage values so a pair is never the up target (D-50)", () => {
@@ -165,6 +174,25 @@ describe("launchfile up --name with no value (built CLI)", () => {
 			expect(exitCode).toBe(1);
 			expect(output).toContain("--name requires a value");
 		}
+	});
+});
+
+describe("parseComponentNames (--components, D-41)", () => {
+	it("splits a comma-separated value", () => {
+		expect(parseComponentNames(["web,api"])).toEqual(["web", "api"]);
+	});
+
+	it("composes repeated flags with comma lists, in order", () => {
+		expect(parseComponentNames(["web,api", "worker"])).toEqual(["web", "api", "worker"]);
+	});
+
+	it("trims spacing and drops blanks and duplicates", () => {
+		expect(parseComponentNames([" web , ,api", "web"])).toEqual(["web", "api"]);
+	});
+
+	it("returns no names for an empty value — D-41's select-nothing means all", () => {
+		expect(parseComponentNames([""])).toEqual([]);
+		expect(parseComponentNames([])).toEqual([]);
 	});
 });
 
@@ -362,7 +390,7 @@ describe("unknownFlags (#510)", () => {
 
 describe("suggestFlag (#510)", () => {
 	it("suggests the one declared flag within edit distance 2", () => {
-		expect(suggestFlag("components")).toBe("component");
+		expect(suggestFlag("compnent")).toBe("component");
 		expect(suggestFlag("storagex")).toBe("storage");
 		expect(suggestFlag("jsonn")).toBe("json");
 		expect(suggestFlag("detac")).toBe("detach");

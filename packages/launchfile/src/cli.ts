@@ -34,6 +34,7 @@ import {
 	valuedBooleanFlag,
 	unknownFlags,
 	suggestFlag,
+	parseComponentNames,
 	parseStoragePairs,
 } from "./cli-args.js";
 
@@ -90,6 +91,24 @@ const storageFlag = (): Record<string, string> | undefined => {
 	return values.length > 0 ? parseStoragePairs(values) : undefined;
 };
 
+/**
+ * The D-41 `--components` selector, or undefined when no name is given —
+ * an absent flag and an empty value both mean every component.
+ */
+const componentsFlag = (): string[] | undefined => {
+	const names = parseComponentNames(argsGetFlagValues(args, "components"));
+	return names.length > 0 ? names : undefined;
+};
+
+/**
+ * A flag's value as typed when the long form is present (empty string when it
+ * carries none), or undefined when it is absent. Presence is what the two
+ * wrong-command refusals key on: `--component` on `up`/`dev` and `--components`
+ * on `bootstrap` both parse, so each command must see them to reject them.
+ */
+const flagAsTyped = (flag: string): string | undefined =>
+	argsFlagPresent(args, flag) ? (getFlagValue(flag) ?? "") : undefined;
+
 const command = getPositional(0);
 const target = getPositional(1);
 
@@ -130,6 +149,11 @@ Options:
                    Public URL the app is reached at when a reverse proxy,
                     tunnel, or edge in front of it owns routing — $app.* then
                     resolves from it instead of the local address (with up, dev)
+  --components <a,b>
+                   Start only these components plus their downward dependency
+                    closure — their depends_on targets and every closure
+                    member's required services (D-41). Comma-separated and
+                    repeatable; omit it to start every component (with up, dev)
   --component <n>  Limit bootstrap to a single component
   --reveal         (bootstrap) Print captures marked \`sensitive\` instead of
                     masking them — they never reach logs or state either way
@@ -147,6 +171,7 @@ Examples:
   launchfile up                      Run the app in the current directory
   launchfile up --url https://notes.example.com
                                      Run it behind your own proxy at that URL
+  launchfile up --components api     Run api and what it depends on, nothing else
   launchfile diagnose                Explain the last failed launch
   launchfile diagnose --json         The same record, for a script
   launchfile down --destroy          Stop and remove everything
@@ -196,6 +221,8 @@ async function main(): Promise<void> {
 				detach: hasFlag("detach"),
 				dryRun: hasFlag("dry-run"),
 				name: getNameFlag(),
+				components: componentsFlag(),
+				component: flagAsTyped("component"),
 				storage: storageFlag(),
 				url: getUrlFlag(),
 			});
@@ -210,6 +237,8 @@ async function main(): Promise<void> {
 				detach: hasFlag("detach"),
 				dryRun: hasFlag("dry-run"),
 				name: getNameFlag(),
+				components: componentsFlag(),
+				component: flagAsTyped("component"),
 				storage: storageFlag(),
 				url: getUrlFlag(),
 			});
@@ -245,6 +274,7 @@ async function main(): Promise<void> {
 		case "bootstrap":
 			await handleBootstrap(target, {
 				component: getFlagValue("component"),
+				components: flagAsTyped("components"),
 				// D-62 spells `--reveal` as a bare boolean with no alias, so it reads
 				// through `flagPresent` (exact long form) rather than `hasFlag`, which
 				// would also match a `-r` the decision refuses by name.
