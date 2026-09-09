@@ -39,6 +39,7 @@ components:
         generator: secret
         sensitive: true
       GOTRUE_SITE_URL:
+        default: $app.url
         required: true
         description: "Public site URL"
     depends_on:
@@ -77,6 +78,7 @@ components:
       DB_USER:
         default: "postgres"
       DB_PASSWORD:
+        generator: secret
         required: true
         sensitive: true
       DB_NAME:
@@ -105,6 +107,7 @@ components:
         port: 3000
     env:
       SUPABASE_URL:
+        default: $app.url
         required: true
         description: "Public Supabase API URL"
       STUDIO_PG_META_URL:
