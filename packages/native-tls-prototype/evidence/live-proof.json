@@ -1,0 +1,300 @@
+{
+  "timestamp": "2026-09-09T14:41:08.481Z",
+  "runtime": "Bun 1.4.0",
+  "image": {
+    "reference": "gitea/gitea:latest",
+    "id": "sha256:87a67ee09d3ae0d1df5fda5dcda3e2a1f9236a45b0a59025d6e00e46adc43bef",
+    "digests": [
+      "gitea/gitea@sha256:87a67ee09d3ae0d1df5fda5dcda3e2a1f9236a45b0a59025d6e00e46adc43bef"
+    ]
+  },
+  "assertions": [
+    {
+      "name": "Edge and backend use distinct certificate identities",
+      "passed": true
+    },
+    {
+      "name": "Private leaf keys have mode 0600",
+      "passed": true
+    },
+    {
+      "name": "Unsupported native TLS is rejected before Docker starts",
+      "passed": true,
+      "detail": "default.web does not declare native TLS support"
+    },
+    {
+      "name": "Missing certificate material is rejected before Docker starts",
+      "passed": true,
+      "detail": "Native TLS requires supplied certificate material for server-cert"
+    },
+    {
+      "name": "Client-only certificate is rejected before Docker starts",
+      "passed": true,
+      "detail": "TLS server certificate verification failed; check certificate purpose and OpenSSL availability"
+    },
+    {
+      "name": "off: plan selects expected listener port",
+      "passed": true
+    },
+    {
+      "name": "off: selected listener is published only on loopback",
+      "passed": true
+    },
+    {
+      "name": "Gitea has persistent named data volume",
+      "passed": true
+    },
+    {
+      "name": "off: real Gitea responds with its version",
+      "passed": true
+    },
+    {
+      "name": "off: Docker health check passes",
+      "passed": true
+    },
+    {
+      "name": "edge: plan selects expected listener port",
+      "passed": true
+    },
+    {
+      "name": "edge: selected listener is published only on loopback",
+      "passed": true
+    },
+    {
+      "name": "edge: same named data volume retained",
+      "passed": true
+    },
+    {
+      "name": "edge: data survives configuration switch",
+      "passed": true
+    },
+    {
+      "name": "edge: real Gitea responds with its version",
+      "passed": true
+    },
+    {
+      "name": "edge: client sees edge certificate",
+      "passed": true
+    },
+    {
+      "name": "edge: Docker health check passes",
+      "passed": true
+    },
+    {
+      "name": "native: plan selects expected listener port",
+      "passed": true
+    },
+    {
+      "name": "native: selected listener is published only on loopback",
+      "passed": true
+    },
+    {
+      "name": "native: same named data volume retained",
+      "passed": true
+    },
+    {
+      "name": "native: data survives configuration switch",
+      "passed": true
+    },
+    {
+      "name": "native: real Gitea responds with its version",
+      "passed": true
+    },
+    {
+      "name": "native: client sees backend certificate",
+      "passed": true
+    },
+    {
+      "name": "native: Docker health check passes",
+      "passed": true
+    },
+    {
+      "name": "Native client rejects an untrusted CA",
+      "passed": true,
+      "detail": "UNABLE_TO_VERIFY_LEAF_SIGNATURE"
+    },
+    {
+      "name": "Native client rejects a mismatched backend hostname",
+      "passed": true,
+      "detail": "ERR_TLS_CERT_ALTNAME_INVALID"
+    },
+    {
+      "name": "passthrough: plan selects expected listener port",
+      "passed": true
+    },
+    {
+      "name": "passthrough: selected listener is published only on loopback",
+      "passed": true
+    },
+    {
+      "name": "passthrough: same named data volume retained",
+      "passed": true
+    },
+    {
+      "name": "passthrough: data survives configuration switch",
+      "passed": true
+    },
+    {
+      "name": "passthrough: real Gitea responds with its version",
+      "passed": true
+    },
+    {
+      "name": "passthrough: client sees backend certificate",
+      "passed": true
+    },
+    {
+      "name": "passthrough: Docker health check passes",
+      "passed": true
+    },
+    {
+      "name": "reencrypt: plan selects expected listener port",
+      "passed": true
+    },
+    {
+      "name": "reencrypt: selected listener is published only on loopback",
+      "passed": true
+    },
+    {
+      "name": "reencrypt: same named data volume retained",
+      "passed": true
+    },
+    {
+      "name": "reencrypt: data survives configuration switch",
+      "passed": true
+    },
+    {
+      "name": "reencrypt: real Gitea responds with its version",
+      "passed": true
+    },
+    {
+      "name": "reencrypt: client sees edge certificate",
+      "passed": true
+    },
+    {
+      "name": "Re-encryption independently authenticates backend certificate",
+      "passed": true
+    },
+    {
+      "name": "Re-encryption has no upstream verification failures",
+      "passed": true
+    },
+    {
+      "name": "reencrypt: Docker health check passes",
+      "passed": true
+    },
+    {
+      "name": "Re-encryption fails closed when backend CA is untrusted",
+      "passed": true
+    },
+    {
+      "name": "Re-encryption rejects a trusted leaf with the wrong backend identity",
+      "passed": true
+    },
+    {
+      "name": "native-expanded-port: plan selects expected listener port",
+      "passed": true
+    },
+    {
+      "name": "native-expanded-port: selected listener is published only on loopback",
+      "passed": true
+    },
+    {
+      "name": "native-expanded-port: same named data volume retained",
+      "passed": true
+    },
+    {
+      "name": "native-expanded-port: data survives configuration switch",
+      "passed": true
+    },
+    {
+      "name": "native-expanded-port: real Gitea responds with its version",
+      "passed": true
+    },
+    {
+      "name": "native-expanded-port: client sees backend certificate",
+      "passed": true
+    },
+    {
+      "name": "native-expanded-port: Docker health check passes",
+      "passed": true
+    },
+    {
+      "name": "return-to-http: plan selects expected listener port",
+      "passed": true
+    },
+    {
+      "name": "return-to-http: selected listener is published only on loopback",
+      "passed": true
+    },
+    {
+      "name": "return-to-http: same named data volume retained",
+      "passed": true
+    },
+    {
+      "name": "return-to-http: data survives configuration switch",
+      "passed": true
+    },
+    {
+      "name": "return-to-http: real Gitea responds with its version",
+      "passed": true
+    },
+    {
+      "name": "return-to-http: Docker health check passes",
+      "passed": true
+    },
+    {
+      "name": "Only this proof project was cleaned; no owned containers or volumes remain",
+      "passed": true
+    }
+  ],
+  "deployments": [
+    {
+      "mode": "off",
+      "status": "healthy",
+      "listenerPort": 3000,
+      "certificateIdentity": "none"
+    },
+    {
+      "mode": "edge",
+      "status": "healthy",
+      "listenerPort": 3000,
+      "certificateIdentity": "edge"
+    },
+    {
+      "mode": "native",
+      "status": "healthy",
+      "listenerPort": 3000,
+      "certificateIdentity": "backend"
+    },
+    {
+      "mode": "passthrough",
+      "status": "healthy",
+      "listenerPort": 3000,
+      "certificateIdentity": "backend"
+    },
+    {
+      "mode": "reencrypt",
+      "status": "healthy",
+      "listenerPort": 3000,
+      "certificateIdentity": "edge"
+    },
+    {
+      "mode": "native-expanded-port",
+      "status": "healthy",
+      "listenerPort": 3443,
+      "certificateIdentity": "backend"
+    },
+    {
+      "mode": "return-to-http",
+      "status": "healthy",
+      "listenerPort": 3000,
+      "certificateIdentity": "none"
+    }
+  ],
+  "cleanup": {
+    "containersRemoved": true,
+    "volumesRemoved": true,
+    "temporaryFilesRemoved": true
+  },
+  "passed": true
+}
