@@ -13,6 +13,7 @@ import {
 	getFlagValues,
 	getPositional,
 	hasFlag,
+	parseComponentNames,
 	parseStoragePairs,
 } from "../cli-args.js";
 
@@ -44,6 +45,14 @@ describe("getPositional (#248)", () => {
 	it("does not skip the token after a boolean flag", () => {
 		const args = ["up", "--dry-run", "ghost"];
 		expect(getPositional(args, 1)).toBe("ghost");
+	});
+
+	it("skips --components values so a name is never the up target (D-41)", () => {
+		const args = ["up", "--components", "web"];
+		expect(getPositional(args, 0)).toBe("up");
+		// `web` is the selector's value; the target stays the cwd.
+		expect(getPositional(args, 1)).toBeUndefined();
+		expect(getPositional(["up", "--components", "web", "ghost"], 1)).toBe("ghost");
 	});
 
 	it("skips --storage values so a pair is never the up target (D-50)", () => {
@@ -152,5 +161,24 @@ describe("launchfile up --name with no value (built CLI)", () => {
 			expect(exitCode).toBe(1);
 			expect(output).toContain("--name requires a value");
 		}
+	});
+});
+
+describe("parseComponentNames (--components, D-41)", () => {
+	it("splits a comma-separated value", () => {
+		expect(parseComponentNames(["web,api"])).toEqual(["web", "api"]);
+	});
+
+	it("composes repeated flags with comma lists, in order", () => {
+		expect(parseComponentNames(["web,api", "worker"])).toEqual(["web", "api", "worker"]);
+	});
+
+	it("trims spacing and drops blanks and duplicates", () => {
+		expect(parseComponentNames([" web , ,api", "web"])).toEqual(["web", "api"]);
+	});
+
+	it("returns no names for an empty value — D-41's select-nothing means all", () => {
+		expect(parseComponentNames([""])).toEqual([]);
+		expect(parseComponentNames([])).toEqual([]);
 	});
 });

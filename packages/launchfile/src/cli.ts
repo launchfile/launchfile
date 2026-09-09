@@ -31,6 +31,7 @@ import {
 	getFlagValues as argsGetFlagValues,
 	getPositional as argsGetPositional,
 	flagPresent as argsFlagPresent,
+	parseComponentNames,
 	parseStoragePairs,
 } from "./cli-args.js";
 
@@ -66,6 +67,24 @@ const storageFlag = (): Record<string, string> | undefined => {
 	const values = argsGetFlagValues(args, "storage");
 	return values.length > 0 ? parseStoragePairs(values) : undefined;
 };
+
+/**
+ * The D-41 `--components` selector, or undefined when no name is given —
+ * an absent flag and an empty value both mean every component.
+ */
+const componentsFlag = (): string[] | undefined => {
+	const names = parseComponentNames(argsGetFlagValues(args, "components"));
+	return names.length > 0 ? names : undefined;
+};
+
+/**
+ * A flag's value as typed when the long form is present (empty string when it
+ * carries none), or undefined when it is absent. Presence is what the two
+ * wrong-command refusals key on: `--component` on `up`/`dev` and `--components`
+ * on `bootstrap` both parse, so each command must see them to reject them.
+ */
+const flagAsTyped = (flag: string): string | undefined =>
+	argsFlagPresent(args, flag) ? (getFlagValue(flag) ?? "") : undefined;
 
 const command = getPositional(0);
 const target = getPositional(1);
@@ -103,6 +122,11 @@ Options:
                     supply its content; the provider binds it there instead of
                     creating an empty volume. Repeat per volume; spell the key
                     <component>.<volume> where the volume name is ambiguous
+  --components <a,b>
+                   Start only these components plus their downward dependency
+                    closure — their depends_on targets and every closure
+                    member's required services (D-41). Comma-separated and
+                    repeatable; omit it to start every component (with up, dev)
   --component <n>  Limit bootstrap to a single component
   --detached       (validate) Evaluate as fetched standalone, not read from the
                     app's own checkout — enables the D-43 reduced-portability check
@@ -116,6 +140,7 @@ Environment:
 Examples:
   launchfile up ghost                Run Ghost from the catalog
   launchfile up                      Run the app in the current directory
+  launchfile up --components api     Run api and what it depends on, nothing else
   launchfile diagnose                Explain the last failed launch
   launchfile diagnose --json         The same record, for a script
   launchfile down --destroy          Stop and remove everything
@@ -142,6 +167,8 @@ async function main(): Promise<void> {
 				detach: hasFlag("detach"),
 				dryRun: hasFlag("dry-run"),
 				name: getNameFlag(),
+				components: componentsFlag(),
+				component: flagAsTyped("component"),
 				storage: storageFlag(),
 			});
 			break;
@@ -155,6 +182,8 @@ async function main(): Promise<void> {
 				detach: hasFlag("detach"),
 				dryRun: hasFlag("dry-run"),
 				name: getNameFlag(),
+				components: componentsFlag(),
+				component: flagAsTyped("component"),
 				storage: storageFlag(),
 			});
 			break;
@@ -189,6 +218,7 @@ async function main(): Promise<void> {
 		case "bootstrap":
 			await handleBootstrap(target, {
 				component: getFlagValue("component"),
+				components: flagAsTyped("components"),
 			});
 			break;
 

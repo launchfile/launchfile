@@ -24,12 +24,25 @@ import { dockerSlugFor, type DeploymentEntry } from "../state/index.js";
 
 export interface BootstrapFlags {
 	component?: string;
+	/**
+	 * The plural `--components` as typed, present only so `bootstrap` can refuse
+	 * it. It is `up`'s D-41 selector, and the CLI's declared-flag table is
+	 * global, so `bootstrap --components web` parses and consumes `web` here —
+	 * the mirror of the trap `up` refuses for the singular spelling.
+	 */
+	components?: string;
 }
 
 export async function handleBootstrap(
 	target: string | undefined,
 	flags: BootstrapFlags,
 ): Promise<void> {
+	if (flags.components !== undefined) {
+		console.error("--components is `up`'s component selector; `bootstrap` does not narrow with it.");
+		console.error("Use --component <name> to limit bootstrap to a single component.");
+		process.exit(1);
+	}
+
 	const deployment = await resolveDeploymentTarget(target);
 
 	if (deployment.entry.provider === "docker") {

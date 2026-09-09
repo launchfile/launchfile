@@ -13,6 +13,8 @@ declare module "@launchfile/macos-dev" {
 		detach?: boolean;
 		withOptional?: boolean;
 		noBuild?: boolean;
+		/** D-41 component selector: these components plus their downward closure. */
+		components?: string[];
 		/** Host paths for `content: operator` volumes (D-50 rule 1). */
 		storage?: Record<string, string>;
 	}): Promise<void>;

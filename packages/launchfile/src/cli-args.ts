@@ -12,6 +12,7 @@
 export const VALUE_FLAGS: ReadonlySet<string> = new Set([
 	"name",
 	"component",
+	"components",
 	"schema-path",
 	"storage",
 ]);
@@ -82,6 +83,26 @@ export function parseStoragePairs(values: readonly string[]): Record<string, str
 		pairs[key] = path;
 	}
 	return pairs;
+}
+
+/**
+ * Parse `--components <name>[,<name>…]` values (D-41) into component names.
+ * The repeatable and comma-separated forms compose, so `--components a,b
+ * --components c` selects three; blanks and duplicates are dropped.
+ *
+ * An empty result means "all components" — D-41's "selecting nothing acts on
+ * all components" — so `--components ""` starts the same set as omitting the
+ * flag, rather than a third, empty one.
+ */
+export function parseComponentNames(values: readonly string[]): string[] {
+	const names: string[] = [];
+	for (const value of values) {
+		for (const part of value.split(",")) {
+			const name = part.trim();
+			if (name.length > 0 && !names.includes(name)) names.push(name);
+		}
+	}
+	return names;
 }
 
 /**
