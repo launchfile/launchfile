@@ -69,8 +69,8 @@ export interface BootstrapPlanItem {
 // Unbounded, the OSC branch `\][^\u0007]*` is quadratic: each `ESC ]` in the
 // input rescans the whole remainder looking for a BEL that a hostile log line
 // never supplies, and bootstrap stdout is exactly where a hostile log line
-// arrives (CWE-1333). A run of 40 000 `ESC ]` pairs took 1.8s; bounded it takes
-// 0ms.
+// arrives (CWE-1333). Through `extractCaptures`, 40 000 `ESC ]` pairs took
+// 366 ms under Bun 1.4.0 on an Apple-silicon Mac; bounded they take 0 ms.
 //
 // Excluding ESC from the payload also closes a swallow: ECMA-48 ends an OSC
 // string at BEL or ST (`ESC \`), and nothing between may contain ESC. The
@@ -78,13 +78,16 @@ export interface BootstrapPlanItem {
 // hyperlink lost its link text — and with it the URL a `capture` pattern is
 // looking for.
 //
-// The bounds exclude nothing a terminal writes. A CSI carries a handful of
-// parameter bytes (`ESC [ 38;2;255;255;255 m` is 18) and ECMA-48 permits only a
-// few intermediates; an OSC 8 hyperlink URL is the longest realistic payload and
-// sits far under 1024.
+// The parameter bound is 64 because 32 is not enough: one SGR that sets a
+// truecolor foreground and background together —
+// `ESC [ 38;2;255;255;255;48;2;240;240;240 m` — carries 33 parameter bytes, and a
+// theme-aware CLI emits it. Past the bound the sequence is not stripped at all
+// and its bytes reach the string `extractCaptures` matches against. ECMA-48
+// permits only a few intermediates; an OSC 8 hyperlink URL is the longest
+// realistic payload and sits far under 1024.
 const ANSI_ESCAPE =
 	// biome-ignore lint/suspicious/noControlCharactersInRegex: intentional ANSI match
-	/\u001B(?:\[[0-9;?]{0,32}[ -/]{0,8}[@-~]|\][^\u0007\u001B]{0,1024}(?:\u0007|\u001B\\)|[@-Z\\-_])/g;
+	/\u001B(?:\[[0-9;?]{0,64}[ -/]{0,8}[@-~]|\][^\u0007\u001B]{0,1024}(?:\u0007|\u001B\\)|[@-Z\\-_])/g;
 
 function stripAnsi(s: string): string {
 	return s.replace(ANSI_ESCAPE, "");
