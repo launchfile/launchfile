@@ -1,0 +1,31 @@
+{
+  "result": "passed",
+  "checks": [
+    "Public HTTP rejected before probing",
+    "HTTPS publication string remains unresolved; planning performs no I/O",
+    "CA and hostname verified at the HTTPS edge; fresh response traversed the HTTP app",
+    "App listener remains HTTP and route evidence does not mutate the pure plan",
+    "Untrusted CA rejected",
+    "Wrong hostname rejected",
+    "Unavailable HTTPS route rejected",
+    "Redirect downgrade refused without requesting its HTTP target",
+    "An authenticated edge with the wrong application response rejected",
+    "Oversized response rejected",
+    "Unresponsive route bounded by a wall-clock deadline",
+    "Owned loopback servers, sockets, and disposable certificate files removed"
+  ],
+  "routeEvidence": {
+    "component": "default",
+    "endpoint": "web",
+    "url": "https://127.0.0.1:63049",
+    "observedAt": "2026-09-09T14:36:55.953Z",
+    "status": "observed-authenticated-route",
+    "tlsProtocol": "TLSv1.3",
+    "peerFingerprint256": "37:3F:1C:B1:0B:F7:3C:7F:00:52:42:88:37:09:68:D8:40:87:68:AB:AC:91:34:20:D7:32:14:A4:50:D9:89:93",
+    "responseStatus": 200,
+    "expectedResponseMatched": true,
+    "limitation": "Point-in-time evidence from this client. Trust and hostname plus caller-supplied response expectation; not proof of public reachability, routing ownership, deployment identity, or browser behavior."
+  },
+  "cleanupVerified": true,
+  "boundaries": "Local route experiment only. No actual catalog app, Docker deployment, public DNS, browser flow, routing ownership, or production provider integration was tested."
+}
