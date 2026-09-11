@@ -1,0 +1,42 @@
+# Proposed edit to the shipped Gitea entry: keep PostgreSQL as the baseline,
+# then add an explicitly selected SQLite configuration. Not a catalog change.
+version: launch/v1
+name: gitea
+description: "Lightweight self-hosted Git service"
+repository: https://github.com/go-gitea/gitea
+logo: https://raw.githubusercontent.com/go-gitea/gitea/main/assets/logo.svg
+image: gitea/gitea:latest
+provides:
+  - protocol: http
+    port: 3000
+    exposed: true
+  - name: ssh
+    protocol: tcp
+    port: 22
+    exposed: true
+requires:
+  - type: postgres
+    set_env:
+      GITEA__database__DB_TYPE: postgres
+      GITEA__database__HOST: $host
+      GITEA__database__NAME: $name
+      GITEA__database__USER: $user
+      GITEA__database__PASSWD: $password
+env:
+  GITEA__database__DB_TYPE:
+    default: "postgres"
+  GITEA__server__ROOT_URL:
+    default: $app.url
+    description: "Public base URL Gitea builds clone and web links from"
+storage:
+  data:
+    path: /data
+    persistent: true
+restart: always
+variants:
+  sqlite:
+    requires: []
+    env:
+      GITEA__database__DB_TYPE: sqlite3
+      GITEA__database__PATH: /data/gitea/gitea.db
+      GITEA__server__ROOT_URL: $app.url
