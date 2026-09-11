@@ -759,7 +759,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 			console.log(`  \u2193 Wiring environment variables... done (${Object.keys(env).length} vars)`);
 		} else {
 			const { mkdir } = await import("node:fs/promises");
-			await mkdir(join(projectDir, ".launchfile", "env"), { recursive: true });
+			await mkdir(join(projectDir, ".launchfile", "env"), { recursive: true, mode: 0o700 });
 			await writeEnvFile(join(projectDir, ".launchfile", "env", `${name}.env`), env);
 			console.log(`  \u2193 Wiring ${name} environment... done (${Object.keys(env).length} vars)`);
 		}
@@ -914,7 +914,7 @@ export async function launchDown(opts: { destroy?: boolean; projectDir?: string 
 			const provisioner = getProvisioner(resourceState.type);
 			if (provisioner) {
 				console.log(`  Destroying ${resourceState.type} (${name})...`);
-				await provisioner.destroy(resourceState);
+				await provisioner.destroy(resourceState, { projectDir });
 			}
 		}
 

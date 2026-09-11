@@ -5,7 +5,7 @@
  * so credentials and ports are stable across restarts.
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, chmod } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { registerSecrets } from "./redact.js";
@@ -155,9 +155,16 @@ export async function saveState(projectDir: string, state: LaunchState): Promise
 /** Ensure .launchfile directories exist */
 export async function ensureDirs(projectDir: string): Promise<void> {
 	const dirs = ["storage", "tmp", "logs", "data", "env"];
-	// Security: restrict permissions — these dirs contain secrets, logs, env files
+	// Security: these dirs hold secrets, logs, and env files. mkdir applies the
+	// mode only when it creates the directory, so chmod unconditionally — a dir
+	// left by an earlier version or a looser umask must not stay world-readable
+	// (CWE-276). Mirrors packages/launchfile/src/state/errors.ts.
 	await Promise.all(
-		dirs.map((d) => mkdir(join(projectDir, STATE_DIR, d), { recursive: true, mode: 0o700 })),
+		dirs.map(async (d) => {
+			const dir = join(projectDir, STATE_DIR, d);
+			await mkdir(dir, { recursive: true, mode: 0o700 });
+			await chmod(dir, 0o700);
+		}),
 	);
 	// Safety net: write a .gitignore inside .launchfile/ so secrets aren't
 	// accidentally committed even if the project's .gitignore doesn't exclude it.

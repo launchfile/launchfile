@@ -23,6 +23,7 @@ import {
 	type UnboundOperatorVolume,
 	unsuppliedRequiredEnv,
 } from "@launchfile/sdk";
+import { intersects, subset, validRange } from "semver";
 import { stringify } from "yaml";
 import {
 	computeAppProperties,
@@ -47,8 +48,10 @@ interface BackingService {
 	image: string;
 	/**
 	 * Where this service keeps its state INSIDE the container — the path the
-	 * generated volume is mounted at. Every value below is the image's own
-	 * declared VOLUME, read from its config rather than from memory.
+	 * generated volume is mounted at. Each value is a path from the image's own
+	 * config, read rather than assumed from memory. Where an image declares
+	 * more than one VOLUME, the factory's own comment says which are mounted
+	 * and why — see `mongodb` below for the one case this applies to today.
 	 *
 	 * `null` means the service holds no state worth a volume (a cache), and no
 	 * volume is emitted for it. Required rather than optional on purpose: a new
@@ -138,21 +141,31 @@ const POSTGRES_EXTENSION_IMAGES: Record<string, string> = {
  * Honor `requires.config` for postgres (PROVIDERS.md §10.8: report gaps,
  * not silent drops). Declared extensions select a satisfying image and are
  * created via an init script the caller mounts into
- * /docker-entrypoint-initdb.d/ (runs when the database directory is
- * initialized). An extension no known image provides passes through
- * validated — if the image lacks it, initialization fails loudly at boot
- * instead of the app failing later on its first CREATE EXTENSION. Every
- * config key or extension the provider cannot honor is surfaced as a
- * warning, never dropped.
+ * /docker-entrypoint-initdb.d/. Every config key or extension the provider
+ * cannot honor is surfaced as a warning, never dropped.
  *
- * Returns the init SQL, or undefined when no extensions are declared.
- * Mutates `backing.image` when an extension requires a different image.
+ * Postgres reads that directory ONLY while initializing an empty data
+ * directory, and this provider keeps postgres's data directory on a named
+ * volume that `down` preserves unless `--destroy` is passed. Two effects
+ * therefore hold on a first run against an empty volume and on no other run:
+ * the `CREATE EXTENSION` statements below, and the loud boot failure when
+ * the selected image does not provide a declared extension. Against an
+ * existing volume the script is never read, so an extension added to a
+ * deployment that has already run is not created and nothing fails.
+ *
+ * This generator is pure and cannot see whether the volume exists, so it
+ * records each such service in `ComposeResult.initOnlyExtensions` and the
+ * caller checks and warns — the same division of labour as `storageBinds`.
+ *
+ * Returns the init SQL together with the SQL names it creates, or undefined
+ * when no extensions are declared. Mutates `backing.image` when an extension
+ * requires a different image.
  */
 function applyPostgresConfig(
 	config: Record<string, unknown>,
 	backing: BackingService,
 	warnings: string[],
-): string | undefined {
+): { sql: string; sqlNames: string[] } | undefined {
 	const sqlNames: string[] = [];
 	for (const [key, value] of Object.entries(config)) {
 		if (key !== "extensions") {
@@ -200,7 +213,84 @@ function applyPostgresConfig(
 		);
 	}
 
-	return `${sqlNames.map((n) => `CREATE EXTENSION IF NOT EXISTS "${n}";`).join("\n")}\n`;
+	return {
+		sql: `${sqlNames.map((n) => `CREATE EXTENSION IF NOT EXISTS "${n}";`).join("\n")}\n`,
+		sqlNames,
+	};
+}
+
+// --- requires.version handling ---
+
+/**
+ * The version family an image tag denotes, as a semver range — `undefined`
+ * when the tag names no version (`latest`). A tag is a family, not a release:
+ * `16` covers every 16.x the registry may resolve it to. Some tags carry a
+ * short alphabetic prefix that is not part of the version
+ * (`pgvector/pgvector:pg16`).
+ */
+function tagVersionRange(image: string): string | undefined {
+	const lastSlash = image.lastIndexOf("/");
+	const colon = image.indexOf(":", lastSlash + 1);
+	if (colon === -1) return undefined;
+	const match = /^[a-z]*(\d+(?:\.\d+)*)/.exec(image.slice(colon + 1));
+	if (!match) return undefined;
+	const parts = match[1]!.split(".");
+	if (parts.length === 1) return `${parts[0]}.x`;
+	if (parts.length === 2) return `${parts[0]}.${parts[1]}.x`;
+	return match[1]!;
+}
+
+/**
+ * Honor `requires[].version` (PROVIDERS.md §10 rule 8: report gaps, not silent
+ * drops). This provider provisions fixed image tags and never selects a
+ * version, so the declared range is compared against the tag the deployment
+ * will actually run — after any extension substitution. A range the tag
+ * provably satisfies is honored, and honoring it is silent. Anything else —
+ * provably unsatisfiable, undecidable, or an unparseable range — is a gap and
+ * is surfaced. The message states what this provider does and never asserts
+ * what the app will do (the D-51 rule).
+ */
+function checkVersionConstraint(
+	req: NormalizedRequirement,
+	image: string,
+	warnings: string[],
+): void {
+	const declared = req.version;
+	if (!declared) return;
+	const key = req.name ?? req.type;
+	const quoted = JSON.stringify(declared);
+
+	if (validRange(declared) === null) {
+		warnings.push(
+			`requires[${key}]: declared version ${quoted} is not a valid semver range — ` +
+				`this provider cannot check it against ${image}.`,
+		);
+		return;
+	}
+
+	const tagRange = tagVersionRange(image);
+	if (tagRange === undefined) {
+		warnings.push(
+			`requires[${key}]: declared version ${quoted} cannot be checked — this provider provisions ` +
+				`${image}, whose version is not fixed, and does not select versions.`,
+		);
+		return;
+	}
+
+	if (subset(tagRange, declared)) return;
+
+	if (!intersects(tagRange, declared)) {
+		warnings.push(
+			`requires[${key}]: declared version ${quoted} is not satisfied — this provider provisions the ` +
+				`fixed image ${image} and does not select versions.`,
+		);
+		return;
+	}
+
+	warnings.push(
+		`requires[${key}]: declared version ${quoted} cannot be checked against the fixed image ${image} — ` +
+			`this provider does not select versions.`,
+	);
 }
 
 /**
@@ -330,8 +420,13 @@ function createBackingServices(
 			const pw = getPassword("mongodb");
 			return {
 				image: "mongo:7",
-				// The image also declares /data/configdb; a single-node deployment keeps its
-				// metadata alongside its data.
+				// The image declares two volumes: /data/db and /data/configdb. Only
+				// /data/db is mounted here. /data/configdb is written only by
+				// `mongod --configsvr`, which this provider never runs, so it stays
+				// on an anonymous volume deliberately — not a gap in the #270
+				// invariant. If this factory ever runs mongo as a config server or
+				// in a sharded/replica-set topology, /data/configdb needs its own
+				// named volume at that point.
 				dataPath: "/data/db",
 				environment: {
 					MONGO_INITDB_ROOT_USERNAME: "launchfile",
@@ -639,6 +734,30 @@ export interface ComposeOpts {
 // two. Re-exported so this module's public API is unchanged.
 export type { StorageBind, UnboundOperatorVolume };
 
+/**
+ * A provisioned postgres service whose declared `config.extensions` reach the
+ * database only through `/docker-entrypoint-initdb.d/`, which postgres reads
+ * only while initializing an empty data directory.
+ *
+ * The generator is pure, so the caller owns the check: if the volume Compose
+ * creates for `volume` already exists, this run creates none of these
+ * extensions and must say so (PROVIDERS.md §10 rule 8). Same division of
+ * labour as `storageBinds`.
+ */
+export interface InitOnlyExtensions {
+	/** Component whose `requires:` entry created the backing service. */
+	component: string;
+	/** Generated compose service name (`<app>-postgres`). */
+	service: string;
+	/**
+	 * Volume KEY as written in the compose file. Compose creates the volume
+	 * under a project-scoped name, not this one — resolve it before querying.
+	 */
+	volume: string;
+	/** SQL names the init script creates, in the order it creates them. */
+	extensions: string[];
+}
+
 /** A `required:` variable neither the Launchfile nor the operator supplied. */
 export interface UnsuppliedRequiredVar {
 	component: string;
@@ -669,6 +788,20 @@ export interface ComposeResult {
 	/** Map of component name → generated compose service name (skipped components absent) */
 	services: Record<string, string>;
 	/**
+	 * Every compose service name the generator emitted, mapped to whether that
+	 * service carries a `healthcheck:` block. Backing services (`requires:`)
+	 * are in here alongside components — compose starts them too, so the gate
+	 * has to classify them.
+	 *
+	 * The health gate reads this instead of inferring the fact from `docker
+	 * compose ps`, whose `Health` field is `""` for BOTH "this service declares
+	 * no check" and "this service declares a check that has not been evaluated
+	 * yet" — the second is what a restarting container reports, and reading it
+	 * as the first passes a crash loop (#325). Derived from the services that
+	 * were actually emitted, so it cannot drift from the YAML above it.
+	 */
+	healthchecks: Record<string, boolean>;
+	/**
 	 * `required:` variables that arrived from neither the Launchfile nor
 	 * `opts.operatorEnv` (D-52, PROVIDERS.md §10 rule 8). Their keys are ABSENT
 	 * from the emitted compose — never `""`, never a substitute.
@@ -696,6 +829,14 @@ export interface ComposeResult {
 	 * `warnings`: a deploying verb reads this field and refuses.
 	 */
 	unboundOperatorVolumes: UnboundOperatorVolume[];
+	/**
+	 * Postgres services whose `config.extensions` are delivered by an
+	 * init script that only a first initialization runs. Empty unless a
+	 * `requires: postgres` entry declares `config.extensions`. The caller
+	 * resolves each `volume` to the name Compose actually creates and warns
+	 * when it already exists — see `InitOnlyExtensions`.
+	 */
+	initOnlyExtensions: InitOnlyExtensions[];
 }
 
 export function launchToCompose(
@@ -718,6 +859,7 @@ export function launchToCompose(
 	const endpoints: Record<string, StateEndpoint> = {};
 	const storageBinds: StorageBind[] = [];
 	const unboundOperatorVolumes: UnboundOperatorVolume[] = [];
+	const initOnlyExtensions: InitOnlyExtensions[] = [];
 
 	// D-50 storage-path keys, indexed once. Only components this generator
 	// actually translates ask the index, so a skipped one's marked volume never
@@ -1148,6 +1290,7 @@ export function launchToCompose(
 				}
 				const backingResult = addBackingService(
 					launch.name,
+					componentName,
 					req,
 					services,
 					volumes,
@@ -1155,6 +1298,7 @@ export function launchToCompose(
 					appliedConfigs,
 					images,
 					warnings,
+					initOnlyExtensions,
 					backingServices,
 				);
 				if (backingResult) {
@@ -1382,9 +1526,16 @@ export function launchToCompose(
 		ports,
 		endpoints,
 		services: componentServices,
+		healthchecks: Object.fromEntries(
+			Object.entries(services).map(([name, service]) => [
+				name,
+				service.healthcheck !== undefined,
+			]),
+		),
 		unsuppliedRequired,
 		storageBinds,
 		unboundOperatorVolumes,
+		initOnlyExtensions,
 	};
 }
 
@@ -1489,6 +1640,7 @@ function resolveEnvVar(
 
 function addBackingService(
 	appName: string,
+	componentName: string,
 	req: NormalizedRequirement,
 	services: Record<string, Record<string, unknown>>,
 	volumes: Record<string, Record<string, unknown>>,
@@ -1496,6 +1648,7 @@ function addBackingService(
 	appliedConfigs: Map<string, string>,
 	images: string[],
 	warnings: string[],
+	initOnlyExtensions: InitOnlyExtensions[],
 	backingServices: Record<string, (name: string) => BackingService>,
 ): { serviceName: string; properties: Record<string, string> } | null {
 	const type = req.type;
@@ -1528,9 +1681,12 @@ function addBackingService(
 
 		// requires.config — honor what we can, surface what we can't (§10.8).
 		let initSql: string | undefined;
+		let initExtensions: string[] | undefined;
 		if (req.config) {
 			if (type === "postgres") {
-				initSql = applyPostgresConfig(req.config, backing, warnings);
+				const applied = applyPostgresConfig(req.config, backing, warnings);
+				initSql = applied?.sql;
+				initExtensions = applied?.sqlNames;
 			} else {
 				for (const key of Object.keys(req.config)) {
 					warnings.push(
@@ -1575,10 +1731,30 @@ function addBackingService(
 			const volName = `${serviceName}-data`;
 			service.volumes = [`${volName}:${backing.dataPath}`];
 			volumes[volName] = {};
+
+			// The init script and the data directory share this volume, so the
+			// script runs only on the run that creates it. Reported for the
+			// caller to check; recorded against the component that created the
+			// service, so a shared service is scoped like `storageBinds` is.
+			if (initExtensions && initExtensions.length > 0) {
+				initOnlyExtensions.push({
+					component: componentName,
+					service: serviceName,
+					volume: volName,
+					extensions: initExtensions,
+				});
+			}
 		}
 
 		services[serviceName] = service;
 	}
+
+	// The image checked is the one the deployment actually runs — after any
+	// extension substitution above — so the message never names an image that
+	// is not in the compose file. A shared service is checked per requirement:
+	// a second entry declaring a version the first entry's image does not
+	// satisfy is its own gap.
+	checkVersionConstraint(req, services[serviceName]!.image as string, warnings);
 
 	return {
 		serviceName,

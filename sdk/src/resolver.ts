@@ -314,6 +314,24 @@ export function resolveExpression(
 		.join("");
 }
 
+/**
+ * Read one own property of a context record.
+ *
+ * Every record in a {@link ResolverContext} is a plain object built by a caller
+ * (a provider, the CLI, a downstream consumer), so it inherits
+ * `Object.prototype`. A bare index would hand back `constructor`, `toString`,
+ * `valueOf` and friends as if the app had declared them, instead of degrading
+ * to undefined and letting the caller's empty-string fallback fire (D-33,
+ * D-39, L-4). The guard has to live at the read site: the contexts are not
+ * ours to give a null prototype.
+ *
+ * A key that is present with an `undefined` value still yields `undefined`, so
+ * the `??` fallbacks below behave exactly as a bare index did.
+ */
+function own<T>(record: Record<string, T>, key: string): T | undefined {
+	return Object.hasOwn(record, key) ? record[key] : undefined;
+}
+
 /** Look up a property path in the resolver context */
 function resolvePath(
 	path: string[],
@@ -328,7 +346,7 @@ function resolvePath(
 	// properties resolve to undefined (caller falls back to "" or `:-default`).
 	if (first === "app" && path.length === 2 && context.app) {
 		const propName = path[1]!;
-		const val = context.app[propName];
+		const val = own(context.app, propName);
 		if (val !== undefined) return String(val);
 		return undefined;
 	}
@@ -336,18 +354,19 @@ function resolvePath(
 	// secrets.name → app-wide generated secret
 	if (first === "secrets" && path.length === 2 && context.secrets) {
 		const secretName = path[1]!;
-		const val = context.secrets[secretName];
-		if (val !== undefined) return val;
+		const val = own(context.secrets, secretName);
+		if (val !== undefined) return String(val);
 	}
 
 	// components.name.prop
 	if (first === "components" && path.length >= 3 && context.components) {
 		const componentName = path[1]!;
-		const component = context.components[componentName];
+		const component = own(context.components, componentName);
 		if (!component) return undefined;
 		// Try remaining path as dotted key, then just last segment
 		const propKey = path.slice(2).join(".");
-		const val = component[propKey] ?? component[path[path.length - 1]!];
+		const val =
+			own(component, propKey) ?? own(component, path[path.length - 1]!);
 		return val !== undefined ? String(val) : undefined;
 	}
 
@@ -356,24 +375,25 @@ function resolvePath(
 	// "storage" cannot shadow it. Unknown volume or property resolves to undefined
 	// (caller falls back to "" or `:-default`), matching $app.* and L-4.
 	if (first === "storage" && path.length === 3 && context.storage) {
-		const volume = context.storage[path[1]!];
+		const volume = own(context.storage, path[1]!);
 		if (!volume) return undefined;
-		const val = volume[path[2]!];
+		const val = own(volume, path[2]!);
 		return val !== undefined ? String(val) : undefined;
 	}
 
 	// Single segment → enclosing resource
 	if (path.length === 1 && context.resource) {
-		const val = context.resource[first];
+		const val = own(context.resource, first);
 		if (val !== undefined) return String(val);
 	}
 
 	// Multi-segment → named resource
 	if (path.length >= 2 && context.resources) {
-		const resource = context.resources[first];
+		const resource = own(context.resources, first);
 		if (resource) {
 			const propKey = path.slice(1).join(".");
-			const val = resource[propKey] ?? resource[path[path.length - 1]!];
+			const val =
+				own(resource, propKey) ?? own(resource, path[path.length - 1]!);
 			if (val !== undefined) return String(val);
 		}
 	}
@@ -381,7 +401,7 @@ function resolvePath(
 	// Fallback: enclosing resource with dotted key
 	if (context.resource) {
 		const fullKey = path.join(".");
-		const val = context.resource[fullKey];
+		const val = own(context.resource, fullKey);
 		if (val !== undefined) return String(val);
 	}
 

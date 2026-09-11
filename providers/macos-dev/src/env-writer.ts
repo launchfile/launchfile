@@ -360,7 +360,7 @@ export async function writeAllEnvFiles(
 			await writeEnvFile(join(projectDir, ".env.local"), env);
 		} else {
 			const envDir = join(projectDir, ".launchfile", "env");
-			await mkdir(envDir, { recursive: true });
+			await mkdir(envDir, { recursive: true, mode: 0o700 });
 			await writeEnvFile(join(envDir, `${name}.env`), env);
 		}
 	}
