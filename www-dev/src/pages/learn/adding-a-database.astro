@@ -22,6 +22,7 @@ const minifluxYaml = minifluxYamlRaw.replace(/^#.*\n/gm, "").trim();
     "How requires declares resource dependencies",
     "Shorthand vs expanded syntax for requires",
     "How a declared database gets provisioned and wired in automatically",
+    "Passing provisioning hints like Postgres extensions with config",
     "Adding a health check endpoint",
   ]}
   nextLesson={{ title: "Env Vars & Secrets", description: "Configure your app with defaults, required values, and generated secrets.", href: "/learn/env-and-secrets/" }}
@@ -90,6 +91,32 @@ health: /health`,
   after={{ title: "Expanded", yaml: "requires:\n  - type: postgres" }}
 />
 
+<h2 id="config">Provisioning hints with config</h2>
+
+<p>
+  A <code>requires</code> entry also takes a <GlossaryTip term="config" definition="Provisioning hints passed straight to whatever provisions the resource. Keys and their meaning are resource-type-specific.">config</GlossaryTip> map, which passes provisioning hints straight to whatever provisions the resource — for Postgres, the one you'll reach for most is <code>extensions</code>, the list of Postgres extensions the database should have installed.
+</p>
+
+<CodeBuildUp steps={[
+  {
+    yaml: `requires:
+  - type: postgres
+    config:
+      extensions: [vector]
+    set_env:
+      DATABASE_URL: $url`,
+    note: "Declare the extensions your app needs under <code>config</code>. How — or whether — a provider honors them is provider-specific.",
+  },
+]} />
+
+<p>
+  The docker provider maps known package names to the SQL name <code>CREATE EXTENSION</code> expects (<code>vector</code>, not <code>pgvector</code>) and swaps in a Postgres image that ships it. The macos-dev provider does no such mapping — it drops your string straight into <code>CREATE EXTENSION</code> and, if that fails, continues silently, so an unrecognized name produces no error and no extension.
+</p>
+
+<p>
+  On docker, extensions are only created the first time a database's data directory initializes. Add <code>config.extensions</code> to an app that's already deployed, and the provider warns instead of applying it — naming the service and <code>config.extensions</code>, and pointing you to two remedies: run <code>launchfile down --destroy</code> then <code>launchfile up</code> to recreate the data (and the extensions) from scratch, or run the <code>CREATE EXTENSION</code> statements against the running database yourself to keep the data. See the spec's <a href="https://launchfile.org/spec/requires/">Resource configuration</a> section for the full key list, and Lesson 8, <a href="/learn/expressions-and-resources/">Expressions &amp; Resource Configuration</a>, for naming, versioning, and config together.
+</p>
+
 <h2 id="expressions">How expressions work</h2>
 
 <Callout type="info" title="Resource expressions">
@@ -140,6 +167,7 @@ health: /health`,
     <li><code>requires</code> declares resource dependencies — they're provisioned automatically.</li>
     <li>Use <code>set_env</code> with <code>$url</code>, <code>$host</code>, <code>$port</code>, etc. to wire connection details into your app.</li>
     <li>Shorthand (<code>[postgres]</code>) and expanded syntax (<code>- type: postgres</code>) are equivalent.</li>
+    <li><code>config</code> passes provider-specific provisioning hints, like Postgres <code>extensions</code> — how it's honored differs by provider.</li>
     <li>Add <code>health</code> so your app's readiness can be verified after deployment.</li>
   </ul>
 </div>
