@@ -14,5 +14,9 @@ storage:
   data:
     path: /var/lib/ntfy
     persistent: true
+commands:
+  # The image's entrypoint is bare `ntfy` with no default command; without
+  # `serve` it prints usage and exits.
+  start: serve
 health: /v1/health
 restart: always
