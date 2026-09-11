@@ -2,7 +2,7 @@
 "@launchfile/sdk": minor
 ---
 
-Add the `https-origin` backing-service type: an app can declare that browsers must reach it at a public origin whose scheme is `https` (D-next).
+Add the `https-origin` backing-service type: an app can declare that browsers must reach it at a public origin whose scheme is `https` (D-60).
 
 A `requires`/`supports` entry of that type carries a new optional field, `endpoint`, naming the `provides` entry the origin fronts by its `name` (D-6). The field is parsed, normalized and serialized, so it survives a parse → serialize round trip, and is mirrored in `spec/schema/launchfile.schema.json`.
 
