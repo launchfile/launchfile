@@ -1,5 +1,22 @@
 # @launchfile/aws
 
+## 0.3.0
+
+### Minor Changes
+
+- [#468](https://github.com/launchfile/launchfile/pull/468) [`fc92434`](https://github.com/launchfile/launchfile/commit/fc9243433293ac0c2061d25f6c83b352985c023f) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Report a `certificate` entry unmapped on `translate` (D-61 rule 5, PROVIDERS.md §10 items 5 and 8).
+  
+  A certificate activates the app's **own** listener, and this probe has no way to place one inside the task; on `translate` there is no launch at which to refuse, so the entry is listed as a nice-to-have gap naming the listener it binds and the certificate entry. Terminating TLS at the ALB is a different arrangement and does not fulfil the entry (D-61 rule 4), so nothing is emitted that would make the declaration look satisfied.
+
+- [#465](https://github.com/launchfile/launchfile/pull/465) [`dc8a759`](https://github.com/launchfile/launchfile/commit/dc8a75968f56be9811d9feda38ceb640e453be9b) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Report an `https-origin` entry as unmapped on `translate`, with a reason that names the endpoint (D-60 rule 5).
+  
+  This probe composes `$app.*` from the ALB's `${aws_lb.main.dns_name}` — an http-only address that does not exist until apply time — so no managed service maps the entry. A `requires:` entry is now a **blocker** gap suggesting an ACM certificate and an HTTPS listener; a `supports:` entry is **nice-to-have**. Previously it fell through the generic "no managed AWS service mapping" branch, which graded a whole-app HTTPS requirement as a workaround.
+
+### Patch Changes
+
+- Updated dependencies [[`fc92434`](https://github.com/launchfile/launchfile/commit/fc9243433293ac0c2061d25f6c83b352985c023f), [`dc8a759`](https://github.com/launchfile/launchfile/commit/dc8a75968f56be9811d9feda38ceb640e453be9b)]:
+  - @launchfile/sdk@0.8.0
+
 ## 0.2.1
 
 ### Patch Changes
