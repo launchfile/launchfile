@@ -1,5 +1,5 @@
 ---
-"@launchfile/docker": patch
+"@launchfile/docker": minor
 ---
 
 One derivation of a published endpoint's address (#473).
