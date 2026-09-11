@@ -6,6 +6,13 @@ export {
 	collectOperatorStorage,
 } from "./commands.js";
 export {
+	CAPTURE_MASK,
+	type FormatCapturesOptions,
+	formatCaptures,
+	REVEAL_HINT,
+	sensitiveCaptureValues,
+} from "./captures.js";
+export {
 	boundCertificate,
 	CERTIFICATE,
 	certificateBindings,
