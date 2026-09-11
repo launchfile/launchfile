@@ -7,12 +7,37 @@ logo: https://raw.githubusercontent.com/binwiederhier/ntfy/main/web/public/stati
 
 image: binwiederhier/ntfy:latest
 provides:
-  - protocol: http
+  - name: web
+    protocol: http
     port: 80
+    exposed: true
+  # Opt-in SMTP listener for e-mail publishing (docs/config.md "E-mail
+  # publishing"): mail to [topic]@[NTFY_SMTP_SERVER_DOMAIN] publishes to the
+  # topic. Upstream leaves the server off until NTFY_SMTP_SERVER_LISTEN is set.
+  - name: smtp
+    protocol: tcp
+    port: 25
     exposed: true
 storage:
   data:
     path: /var/lib/ntfy
     persistent: true
+env:
+  NTFY_BASE_URL:
+    default: $app.url
+    description: "Public base URL of the web endpoint (upstream `base-url`); ntfy builds attachment links and e-mail footers from it"
+  NTFY_SMTP_SERVER_LISTEN:
+    description: "Address the SMTP server listens on (upstream `smtp-server-listen`). Unset keeps the SMTP server off; set to `:25` to serve the `smtp` endpoint"
+    example: ":25"
+  NTFY_SMTP_SERVER_DOMAIN:
+    description: "Public e-mail domain of the `smtp` endpoint (upstream `smtp-server-domain`); topic addresses are `[topic]@<this domain>`, so it must match the MX record that points at the endpoint. Required once NTFY_SMTP_SERVER_LISTEN is set"
+    example: "ntfy.example.com"
+  NTFY_SMTP_SERVER_ADDR_PREFIX:
+    description: "Optional address prefix for the SMTP server (upstream `smtp-server-addr-prefix`); with `ntfy-` only mail to `ntfy-[topic]@<domain>` is accepted, which limits spam on a public listener"
+    example: "ntfy-"
+commands:
+  # The image's entrypoint is bare `ntfy` with no default command; without
+  # `serve` it prints usage and exits.
+  start: serve
 health: /v1/health
 restart: always
