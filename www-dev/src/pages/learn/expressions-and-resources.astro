@@ -111,7 +111,7 @@ const metabaseYaml = metabaseYamlRaw.replace(/^#.*\n/gm, "").trim();
 <h2 id="the-vocabulary">The property vocabulary</h2>
 
 <p>
-  What can go after the <code>$</code>? Each resource type exposes a <GlossaryTip term="property vocabulary" definition="The standard set of properties a resource type exposes — e.g. url, host, port, user, password, name for postgres. Published in machine-readable form as resource-properties.json.">standard property set</GlossaryTip>: <code>postgres</code> gives you <code>url</code>, <code>host</code>, <code>port</code>, <code>user</code>, <code>password</code>, and <code>name</code>; <code>redis</code> gives <code>url</code>, <code>host</code>, <code>port</code>, <code>password</code>; and so on. <code>url</code> is always the resource's fully-formed address — a connection string for a database, cache or queue — and where a type exposes more than one property, the rest are its pieces, for apps that want them separately.
+  What can go after the <code>$</code>? Each resource type exposes a <GlossaryTip term="property vocabulary" definition="The standard set of properties a resource type exposes — e.g. url, host, port, user, password, name for postgres. Published in machine-readable form as resource-properties.json.">standard property set</GlossaryTip>: <code>postgres</code> gives you <code>url</code>, <code>host</code>, <code>port</code>, <code>user</code>, <code>password</code>, and <code>name</code>; <code>redis</code> gives <code>url</code>, <code>host</code>, <code>port</code>, <code>password</code>; and so on. Where a type exposes <code>url</code>, it is the resource's fully-formed address — a connection string for a database, cache or queue — and the type's other properties are that address's pieces, for apps that want them separately. Not every type has one: <code>certificate</code> registers <code>cert_file</code> and <code>key_file</code>, two paths inside the app's filesystem, and no address at all.
 </p>
 
 <p>
@@ -131,6 +131,29 @@ requires:
 
 <p>
   <code>endpoint:</code> is not a keyword — it is whatever the app called that endpoint. It is required on an <code>https-origin</code> entry, meaningless on any other type, and must name an <code>exposed: true</code> listener speaking <code>http</code>, <code>https</code>, <code>ws</code> or <code>grpc</code> on the same component; naming a <code>tcp</code> or <code>udp</code> one is a validation error, because those listeners have no origin. An app declares at most one, and the endpoint it names is the app's primary — the one <code>$app.*</code> describes.
+</p>
+
+<p>
+  One type registers no address at all: <code>certificate</code>, which hands the app a certificate and a private key so its <em>own</em> listener can serve TLS. Its two properties are app-filesystem paths — <code>cert_file</code> and <code>key_file</code> — and the <code>provides</code> entry points back at it with <code>tls:</code>:
+</p>
+
+<pre><code>{`provides:
+  - name: web
+    protocol: http      # the baseline listener
+    port: 3000
+    exposed: true
+    tls: server-cert    # shorthand for \`tls: { certificate: server-cert }\`
+supports:
+  - name: server-cert
+    type: certificate
+    set_env:
+      GITEA__server__PROTOCOL: https
+      GITEA__server__HTTP_PORT: "3000"
+      GITEA__server__CERT_FILE: $cert_file
+      GITEA__server__KEY_FILE: $key_file`}</code></pre>
+
+<p>
+  The two entries point in opposite directions. An <code>https-origin</code> sits <em>in front of</em> the app; a <code>certificate</code> is delivered <em>to</em> it. Declaring one never implies the other, and a certificate binding does not by itself satisfy an <code>https-origin</code> entry. <code>protocol: http</code> keeps describing the baseline; while the binding is active the listener's <em>effective</em> protocol is <code>https</code>, and that is what a sibling's <code>$components.&lt;name&gt;.url</code> reads. Selection happens outside the file — nobody selects it, and the app runs the HTTP baseline, which is the correct deployment rather than a degraded one. <code>key_file</code> is credential-bearing: a provider registers its value with its redactor before it generates anything, so a private-key path never lands in a log.
 </p>
 
 <BeforeAfter
