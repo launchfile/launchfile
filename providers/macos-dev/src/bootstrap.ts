@@ -30,6 +30,7 @@ import {
 import { loadState, saveState } from "./state.js";
 import {
 	buildResolverContext,
+	computeAppEndpoints,
 	computeAppProperties,
 	resolveComponentEnv,
 	resolveGenerators,
@@ -320,6 +321,7 @@ export async function launchBootstrap(
 		state.ports,
 		state.secrets,
 		appProperties,
+		computeAppEndpoints(launch),
 	);
 
 	const exec = opts.exec ?? defaultExec;

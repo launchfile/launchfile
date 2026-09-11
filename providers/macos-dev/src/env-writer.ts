@@ -8,6 +8,7 @@
 import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
+	type AppEndpointProperties,
 	deriveAppUrlProperties,
 	resolveExpression,
 	isExpression,
@@ -16,6 +17,7 @@ import {
 	type ResolverContext,
 	type Secret,
 	suppliedAppProperties,
+	UNPUBLISHED_APP_ENDPOINT,
 	type UnsuppliedRequiredEnv,
 	unsuppliedRequiredEnv,
 } from "@launchfile/sdk";
@@ -92,14 +94,42 @@ export function computeAppProperties(
 }
 
 /**
+ * `$app.endpoints.<name>.*` under this provider (D-next rule 4): every
+ * property of every named published endpoint resolves `""`. The allocator
+ * hands out one port per **component** (`allocatePorts`, keyed by component
+ * name), so a second `exposed: true` entry on a component has no host-side
+ * address to publish — not the primary's, and not its own (#294). The
+ * primary's entry is `""` too, rather than a copy of `$app.*`, because the
+ * per-endpoint form promises a per-endpoint publication this provider does
+ * not perform; `$app.*` keeps its own routing answer. Registering the empty
+ * answer explicitly, rather than nothing, records that the provider has read
+ * the namespace and declined it.
+ */
+export function computeAppEndpoints(
+	launch: NormalizedLaunch,
+): Record<string, AppEndpointProperties> {
+	const endpoints: Record<string, AppEndpointProperties> = {};
+	for (const component of Object.values(launch.components)) {
+		for (const p of component.provides ?? []) {
+			if (p.name === undefined || p.exposed !== true) continue;
+			endpoints[p.name] ??= UNPUBLISHED_APP_ENDPOINT;
+		}
+	}
+	return endpoints;
+}
+
+/**
  * Build a ResolverContext from provisioned resources, component ports,
- * secrets, and (D-33) the platform-injected app properties.
+ * secrets, (D-33) the platform-injected app properties, and (D-next) the
+ * per-endpoint map — `computeAppEndpoints`, which under this provider is
+ * every named published endpoint resolving `""`.
  */
 export function buildResolverContext(
 	resourceMap: Record<string, ResourceProperties>,
 	componentPorts: Record<string, number>,
 	secrets: Record<string, string>,
 	app: Record<string, string | number>,
+	appEndpoints: Record<string, AppEndpointProperties> = {},
 ): ResolverContext {
 	// Build components map from ports
 	const components: Record<string, Record<string, string | number>> = {};
@@ -123,7 +153,7 @@ export function buildResolverContext(
 		resources[name] = record;
 	}
 
-	return { resources, components, secrets, app };
+	return { resources, components, secrets, app, appEndpoints };
 }
 
 /**

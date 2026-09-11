@@ -22,6 +22,7 @@ import {
 	UnboundOperatorStorageError,
 	type UnboundOperatorVolume,
 	unsuppliedRequiredEnv,
+	appEndpointReferences,
 	type NormalizedLaunch,
 	type NormalizedComponent,
 } from "@launchfile/sdk";
@@ -36,6 +37,7 @@ import {
 import { loadState, initState, saveState, ensureDirs } from "./state.js";
 import {
 	buildResolverContext,
+	computeAppEndpoints,
 	computeAppProperties,
 	resolveComponentEnv,
 	generateSecrets,
@@ -675,7 +677,24 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	// (D-60 rule 4) — so its set_env resolves like any provisioned resource's.
 	const appProperties = computeAppProperties(launch, componentPorts, state.appUrl);
 	wireHttpsOrigins(launch, resourceMap, state.appUrl);
-	const context = buildResolverContext(resourceMap, componentPorts, state.secrets, appProperties);
+	const context = buildResolverContext(
+		resourceMap,
+		componentPorts,
+		state.secrets,
+		appProperties,
+		computeAppEndpoints(launch),
+	);
+	// `$app.endpoints.<name>.*` resolves "" here (D-next rule 4, #294). Said
+	// once per `up`, and only when the file asks, so the empty value is not a
+	// silent one (PROVIDERS.md §10 item 8).
+	const endpointRefs = appEndpointReferences(launch);
+	if (endpointRefs.length > 0) {
+		const names = [...new Set(endpointRefs.map((ref) => ref.path[2] ?? "<none>"))];
+		console.warn(
+			`  ! $app.endpoints.* resolves "" on this provider (${names.map((n) => `$app.endpoints.${n}.*`).join(", ")}) — ` +
+				"it publishes one port per component, not one per endpoint (#294)",
+		);
+	}
 
 	// 9. Install runtimes
 	for (const [name, component] of Object.entries(launch.components)) {
@@ -993,7 +1012,13 @@ export async function launchEnv(opts: { component?: string; projectDir?: string 
 	// provider's localhost answer.
 	const appProperties = computeAppProperties(launch, state.ports, state.appUrl);
 	wireHttpsOrigins(launch, resourceMap, state.appUrl);
-	const context = buildResolverContext(resourceMap, state.ports, state.secrets, appProperties);
+	const context = buildResolverContext(
+		resourceMap,
+		state.ports,
+		state.secrets,
+		appProperties,
+		computeAppEndpoints(launch),
+	);
 
 	// `env` reports what the running app has, so it reads minted generator
 	// values from the same store `up` persists to (D-49). A value can still be

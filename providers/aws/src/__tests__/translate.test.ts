@@ -669,3 +669,56 @@ supports:
 		).toBe(false);
 	});
 });
+
+describe("translate — $app.endpoints.<name>.* (D-next rule 4, #487)", () => {
+	const GITEA = `
+version: launch/v1
+name: gitea
+runtime: go
+commands:
+  start: "gitea web"
+provides:
+  - name: web
+    protocol: http
+    port: 3000
+    exposed: true
+  - name: ssh
+    protocol: tcp
+    port: 22
+    exposed: true
+env:
+  ROOT_URL:
+    default: $app.url
+  WEB_URL:
+    default: $app.endpoints.web.url
+  SSH_DOMAIN:
+    default: $app.endpoints.ssh.host
+  SSH_PORT:
+    default: $app.endpoints.ssh.port
+`;
+
+	it("resolves every per-endpoint property to nothing — the primary's included — never a value from the ALB", () => {
+		const { hcl } = tf(GITEA);
+		for (const key of ["WEB_URL", "SSH_DOMAIN", "SSH_PORT"]) {
+			expect(hcl).toMatch(
+				new RegExp(`resource "aws_ssm_parameter" "gitea_default_${key}" \\{[^}]*value = ""`),
+			);
+		}
+		expect(hcl).toContain('resource "aws_ssm_parameter" "gitea_default_ROOT_URL"');
+		expect(hcl).toContain("${aws_lb.main.dns_name}");
+	});
+
+	it("reports each referenced endpoint on the conformance record, once", () => {
+		const { conformance } = tf(GITEA);
+		const gaps = conformance.gaps.filter((g) => g.field.startsWith("$app.endpoints."));
+		expect(gaps.map((g) => g.field)).toEqual(["$app.endpoints.web", "$app.endpoints.ssh"]);
+		expect(gaps[1]!.severity).toBe("workaround");
+		expect(gaps[1]!.reason).toContain('resolves ""');
+		expect(gaps[1]!.component).toBe("default");
+	});
+
+	it("stays silent for a file that references no per-endpoint property", () => {
+		const { conformance } = tf(GITEA.replace(/\$app\.endpoints\.\w+\.\w+/g, "$app.url"));
+		expect(conformance.gaps.some((g) => g.field.startsWith("$app.endpoints."))).toBe(false);
+	});
+});

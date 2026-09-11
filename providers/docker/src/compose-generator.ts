@@ -11,6 +11,7 @@ import {
 	effectiveListener,
 	indexOperatorStoragePaths,
 	isExpression,
+	appEndpointReferences,
 	type NormalizedEnvVar,
 	type NormalizedHealth,
 	type NormalizedLaunch,
@@ -26,7 +27,7 @@ import {
 import { intersects, subset, validRange } from "semver";
 import { stringify } from "yaml";
 import {
-	computeAppProperties,
+	computeAppContext,
 	HTTPS_ORIGIN,
 	publishedEndpointAddresses,
 } from "./app-url.js";
@@ -714,10 +715,12 @@ export interface ComposeOpts {
 	 * answer. Published host ports are still allocated; they just aren't the
 	 * public address.
 	 *
-	 * Asserts the public address of the app's PRIMARY endpoint only (the first
-	 * `exposed: true` component — the existing `$app.*` contract). It MUST NOT
-	 * be used to derive other published endpoints' public addresses;
-	 * per-endpoint publication context is a separate future proposal.
+	 * Asserts the public address of the app's PRIMARY endpoint only (D-60 rule
+	 * 3 — the `https-origin`-named endpoint, else the first `exposed: true`
+	 * one). It MUST NOT be used to derive other published endpoints' public
+	 * addresses (D-58 rule 4): with it set, `$app.endpoints.<name>.*` resolves
+	 * from it for the primary and `""` for every other named endpoint
+	 * (D-next rule 5); a per-endpoint supplied channel is a separate proposal.
 	 *
 	 * Must be an absolute http(s) URL with no userinfo, query, or fragment; a
 	 * malformed value throws `InvalidAppUrlError` — refuse, never degrade.
@@ -973,12 +976,31 @@ export function launchToCompose(
 	// know whether the primary endpoint's listener speaks https.
 	const certificates = planCertificates(launch, opts.resources);
 
-	const appProperties = computeAppProperties(
-		launch,
-		opts.hostPorts,
-		opts.appUrl,
-		certificates.active,
-	);
+	const {
+		app: appProperties,
+		appEndpoints,
+		fenced,
+	} = computeAppContext(launch, opts.hostPorts, opts.appUrl, certificates.active);
+
+	// `$app.endpoints.<name>.*` (D-next). Under a supplied publication URL the
+	// D-58 rule 4 fence holds: every non-primary named endpoint resolves ""
+	// and the file is told — but only about the endpoints it references, so
+	// an unreferenced second endpoint does not warn on every embedded run.
+	if (fenced.length > 0) {
+		const referenced = new Set(
+			appEndpointReferences(launch)
+				.map((ref) => ref.path[2])
+				.filter((name): name is string => name !== undefined),
+		);
+		for (const name of fenced) {
+			if (!referenced.has(name)) continue;
+			warnings.push(
+				`$app.endpoints.${name}.* resolves "" — the supplied publication URL asserts the ` +
+					"primary endpoint's address only, and this provider derives no other endpoint's " +
+					"public address from it (D-58 rule 4)",
+			);
+		}
+	}
 
 	// `https-origin` (D-60) — the one backing service that sits in FRONT of
 	// the app. This provider runs no edge of its own, so it cannot provision
@@ -1002,6 +1024,7 @@ export function launchToCompose(
 		// state map would answer `$secrets.postgres` from a leftover entry.
 		secrets: declaredSecrets(launch.secrets, secrets),
 		app: appProperties,
+		appEndpoints,
 	};
 
 	for (const [componentName, component] of Object.entries(launch.components)) {

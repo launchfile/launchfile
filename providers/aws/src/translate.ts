@@ -23,6 +23,9 @@ import {
 	type RestartPolicy,
 	resolveExpression,
 	unsuppliedRequiredEnv,
+	appEndpointReferences,
+	type AppEndpointProperties,
+	UNPUBLISHED_APP_ENDPOINT,
 } from "@launchfile/sdk";
 import { Conformance } from "./gaps.js";
 import {
@@ -282,6 +285,37 @@ export function translate(
 		}
 	}
 
+	// --- `$app.endpoints.<name>.*` (D-next rule 4): "" for every property ---
+	// The ALB above fronts one target group and yields one address, so this
+	// probe publishes no per-endpoint address — the primary's included: its
+	// `$app.endpoints` entry is "" rather than a copy of `$app.*`, since the
+	// per-endpoint form promises a per-endpoint publication (#487). Reported on
+	// the conformance record for every endpoint the file references, so the
+	// empty value is never a silent one.
+	const appEndpoints: Record<string, AppEndpointProperties> = {};
+	for (const comp of Object.values(launch.components)) {
+		for (const p of comp.provides ?? []) {
+			if (p.name !== undefined && p.exposed === true) {
+				appEndpoints[p.name] ??= UNPUBLISHED_APP_ENDPOINT;
+			}
+		}
+	}
+	const referencedEndpoints = new Map<string, string>();
+	for (const ref of appEndpointReferences(launch)) {
+		const name = ref.path[2] ?? "";
+		if (!referencedEndpoints.has(name)) referencedEndpoints.set(name, ref.component);
+	}
+	for (const [name, component] of referencedEndpoints) {
+		c.gap(
+			`$app.endpoints.${name}`,
+			"workaround",
+			"this provider publishes no per-endpoint public address, so every " +
+				`$app.endpoints.${name}.* property resolves "" (D-next rule 4)`,
+			"supply the value through the environment, or front the endpoint yourself",
+			component,
+		);
+	}
+
 	// --- Resolver context (provider supplies home-#3 values) ---
 	const resourceMap: Record<string, Record<string, string | number>> = {};
 	const componentMap: Record<string, Record<string, string | number>> = {};
@@ -290,6 +324,7 @@ export function translate(
 		components: componentMap,
 		secrets: secretValues,
 		app: appProps,
+		appEndpoints,
 	};
 
 	// --- Register sibling component endpoints (private IP, container port) ---

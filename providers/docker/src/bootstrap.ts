@@ -26,7 +26,7 @@ import {
 	type NormalizedLaunch,
 	type ResolverContext,
 } from "@launchfile/sdk";
-import { computeAppProperties } from "./app-url.js";
+import { computeAppContext } from "./app-url.js";
 import { getLogger } from "./logger.js";
 import { redactSecrets, registerDeclaredSecret } from "./redact.js";
 import { declaredSecrets } from "./secrets-namespace.js";
@@ -140,9 +140,11 @@ export function planBootstraps(
 		component?: string;
 	},
 ): BootstrapPlanItem[] {
+	const { app, appEndpoints } = computeAppContext(launch, opts.hostPorts, opts.appUrl);
 	const resolverContext: ResolverContext = {
 		secrets: declaredSecrets(launch.secrets, opts.secrets),
-		app: computeAppProperties(launch, opts.hostPorts, opts.appUrl),
+		app,
+		appEndpoints,
 	};
 
 	const plan: BootstrapPlanItem[] = [];
