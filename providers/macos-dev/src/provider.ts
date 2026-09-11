@@ -291,6 +291,57 @@ export function applyCertificateRefusals(
 	return Object.keys(launch.components).length === 0 ? "none-left" : "ok";
 }
 
+/**
+ * Components this provider must refuse because a `requires` entry names a
+ * resource type it has no provisioner for (PROVIDERS.md §10 item 5, D-next),
+ * mapped to the entries. The ordinary case of {@link refusedHttpsOrigins}: a
+ * `kafka` this provider cannot stand up is exactly a `postgres` it cannot
+ * stand up.
+ *
+ * This provider has no supplied-resource channel, so nothing can satisfy such
+ * an entry from outside — provision or refuse are its only conformant
+ * outcomes. The vocabulary is open (L-4): a type with no provisioner is a
+ * normal, permanent state, and the defect is starting the component without
+ * the resource its file says it needs. Host-capability entries take rule 9's
+ * path and `supports:` entries are optional (D-8); neither is graded here.
+ */
+export function refusedResourceTypes(
+	launch: NormalizedLaunch,
+): Map<string, string[]> {
+	const refused = new Map<string, string[]>();
+	for (const [name, component] of Object.entries(launch.components)) {
+		const entries = (component.requires ?? [])
+			.filter((r) => !r.host && r.type !== HTTPS_ORIGIN && !getProvisioner(r.type))
+			.map((r) => (r.name === undefined ? r.type : `${r.name} (type "${r.type}")`));
+		if (entries.length > 0) refused.set(name, entries);
+	}
+	return refused;
+}
+
+/**
+ * Remove every component with a required resource this provider cannot
+ * provision, and say so on stderr. Same shape and same reason as
+ * {@link applyHostCapabilityRefusals}: the removal IS the refusal.
+ */
+export function applyResourceTypeRefusals(
+	launch: NormalizedLaunch,
+): "ok" | "none-left" {
+	const refused = refusedResourceTypes(launch);
+	for (const [name, entries] of refused) {
+		const noun = entries.length === 1 ? "a resource" : "resources";
+		console.error(
+			`  Refused: ${name} requires ${noun} this provider cannot provision ` +
+				`(${entries.join("; ")}) — it has no provisioner for the type and no channel to ` +
+				"receive one through; use a provider that provisions it — component not started",
+		);
+	}
+	if (refused.size === 0) return "ok";
+	launch.components = Object.fromEntries(
+		Object.entries(launch.components).filter(([n]) => !refused.has(n)),
+	);
+	return Object.keys(launch.components).length === 0 ? "none-left" : "ok";
+}
+
 export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 
@@ -370,6 +421,17 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	if (applyCertificateRefusals(launch, opts.withOptional === true) === "none-left") {
 		console.error(
 			"Every selected component selected native TLS this provider cannot activate.",
+		);
+		process.exit(1);
+	}
+	// 2a-quater. A required resource type this provider has no provisioner for
+	// is refused the same way (D-next, PROVIDERS.md §10 item 5). Decided after
+	// the selector narrowed `launch.components`, so an unsatisfiable entry on a
+	// component outside the start-set blocks nothing (§10 item 5's selector
+	// rule), and before anything is provisioned, installed, wired or started.
+	if (applyResourceTypeRefusals(launch) === "none-left") {
+		console.error(
+			"Every selected component requires a resource this provider cannot provision.",
 		);
 		process.exit(1);
 	}
@@ -563,8 +625,11 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 
 			const provisioner = getProvisioner(req.type);
 			if (!provisioner) {
-				console.warn(`  ! No provisioner for resource type: ${req.type} (skipping)`);
-				continue;
+				// Step 2a-quater removed every component with such an entry, so
+				// reaching here is a bug in this file, not a launch outcome.
+				throw new Error(
+					`no provisioner for resource type "${req.type}" on ${_compName} — the component must be refused first`,
+				);
 			}
 
 			if (opts.dryRun) {
