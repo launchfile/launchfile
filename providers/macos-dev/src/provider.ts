@@ -856,7 +856,7 @@ export async function launchDown(opts: { destroy?: boolean; projectDir?: string 
 			const provisioner = getProvisioner(resourceState.type);
 			if (provisioner) {
 				console.log(`  Destroying ${resourceState.type} (${name})...`);
-				await provisioner.destroy(resourceState);
+				await provisioner.destroy(resourceState, { projectDir });
 			}
 		}
 
