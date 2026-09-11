@@ -121,7 +121,18 @@ describe("macos", () => {
 						recordDir,
 						macosBootstrap: async (opts) => {
 							calls.push(opts);
-							return [{ ok: true }];
+							return [
+								{
+									component: "app",
+									command: "echo hi",
+									ok: true,
+									exitCode: 0,
+									captures: {},
+									captureMeta: {},
+									stdout: "",
+									stderr: "",
+								},
+							];
 						},
 					},
 				),

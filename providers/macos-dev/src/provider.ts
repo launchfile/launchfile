@@ -45,6 +45,15 @@ import { ProcessManager } from "./process-manager.js";
 import { stopRecordedProcesses } from "./process-stopper.js";
 import { shellScript } from "./shell.js";
 import { parseDuration } from "./bootstrap.js";
+import {
+	captureProcessLogs,
+	declaredEnvKeys,
+	inPhase,
+	macosErrorKey,
+	macosLaunchError,
+	type PhaseContext,
+} from "./errors.js";
+import { registerSensitiveEnv, registerSuppliedEnv } from "./env-secrets.js";
 
 /**
  * This provider runs apps from source. A component is source-runnable when
@@ -293,13 +302,37 @@ export function applyCertificateRefusals(
 
 export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
+	// Anything that escapes without a phase still gets a record, tagged
+	// `unknown` rather than guessed at — an untagged failure would leave
+	// `diagnose` with nothing to show for a run that visibly failed.
+	return inPhase("unknown", { key: macosErrorKey(projectDir) }, () =>
+		runLaunchUp(projectDir, opts),
+	);
+}
+
+async function runLaunchUp(projectDir: string, opts: LaunchUpOpts): Promise<void> {
+	// Every throw below is tagged with the phase it happened in, at the throw
+	// site where the phase is known, and carries an already-redacted context the
+	// CLI persists for `launchfile diagnose` (#44). Phases are the D-48 slot
+	// names plus the pre-slot failure points, never command names — so a source
+	// prepare that resolves `install ?? build` and an artifact build both record
+	// `prepare` (D-38).
+	//
+	// The key is the project directory: this provider runs one instance per
+	// directory, so two checkouts of one app are two deployments and must not
+	// share a record.
+	const key = macosErrorKey(projectDir);
 
 	// 1. Check prerequisites
 	const prereqs = await checkPrereqs();
 	if (!prereqs.ok) {
 		console.error("Missing prerequisites:");
 		for (const m of prereqs.missing) console.error(`  - ${m}`);
-		process.exit(1);
+		throw macosLaunchError({
+			phase: "prereq",
+			key,
+			message: `Missing prerequisites: ${prereqs.missing.join("; ")}`,
+		});
 	}
 
 	// 2. Read and parse Launchfile
@@ -309,10 +342,26 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		launchfileContent = await readFile(launchfilePath, "utf8");
 	} catch {
 		console.error(`No Launchfile found at ${launchfilePath}`);
-		process.exit(1);
+		throw macosLaunchError({
+			phase: "resolve",
+			key,
+			message: `No Launchfile found at ${launchfilePath}`,
+		});
 	}
 
-	const launch = readLaunch(launchfileContent);
+	const launch = await inPhase("parse", { key }, async () =>
+		readLaunch(launchfileContent),
+	);
+
+	// Identity + declared env names, shared by every phase context below.
+	// `declaredEnvKeys` reads names from the Launchfile — no resolved value is
+	// ever in scope here, so none can reach a record.
+	const failure = (extra: Partial<PhaseContext> = {}): PhaseContext => ({
+		key,
+		app: launch.name,
+		env: declaredEnvKeys(launch),
+		...extra,
+	});
 	const allComponentNames = Object.keys(launch.components);
 
 	// Resolve component selector (#77) into its D-41 start-set: selected
@@ -461,6 +510,11 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 			missingRequired.push({ component: name, key, sensitive });
 		}
 	}
+	// D-52 values arrive from outside the platform, so nothing else can have
+	// registered them. Registered here, the moment they are read, and before any
+	// command runs that could echo one into a captured tail (CWE-532).
+	for (const supplied of Object.values(operatorEnv)) registerSuppliedEnv(supplied);
+
 	if (missingRequired.length > 0) {
 		console.error(
 			`\nCannot launch: ${missingRequired.length} required environment variable${missingRequired.length === 1 ? "" : "s"} had no value.`,
@@ -555,7 +609,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	// 6. Provision required resources
 	const resourceMap: Record<string, ResourceProperties> = {};
 
-	for (const [_compName, component] of Object.entries(launch.components)) {
+	for (const [compName, component] of Object.entries(launch.components)) {
 		for (const req of component.requires ?? []) {
 			if (req.host) continue; // capability, not a backing service (D-44)
 			const resourceName = req.name ?? req.type;
@@ -575,7 +629,9 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 
 			process.stdout.write(`  \u2193 Provisioning ${req.type}...`);
 			const existing = state.resources[resourceName];
-			const result = await provisioner.provision(req, { appName: launch.name, projectDir }, existing);
+			const result = await inPhase("provision", failure({ component: compName }), () =>
+				provisioner.provision(req, { appName: launch.name, projectDir }, existing),
+			);
 			resourceMap[resourceName] = result.properties;
 			state.resources[resourceName] = result.state;
 			console.log(" done");
@@ -612,7 +668,9 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	}
 
 	// 7. Allocate ports
-	const componentPorts = await allocatePorts(launch.components, launch.name, state.ports);
+	const componentPorts = await inPhase("provision", failure(), () =>
+		allocatePorts(launch.components, launch.name, state.ports),
+	);
 	state.ports = componentPorts;
 
 	// 8. Build resolver context (including $app.* properties from D-33)
@@ -639,13 +697,15 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 			continue;
 		}
 
-		const version = await installer.detectVersion(projectDir);
-		if (version) {
-			console.log(`  \u2193 Installing ${component.runtime} ${version}... done`);
-			await installer.install(version);
-		} else {
-			console.log(`  \u2193 Using system ${component.runtime}`);
-		}
+		await inPhase("provision", failure({ component: name }), async () => {
+			const version = await installer.detectVersion(projectDir);
+			if (version) {
+				console.log(`  \u2193 Installing ${component.runtime} ${version}... done`);
+				await installer.install(version);
+			} else {
+				console.log(`  \u2193 Using system ${component.runtime}`);
+			}
+		});
 	}
 
 	// 10. Detect package manager
@@ -655,11 +715,8 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	// so it can be injected as $storage.<name>.path (D-39). Scoped per component.
 	const componentStorage: Record<string, Record<string, Record<string, string>>> = {};
 	for (const [name, component] of Object.entries(launch.components)) {
-		const volumeMap = await provisionStorage(
-			component.storage,
-			name,
-			projectDir,
-			operatorStorage[name],
+		const volumeMap = await inPhase("provision", failure({ component: name }), () =>
+			provisionStorage(component.storage, name, projectDir, operatorStorage[name]),
 		);
 		const storageCtx: Record<string, Record<string, string>> = {};
 		for (const [volName, localPath] of Object.entries(volumeMap)) {
@@ -677,12 +734,26 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const generatedEnv = (state.generatedEnv ??= {});
 
 	for (const [name, component] of Object.entries(launch.components)) {
-		const { env } = resolveComponentEnv(component, context, resourceMap, componentStorage[name]);
-		await resolveGenerators(component, env, name, generatedEnv);
+		const env = await inPhase("provision", failure({ component: name }), async () => {
+			const { env: resolved } = resolveComponentEnv(
+				component,
+				context,
+				resourceMap,
+				componentStorage[name],
+			);
+			await resolveGenerators(component, resolved, name, generatedEnv);
+			return resolved;
+		});
 
 		// Operator-supplied `required:` values (step 2c) join the resolved set, so
 		// they reach `release` and `start` alike and show up in `launch env`.
 		Object.assign(env, operatorEnv[name] ?? {});
+
+		// D-18: a value the author declared `sensitive: true` is registered here,
+		// once it is resolved and before any command that could echo it runs. The
+		// registry is what a capture scrubs against, so a value that is not in it
+		// by now is one no later redaction can remove (CWE-532).
+		registerSensitiveEnv(component.env, env);
 
 		const port = componentPorts[name];
 		if (port && !env.PORT) {
@@ -711,7 +782,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	// The bound operator paths ride along so `env` can report the directory the
 	// app actually reads (D-50); a later `up` still has to supply them again.
 	state.operatorStorage = operatorStorage;
-	await saveState(projectDir, state);
+	await inPhase("provision", failure(), () => saveState(projectDir, state));
 
 	if (opts.dryRun) {
 		console.log("\n[dry-run] Would now run build, release, and start commands.");
@@ -726,13 +797,19 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 			const cmd = prepare?.command ?? pm?.installCommand;
 			if (cmd) {
 				console.log(`  \u2193 Preparing${componentNames.length > 1 ? ` [${name}]` : ""}...`);
-				await shellScript(cmd, {
-					cwd: join(projectDir, component.source ?? component.build?.context ?? "."),
-					env: allEnvs[name],
-					// Installs/compiles routinely exceed the 2-minute shell default;
-					// honor a declared timeout, else allow 10 minutes.
-					timeout: declaredTimeout(prepare?.timeout, `prepare [${name}]`) ?? 600_000,
-				});
+				// D-38: in source mode the prepare slot resolves `install ?? build`,
+				// and the package manager's install stands in when neither is
+				// declared. All three record `prepare` — the slot, never the
+				// command name.
+				await inPhase("prepare", failure({ component: name }), () =>
+					shellScript(cmd, {
+						cwd: join(projectDir, component.source ?? component.build?.context ?? "."),
+						env: allEnvs[name],
+						// Installs/compiles routinely exceed the 2-minute shell default;
+						// honor a declared timeout, else allow 10 minutes.
+						timeout: declaredTimeout(prepare?.timeout, `prepare [${name}]`) ?? 600_000,
+					}),
+				);
 			}
 		}
 	}
@@ -742,11 +819,15 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		const release = component.commands?.release;
 		if (release?.command) {
 			console.log(`  \u2193 Running release${componentNames.length > 1 ? ` [${name}]` : ""}...`);
-			await shellScript(release.command, {
-				cwd: join(projectDir, component.source ?? component.build?.context ?? "."),
-				env: allEnvs[name],
-				timeout: declaredTimeout(release.timeout, `release [${name}]`),
-			});
+			// D-48: a release failure fails the DEPLOY — a different disposition
+			// from the prepare and run slots either side of it.
+			await inPhase("release", failure({ component: name }), () =>
+				shellScript(release.command, {
+					cwd: join(projectDir, component.source ?? component.build?.context ?? "."),
+					env: allEnvs[name],
+					timeout: declaredTimeout(release.timeout, `release [${name}]`),
+				}),
+			);
 		}
 	}
 
@@ -783,7 +864,17 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		process.exit(0);
 	});
 
-	await pm2.startAll();
+	// The run slot resolves `dev ?? start` in source mode (D-38) and records
+	// `run` either way. Component log tails are attached only on failure — the
+	// processes write them to `.launchfile/logs/`, so a start that dies takes its
+	// own output into the record.
+	await inPhase(
+		"run",
+		failure({
+			logs: () => captureProcessLogs(projectDir, Object.keys(launch.components)),
+		}),
+		() => pm2.startAll(),
+	);
 	console.log("");
 	console.log(`  \u2713 All components started`);
 

@@ -14,6 +14,7 @@ import {
 	buildLaunchErrorContext,
 	LaunchError,
 	type LaunchPhase,
+	sourceErrorKey,
 } from "@launchfile/sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -295,5 +296,116 @@ describe("the macOS branch's try-split", () => {
 		const printed = output.join("\n");
 		expect(printed).not.toContain("macOS native provider not available.");
 		expect(printed).toContain("Captured.");
+	});
+});
+
+describe("the macOS branch's failure records", () => {
+	/** A macos-dev record: keyed by project directory, which is that provider's identity. */
+	function macosError(phase: LaunchPhase, message = "it broke"): LaunchError {
+		return new LaunchError(
+			buildLaunchErrorContext(
+				{
+					phase,
+					provider: "macos-dev",
+					key: sourceErrorKey(projectDir),
+					app: "gov23",
+					message,
+				},
+				IDENTITY,
+			),
+		);
+	}
+
+	function macosDeps(launchUp: () => Promise<void>) {
+		const fake = { launchUp } as unknown as typeof import("@launchfile/macos-dev");
+		return { importMacos: async () => fake, indexDir, recordDir };
+	}
+
+	it("captures a source-mode prepare failure under the project-directory key", async () => {
+		await expect(
+			handleUp(
+				projectDir,
+				{ native: true },
+				macosDeps(() => Promise.reject(macosError("prepare", "install failed"))),
+			),
+		).rejects.toThrow("install failed");
+
+		const record = await readLaunchErrorRecord(sourceErrorKey(projectDir), recordDir);
+		expect(record?.provider).toBe("macos-dev");
+		expect(record?.phase).toBe("prepare");
+		expect(record?.disposition).toBe("failed-invocation");
+
+		// A bare `diagnose` finds it through the pointer, as it does for docker.
+		expect((await readLaunchErrorRecord(undefined, recordDir))?.phase).toBe("prepare");
+	});
+
+	it("supersedes the record when a later launch of the same directory succeeds", async () => {
+		await expect(
+			handleUp(
+				projectDir,
+				{ native: true },
+				macosDeps(() => Promise.reject(macosError("run", "start failed"))),
+			),
+		).rejects.toThrow("start failed");
+		expect(await readLaunchErrorRecord(undefined, recordDir)).not.toBeNull();
+
+		await handleUp(projectDir, { native: true }, macosDeps(async () => undefined));
+
+		// Retention (#44 §H): the record described a launch that no longer exists.
+		expect(await readLaunchErrorRecord(sourceErrorKey(projectDir), recordDir)).toBeNull();
+		expect(await readLaunchErrorRecord(undefined, recordDir)).toBeNull();
+	});
+
+	it("prints the provider's own message, then the capture hint, and rethrows what the CLI prints", async () => {
+		// The prereq failure used to `process.exit(1)` inside the provider. Now it
+		// throws, so the same run also crosses `withFailureRecord` and the CLI's
+		// top-level handler — two lines the old path never printed. Pinned here so
+		// a change to the sequence fails a test rather than surprising a script.
+		const thrown = await handleUp(
+			projectDir,
+			{ native: true },
+			macosDeps(() => {
+				console.error("Missing prerequisites:");
+				console.error("  - Homebrew is not installed");
+				return Promise.reject(
+					macosError("prereq", "Missing prerequisites: Homebrew is not installed"),
+				);
+			}),
+		).then(
+			() => undefined,
+			(e: unknown) => e as Error,
+		);
+
+		expect(output).toEqual([
+			"Missing prerequisites:",
+			"  - Homebrew is not installed",
+			"\n  Captured. Run `launchfile diagnose` for the full context.",
+		]);
+		// cli.ts's `main().catch` prints `\nError: ${err.message}` and exits 1, so
+		// this message is the third thing a user sees — the itemized list restated
+		// on one line.
+		expect(thrown?.message).toBe("Missing prerequisites: Homebrew is not installed");
+
+		const record = await readLaunchErrorRecord(sourceErrorKey(projectDir), recordDir);
+		expect(record?.phase).toBe("prereq");
+	});
+
+	it("keys two checkouts of one app separately", async () => {
+		const other = await mkdtemp(join(tmpdir(), "lf-project-"));
+		await writeFile(join(other, "Launchfile"), "name: gov23\n");
+
+		await expect(
+			handleUp(
+				projectDir,
+				{ native: true },
+				macosDeps(() => Promise.reject(macosError("run", "first checkout failed"))),
+			),
+		).rejects.toThrow();
+
+		// The second checkout succeeding must not clear the first's diagnosis.
+		await handleUp(other, { native: true }, macosDeps(async () => undefined));
+
+		const kept = await readLaunchErrorRecord(sourceErrorKey(projectDir), recordDir);
+		expect(kept?.message).toBe("first checkout failed");
 	});
 });

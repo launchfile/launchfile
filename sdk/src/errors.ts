@@ -21,6 +21,8 @@
  *    than merely avoided.
  */
 
+import { createHash } from "node:crypto";
+
 // ---------------------------------------------------------------------------
 // Phases, slots, dispositions
 // ---------------------------------------------------------------------------
@@ -165,6 +167,28 @@ export function dispositionForPhase(phase: LaunchPhase): LaunchDisposition {
 }
 
 // ---------------------------------------------------------------------------
+// Record keys
+// ---------------------------------------------------------------------------
+
+/**
+ * The record key for a failure that has no provider slug to file itself under.
+ *
+ * Two callers need the same answer for the same source and cannot get it from
+ * each other: the provider, which writes the record inside the failing process,
+ * and the CLI, which later clears or reads it. A second implementation of the
+ * derivation is a silent divergence — the record is written under one name and
+ * looked up under another — so the derivation lives here, where both already
+ * depend.
+ *
+ * `source` is whatever identifies the app to the provider that failed: the
+ * source string for `@launchfile/docker` before a slug exists, the project
+ * directory for `@launchfile/macos-dev`, whose instances are directories.
+ */
+export function sourceErrorKey(source: string): string {
+	return `src-${createHash("sha256").update(source).digest("hex").slice(0, 16)}`;
+}
+
+// ---------------------------------------------------------------------------
 // Env keys — names only, enforced by the type
 // ---------------------------------------------------------------------------
 
@@ -206,13 +230,15 @@ export const MAX_LINE_CHARS = 2000;
 // unbounded class ran straight past an ST into the next OSC, so an OSC 8
 // hyperlink lost its link text along with its escapes.
 //
-// The bounds exclude nothing a terminal writes. A CSI carries a handful of
-// parameter bytes (`ESC [ 38;2;255;255;255 m` is 18) and ECMA-48 permits only a
-// few intermediates; an OSC 8 hyperlink URL is the longest realistic payload and
-// sits far under 1024. Past a bound the sequence falls through to CONTROL_CHARS
-// below, which drops the ESC and the BEL regardless.
+// The parameter bound is 64 because 32 is not enough: one SGR that sets a
+// truecolor foreground and background together —
+// `ESC [ 38;2;255;255;255;48;2;240;240;240 m` — carries 33 parameter bytes, and a
+// theme-aware CLI emits it. Past the bound CONTROL_CHARS below still drops the
+// ESC, but the parameter bytes are printable and survive as visible `[38;2;...m`
+// litter in the message. ECMA-48 permits only a few intermediates; an OSC 8
+// hyperlink URL is the longest realistic payload and sits far under 1024.
 const ANSI_ESCAPE =
-	/\u001B(?:\[[0-9;?]{0,32}[ -/]{0,8}[@-~]|\][^\u0007\u001B]{0,1024}(?:\u0007|\u001B\\)|[@-Z\\-_])/g;
+	/\u001B(?:\[[0-9;?]{0,64}[ -/]{0,8}[@-~]|\][^\u0007\u001B]{0,1024}(?:\u0007|\u001B\\)|[@-Z\\-_])/g;
 
 // Everything unprintable except \t and \n. \r is included: a log aggregator
 // consuming --json treats a stray CR as a record separator (CWE-117).
