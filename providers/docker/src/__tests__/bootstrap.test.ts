@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import {
 	type BootstrapExec,
 	computeAppProperties,
@@ -9,6 +9,7 @@ import {
 	planBootstraps,
 	runBootstraps,
 } from "../bootstrap.js";
+import { clearRegisteredSecrets, REDACTED, registerSecrets } from "../redact.js";
 import { type CaptureEntry, readLaunch, resolveExpression } from "@launchfile/sdk";
 
 describe("extractCaptures (D-34, docker provider)", () => {
@@ -279,5 +280,61 @@ components:
 			scheme: "",
 			tls: "",
 		});
+	});
+});
+
+describe("runBootstraps — the returned command carries no live credential (D-18, D-next)", () => {
+	// Hyphenated on purpose: `$secrets.api-key` is the form that resolves
+	// mid-string, so a live value reaches the command where a dotted-only
+	// resolver would have left an empty string.
+	const API_KEY = "sk-live-9f3c1d7a5b2e4086";
+	const LAUNCH = `name: acme
+version: "1.0"
+components:
+  api:
+    image: acme/api:1
+    commands:
+      bootstrap:
+        command: "acme-cli register --key $secrets.api-key"
+  worker:
+    image: acme/worker:1
+    commands:
+      bootstrap:
+        command: "acme-cli seed --key $secrets.api-key"
+        timeout: "5 minutes"
+`;
+
+	afterEach(() => {
+		clearRegisteredSecrets();
+		vi.restoreAllMocks();
+	});
+
+	it("redacts the resolved secret on both the executed and the unrunnable path", async () => {
+		vi.spyOn(console, "log").mockImplementation(() => {});
+		vi.spyOn(console, "error").mockImplementation(() => {});
+		registerSecrets([API_KEY]);
+
+		const launch = readLaunch(LAUNCH);
+		const plan = planBootstraps(launch, {
+			hostPorts: { api: 3000, worker: 3001 },
+			secrets: { "api-key": API_KEY },
+		});
+		// The plan itself still carries the live value — it is what runs.
+		expect(plan.map((i) => i.command)).toEqual([
+			`acme-cli register --key ${API_KEY}`,
+			`acme-cli seed --key ${API_KEY}`,
+		]);
+		expect(plan[1]!.error).toBeDefined();
+
+		const exec: BootstrapExec = async () => ({ exitCode: 0, stdout: "", stderr: "" });
+		const results = await runBootstraps(plan, { project: "lf-acme", exec });
+
+		expect(results).toHaveLength(2);
+		for (const result of results) {
+			expect(result.command).not.toContain(API_KEY);
+			expect(result.command).toContain(REDACTED);
+		}
+		// One executed, one reported as unrunnable — both push sites covered.
+		expect(results.map((r) => r.ok)).toEqual([true, false]);
 	});
 });
