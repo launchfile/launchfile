@@ -99,8 +99,15 @@ Providers (build SDK first, then typecheck → build → test)
   ↓
 CLI package (build SDK + providers first, then typecheck → build → test)
   ↓
+Catalog (build SDK + providers/docker first, then typecheck → test → validate-catalog)
+  ↓
 Websites (need Node >= 22 for Astro 6, need wrangler.toml with pinned compat_date)
 ```
+
+`catalog/test` is not a workspace member, so it carries its own committed
+`bun.lock` (like `smoke-tests/`) and installs `--frozen-lockfile`. Its suite runs
+under Vitest via `bun run test` — `bun test` hits the guard in
+`catalog/test/scripts/test-guard.ts` and exits 1.
 
 ### Websites — Astro + Cloudflare
 
@@ -124,4 +131,7 @@ cd providers/macos-dev && bun run build && bun test
 
 # CLI package
 cd packages/launchfile && bun run typecheck && bun run build && bun test
+
+# Catalog harness + static catalog validation
+cd catalog/test && bun run typecheck && bun run test && bun run validate-catalog
 ```

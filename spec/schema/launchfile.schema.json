@@ -167,6 +167,27 @@
         "spec": {
           "type": "object",
           "additionalProperties": { "type": "string" }
+        },
+        "tls": {
+          "description": "Names one `supports:` entry of type `certificate` on the same component — the certificate this listener serves when native TLS is selected (D-61). String shorthand for { certificate: <name> }. The declared protocol/port still describe the baseline configuration; the effective protocol is https only while the binding is active.",
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            },
+            {
+              "type": "object",
+              "required": ["certificate"],
+              "properties": {
+                "certificate": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]*$",
+                  "description": "Name of the `supports:` entry of type `certificate` this listener binds"
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
         }
       },
       "additionalProperties": false
@@ -183,6 +204,11 @@
         "type": {
           "type": "string",
           "description": "Resource type (e.g., 'postgres', 'redis')"
+        },
+        "endpoint": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "The `provides` entry this resource fronts, by its `name` (D-6). Required on a `type: https-origin` entry, meaningless on any other type."
         },
         "version": {
           "type": "string",
@@ -302,10 +328,10 @@
       "properties": {
         "path": { "type": "string", "description": "HTTP path to check" },
         "command": { "type": "string", "description": "Command for non-HTTP checks. If both path and command are present, path takes precedence." },
-        "interval": { "type": "string", "description": "Check interval (e.g., '30s')" },
-        "timeout": { "type": "string", "description": "Timeout per check" },
+        "interval": { "type": "string", "description": "Check interval — a duration: an integer immediately followed by one unit ms|s|m|h, e.g. '30s'. No spaces, no compound values like '1m30s' (D-48)." },
+        "timeout": { "type": "string", "description": "Timeout per check — a duration: an integer immediately followed by one unit ms|s|m|h, e.g. '5s'. No spaces, no compound values like '1m30s' (D-48)." },
         "retries": { "type": "integer", "minimum": 1, "description": "Failures before unhealthy" },
-        "start_period": { "type": "string", "description": "Grace period before failures count" }
+        "start_period": { "type": "string", "description": "Grace period before failures count — a duration: an integer immediately followed by one unit ms|s|m|h, e.g. '30s'. No spaces, no compound values like '1m30s' (D-48)." }
       },
       "additionalProperties": false
     },
@@ -320,7 +346,7 @@
       "required": ["command"],
       "properties": {
         "command": { "type": "string" },
-        "timeout": { "type": "string" },
+        "timeout": { "type": "string", "description": "Command timeout — a duration: an integer immediately followed by one unit ms|s|m|h, e.g. '5m'. No spaces, no compound values like '1m30s' (D-48)." },
         "capture": {
           "type": "object",
           "description": "Named captures extracted from this command's stdout via regex (D-34). Supersedes the top-level outputs: placement from D-23.",

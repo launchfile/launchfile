@@ -17,6 +17,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	chmodSync,
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
@@ -44,6 +45,9 @@ vi.mock("node:fs/promises", () => ({
 	},
 	mkdir: async (path: string, opts?: { recursive?: boolean; mode?: number }) => {
 		mkdirSync(path, opts);
+	},
+	chmod: async (path: string, mode: number) => {
+		chmodSync(path, mode);
 	},
 }));
 

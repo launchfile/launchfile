@@ -16,14 +16,17 @@ A Launchfile provider that runs apps via Docker Compose. Generates a docker-comp
 
 ## Timeout defaults (PROVIDERS.md §10.10)
 
-Budgets applied when a command declares no `timeout:`:
+Budgets applied when a command declares no `timeout:`, plus the health-gate budget on `up`, which no Launchfile field can set:
 
-| Command     | Default |
-|-------------|---------|
-| `release`   | 10m     |
-| `bootstrap` | 2m      |
+| Stage               | Default |
+|---------------------|---------|
+| `release`           | 10m     |
+| `bootstrap`         | 2m      |
+| health gate on `up` | 120s    |
 
 An unparseable declared `timeout` is surfaced, never silently replaced: `release` fails the deploy, `bootstrap` reports the failure to the invoker.
+
+When the health-gate budget expires, `up` fails and **the containers are left running** so you can inspect what never came up — `launchfile status`, `launchfile logs`, and `launchfile down` all still reach them. Run `launchfile down --destroy` to clear a failed deployment.
 
 ## Commands
 

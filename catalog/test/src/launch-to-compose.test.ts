@@ -567,3 +567,117 @@ components:
     expect(refused).toEqual([]);
   });
 });
+
+/**
+ * `https-origin` (D-60): the harness's publication-context channel, and the
+ * refusal that keeps it from certifying an app it could not honestly deploy.
+ *
+ * The harness runs no edge, so the only satisfaction it can offer is an
+ * `https://` URL the caller supplied with `--url`. Anything else refuses a
+ * `requires:` entry and leaves a `supports:` one unfulfilled — matching
+ * `@launchfile/docker`, which is the point of the harness existing.
+ */
+describe("https-origin (D-60)", () => {
+  const REQUIRES = `
+name: vaultwarden
+image: vaultwarden/server:latest
+provides:
+  - name: web
+    protocol: http
+    port: 80
+    exposed: true
+requires:
+  - type: https-origin
+    endpoint: web
+    set_env:
+      DOMAIN: $url
+`;
+
+  const SUPPORTS = `
+name: grocy
+image: linuxserver/grocy:latest
+provides:
+  - name: web
+    protocol: http
+    port: 80
+    exposed: true
+supports:
+  - type: https-origin
+    endpoint: web
+    set_env:
+      GROCY_URL: $url
+`;
+
+  it("wires set_env from an https:// appUrl", () => {
+    const result = launchToCompose(readLaunch(REQUIRES), {
+      appUrl: "https://vault.example.test",
+    });
+    expect(result.originRefusals).toEqual([]);
+    const compose = parse(result.yaml) as {
+      services: Record<string, { environment?: Record<string, string> }>;
+    };
+    expect(compose.services.vaultwarden!.environment).toMatchObject({
+      DOMAIN: "https://vault.example.test",
+    });
+  });
+
+  it("refuses a requires entry with no appUrl, and omits the component", () => {
+    const result = launchToCompose(readLaunch(REQUIRES));
+    expect(result.originRefusals).toHaveLength(1);
+    expect(result.originRefusals[0]!.entry).toBe('https-origin (endpoint "web")');
+    const compose = parse(result.yaml) as { services: Record<string, unknown> };
+    expect(compose.services.vaultwarden).toBeUndefined();
+  });
+
+  it("refuses a requires entry when the supplied appUrl is http://", () => {
+    const result = launchToCompose(readLaunch(REQUIRES), {
+      appUrl: "http://vault.example.test",
+    });
+    expect(result.originRefusals[0]!.message).toContain('scheme is "http"');
+  });
+
+  it("leaves a supports entry unfulfilled without refusing the component", () => {
+    const result = launchToCompose(readLaunch(SUPPORTS));
+    expect(result.originRefusals).toEqual([]);
+    const compose = parse(result.yaml) as {
+      services: Record<string, { environment?: Record<string, string> }>;
+    };
+    expect(compose.services.grocy).toBeDefined();
+    expect(compose.services.grocy!.environment?.GROCY_URL).toBeUndefined();
+    expect(result.warnings.join("\n")).toContain("optional public HTTPS origin");
+  });
+
+  it("wires a supports entry when the origin is supplied", () => {
+    const result = launchToCompose(readLaunch(SUPPORTS), {
+      appUrl: "https://grocy.example.test",
+    });
+    const compose = parse(result.yaml) as {
+      services: Record<string, { environment?: Record<string, string> }>;
+    };
+    expect(compose.services.grocy!.environment).toMatchObject({
+      GROCY_URL: "https://grocy.example.test",
+    });
+  });
+
+  it("answers $app.* from the supplied URL for apps that declare no entry", () => {
+    const plain = `
+name: plain
+image: app:1
+provides:
+  - protocol: http
+    port: 8080
+    exposed: true
+env:
+  PUBLIC_URL: $app.url
+`;
+    const result = launchToCompose(readLaunch(plain), {
+      appUrl: "https://plain.example.test",
+    });
+    const compose = parse(result.yaml) as {
+      services: Record<string, { environment?: Record<string, string> }>;
+    };
+    expect(compose.services.plain!.environment).toMatchObject({
+      PUBLIC_URL: "https://plain.example.test",
+    });
+  });
+});

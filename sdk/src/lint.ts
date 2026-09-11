@@ -99,26 +99,35 @@ const PRODUCT_SPELLINGS: Record<string, string> = {
 	podman: "container_runtime: docker",
 };
 
+/** A bare single-segment reference found in a value, with its fallback if any. */
+interface BareReference {
+	/** The referenced property name (the reference's one path segment). */
+	prop: string;
+	/** The `${prop:-default}` fallback, when the reference carries one. */
+	fallback?: string;
+}
+
 /**
  * Extract every bare single-segment reference (`$prop` / `${prop}` /
- * `${prop:-default}`) from a set_env value. Bare references always target the
+ * `${prop:-default}`) from a value. Bare references always target the
  * enclosing resource, so the resource type is unambiguous. Multi-segment
  * references (`$name.prop`, `$components.x.url`, …) are excluded: their first
  * segment names a namespace or another resource, not a property of this one.
  */
-function bareReferences(value: string): string[] {
+function bareReferences(value: string): BareReference[] {
 	const parsed = parseExpression(value);
-	const refs: { path: string[] }[] =
+	const refs: { path: string[]; fallback?: string }[] =
 		parsed.kind === "reference"
 			? [parsed]
 			: parsed.kind === "template"
 				? parsed.parts.filter(
-						(p): p is { kind: "ref"; path: string[] } => p.kind === "ref",
+						(p): p is { kind: "ref"; path: string[]; fallback?: string } =>
+							p.kind === "ref",
 					)
 				: [];
 	return refs
 		.filter((r) => r.path.length === 1 && !RESERVED_NAMESPACES.has(r.path[0]!))
-		.map((r) => r.path[0]!);
+		.map((r) => ({ prop: r.path[0]!, fallback: r.fallback }));
 }
 
 /**
@@ -145,13 +154,52 @@ function checkResourceProperties(
 				: undefined;
 			if (!vocabulary || !req.set_env) continue;
 			for (const value of Object.values(req.set_env)) {
-				for (const prop of bareReferences(value)) {
+				for (const { prop } of bareReferences(value)) {
 					if (vocabulary.includes(prop)) continue;
 					warnings.push(
 						`"$${prop}" is not in the standard vocabulary for ${req.type} ` +
 							`(known: ${vocabulary.join(", ")})`,
 					);
 				}
+			}
+		}
+	}
+}
+
+/**
+ * `env:` bare-reference check (#184): a bare single-segment reference in an
+ * `env:` value can never resolve, because `env:` is evaluated with no
+ * enclosing resource in context (`resolver.ts`'s `ResolverContext.resource`
+ * is only ever populated for a `set_env` value) — so `$anything` written
+ * there always falls through to its `${prop:-default}` fallback, or to an
+ * empty string when it has none. This is the same D-46-adjacent gap as
+ * {@link checkResourceProperties}'s check but a different question: that
+ * check asks whether a property is in a *known* resource's vocabulary; this
+ * one asks whether there is any resource at all to resolve against, so it
+ * applies regardless of vocabulary. Warn-only — never touches `resolver.ts`
+ * or changes what a value resolves to. Command-string references
+ * (`commands.*.command`) fail the same way but are #227's scope, not this
+ * one's; both share {@link bareReferences} so the two checks can't drift.
+ * Covers both the literal (`env: { PORT: "$host" }`) and expanded
+ * (`env: { PORT: { default: "$host" } }`) forms — both normalize to
+ * `NormalizedEnvVar.default`.
+ */
+function checkEnvBareReferences(
+	launch: NormalizedLaunch,
+	warnings: string[],
+): void {
+	for (const [componentName, component] of Object.entries(launch.components)) {
+		for (const [key, envVar] of Object.entries(component.env ?? {})) {
+			if (typeof envVar.default !== "string") continue;
+			for (const { prop, fallback } of bareReferences(envVar.default)) {
+				const outcome =
+					fallback !== undefined
+						? `the fallback "${fallback}" is always used instead`
+						: "it always resolves to an empty string";
+				warnings.push(
+					`components.${componentName}.env.${key}: "$${prop}" has no resource to ` +
+						`resolve against — env values are not evaluated in a resource's context, so ${outcome}`,
+				);
 			}
 		}
 	}
@@ -274,6 +322,8 @@ function checkPortability(
  *   names a known host capability is warned about: host capabilities require
  *   the `host:` marker so the privilege surface stays machine-extractable.
  * - Non-standard resource properties (D-46): see {@link checkResourceProperties}.
+ * - Bare references in `env:` values that can never resolve (#184): see
+ *   {@link checkEnvBareReferences}.
  * - Reduced-portability build path and source reachability (D-40, D-43): see
  *   {@link checkPortability}. Suppressible via `opts.suppressPortabilityWarnings`.
  *
@@ -340,6 +390,7 @@ export function lintLaunch(
 	}
 
 	checkResourceProperties(launch, warnings);
+	checkEnvBareReferences(launch, warnings);
 	checkOperatorStorageContradiction(launch, warnings);
 	checkPortability(launch, warnings, opts);
 

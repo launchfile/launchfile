@@ -289,6 +289,112 @@ components:
 	});
 });
 
+describe("lintLaunch — env: values reference no resource (#184)", () => {
+	it("warns on a bare reference in a literal env: value", () => {
+		const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    env:
+      DB_HOST: $host
+`);
+		const warnings = lintLaunch(launch, { suppressPortabilityWarnings: true });
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toBe(
+			'components.api.env.DB_HOST: "$host" has no resource to resolve against — ' +
+				"env values are not evaluated in a resource's context, so it always resolves to an empty string",
+		);
+	});
+
+	it("warns on a bare reference in the expanded default: form", () => {
+		const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    env:
+      DB_HOST:
+        default: $host
+        required: true
+`);
+		const warnings = lintLaunch(launch, { suppressPortabilityWarnings: true });
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toContain("components.api.env.DB_HOST:");
+	});
+
+	it("names the fallback instead of empty string when the reference carries one", () => {
+		const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    env:
+      PORT: "\${port:-5432}"
+`);
+		const warnings = lintLaunch(launch, { suppressPortabilityWarnings: true });
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toBe(
+			'components.api.env.PORT: "$port" has no resource to resolve against — ' +
+				"env values are not evaluated in a resource's context, so the fallback " +
+				'"5432" is always used instead',
+		);
+	});
+
+	it("stays silent for reserved namespaces and cross-resource references", () => {
+		const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    env:
+      PUBLIC_URL: $app.url
+      API_KEY: $secrets.api-key
+      CACHE_URL: $redis.url
+      DATA_DIR: $storage.data.path
+`);
+		expect(lintLaunch(launch, { suppressPortabilityWarnings: true })).toEqual([]);
+	});
+
+	it("stays silent for non-string defaults and plain literals", () => {
+		const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    env:
+      DEBUG: false
+      RETRIES: 3
+      NAME: acme-api
+`);
+		expect(lintLaunch(launch, { suppressPortabilityWarnings: true })).toEqual([]);
+	});
+
+	it("names the top-level single-component as components.default", () => {
+		const launch = readLaunch(`
+name: acme
+image: api:latest
+env:
+  DB_HOST: $host
+`);
+		const warnings = lintLaunch(launch, { suppressPortabilityWarnings: true });
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toContain("components.default.env.DB_HOST:");
+	});
+
+	it("does not warn on commands.*.command bare references (#227's scope)", () => {
+		const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    commands:
+      bootstrap: "sh -c 'test -f $CFG'"
+`);
+		expect(lintLaunch(launch, { suppressPortabilityWarnings: true })).toEqual([]);
+	});
+});
+
 describe("lintLaunch — resource types that name Object.prototype keys", () => {
 	const PROTOTYPE_KEYS = [
 		"constructor",

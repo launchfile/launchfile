@@ -102,6 +102,23 @@ Rung 2 freezes an app the same way, which is exactly why it ranks below rung 1 a
 applies only where upstream maintains no channel to follow. A digest freezes every
 entry, including the ones upstream still patches.
 
+### What CI checks
+
+The `Catalog` job runs `catalog/test`'s `validate-catalog` script over every
+`catalog/{apps,drafts}/*/Launchfile` — static analysis only, nothing is pulled or run.
+
+| Check                                                  | Severity  | Scope                             |
+|--------------------------------------------------------|-----------|-----------------------------------|
+| Parses against the SDK's schema (`sdk/src/schema.ts`)  | **error** | Every catalog Launchfile          |
+| `image:` carries a tag — a bare reference is rejected  | **error** | Every catalog Launchfile          |
+| `image:` pins by `@sha256` digest — rejected           | **error** | Every catalog Launchfile          |
+| `:latest` with no trailing `#` rationale comment       | warning   | Launchfiles your PR adds or edits |
+| `image:` disagrees with a tag `metadata.yaml` measured | warning   | Launchfiles your PR adds or edits |
+
+The warnings are scoped to what you touch because the grandfather clause above is
+real: the entries already on `:latest` are not a backlog this job reopens on every
+run. Run the same checks locally with `cd catalog/test && bun run validate-catalog`.
+
 ## Updating an Existing App
 
 If an app's configuration changes (new env vars, different ports, etc.), update the Launchfile and note what changed in the PR description.

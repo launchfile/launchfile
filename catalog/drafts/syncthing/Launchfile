@@ -3,9 +3,13 @@ version: launch/v1
 name: syncthing
 description: "Continuous peer-to-peer file synchronization"
 
-# GAP: Syncthing exposes port 22000 for its sync protocol (TCP/QUIC).
-# While we can model this via provides with protocol: tcp, the QUIC (UDP)
-# transport cannot be expressed. The spec also has no way to express UDP ports.
+# Syncthing's sync protocol listens on 22000 over both TCP and QUIC (UDP), and
+# local discovery uses 21027/UDP (docs: users/firewall.rst). All three are
+# declared below — `udp` is in the protocol enum (G-8 in ../../GAPS.md is
+# addressed). Remaining gap: QUIC is not its own protocol value, so the
+# 22000/UDP entry declares the transport, not the QUIC layer on top of it.
+# Local discovery relies on broadcast/multicast, which Docker's default bridge
+# network does not forward (upstream README-Docker.md "Discovery") — see G-9.
 
 image: syncthing/syncthing:latest
 provides:
@@ -16,6 +20,12 @@ provides:
   - name: sync
     protocol: tcp
     port: 22000
+  - name: sync-quic
+    protocol: udp
+    port: 22000
+  - name: discovery
+    protocol: udp
+    port: 21027
 storage:
   data:
     path: /var/syncthing
