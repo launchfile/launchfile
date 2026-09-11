@@ -58,11 +58,25 @@ function failure(display: string, result: ShellResult): Error {
 	// The message reaches the user and may be logged by a caller; both the
 	// command and the child's stderr can echo a secret back, so neither goes
 	// in unscrubbed (D-18, CWE-532).
+	//
+	// `display` rides along as its own property so a failure capture records the
+	// command as a field without parsing it back out of prose, and the attached
+	// output is scrubbed here rather than only at capture: anything that
+	// serializes this error before it reaches the capture path — a caller's
+	// `console.error`, a future logger — would otherwise print the raw tails.
+	// Capture-time redaction still runs, and is idempotent.
 	return Object.assign(
 		new Error(
 			`Command failed: ${redactSecrets(display)}\n${redactSecrets(result.stderr)}`,
 		),
-		{ result },
+		{
+			result: {
+				...result,
+				stdout: redactSecrets(result.stdout),
+				stderr: redactSecrets(result.stderr),
+			} satisfies ShellResult,
+			display: redactSecrets(display),
+		},
 	);
 }
 
