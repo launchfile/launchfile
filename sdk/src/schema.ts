@@ -509,6 +509,62 @@ function checkHttpsOrigin(
 	}
 }
 
+/**
+ * D-next rule 4: a `provides[].name` is addressable app-wide through
+ * `$app.endpoints.<name>.*`, by name alone, so the same name on two
+ * components would give one expression two answers. Refused naming both.
+ * Scoped to declaration sites — the top level and each component — the same
+ * scopes `checkHttpsOrigin` reads; a name repeated within one component is
+ * outside this rule (D-60 rule 2 already reports it where an `https-origin`
+ * names it).
+ */
+function checkEndpointNames(
+	launch: Record<string, unknown>,
+	ctx: z.RefinementCtx,
+): void {
+	const components = launch.components as
+		| Record<string, Record<string, unknown>>
+		| undefined;
+	const scopes: Array<{
+		label: string;
+		prefix: Array<string | number>;
+		provides: unknown;
+	}> = [{ label: "(top-level)", prefix: [], provides: launch.provides }];
+	for (const [name, component] of Object.entries(components ?? {})) {
+		if (typeof component !== "object" || component === null) continue;
+		scopes.push({
+			label: name,
+			prefix: ["components", name],
+			provides: component.provides,
+		});
+	}
+
+	const seen = new Map<string, string>();
+	for (const scope of scopes) {
+		if (!Array.isArray(scope.provides)) continue;
+		const local = new Set<string>();
+		for (const [index, raw] of (scope.provides as ProvidesLike[]).entries()) {
+			if (typeof raw !== "object" || raw === null) continue;
+			const name = raw.name;
+			if (typeof name !== "string" || local.has(name)) continue;
+			local.add(name);
+			const owner = seen.get(name);
+			if (owner === undefined) {
+				seen.set(name, scope.label);
+				continue;
+			}
+			ctx.addIssue({
+				code: "custom",
+				path: [...scope.prefix, "provides", index, "name"],
+				message:
+					`\`provides\` entry "${name}" is named on both ${owner} and ${scope.label}; ` +
+					"an endpoint name is app-wide — `$app.endpoints." +
+					`${name}.*\` addresses it by name alone (D-next rule 4). Rename one.`,
+			});
+		}
+	}
+}
+
 /** The `supports:` resource type a `tls:` binding names (D-61 rule 1). */
 const CERTIFICATE = "certificate";
 
@@ -730,6 +786,7 @@ export const LaunchSchema = z.object({
 	components: z.record(z.string(), ComponentSchema).optional(),
 }).superRefine((launch, ctx) => {
 	checkHttpsOrigin(launch as Record<string, unknown>, ctx);
+	checkEndpointNames(launch as Record<string, unknown>, ctx);
 	checkCertificateBindings(launch as Record<string, unknown>, ctx);
 });
 
