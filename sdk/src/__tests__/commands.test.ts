@@ -138,4 +138,52 @@ describe("cmdValidate — control-character sanitization (#279, CWE-117)", () =>
 		expect(pathLine).not.toContain("\n");
 		expect(pathLine).toContain("evil\\n✓ ok");
 	});
+
+	it("strips ANSI escapes from a YAML syntax error that quotes the offending line", () => {
+		// `yaml` builds parse errors with prettyErrors on, so the message embeds
+		// the failing source line verbatim — the file's own bytes, escapes
+		// included, reaching `console.error` under "Validation failed".
+		const path = fixture(
+			'version: launch/v1\nname: acme\nbad: [[31mRED[0m\n',
+		);
+		const errors: string[] = [];
+		vi.spyOn(console, "error").mockImplementation((msg: unknown) => {
+			errors.push(String(msg));
+		});
+		vi.spyOn(process, "exit").mockImplementation((() => {
+			throw new Error("process.exit");
+		}) as never);
+
+		expect(() => cmdValidate(path, { noColor: true })).toThrow("process.exit");
+
+		const printed = errors.join("\n");
+		expect(printed).toContain("RED");
+		expect(printed).not.toContain("");
+		const disallowed = [...printed].filter((ch) => {
+			const code = ch.charCodeAt(0);
+			if (ch === "\n" || ch === "\t") return false;
+			return code < 0x20 || (code >= 0x7f && code <= 0x9f);
+		});
+		expect(disallowed).toEqual([]);
+	});
+
+	it("keeps the parse error's pretty snippet on its own lines", () => {
+		const path = fixture("version: launch/v1\nname: acme\nbad: [unclosed\n");
+		const errors: string[] = [];
+		vi.spyOn(console, "error").mockImplementation((msg: unknown) => {
+			errors.push(String(msg));
+		});
+		vi.spyOn(process, "exit").mockImplementation((() => {
+			throw new Error("process.exit");
+		}) as never);
+
+		expect(() => cmdValidate(path, { noColor: true })).toThrow("process.exit");
+
+		// The caret line under the offending source is part of the diagnostic,
+		// so this branch keeps `\n` instead of escaping it.
+		const snippet = errors.find((l) => l.includes("bad: [unclosed"));
+		expect(snippet).toBeDefined();
+		expect(snippet).toContain("\n");
+		expect(snippet).toContain("^");
+	});
 });

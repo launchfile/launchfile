@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { lintDeprecations } from "./deprecations.js";
 import type { Deprecation } from "./deprecations.js";
-import { stripControlInline } from "./errors.js";
+import { stripControl, stripControlInline } from "./errors.js";
 import { lintLaunch, lintUnknownStorageKeys } from "./lint.js";
 import { parseLaunchYaml, readLaunch, validateLaunch } from "./reader.js";
 import type { NormalizedLaunch } from "./types.js";
@@ -141,11 +141,19 @@ function formatZodErrors(err: unknown): string[] {
 		);
 	}
 
+	// Neither branch below carries a Zod issue list, so neither message is
+	// SDK-authored text. A YAML parse error embeds the offending source line
+	// verbatim (the `yaml` library's prettyErrors default), which puts a
+	// hostile file's own bytes — ANSI escapes included — into the
+	// `console.error` loops of `cmdValidate` and `cmdInspect` (#279, CWE-117).
+	// That pretty snippet is legitimately multi-line, so `stripControl` is the
+	// right tool here rather than `stripControlInline`: it removes escapes and
+	// control characters and keeps the `\n`/`\t` that lay the snippet out.
 	if (err instanceof Error) {
-		return [err.message];
+		return [stripControl(err.message)];
 	}
 
-	return [String(err)];
+	return [stripControl(String(err))];
 }
 
 // --- Public command functions ---
@@ -163,6 +171,20 @@ export interface ValidateOpts {
 	detached?: boolean;
 }
 
+/**
+ * The result of `cmdValidate`, and its `--json` payload.
+ *
+ * Sanitization here is deliberately partial, and a caller that renders this
+ * object needs to know where the boundary sits. `warnings` and `errors` are
+ * diagnostics — display prose the SDK composes — so they arrive already run
+ * through `stripControlInline`/`stripControl` and carry no ANSI escape or
+ * control character. `name`, `components`, `requires`, `hostCapabilities`,
+ * `operatorStorage` and `deprecations[].path` are data: they hold the
+ * document's own strings verbatim, so a programmatic caller can match them
+ * against the file it validated. A caller that prints one of those to a
+ * terminal sanitizes it itself — `stripControlInline` is exported for exactly
+ * that, and `cmdValidate`'s own human-readable output uses it.
+ */
 export interface ValidateResult {
 	valid: boolean;
 	path: string;

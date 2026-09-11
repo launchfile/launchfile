@@ -233,11 +233,16 @@ export function stripControl(text: string): string {
  * (`"evil\n✓ valid"`) would otherwise render as a second, trusted-looking line
  * of terminal output (CWE-117). Escaping `\t`/`\n` into their visible two-
  * character form closes that without dropping any information.
+ *
+ * A literal backslash is doubled first, so the escaping is unambiguous: a key
+ * whose text really is the two characters `\` `n` renders as `\\n` and a real
+ * newline renders as `\n`, and a reader can tell which one the file contained.
  */
 export function stripControlInline(text: string): string {
-	return stripControl(text).replace(/[\t\n]/g, (ch) =>
-		ch === "\n" ? "\\n" : "\\t",
-	);
+	return stripControl(text).replace(/[\\\t\n]/g, (ch) => {
+		if (ch === "\\") return "\\\\";
+		return ch === "\n" ? "\\n" : "\\t";
+	});
 }
 
 /** Keep the last `max` lines of `text`. */

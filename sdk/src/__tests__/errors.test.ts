@@ -271,6 +271,12 @@ describe("helpers", () => {
 		expect(stripControlInline("a\tb")).toBe("a\\tb");
 	});
 
+	it("stripControlInline doubles a literal backslash so the escaping is unambiguous", () => {
+		// Two different inputs, two different renderings.
+		expect(stripControlInline("evil\\n ok")).toBe("evil\\\\n ok");
+		expect(stripControlInline("evil\n ok")).toBe("evil\\n ok");
+	});
+
 	it("stripControlInline still strips ANSI escapes and other control characters", () => {
 		const esc = String.fromCharCode(27);
 		const bel = String.fromCharCode(7);
