@@ -285,7 +285,7 @@ export function translate(
 		}
 	}
 
-	// --- `$app.endpoints.<name>.*` (D-next rule 4): "" for every property ---
+	// --- `$app.endpoints.<name>.*` (D-63 rule 4): "" for every property ---
 	// The ALB above fronts one target group and yields one address, so this
 	// probe publishes no per-endpoint address — the primary's included: its
 	// `$app.endpoints` entry is "" rather than a copy of `$app.*`, since the
@@ -310,7 +310,7 @@ export function translate(
 			`$app.endpoints.${name}`,
 			"workaround",
 			"this provider publishes no per-endpoint public address, so every " +
-				`$app.endpoints.${name}.* property resolves "" (D-next rule 4)`,
+				`$app.endpoints.${name}.* property resolves "" (D-63 rule 4)`,
 			"supply the value through the environment, or front the endpoint yourself",
 			component,
 		);

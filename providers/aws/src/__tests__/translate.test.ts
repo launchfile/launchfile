@@ -670,7 +670,7 @@ supports:
 	});
 });
 
-describe("translate — $app.endpoints.<name>.* (D-next rule 4, #487)", () => {
+describe("translate — $app.endpoints.<name>.* (D-63 rule 4, #487)", () => {
 	const GITEA = `
 version: launch/v1
 name: gitea

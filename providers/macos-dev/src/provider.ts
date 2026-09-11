@@ -684,7 +684,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		appProperties,
 		computeAppEndpoints(launch),
 	);
-	// `$app.endpoints.<name>.*` resolves "" here (D-next rule 4, #294). Said
+	// `$app.endpoints.<name>.*` resolves "" here (D-63 rule 4, #294). Said
 	// once per `up`, and only when the file asks, so the empty value is not a
 	// silent one (PROVIDERS.md §10 item 8).
 	const endpointRefs = appEndpointReferences(launch);

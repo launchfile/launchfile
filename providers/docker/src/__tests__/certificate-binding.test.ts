@@ -264,7 +264,7 @@ components:
   beta:
     image: beta:1
     provides:
-      # A distinct endpoint name: a provides name is app-wide (D-next rule 4).
+      # A distinct endpoint name: a provides name is app-wide (D-63 rule 4).
       - { name: api, protocol: http, port: 4000, exposed: true, tls: server-cert }
     supports:
       - name: server-cert

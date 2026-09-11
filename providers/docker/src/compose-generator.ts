@@ -720,7 +720,7 @@ export interface ComposeOpts {
 	 * one). It MUST NOT be used to derive other published endpoints' public
 	 * addresses (D-58 rule 4): with it set, `$app.endpoints.<name>.*` resolves
 	 * from it for the primary and `""` for every other named endpoint
-	 * (D-next rule 5); a per-endpoint supplied channel is a separate proposal.
+	 * (D-63 rule 5); a per-endpoint supplied channel is a separate proposal.
 	 *
 	 * Must be an absolute http(s) URL with no userinfo, query, or fragment; a
 	 * malformed value throws `InvalidAppUrlError` — refuse, never degrade.
@@ -982,7 +982,7 @@ export function launchToCompose(
 		fenced,
 	} = computeAppContext(launch, opts.hostPorts, opts.appUrl, certificates.active);
 
-	// `$app.endpoints.<name>.*` (D-next). Under a supplied publication URL the
+	// `$app.endpoints.<name>.*` (D-63). Under a supplied publication URL the
 	// D-58 rule 4 fence holds: every non-primary named endpoint resolves ""
 	// and the file is told — but only about the endpoints it references, so
 	// an unreferenced second endpoint does not warn on every embedded run.

@@ -13,7 +13,7 @@
  *
  * {@link publishedAddress} is the provider's ONE derivation of a published
  * endpoint's host-side address. `$app.*` (here), `$app.endpoints.<name>.*`
- * (here, D-next), the `status`/`up` printout (`endpointAddress` in
+ * (here, D-63), the `status`/`up` printout (`endpointAddress` in
  * `provider.ts`) and the endpoint metadata the compose generator persists all
  * read it, so the address a deployment writes into an app's config and the
  * address it prints to the operator cannot disagree (#473).
@@ -242,7 +242,7 @@ export function primaryPublishedEndpoint(
  *
  * `$app.*` always points at the primary endpoint to give a single,
  * predictable answer. Any other named published endpoint's public address is
- * `$app.endpoints.<name>.*` ({@link computeAppContext}, D-next);
+ * `$app.endpoints.<name>.*` ({@link computeAppContext}, D-63);
  * `$components.<name>.url` is the component-side address, not a public one.
  */
 export function computeAppProperties(
@@ -259,7 +259,7 @@ const HTTP_FAMILY_PROTOCOLS: ReadonlySet<string> = new Set(["http", "https", "ws
 
 /**
  * One published endpoint's public address as `$app.endpoints.<name>.*`
- * reads it (D-next rules 1 and 3): the six fields of {@link publishedAddress}
+ * reads it (D-63 rules 1 and 3): the six fields of {@link publishedAddress}
  * for an HTTP-family listener; for a `tcp`/`udp` listener — no origin — the
  * `url` and `scheme` are `""` and `tls` is `"false"`, while `host`,
  * `authority` (always carrying the port, there being no scheme default to
@@ -287,19 +287,19 @@ export interface AppContext {
 	/** The standard `$app.*` set (D-33, D-35): the primary endpoint's address. */
 	app: Record<string, string | number>;
 	/**
-	 * Every named published endpoint's address (D-next), keyed by
+	 * Every named published endpoint's address (D-63), keyed by
 	 * `provides[].name`. The primary's entry is `app` less `name`.
 	 */
 	appEndpoints: Record<string, AppEndpointProperties>;
 	/**
 	 * Named endpoints that resolve `""` because a supplied `appUrl` asserts
-	 * the primary endpoint's address only (D-58 rule 4, D-next rule 5).
+	 * the primary endpoint's address only (D-58 rule 4, D-63 rule 5).
 	 */
 	fenced: string[];
 }
 
 /**
- * Compute `$app.*` and `$app.endpoints.<name>.*` together (D-next rule 2 —
+ * Compute `$app.*` and `$app.endpoints.<name>.*` together (D-63 rule 2 —
  * one derivation). The primary endpoint is found once; its
  * {@link publishedAddress} is `$app.*`, and the same six fields are its
  * `$app.endpoints.<name>` entry, so the two can never differ. Every other

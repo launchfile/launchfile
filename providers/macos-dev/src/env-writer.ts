@@ -94,7 +94,7 @@ export function computeAppProperties(
 }
 
 /**
- * `$app.endpoints.<name>.*` under this provider (D-next rule 4): every
+ * `$app.endpoints.<name>.*` under this provider (D-63 rule 4): every
  * property of every named published endpoint resolves `""`. The allocator
  * hands out one port per **component** (`allocatePorts`, keyed by component
  * name), so a second `exposed: true` entry on a component has no host-side
@@ -120,7 +120,7 @@ export function computeAppEndpoints(
 
 /**
  * Build a ResolverContext from provisioned resources, component ports,
- * secrets, (D-33) the platform-injected app properties, and (D-next) the
+ * secrets, (D-33) the platform-injected app properties, and (D-63) the
  * per-endpoint map — `computeAppEndpoints`, which under this provider is
  * every named published endpoint resolving `""`.
  */

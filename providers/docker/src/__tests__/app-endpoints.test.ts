@@ -1,5 +1,5 @@
 /**
- * `$app.endpoints.<name>.*` — per-endpoint publication context (D-next).
+ * `$app.endpoints.<name>.*` — per-endpoint publication context (D-63).
  *
  * Every named published endpoint resolves its public address through
  * `publishedAddress`, the same derivation `$app.*` and the printout read

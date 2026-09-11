@@ -1,5 +1,5 @@
 /**
- * `$app.endpoints.<name>.*` under this provider (D-next rule 4, #294): every
+ * `$app.endpoints.<name>.*` under this provider (D-63 rule 4, #294): every
  * property of every named published endpoint resolves "" — the primary's
  * included — and `up` says so once, naming the endpoints the file references.
  * The allocator hands out one port per component, so there is no per-endpoint
@@ -12,6 +12,7 @@
  */
 
 import {
+	chmodSync,
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
@@ -55,6 +56,9 @@ vi.mock("node:fs/promises", () => ({
 		opts?: { recursive?: boolean; mode?: number },
 	) => {
 		mkdirSync(path, opts);
+	},
+	chmod: async (path: string, mode: number) => {
+		chmodSync(path, mode);
 	},
 }));
 
@@ -110,7 +114,7 @@ commands:
   start: "gitea web"
 `;
 
-describe("computeAppEndpoints (D-next rule 4)", () => {
+describe("computeAppEndpoints (D-63 rule 4)", () => {
 	it("registers the empty answer for every named published endpoint, the primary included", () => {
 		const endpoints = computeAppEndpoints(readLaunch(GITEA_SHAPE));
 		expect(Object.keys(endpoints).sort()).toEqual(["ssh", "web"]);
@@ -155,7 +159,7 @@ commands:
 	});
 });
 
-describe('launchUp — $app.endpoints.* resolves "" and says so (D-next rule 4, #294)', () => {
+describe('launchUp — $app.endpoints.* resolves "" and says so (D-63 rule 4, #294)', () => {
 	let projectDir: string;
 
 	beforeEach(() => {
