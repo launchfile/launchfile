@@ -84,6 +84,11 @@ export interface Requirement {
 	name?: string;
 	/** Resource type (e.g., "postgres", "redis") */
 	type: ResourceType;
+	/**
+	 * The `provides` entry this resource fronts, by its `name` (D-6). Required
+	 * on a `type: https-origin` entry, meaningless on any other type.
+	 */
+	endpoint?: string;
 	/** Version constraint (semver ranges, e.g., ">=15", "^7.0") */
 	version?: string;
 	/** Resource provisioning hints (platform-interpreted) */
@@ -121,6 +126,11 @@ export interface Support {
 	name?: string;
 	/** Resource type */
 	type: ResourceType;
+	/**
+	 * The `provides` entry this resource fronts, by its `name` (D-6). Required
+	 * on a `type: https-origin` entry, meaningless on any other type.
+	 */
+	endpoint?: string;
 	/** Version constraint */
 	version?: string;
 	/** Resource provisioning hints (platform-interpreted) */
@@ -404,6 +414,11 @@ export interface NormalizedEnvVar {
 export interface NormalizedRequirement {
 	name?: string;
 	type: ResourceType;
+	/**
+	 * The `provides` entry this resource fronts, by its `name` (D-6). Required
+	 * on a `type: https-origin` entry, meaningless on any other type.
+	 */
+	endpoint?: string;
 	version?: string;
 	config?: Record<string, unknown>;
 	set_env?: Record<string, string>;

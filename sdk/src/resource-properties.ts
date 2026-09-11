@@ -12,6 +12,7 @@ const VOCABULARY: Readonly<Record<string, readonly string[]>> = {
 	clickhouse: ["url", "host", "port", "user", "password", "name"],
 	kafka: ["url", "host", "port"],
 	s3: ["url", "access_key", "secret_key", "bucket", "region"],
+	"https-origin": ["url"],
 };
 
 /**
