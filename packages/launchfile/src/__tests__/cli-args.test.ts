@@ -154,3 +154,21 @@ describe("launchfile up --name with no value (built CLI)", () => {
 		}
 	});
 });
+
+describe("--reveal on bootstrap (D-next): exact long form, no alias, no value", () => {
+	it("is present only as the literal --reveal token", () => {
+		expect(flagPresent(["bootstrap", "ghost", "--reveal"], "reveal")).toBe(true);
+		expect(flagPresent(["bootstrap", "--reveal", "ghost"], "reveal")).toBe(true);
+		expect(flagPresent(["bootstrap", "ghost"], "reveal")).toBe(false);
+	});
+
+	it("has no short alias", () => {
+		expect(flagPresent(["bootstrap", "ghost", "-r"], "reveal")).toBe(false);
+	});
+
+	it("consumes no positional — the target after it is still the target", () => {
+		const args = ["bootstrap", "--reveal", "ghost"];
+		expect(getPositional(args, 0)).toBe("bootstrap");
+		expect(getPositional(args, 1)).toBe("ghost");
+	});
+});

@@ -104,6 +104,8 @@ Options:
                     creating an empty volume. Repeat per volume; spell the key
                     <component>.<volume> where the volume name is ambiguous
   --component <n>  Limit bootstrap to a single component
+  --reveal         (bootstrap) Print captures marked \`sensitive\` instead of
+                    masking them — they never reach logs or state either way
   --detached       (validate) Evaluate as fetched standalone, not read from the
                     app's own checkout — enables the D-43 reduced-portability check
   --json           Machine-readable output (with diagnose, validate)
@@ -189,6 +191,8 @@ async function main(): Promise<void> {
 		case "bootstrap":
 			await handleBootstrap(target, {
 				component: getFlagValue("component"),
+				// Exact long form only — no alias, no value.
+				reveal: argsFlagPresent(args, "reveal"),
 			});
 			break;
 
