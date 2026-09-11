@@ -281,3 +281,154 @@ describe("launchUp publication context (D-58)", () => {
 		expect(commands).toEqual(["echo https://notes.example.com"]);
 	});
 });
+
+const ORIGIN_REQUIRED = `version: launch/v1
+name: origintest
+components:
+  web:
+    runtime: node
+    provides:
+      - name: ui
+        protocol: http
+        port: 3000
+        exposed: true
+    requires:
+      - type: https-origin
+        endpoint: ui
+        set_env:
+          DOMAIN: $url
+    env:
+      PUBLIC_URL:
+        default: $app.url
+    commands:
+      start: "node web.js"
+  worker:
+    runtime: node
+    commands:
+      start: "node worker.js"
+`;
+
+const ORIGIN_OPTIONAL = `version: launch/v1
+name: origintest
+runtime: node
+provides:
+  - name: ui
+    protocol: http
+    port: 3000
+    exposed: true
+supports:
+  - type: https-origin
+    endpoint: ui
+    set_env:
+      DOMAIN: $url
+commands:
+  start: "node web.js"
+`;
+
+/**
+ * `https-origin` rides the publication-context channel (D-60 rule 5,
+ * PROVIDERS.md §7): an https `appUrl` satisfies a required entry and wires its
+ * `url`; anything else refuses the component with docker's reason. Asserted on
+ * the env the process manager receives, so the outcome is what is pinned.
+ */
+describe("launchUp https-origin through the publication context (D-60 rule 5)", () => {
+	let projectDir: string;
+	const consoleErrors: string[] = [];
+	const consoleWarns: string[] = [];
+
+	beforeEach(() => {
+		shellCalls.length = 0;
+		startRegistrations.length = 0;
+		writtenEnvFiles.length = 0;
+		consoleLogs.length = 0;
+		consoleErrors.length = 0;
+		consoleWarns.length = 0;
+		projectDir = mkdtempSync(join(tmpdir(), "lf-macos-origin-"));
+		vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+			consoleLogs.push(args.map(String).join(" "));
+		});
+		vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => {
+			consoleWarns.push(args.map(String).join(" "));
+		});
+		vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+			consoleErrors.push(args.map(String).join(" "));
+		});
+		vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+		rmSync(projectDir, { recursive: true, force: true });
+	});
+
+	const registered = (name: string) =>
+		startRegistrations.find((r) => r.name === name)?.env;
+
+	it("satisfies a required entry from an https appUrl and wires its url to $app.url", async () => {
+		writeFileSync(join(projectDir, "Launchfile"), ORIGIN_REQUIRED);
+		await launchUp({ projectDir, appUrl: "https://vw.example.com" });
+
+		expect(registered("web")?.DOMAIN).toBe("https://vw.example.com");
+		expect(registered("web")?.PUBLIC_URL).toBe("https://vw.example.com");
+		expect(registered("worker")).toBeDefined();
+		expect(consoleErrors.join("\n")).not.toContain("Refused");
+		expect(consoleWarns.join("\n")).not.toContain("No provisioner for resource type: https-origin");
+	});
+
+	it("refuses the component when the supplied URL is http, naming the scheme", async () => {
+		writeFileSync(join(projectDir, "Launchfile"), ORIGIN_REQUIRED);
+		await launchUp({ projectDir, appUrl: "http://vw.example.com" });
+
+		expect(registered("web")).toBeUndefined();
+		expect(registered("worker")).toBeDefined();
+		expect(consoleErrors.join("\n")).toContain(
+			'Refused: web requires a public HTTPS origin this provider cannot supply (https-origin (endpoint "ui"): the supplied publication URL\'s scheme is "http", not https)',
+		);
+		expect(writtenEnvFiles.some((f) => f.path.endsWith("web.env"))).toBe(false);
+	});
+
+	it("refuses the component when nothing is supplied or recorded, saying so", async () => {
+		writeFileSync(join(projectDir, "Launchfile"), ORIGIN_REQUIRED);
+		await launchUp({ projectDir });
+
+		expect(registered("web")).toBeUndefined();
+		expect(consoleErrors.join("\n")).toContain(
+			"no publication URL was supplied, and this provider has no edge of its own",
+		);
+		expect(consoleErrors.join("\n")).not.toContain("no publication channel");
+	});
+
+	it("a recorded https appUrl satisfies the entry on a later run that omits the option", async () => {
+		writeFileSync(join(projectDir, "Launchfile"), ORIGIN_REQUIRED);
+		await launchUp({ projectDir, appUrl: "https://vw.example.com" });
+		startRegistrations.length = 0;
+		await launchUp({ projectDir });
+
+		expect(registered("web")?.DOMAIN).toBe("https://vw.example.com");
+		expect(consoleErrors.join("\n")).not.toContain("Refused");
+	});
+
+	it("`env` resolves the entry's url from the recorded publication context", async () => {
+		writeFileSync(join(projectDir, "Launchfile"), ORIGIN_REQUIRED);
+		await launchUp({ projectDir, appUrl: "https://vw.example.com" });
+		await launchEnv({ projectDir, component: "web" });
+
+		expect(consoleLogs.join("\n")).toContain("DOMAIN=https://vw.example.com");
+	});
+
+	it("wires a satisfied `supports:` entry and leaves an unsatisfied one absent with a note", async () => {
+		writeFileSync(join(projectDir, "Launchfile"), ORIGIN_OPTIONAL);
+		await launchUp({ projectDir, appUrl: "https://vw.example.com" });
+		expect(registered("default")?.DOMAIN).toBe("https://vw.example.com");
+		expect(consoleWarns.join("\n")).not.toContain("optional public HTTPS origin");
+
+		rmSync(join(projectDir, ".launchfile"), { recursive: true, force: true });
+		startRegistrations.length = 0;
+		await launchUp({ projectDir, appUrl: "http://vw.example.com" });
+		expect(registered("default")).toBeDefined();
+		expect(registered("default")?.DOMAIN).toBeUndefined();
+		expect(consoleWarns.join("\n")).toContain(
+			'optional public HTTPS origin not satisfied (https-origin (endpoint "ui"): the supplied publication URL\'s scheme is "http", not https) — running degraded',
+		);
+	});
+});

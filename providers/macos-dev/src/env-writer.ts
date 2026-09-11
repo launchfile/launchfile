@@ -19,6 +19,7 @@ import {
 	type UnsuppliedRequiredEnv,
 	unsuppliedRequiredEnv,
 } from "@launchfile/sdk";
+import { declaredPrimaryComponent } from "./https-origin.js";
 import type { ResourceProperties } from "./resources/types.js";
 import { generateValue } from "./secret-generator.js";
 
@@ -30,10 +31,12 @@ export type { ResolverContext, UnsuppliedRequiredEnv };
  * macos-dev provider.
  *
  * With no `appUrl`, this provider's own routing strategy answers: the app's
- * "primary" port comes from the first component (in declaration order) that has
- * at least one `exposed: true` provides entry, and `http://localhost:<port>` is
- * the address. Apps with no exposed component get `port: 0` and `url: ""` (and
- * empty authority/scheme/tls).
+ * "primary" port is the port of the component that declares an `https-origin`
+ * entry (D-60 rule 3 — declaration fixes the primary, fulfilled or not), else
+ * the first component (in declaration order) that has at least one
+ * `exposed: true` provides entry, and `http://localhost:<port>` is the address.
+ * Apps with no exposed component get `port: 0` and `url: ""` (and empty
+ * authority/scheme/tls).
  *
  * With an `appUrl` — the orchestrator-supplied publication context (D-58) —
  * routing has moved upstream and the supplied URL answers instead, via the
@@ -48,7 +51,9 @@ export type { ResolverContext, UnsuppliedRequiredEnv };
  *
  * For multi-exposed-component apps that need a specific component's URL,
  * use `$components.<name>.url` instead — `$app.*` always points at the
- * primary endpoint to give a single, predictable answer (D-58 rule 4).
+ * primary endpoint to give a single, predictable answer (D-58 rule 4). This
+ * provider allocates one port per component, so the named endpoint's address
+ * is its component's port.
  */
 export function computeAppProperties(
 	launch: NormalizedLaunch,
@@ -58,13 +63,21 @@ export function computeAppProperties(
 	if (appUrl !== undefined) return suppliedAppProperties(launch.name, appUrl);
 
 	let primaryPort = 0;
-	for (const [name, component] of Object.entries(launch.components)) {
-		// Only endpoints explicitly marked `exposed: true` are reachable from
-		// outside the host (D-27), so only they can be the app's public address.
-		const hasExposed = component.provides?.some((p) => p.exposed === true) ?? false;
-		if (hasExposed && componentPorts[name]) {
-			primaryPort = componentPorts[name]!;
-			break;
+	const declared = declaredPrimaryComponent(launch);
+	if (declared !== undefined) {
+		// A declared `https-origin` names the primary explicitly, so the
+		// positional answer below does not run — the point of D-60 rule 3. The
+		// SDK requires the named endpoint to be `exposed: true` on this component.
+		primaryPort = componentPorts[declared] ?? 0;
+	} else {
+		for (const [name, component] of Object.entries(launch.components)) {
+			// Only endpoints explicitly marked `exposed: true` are reachable from
+			// outside the host (D-27), so only they can be the app's public address.
+			const hasExposed = component.provides?.some((p) => p.exposed === true) ?? false;
+			if (hasExposed && componentPorts[name]) {
+				primaryPort = componentPorts[name]!;
+				break;
+			}
 		}
 	}
 

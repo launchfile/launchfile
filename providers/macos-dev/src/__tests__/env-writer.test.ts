@@ -86,6 +86,39 @@ describe("computeAppProperties (D-33)", () => {
 		expect(app.url).toBe("http://localhost:10043");
 	});
 
+	// D-60 rule 3: a declared `https-origin` names the primary, so the
+	// positional answer does not run. Declaration fixes it, not fulfillment —
+	// a `supports:` entry names it too — and the docker provider must agree
+	// (P-5).
+	it("prefers the component that declares an https-origin over the first exposed one (D-60 rule 3)", () => {
+		const launch = readLaunch(`version: launch/v1
+name: my-app
+components:
+  admin:
+    provides:
+      - name: panel
+        protocol: http
+        port: 4000
+        exposed: true
+    commands:
+      start: run-admin
+  web:
+    provides:
+      - name: ui
+        protocol: http
+        port: 5000
+        exposed: true
+    supports:
+      - type: https-origin
+        endpoint: ui
+    commands:
+      start: run-web
+`);
+		const app = computeAppProperties(launch, { admin: 10043, web: 10044 });
+		expect(app.port).toBe(10044);
+		expect(app.url).toBe("http://localhost:10044");
+	});
+
 	// D-27: `exposed` defaults to false, so an entry that merely omits it is
 	// internal and cannot be the app's public address. The supabase shape —
 	// an internal Postgres declared before the public gateway — is the case
