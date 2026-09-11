@@ -514,6 +514,7 @@ const CERTIFICATE = "certificate";
 /** A `provides` entry, as far as the certificate rules need to see it. */
 interface TlsProvidesLike {
 	name?: unknown;
+	protocol?: unknown;
 	tls?: unknown;
 }
 
@@ -537,10 +538,10 @@ function providesLabel(entry: TlsProvidesLike, index: number): string {
 
 /**
  * Enforce the structural rules a `tls:` binding carries (D-next rule 1), none
- * of which a per-entry schema can see: the named certificate exists in the
- * same component's `supports:`, it declares `type: certificate`, no
- * certificate is named by two entries, and a binding naming a `requires:`
- * entry is rejected as out of scope.
+ * of which a per-entry schema can see: the bound entry speaks an HTTP-family
+ * protocol, the named certificate exists in the same component's `supports:`,
+ * it declares `type: certificate`, no certificate is named by two entries, and
+ * a binding naming a `requires:` entry is rejected as out of scope.
  *
  * Scoped to the component that declares the listener, for the same reason
  * {@link checkHttpsOrigin} is: the certificate is wired into that component's
@@ -603,6 +604,24 @@ function checkCertificateBindings(
 			const certificate = tlsCertificateName(entry);
 			if (certificate === undefined) continue;
 			const path = [...scope.prefix, "provides", index, "tls"];
+
+			const protocol =
+				typeof entry.protocol === "string" ? entry.protocol : "";
+			if (!HTTP_FAMILY_PROTOCOLS.has(protocol)) {
+				ctx.addIssue({
+					code: "custom",
+					path,
+					message:
+						`\`tls: ${certificate}\` binds \`provides\` entry ` +
+						`${providesLabel(entry, index)} on ${scope.label}, which declares ` +
+						`\`protocol: ${protocol}\`; an active binding makes a listener's ` +
+						"effective protocol `https`, which only an HTTP-family listener " +
+						"(`http`, `https`, `ws`, `grpc`) can speak — a `tcp` or `udp` " +
+						"listener cannot (D-next rule 1, on D-60 rule 2's family line). " +
+						"TLS on a non-HTTP listener is D-next Left open (6).",
+				});
+				continue;
+			}
 
 			const first = claimed.get(certificate);
 			if (first !== undefined) {

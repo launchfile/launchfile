@@ -21,6 +21,7 @@ const GITEA = {
 	image: "gitea/gitea:latest",
 	provides: [
 		{ name: "web", protocol: "http", port: 3000, exposed: true, tls: "server-cert" },
+		{ name: "metrics", protocol: "http", port: 9090 },
 		{ name: "ssh", protocol: "tcp", port: 22, exposed: true },
 	],
 	supports: [
@@ -100,7 +101,7 @@ describe("structural rules the schema enforces (D-next rule 1)", () => {
 			'certificate "server-cert" is bound by two `provides` entries',
 		);
 		expect(message).toContain('"web"');
-		expect(message).toContain('"ssh"');
+		expect(message).toContain('"metrics"');
 	});
 
 	it("names the twin by index when the entries are unnamed", () => {
@@ -143,6 +144,38 @@ describe("structural rules the schema enforces (D-next rule 1)", () => {
 			},
 		};
 		expect(errorsFor(bad)).toContain("names no `supports:` entry on web");
+	});
+
+	for (const protocol of ["tcp", "udp"]) {
+		it(`rejects a binding on a \`${protocol}\` listener, naming the entry`, () => {
+			const bad = structuredClone(GITEA) as Record<string, unknown>;
+			const entries = bad.provides as Array<Record<string, unknown>>;
+			entries[0]!.protocol = protocol;
+			const message = errorsFor(bad);
+			expect(message).toContain("`tls: server-cert` binds `provides` entry");
+			expect(message).toContain('"web"');
+			expect(message).toContain(`\`protocol: ${protocol}\``);
+			expect(message).toContain("`http`, `https`, `ws`, `grpc`");
+		});
+	}
+
+	for (const protocol of ["http", "https", "ws", "grpc"]) {
+		it(`accepts a binding on an \`${protocol}\` listener`, () => {
+			const ok = structuredClone(GITEA) as Record<string, unknown>;
+			(ok.provides as Array<Record<string, unknown>>)[0]!.protocol = protocol;
+			expect(LaunchSchema.safeParse(ok).success).toBe(true);
+		});
+	}
+
+	it("names an unnamed `tcp` entry by index", () => {
+		const bad = {
+			version: "launch/v1",
+			name: "socket",
+			image: "x",
+			provides: [{ protocol: "tcp", port: 5432, tls: "db-cert" }],
+			supports: [{ name: "db-cert", type: "certificate" }],
+		};
+		expect(errorsFor(bad)).toContain("#1 (unnamed)");
 	});
 
 	it("accepts the same certificate name on two different components", () => {
