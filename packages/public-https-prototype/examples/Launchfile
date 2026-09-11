@@ -1,0 +1,12 @@
+# Proposed syntax for RFC #446; current launch/v1 tools do not enforce it.
+name: public-https-demo
+image: example/http-app:demo
+provides:
+  - name: web
+    protocol: http
+    port: 3000
+    exposed: true
+requires:
+  - public: { endpoint: web, scheme: https }
+env:
+  PUBLIC_URL: $app.url
