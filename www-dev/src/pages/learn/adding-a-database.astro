@@ -110,7 +110,11 @@ health: /health`,
 ]} />
 
 <p>
-  The docker provider maps known package names to the SQL name <code>CREATE EXTENSION</code> expects (<code>vector</code>, not <code>pgvector</code>) and swaps in a Postgres image that ships it. The macos-dev provider does no such mapping — it drops your string straight into <code>CREATE EXTENSION</code> and, if that fails, continues silently, so an unrecognized name produces no error and no extension. On docker, extensions are only created the first time a database's data directory initializes, so adding <code>config.extensions</code> to an app that's already deployed does nothing and warns you of nothing yet (tracked in <a href="https://github.com/launchfile/launchfile/issues/317">#317</a>). See the spec's <a href="https://launchfile.org/spec/requires/#resource-configuration">Resource configuration</a> section for the full key list, and Lesson 8, <a href="/learn/expressions-and-resources/">Expressions &amp; Resource Configuration</a>, for naming, versioning, and config together.
+  The docker provider maps known package names to the SQL name <code>CREATE EXTENSION</code> expects (<code>vector</code>, not <code>pgvector</code>) and swaps in a Postgres image that ships it. The macos-dev provider does no such mapping — it drops your string straight into <code>CREATE EXTENSION</code> and, if that fails, continues silently, so an unrecognized name produces no error and no extension.
+</p>
+
+<p>
+  On docker, extensions are only created the first time a database's data directory initializes. Add <code>config.extensions</code> to an app that's already deployed, and the provider warns instead of applying it — naming the service and <code>config.extensions</code>, and pointing you to two remedies: run <code>launchfile down --destroy</code> then <code>launchfile up</code> to recreate the data (and the extensions) from scratch, or run the <code>CREATE EXTENSION</code> statements against the running database yourself to keep the data. See the spec's <a href="https://launchfile.org/spec/requires/">Resource configuration</a> section for the full key list, and Lesson 8, <a href="/learn/expressions-and-resources/">Expressions &amp; Resource Configuration</a>, for naming, versioning, and config together.
 </p>
 
 <h2 id="expressions">How expressions work</h2>
