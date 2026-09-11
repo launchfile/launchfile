@@ -79,6 +79,9 @@
       "secret_key": "Secret access key credential",
       "bucket": "Name of the provisioned bucket",
       "region": "Region identifier of the provisioned bucket"
+    },
+    "https-origin": {
+      "url": "The public origin browsers reach the app at, scheme https (e.g. https://vault.example.com) — the same value as $app.url"
     }
   }
 }
