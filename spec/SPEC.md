@@ -169,7 +169,7 @@ URL while forwarding cleartext HTTP to a component declaring `protocol: http`;
 that is not a mismatch and no tool may report it as one. The app's primary public
 scheme is `$app.scheme`, derived from `$app.url`; every other published endpoint's
 public address is `$app.endpoints.<name>.*`, reachable by the entry's `name:`
-([Per-endpoint properties](#per-endpoint-properties), [D-next](DESIGN.md#d-next-appendpointsname--per-endpoint-publication-context)) — a
+([Per-endpoint properties](#per-endpoint-properties), [D-63](DESIGN.md#d-63-appendpointsname--per-endpoint-publication-context)) — a
 supplied publication context still asserts the primary's address only
 ([D-58](DESIGN.md#d-58-orchestrator-supplied-publication-context--app-under-an-owning-orchestrator) rule 4). Declaring one listener configuration
 says nothing about the other configurations an app supports — a consumer MUST NOT
@@ -1131,7 +1131,7 @@ env:
 
 ### Per-endpoint properties
 
-`$app.*` describes the app's **primary** endpoint only. An app that publishes more than one endpoint reaches the others through `$app.endpoints.<name>.*`, where `<name>` is the `provides` entry's `name:` ([named endpoints](#provides)) and the entry is `exposed: true` ([D-next](DESIGN.md#d-next-appendpointsname--per-endpoint-publication-context)):
+`$app.*` describes the app's **primary** endpoint only. An app that publishes more than one endpoint reaches the others through `$app.endpoints.<name>.*`, where `<name>` is the `provides` entry's `name:` ([named endpoints](#provides)) and the entry is `exposed: true` ([D-63](DESIGN.md#d-63-appendpointsname--per-endpoint-publication-context)):
 
 | Property | Description |
 |---|---|
