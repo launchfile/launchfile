@@ -80,6 +80,17 @@ export interface LaunchState {
 	 * written before this existed omit it.
 	 */
 	operatorStorage?: Record<string, Record<string, string>>;
+	/**
+	 * Orchestrator-supplied publication context (D-58): the normalized public
+	 * URL `$app.*` resolves from, persisted alongside `ports` so `env` and
+	 * `bootstrap` resolve the same values as the `up` that set it. A later `up`
+	 * that supplies a different value replaces it and the derived env recomputes
+	 * (D-49); one that omits it preserves what is recorded — the same rule
+	 * `@launchfile/docker` applies to its own `appUrl`. Optional for backward
+	 * compatibility — absent means this provider's own localhost routing
+	 * answers.
+	 */
+	appUrl?: string;
 }
 
 const STATE_DIR = ".launchfile";

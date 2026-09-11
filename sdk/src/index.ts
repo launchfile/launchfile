@@ -1,4 +1,11 @@
 export {
+	InvalidAppUrlError,
+	normalizeAppUrl,
+	suppliedAppAddress,
+	type SuppliedAppAddress,
+	suppliedAppProperties,
+} from "./app-url.js";
+export {
 	cmdInspect,
 	cmdSchema,
 	cmdValidate,

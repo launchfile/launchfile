@@ -35,6 +35,7 @@ import {
 	resolveGenerators,
 } from "./env-writer.js";
 import { redactSecrets, registerDeclaredSecret } from "./redact.js";
+import { wireHttpsOrigins } from "./https-origin.js";
 import { getProvisioner, type ResourceProperties } from "./resources/index.js";
 
 /** Default budget for a bootstrap command when no `timeout` is declared. */
@@ -309,7 +310,11 @@ export async function launchBootstrap(
 		}
 	}
 
-	const appProperties = computeAppProperties(launch, state.ports);
+	// $app.* comes from the publication context the last `up` recorded (D-58),
+	// so a bootstrap command reads the same address the app's env was written
+	// with — not this provider's localhost answer under an upstream proxy.
+	const appProperties = computeAppProperties(launch, state.ports, state.appUrl);
+	wireHttpsOrigins(launch, resourceMap, state.appUrl);
 	const context = buildResolverContext(
 		resourceMap,
 		state.ports,
