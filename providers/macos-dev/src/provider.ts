@@ -9,6 +9,8 @@ import { accessSync, constants as fsConstants } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join, resolve as resolvePath } from "node:path";
 import {
+	CERTIFICATE,
+	certificateBindings,
 	indexOperatorStoragePaths,
 	MissingOperatorStoragePathError,
 	readLaunch,
@@ -226,6 +228,69 @@ export function applyHttpsOriginRefusals(
 	return Object.keys(launch.components).length === 0 ? "none-left" : "ok";
 }
 
+/**
+ * Components this provider must refuse because native TLS was selected on a
+ * listener it cannot activate (D-next rule 5), mapped to the entries.
+ *
+ * Selection on this provider is `--with-optional`: it is the only way a
+ * `supports:` entry is ever turned on here. Without the flag a certificate
+ * binding is simply inactive and the component runs its declared HTTP
+ * baseline, which is correct (D-8) — so this returns nothing.
+ *
+ * With the flag, the operator asked for the optional capability and this
+ * provider has no way to deliver it: it has no supplied-resource channel to
+ * receive `cert_file`/`key_file` through, and no certificate of its own to
+ * offer. Refusing is what PROVIDERS.md §10 item 5 makes conformant; falling
+ * back to HTTP on a listener the operator asked to secure is the silent
+ * success the decision forbids.
+ */
+export function refusedCertificates(
+	launch: NormalizedLaunch,
+	withOptional: boolean,
+): Map<string, string[]> {
+	const refused = new Map<string, string[]>();
+	if (!withOptional) return refused;
+	for (const [name, component] of Object.entries(launch.components)) {
+		const declared = new Set(
+			(component.supports ?? [])
+				.filter((s) => !s.host && s.type === CERTIFICATE)
+				.map((s) => s.name ?? s.type),
+		);
+		const entries = certificateBindings(component)
+			.filter(({ certificate }) => declared.has(certificate))
+			.map(
+				({ entry, certificate }) =>
+					`${certificate} (endpoint ${entry.name === undefined ? "(unnamed)" : `"${entry.name}"`})`,
+			);
+		if (entries.length > 0) refused.set(name, entries);
+	}
+	return refused;
+}
+
+/**
+ * Remove every component whose selected certificate binding this provider
+ * cannot activate, and say so on stderr. Same shape and same reason as
+ * {@link applyHostCapabilityRefusals}: the removal IS the refusal.
+ */
+export function applyCertificateRefusals(
+	launch: NormalizedLaunch,
+	withOptional: boolean,
+): "ok" | "none-left" {
+	const refused = refusedCertificates(launch, withOptional);
+	for (const [name, entries] of refused) {
+		console.error(
+			`  Refused: ${name} selected native TLS and this provider cannot activate it ` +
+				`(${entries.join("; ")}) — it has no channel to receive cert_file/key_file — ` +
+				"component not started; it never falls back to HTTP",
+		);
+	}
+	if (refused.size === 0) return "ok";
+	launch.components = Object.fromEntries(
+		Object.entries(launch.components).filter(([n]) => !refused.has(n)),
+	);
+	return Object.keys(launch.components).length === 0 ? "none-left" : "ok";
+}
+
 export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 
@@ -295,6 +360,16 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	if (applyHttpsOriginRefusals(launch) === "none-left") {
 		console.error(
 			"Every selected component requires a public HTTPS origin this provider cannot supply.",
+		);
+		process.exit(1);
+	}
+	// 2a-ter. A SELECTED certificate binding (`--with-optional`) is refused on
+	// the same grounds (D-next rule 5): no channel to receive the material, so
+	// the listener the operator asked to secure would come up cleartext.
+	// Unselected, the binding is inactive and the baseline is correct (D-8).
+	if (applyCertificateRefusals(launch, opts.withOptional === true) === "none-left") {
+		console.error(
+			"Every selected component selected native TLS this provider cannot activate.",
 		);
 		process.exit(1);
 	}
