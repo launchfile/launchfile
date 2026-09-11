@@ -10,6 +10,59 @@
  */
 
 import { deriveAppUrlProperties, type NormalizedLaunch } from "@launchfile/sdk";
+import { publishedEndpoints } from "./port-allocator.js";
+
+/** The backing-service type that declares the app's public HTTPS origin (D-next). */
+export const HTTPS_ORIGIN = "https-origin";
+
+/** The published endpoint an `https-origin` entry names as the app's primary. */
+export interface DeclaredPrimaryEndpoint {
+	/** Component that owns the endpoint. */
+	component: string;
+	/** The `provides` entry's `name` (D-6). */
+	name: string;
+	/** State/allocation key, per {@link publishedEndpoints}. */
+	key: string;
+	/** Container port the endpoint listens on. */
+	port: number;
+}
+
+/**
+ * The app's primary endpoint when an `https-origin` entry declares one
+ * (D-next rule 3), else `undefined`.
+ *
+ * **Declaration** fixes the primary, not fulfillment: a `supports:` entry this
+ * provider cannot satisfy still names the primary, so `$app.*` does not change
+ * value with the provider's capability. `requires` and `supports` are read
+ * alike for that reason. The SDK caps the app at one such entry and validates
+ * that the name resolves on the owning component, so the first match found is
+ * the only one; a file that somehow carries more is read in declaration order
+ * rather than refused here.
+ */
+export function declaredPrimaryEndpoint(
+	launch: NormalizedLaunch,
+): DeclaredPrimaryEndpoint | undefined {
+	for (const [componentName, component] of Object.entries(launch.components)) {
+		const entries = [
+			...(component.requires ?? []),
+			...(component.supports ?? []),
+		];
+		for (const entry of entries) {
+			if (entry.type !== HTTPS_ORIGIN || entry.endpoint === undefined) continue;
+			const match = publishedEndpoints(componentName, component.provides).find(
+				(e) => e.name === entry.endpoint,
+			);
+			if (!match) continue;
+			return {
+				component: componentName,
+				name: match.name ?? entry.endpoint,
+				key: match.key,
+				port: match.port,
+			};
+		}
+	}
+	return undefined;
+}
 
 /** URL delimiters that a userinfo run cannot cross. */
 function isMaskDelimiter(c: string): boolean {
@@ -124,11 +177,13 @@ export function normalizeAppUrl(value: string): string {
 /**
  * Compute the full `$app.*` set (D-33, D-35) for the Docker provider.
  *
- * With no `appUrl`, the provider's own routing strategy answers: the "primary"
- * component is the first one (in declaration order) with at least one
- * `exposed: true` provides entry; its host port becomes `$app.port` and
- * `http://localhost:<hostPort>` becomes `$app.url`. Apps with no exposed
- * component get `port: 0` and `url: ""` (and empty authority/scheme/tls).
+ * With no `appUrl`, the provider's own routing strategy answers. Which endpoint
+ * it answers for is the app's **primary**: the one an `https-origin` entry
+ * names when the file declares one (D-next rule 3), else — positionally, as
+ * before — the first `exposed: true` entry of the first component that has
+ * one. Its host port becomes `$app.port` and `http://localhost:<hostPort>`
+ * becomes `$app.url`. Apps with no exposed component get `port: 0` and
+ * `url: ""` (and empty authority/scheme/tls).
  *
  * With an `appUrl` — the orchestrator-supplied publication context (#290) —
  * the routing strategy has moved upstream, and the supplied URL answers
@@ -164,15 +219,25 @@ export function computeAppProperties(
 	}
 
 	let primaryPort = 0;
-	for (const [name, component] of Object.entries(launch.components)) {
-		// Only endpoints explicitly marked `exposed: true` are reachable from the
-		// host (D-27), so only they can be the app's public address.
-		const published =
-			component.provides?.filter((p) => p.exposed === true) ?? [];
-		if (published.length === 0) continue;
-		// Prefer caller-supplied host port, fall back to the declared container port.
-		primaryPort = hostPorts?.[name] ?? published[0]!.port;
-		break;
+	const declared = declaredPrimaryEndpoint(launch);
+	if (declared) {
+		// A declared `https-origin` names the primary explicitly, so the
+		// positional answer below does not run — that is the whole point of
+		// D-next rule 3. The named endpoint carries its own allocation key,
+		// which is how a non-first endpoint (openclaw's `bridge`) gets the
+		// host port that was actually allocated for it.
+		primaryPort = hostPorts?.[declared.key] ?? declared.port;
+	} else {
+		for (const [name, component] of Object.entries(launch.components)) {
+			// Only endpoints explicitly marked `exposed: true` are reachable from the
+			// host (D-27), so only they can be the app's public address.
+			const published =
+				component.provides?.filter((p) => p.exposed === true) ?? [];
+			if (published.length === 0) continue;
+			// Prefer caller-supplied host port, fall back to the declared container port.
+			primaryPort = hostPorts?.[name] ?? published[0]!.port;
+			break;
+		}
 	}
 
 	const url = primaryPort > 0 ? `http://localhost:${primaryPort}` : "";

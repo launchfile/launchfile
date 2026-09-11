@@ -176,6 +176,56 @@ export function applyHostCapabilityRefusals(
 	return Object.keys(launch.components).length === 0 ? "none-left" : "ok";
 }
 
+/** The backing-service type that declares the app's public HTTPS origin (D-next). */
+const HTTPS_ORIGIN = "https-origin";
+
+/**
+ * Components this provider must refuse because they require a public HTTPS
+ * origin (D-next rule 5), mapped to the entries it cannot satisfy.
+ *
+ * This provider has no orchestrator-facing publication channel ([#294]) and no
+ * edge of its own, so it can neither provision the origin nor accept a supplied
+ * one — it refuses, which PROVIDERS.md §10 item 5 makes conformant. `supports:`
+ * entries are not refused: the component runs, degraded.
+ */
+export function refusedHttpsOrigins(
+	launch: NormalizedLaunch,
+): Map<string, string[]> {
+	const refused = new Map<string, string[]>();
+	for (const [name, c] of Object.entries(launch.components)) {
+		const entries = (c.requires ?? [])
+			.filter((r) => r.type === HTTPS_ORIGIN)
+			.map((r) => `${r.name ?? r.type} (endpoint "${r.endpoint ?? "?"}")`);
+		if (entries.length > 0) refused.set(name, entries);
+	}
+	return refused;
+}
+
+/**
+ * Remove every component whose required `https-origin` this provider cannot
+ * satisfy, and say so on stderr. Same shape and same reason as
+ * {@link applyHostCapabilityRefusals}: the removal IS the refusal — a component
+ * left in the map goes on to be installed, wired, registered and started, and
+ * an app that declared it needs HTTPS would run over plain HTTP behind a
+ * message nobody acted on.
+ */
+export function applyHttpsOriginRefusals(
+	launch: NormalizedLaunch,
+): "ok" | "none-left" {
+	const refused = refusedHttpsOrigins(launch);
+	for (const [name, entries] of refused) {
+		console.error(
+			`  Refused: ${name} requires a public HTTPS origin this provider cannot supply ` +
+				`(${entries.join("; ")}) — it has no edge and no publication channel — component not started`,
+		);
+	}
+	if (refused.size === 0) return "ok";
+	launch.components = Object.fromEntries(
+		Object.entries(launch.components).filter(([n]) => !refused.has(n)),
+	);
+	return Object.keys(launch.components).length === 0 ? "none-left" : "ok";
+}
+
 export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 
@@ -238,6 +288,16 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		);
 		process.exit(1);
 	}
+	// 2a-bis. A required `https-origin` is refused for the same reason and in
+	// the same way (D-next rule 5, PROVIDERS.md §10 item 5): this provider has
+	// no edge and no publication channel, so it cannot satisfy the entry, and
+	// starting the component anyway is the silent success the type removes.
+	if (applyHttpsOriginRefusals(launch) === "none-left") {
+		console.error(
+			"Every selected component requires a public HTTPS origin this provider cannot supply.",
+		);
+		process.exit(1);
+	}
 	// An optional capability is not refused — the component runs, degraded.
 	for (const [name, c] of Object.entries(launch.components)) {
 		for (const sup of c.supports ?? []) {
@@ -247,6 +307,13 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 						`${capability}=${String(value)} not granted — running degraded`,
 				);
 			}
+		}
+		for (const sup of c.supports ?? []) {
+			if (sup.type !== HTTPS_ORIGIN) continue;
+			console.warn(
+				`  Warning: ${name}: optional public HTTPS origin ` +
+					`${sup.name ?? sup.type} (endpoint "${sup.endpoint ?? "?"}") not satisfied — running degraded`,
+			);
 		}
 	}
 

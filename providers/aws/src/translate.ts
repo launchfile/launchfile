@@ -36,6 +36,9 @@ import {
 	tfName,
 } from "./hcl.js";
 
+/** The backing-service type that declares the app's public HTTPS origin (D-next). */
+const HTTPS_ORIGIN = "https-origin";
+
 export interface TranslateOptions {
 	/** AWS region for the provider block. Default: us-east-1. */
 	region?: string;
@@ -287,6 +290,21 @@ export function translate(
 			if (req.host) continue;
 			const resourceName = req.name ?? req.type;
 			if (provisioned.has(resourceName)) continue;
+			// `https-origin` (D-next) sits in FRONT of the app, so no managed
+			// service maps it: this probe composes `$app.*` from the ALB's
+			// `${aws_lb.main.dns_name}`, an http:// address that does not exist
+			// until apply time and carries no certificate. Reported unmapped
+			// rather than silently dropped (PROVIDERS.md §10 items 5 and 8);
+			// wiring an ACM certificate and an HTTPS listener is separate work.
+			if (req.type === HTTPS_ORIGIN) {
+				c.gap(
+					`requires:${HTTPS_ORIGIN}`,
+					"blocker",
+					`the app requires a public HTTPS origin in front of endpoint '${req.endpoint ?? "?"}', and this probe emits an http-only load balancer`,
+					"terminate TLS at the ALB (aws_acm_certificate + an HTTPS listener) before deploying this app",
+				);
+				continue;
+			}
 			const spec = MANAGED_RESOURCES[req.type];
 			if (!spec) {
 				c.gap(
@@ -321,6 +339,15 @@ export function translate(
 		}
 		for (const sup of comp.supports ?? []) {
 			if (sup.host) continue; // capability, not a backing service (D-44)
+			if (sup.type === HTTPS_ORIGIN) {
+				c.gap(
+					`supports:${HTTPS_ORIGIN}`,
+					"nice-to-have",
+					`the app would use a public HTTPS origin in front of endpoint '${sup.endpoint ?? "?"}', and this probe emits an http-only load balancer`,
+					"terminate TLS at the ALB (aws_acm_certificate + an HTTPS listener)",
+				);
+				continue;
+			}
 			c.gap(
 				`supports:${sup.type}`,
 				"nice-to-have",
