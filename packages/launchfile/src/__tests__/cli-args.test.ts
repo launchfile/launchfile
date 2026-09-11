@@ -155,7 +155,7 @@ describe("launchfile up --name with no value (built CLI)", () => {
 	});
 });
 
-describe("--reveal on bootstrap (D-next): exact long form, no alias, no value", () => {
+describe("--reveal on bootstrap (D-62): exact long form, no alias, no value", () => {
 	it("is present only as the literal --reveal token", () => {
 		expect(flagPresent(["bootstrap", "ghost", "--reveal"], "reveal")).toBe(true);
 		expect(flagPresent(["bootstrap", "--reveal", "ghost"], "reveal")).toBe(true);

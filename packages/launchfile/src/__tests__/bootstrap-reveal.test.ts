@@ -1,5 +1,5 @@
 /**
- * `launchfile bootstrap --reveal` reaches both providers (#464, D-next). The
+ * `launchfile bootstrap --reveal` reaches both providers (#464, D-62). The
  * providers are injected and the index lives in a temp dir — nothing touches
  * the real ~/.launchfile and nothing talks to docker.
  */

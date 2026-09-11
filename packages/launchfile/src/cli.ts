@@ -191,7 +191,8 @@ async function main(): Promise<void> {
 		case "bootstrap":
 			await handleBootstrap(target, {
 				component: getFlagValue("component"),
-				// Exact long form only — no alias, no value.
+				// `flagPresent` matches `--reveal` and `--reveal=<anything>`, so
+				// `--reveal=false` also reveals — the rule for every boolean flag here (#485).
 				reveal: argsFlagPresent(args, "reveal"),
 			});
 			break;
