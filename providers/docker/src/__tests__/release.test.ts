@@ -1,6 +1,6 @@
 import { readLaunch } from "@launchfile/sdk";
-import { afterEach, describe, expect, it } from "vitest";
-import { clearRegisteredSecrets, REDACTED, registerSecret } from "../redact.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { clearRegisteredSecrets, REDACTED, redactSecrets, registerSecret } from "../redact.js";
 import {
 	DEFAULT_RELEASE_TIMEOUT_MS,
 	dependencyOrder,
@@ -251,5 +251,48 @@ describe("command interpretation (SPEC.md § Command interpretation)", () => {
 
 	it("still rejects a command that resolves to nothing", () => {
 		expect(() => plan("   ")).toThrow(/empty string/);
+	});
+});
+
+describe("sensitive release captures (D-next — release has no reveal path)", () => {
+	const SECRET = "https://acme.test/setup/PzEdyKQKfZIKDZ8HNtlm8g6K1ptolVAqjgIb4MWiRVg";
+	const plan = planReleases(
+		readLaunch(
+			"version: launch/v1\nname: acme\nimage: acme:1\ncommands:\n  start: serve\n  release:\n    command: setup\n    capture:\n      setup_link:\n        pattern: 'https?://\\S+'\n        sensitive: true\n      admin_user:\n        pattern: 'user: (\\S+)'\n",
+		),
+		{ services: { default: "acme" }, hostPorts: {}, secrets: {} },
+	);
+	const exec: ReleaseExec = async () => ({
+		exitCode: 0,
+		stdout: `user: admin\n${SECRET}\n`,
+		stderr: "",
+	});
+
+	let out: string[];
+	let restore: () => void;
+	beforeEach(() => {
+		clearRegisteredSecrets();
+		out = [];
+		const log = console.log;
+		console.log = (...args: unknown[]) => out.push(args.join(" "));
+		restore = () => {
+			console.log = log;
+		};
+	});
+	afterEach(() => restore());
+
+	it("stays masked, prints the non-sensitive capture, and never names a reveal flag", async () => {
+		await runReleases(plan, { project: "lf-acme", composeFile: "/tmp/c.yml", exec });
+		const text = out.join("\n");
+		expect(text).toContain("    setup_link: ***");
+		expect(text).toContain("    admin_user: admin");
+		expect(text).not.toContain(SECRET);
+		expect(text).not.toContain("--reveal");
+	});
+
+	it("registers the value with the redactor at extraction", async () => {
+		expect(redactSecrets(SECRET)).toBe(SECRET);
+		await runReleases(plan, { project: "lf-acme", composeFile: "/tmp/c.yml", exec });
+		expect(redactSecrets(`see ${SECRET}`)).toBe(`see ${REDACTED}`);
 	});
 });
