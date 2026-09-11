@@ -6,8 +6,9 @@ Add the `tls:` certificate binding: a `provides` entry can name one `supports:` 
 
 `tls: server-cert` is shorthand for `tls: { certificate: server-cert }`; both spellings parse, normalize and serialize, and are mirrored in `spec/schema/launchfile.schema.json`. The object form is strict — an unknown key inside it is an error, because a binding-level `port:` override is Left open and strip mode would accept one and silently drop it.
 
-Four cross-field rules are hard validation errors, none of them visible per entry:
+Five cross-field rules are hard validation errors, none of them visible per entry:
 
+- the bound `provides` entry declares an HTTP-family listener (`http`, `https`, `ws`, `grpc`) — `tls:` on a `tcp` or `udp` entry is rejected, naming the entry and its protocol, on the family line D-60 rule 2 draws for `https-origin`;
 - the named certificate exists in the **same component's** `supports:`;
 - that entry declares `type: certificate`;
 - no certificate is bound by two `provides` entries;
