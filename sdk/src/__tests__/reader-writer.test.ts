@@ -12,12 +12,13 @@ rationale: |
   The reader is the entry point for Launchfile — every app descriptor
   passes through it. It must handle shorthand syntax (strings for build,
   health, requires) and expand them into full objects, plus support
-  multi-component apps with runtime inheritance.
+  multi-component apps with field-level inheritance of top-level defaults
+  onto every component (D-25), across all 17 component-eligible fields.
 acceptance:
   - Reads a minimal 3-line app
   - Expands requires/build/health/depends_on/command string shorthands to objects
   - Expands scalar env values to objects
-  - Reads multi-component apps with runtime inheritance
+  - Reads multi-component apps with D-25 inheritance of all 17 component fields
   - Reads health with start_period, build target, singleton, schedule, storage, secrets, UDP
   - Throws on missing name or invalid runtime
 tags: [launch-spec, reader, core]
@@ -27,6 +28,8 @@ source:
 changed:
   - date: 2026-03-28
     note: Backfilled by surface backfill
+  - date: 2026-09-09
+    note: D-25 inheritance extended from 7 to all 17 component fields (#233)
 ---*/
 describe("readLaunch", () => {
 	// UC-1: Minimal app
@@ -159,6 +162,181 @@ components:
 `);
 		expect(result.components.api?.runtime).toBe("node");
 		expect(result.components.worker?.runtime).toBe("node");
+	});
+
+	// D-25: top-level component fields are defaults for every component that
+	// omits them. Covers the 10 fields that previously had no `?? defaults?.`
+	// fallback in normalizeComponent (sdk/src/reader.ts:121-141) — see #233.
+	describe("D-25 inheritance — the 10 previously-dropped fields", () => {
+		it("inherits top-level provides onto a component that omits it", () => {
+			const result = readLaunch(`
+name: my-app
+provides:
+  - protocol: http
+    port: 3000
+components:
+  api: {}
+`);
+			expect(result.components.api?.provides).toEqual([{ protocol: "http", port: 3000 }]);
+			expect(writeLaunch(result)).toContain("port: 3000");
+		});
+
+		it("inherits top-level requires onto a component that omits it", () => {
+			const result = readLaunch(`
+name: my-app
+requires: [postgres]
+components:
+  api: {}
+`);
+			expect(result.components.api?.requires).toEqual([{ type: "postgres" }]);
+			expect(writeLaunch(result)).toContain("postgres");
+		});
+
+		it("inherits top-level supports onto a component that omits it", () => {
+			const result = readLaunch(`
+name: my-app
+supports: [redis]
+components:
+  api: {}
+`);
+			expect(result.components.api?.supports).toEqual([{ type: "redis" }]);
+			expect(writeLaunch(result)).toContain("redis");
+		});
+
+		it("inherits top-level env onto a component that omits it", () => {
+			const result = readLaunch(`
+name: my-app
+env:
+  TOP: value
+components:
+  api: {}
+`);
+			expect(result.components.api?.env?.TOP).toEqual({ default: "value" });
+			expect(writeLaunch(result)).toContain("TOP: value");
+		});
+
+		it("inherits top-level commands onto a component that omits it", () => {
+			const result = readLaunch(`
+name: my-app
+commands:
+  start: "node server.js"
+components:
+  api: {}
+`);
+			expect(result.components.api?.commands?.start).toEqual({ command: "node server.js" });
+			expect(writeLaunch(result)).toContain("node server.js");
+		});
+
+		it("inherits top-level health onto a component that omits it", () => {
+			const result = readLaunch(`
+name: my-app
+health: /healthz
+components:
+  api: {}
+`);
+			expect(result.components.api?.health).toEqual({ path: "/healthz" });
+			expect(writeLaunch(result)).toContain("/healthz");
+		});
+
+		it("inherits top-level depends_on onto a component that omits it", () => {
+			const result = readLaunch(`
+name: my-app
+depends_on: [backend]
+components:
+  api: {}
+`);
+			expect(result.components.api?.depends_on).toEqual([{ component: "backend" }]);
+			expect(writeLaunch(result)).toContain("backend");
+		});
+
+		it("inherits top-level storage onto a component that omits it", () => {
+			const result = readLaunch(`
+name: my-app
+storage:
+  data:
+    path: /data
+components:
+  api: {}
+`);
+			expect(result.components.api?.storage?.data).toEqual({ path: "/data" });
+			expect(writeLaunch(result)).toContain("/data");
+		});
+
+		it("inherits top-level schedule onto a component that omits it", () => {
+			const result = readLaunch(`
+name: my-app
+schedule: "0 0 * * *"
+components:
+  api: {}
+`);
+			expect(result.components.api?.schedule).toBe("0 0 * * *");
+			expect(writeLaunch(result)).toContain("0 0 * * *");
+		});
+
+		it("inherits top-level singleton onto a component that omits it", () => {
+			const result = readLaunch(`
+name: my-app
+singleton: true
+components:
+  api: {}
+`);
+			expect(result.components.api?.singleton).toBe(true);
+			expect(writeLaunch(result)).toContain("singleton: true");
+		});
+
+		// D-25 is whole-value replacement, not a deep merge (see ADR): a
+		// component that declares its own value takes it entirely and inherits
+		// none of the top-level value, even an empty one.
+		it("does not merge — a component's own env blocks inheritance entirely", () => {
+			const result = readLaunch(`
+name: my-app
+env:
+  TOP: value
+components:
+  api:
+    env:
+      OWN: mine
+`);
+			expect(result.components.api?.env).toEqual({ OWN: { default: "mine" } });
+			expect(result.components.api?.env?.TOP).toBeUndefined();
+		});
+
+		it("does not merge — an explicit empty env blocks inheritance rather than falling back", () => {
+			const result = readLaunch(`
+name: my-app
+env:
+  TOP: value
+components:
+  api:
+    env: {}
+`);
+			// api declares env at all (even empty), so it takes its own value
+			// whole — {} is not nullish, so it must not fall back to defaults.
+			expect(result.components.api?.env).toEqual({});
+		});
+
+		// sdk/src/reader.ts:91 passes no defaults in single-component mode —
+		// confirm none of the 10 fields regressed there.
+		it("leaves single-component mode unaffected", () => {
+			const result = readLaunch(`
+name: my-app
+provides:
+  - protocol: http
+    port: 8080
+requires: [postgres]
+env:
+  PORT: 8080
+storage:
+  data:
+    path: /data
+singleton: true
+`);
+			expect(result.components.default?.provides).toEqual([{ protocol: "http", port: 8080 }]);
+			expect(result.components.default?.requires).toEqual([{ type: "postgres" }]);
+			expect(result.components.default?.env?.PORT).toEqual({ default: 8080 });
+			expect(result.components.default?.storage?.data).toEqual({ path: "/data" });
+			expect(result.components.default?.singleton).toBe(true);
+		});
 	});
 
 	// UC-36: Health with start_period
