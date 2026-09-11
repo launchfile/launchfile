@@ -1,5 +1,5 @@
 /**
- * Capture display (SPEC.md § Command Capture, D-next): `sensitive` masks on
+ * Capture display (SPEC.md § Command Capture, D-62): `sensitive` masks on
  * every display surface; `reveal` is the operator's explicit act; the hint
  * tells a first-time operator the act exists.
  */
