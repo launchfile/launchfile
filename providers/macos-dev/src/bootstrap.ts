@@ -18,9 +18,11 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import {
+	formatCaptures,
 	parseDurationMs,
 	readLaunch,
 	resolveExpression,
+	sensitiveCaptureValues,
 	type CaptureEntry,
 	type NormalizedLaunch,
 	type ResolverContext,
@@ -32,7 +34,7 @@ import {
 	resolveComponentEnv,
 	resolveGenerators,
 } from "./env-writer.js";
-import { redactSecrets } from "./redact.js";
+import { redactSecrets, registerDeclaredSecret } from "./redact.js";
 import { getProvisioner, type ResourceProperties } from "./resources/index.js";
 
 /** Default budget for a bootstrap command when no `timeout` is declared. */
@@ -288,9 +290,21 @@ const defaultExec: BootstrapExec = (cmd, args, opts) =>
  * semantics in SPEC.md § Bootstrap stage.
  */
 export async function launchBootstrap(
-	opts: { component?: string; projectDir?: string; exec?: BootstrapExec } = {},
+	opts: {
+		component?: string;
+		projectDir?: string;
+		/**
+		 * Print sensitive captures instead of masking them — the operator's
+		 * explicit act on the invoking command (`launchfile bootstrap
+		 * --reveal`). Display only: the values are registered with the
+		 * redactor either way.
+		 */
+		reveal?: boolean;
+		exec?: BootstrapExec;
+	} = {},
 ): Promise<BootstrapResult[]> {
 	const projectDir = opts.projectDir ?? process.cwd();
+	const reveal = opts.reveal === true;
 
 	const launchfileContent = await readFile(join(projectDir, "Launchfile"), "utf8");
 	const launch = readLaunch(launchfileContent);
@@ -384,7 +398,16 @@ export async function launchBootstrap(
 			timeoutMs: item.timeoutMs,
 		});
 
+		const captureMeta = item.capture ?? {};
 		const captures = item.capture ? extractCaptures(stdout, item.capture) : {};
+
+		// A `sensitive: true` capture is a declared secret (D-18): it registers
+		// before any result or printed line is built, so the value can leak
+		// through neither (CWE-532). `--reveal` changes what the display loop
+		// below prints, never this.
+		for (const value of sensitiveCaptureValues(captures, captureMeta)) {
+			registerDeclaredSecret(value);
+		}
 
 		results.push({
 			component: name,
@@ -392,20 +415,16 @@ export async function launchBootstrap(
 			ok: exitCode === 0,
 			exitCode,
 			captures,
-			captureMeta: item.capture ?? {},
+			captureMeta,
 			stdout,
 			stderr,
 		});
 
 		// Print captures inline so the user sees them immediately.
-		if (Object.keys(captures).length > 0) {
-			console.log("\n  Captured:");
-			for (const [key, value] of Object.entries(captures)) {
-				const meta = item.capture?.[key];
-				const displayValue = meta?.sensitive ? "***" : value;
-				const desc = meta?.description ? ` — ${meta.description}` : "";
-				console.log(`    ${key}: ${displayValue}${desc}`);
-			}
+		const lines = formatCaptures(captures, captureMeta, reveal);
+		if (lines.length > 0) {
+			console.log("");
+			for (const line of lines) console.log(line);
 		}
 
 		if (exitCode !== 0) {

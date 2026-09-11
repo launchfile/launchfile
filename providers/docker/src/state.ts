@@ -18,8 +18,11 @@ export type DockerSourceType = "local" | "catalog" | "url";
  * A published endpoint's metadata, keyed by the same key as its entry in
  * `DockerState.ports`. Carries what the ports map alone cannot: which
  * component the key belongs to, the endpoint's declared name (D-6), and its
- * protocol — so summary/status/list can print a protocol-correct address and
- * filter by component.
+ * EFFECTIVE protocol (D-61 rule 2) — the declared `protocol:` unless a bound
+ * certificate is active, in which case `https`. Writers persist the effective
+ * value: `status`, `up`, and `$app.url` all derive their address from it
+ * through `publishedAddress`, so persisting the declared value here splits
+ * them apart again (#473).
  */
 export interface StateEndpoint {
 	component: string;

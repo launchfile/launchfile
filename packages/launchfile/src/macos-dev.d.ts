@@ -49,6 +49,8 @@ declare module "@launchfile/macos-dev" {
 	export function launchBootstrap(opts?: {
 		component?: string;
 		projectDir?: string;
+		/** Print sensitive captures instead of masking them. */
+		reveal?: boolean;
 	}): Promise<BootstrapResult[]>;
 
 	/**

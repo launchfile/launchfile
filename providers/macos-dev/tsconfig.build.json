@@ -1,4 +1,11 @@
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // rootDir governs the emitted dist/ layout, so it lives with the build.
+    // The typecheck program also holds src/__tests__, and the cross-provider
+    // $app.* agreement test reads the docker provider's source — under a
+    // rootDir that is an error, for a file nothing is emitted from.
+    "rootDir": "src"
+  },
   "exclude": ["src/**/__tests__/**"]
 }

@@ -9,6 +9,8 @@ import { accessSync, constants as fsConstants } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join, resolve as resolvePath } from "node:path";
 import {
+	CERTIFICATE,
+	certificateBindings,
 	indexOperatorStoragePaths,
 	MissingOperatorStoragePathError,
 	readLaunch,
@@ -185,6 +187,119 @@ export function applyHostCapabilityRefusals(
 	return Object.keys(launch.components).length === 0 ? "none-left" : "ok";
 }
 
+/** The backing-service type that declares the app's public HTTPS origin (D-60). */
+const HTTPS_ORIGIN = "https-origin";
+
+/**
+ * Components this provider must refuse because they require a public HTTPS
+ * origin (D-60 rule 5), mapped to the entries it cannot satisfy.
+ *
+ * This provider has no orchestrator-facing publication channel ([#294]) and no
+ * edge of its own, so it can neither provision the origin nor accept a supplied
+ * one — it refuses, which PROVIDERS.md §10 item 5 makes conformant. `supports:`
+ * entries are not refused: the component runs, degraded.
+ */
+export function refusedHttpsOrigins(
+	launch: NormalizedLaunch,
+): Map<string, string[]> {
+	const refused = new Map<string, string[]>();
+	for (const [name, c] of Object.entries(launch.components)) {
+		const entries = (c.requires ?? [])
+			.filter((r) => r.type === HTTPS_ORIGIN)
+			.map((r) => `${r.name ?? r.type} (endpoint "${r.endpoint ?? "?"}")`);
+		if (entries.length > 0) refused.set(name, entries);
+	}
+	return refused;
+}
+
+/**
+ * Remove every component whose required `https-origin` this provider cannot
+ * satisfy, and say so on stderr. Same shape and same reason as
+ * {@link applyHostCapabilityRefusals}: the removal IS the refusal — a component
+ * left in the map goes on to be installed, wired, registered and started, and
+ * an app that declared it needs HTTPS would run over plain HTTP behind a
+ * message nobody acted on.
+ */
+export function applyHttpsOriginRefusals(
+	launch: NormalizedLaunch,
+): "ok" | "none-left" {
+	const refused = refusedHttpsOrigins(launch);
+	for (const [name, entries] of refused) {
+		console.error(
+			`  Refused: ${name} requires a public HTTPS origin this provider cannot supply ` +
+				`(${entries.join("; ")}) — it has no edge and no publication channel — component not started`,
+		);
+	}
+	if (refused.size === 0) return "ok";
+	launch.components = Object.fromEntries(
+		Object.entries(launch.components).filter(([n]) => !refused.has(n)),
+	);
+	return Object.keys(launch.components).length === 0 ? "none-left" : "ok";
+}
+
+/**
+ * Components this provider must refuse because native TLS was selected on a
+ * listener it cannot activate (D-61 rule 5), mapped to the entries.
+ *
+ * Selection on this provider is `--with-optional`: it is the only way a
+ * `supports:` entry is ever turned on here. Without the flag a certificate
+ * binding is simply inactive and the component runs its declared HTTP
+ * baseline, which is correct (D-8) — so this returns nothing.
+ *
+ * With the flag, the operator asked for the optional capability and this
+ * provider has no way to deliver it: it has no supplied-resource channel to
+ * receive `cert_file`/`key_file` through, and no certificate of its own to
+ * offer. Refusing is what PROVIDERS.md §10 item 5 makes conformant; falling
+ * back to HTTP on a listener the operator asked to secure is the silent
+ * success the decision forbids.
+ */
+export function refusedCertificates(
+	launch: NormalizedLaunch,
+	withOptional: boolean,
+): Map<string, string[]> {
+	const refused = new Map<string, string[]>();
+	if (!withOptional) return refused;
+	for (const [name, component] of Object.entries(launch.components)) {
+		const declared = new Set(
+			(component.supports ?? [])
+				.filter((s) => !s.host && s.type === CERTIFICATE)
+				.map((s) => s.name ?? s.type),
+		);
+		const entries = certificateBindings(component)
+			.filter(({ certificate }) => declared.has(certificate))
+			.map(
+				({ entry, certificate }) =>
+					`${certificate} (endpoint ${entry.name === undefined ? "(unnamed)" : `"${entry.name}"`})`,
+			);
+		if (entries.length > 0) refused.set(name, entries);
+	}
+	return refused;
+}
+
+/**
+ * Remove every component whose selected certificate binding this provider
+ * cannot activate, and say so on stderr. Same shape and same reason as
+ * {@link applyHostCapabilityRefusals}: the removal IS the refusal.
+ */
+export function applyCertificateRefusals(
+	launch: NormalizedLaunch,
+	withOptional: boolean,
+): "ok" | "none-left" {
+	const refused = refusedCertificates(launch, withOptional);
+	for (const [name, entries] of refused) {
+		console.error(
+			`  Refused: ${name} selected native TLS and this provider cannot activate it ` +
+				`(${entries.join("; ")}) — it has no channel to receive cert_file/key_file — ` +
+				"component not started; it never falls back to HTTP",
+		);
+	}
+	if (refused.size === 0) return "ok";
+	launch.components = Object.fromEntries(
+		Object.entries(launch.components).filter(([n]) => !refused.has(n)),
+	);
+	return Object.keys(launch.components).length === 0 ? "none-left" : "ok";
+}
+
 export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 	// Anything that escapes without a phase still gets a record, tagged
@@ -287,6 +402,26 @@ async function runLaunchUp(projectDir: string, opts: LaunchUpOpts): Promise<void
 		);
 		process.exit(1);
 	}
+	// 2a-bis. A required `https-origin` is refused for the same reason and in
+	// the same way (D-60 rule 5, PROVIDERS.md §10 item 5): this provider has
+	// no edge and no publication channel, so it cannot satisfy the entry, and
+	// starting the component anyway is the silent success the type removes.
+	if (applyHttpsOriginRefusals(launch) === "none-left") {
+		console.error(
+			"Every selected component requires a public HTTPS origin this provider cannot supply.",
+		);
+		process.exit(1);
+	}
+	// 2a-ter. A SELECTED certificate binding (`--with-optional`) is refused on
+	// the same grounds (D-61 rule 5): no channel to receive the material, so
+	// the listener the operator asked to secure would come up cleartext.
+	// Unselected, the binding is inactive and the baseline is correct (D-8).
+	if (applyCertificateRefusals(launch, opts.withOptional === true) === "none-left") {
+		console.error(
+			"Every selected component selected native TLS this provider cannot activate.",
+		);
+		process.exit(1);
+	}
 	// An optional capability is not refused — the component runs, degraded.
 	for (const [name, c] of Object.entries(launch.components)) {
 		for (const sup of c.supports ?? []) {
@@ -296,6 +431,13 @@ async function runLaunchUp(projectDir: string, opts: LaunchUpOpts): Promise<void
 						`${capability}=${String(value)} not granted — running degraded`,
 				);
 			}
+		}
+		for (const sup of c.supports ?? []) {
+			if (sup.type !== HTTPS_ORIGIN) continue;
+			console.warn(
+				`  Warning: ${name}: optional public HTTPS origin ` +
+					`${sup.name ?? sup.type} (endpoint "${sup.endpoint ?? "?"}") not satisfied — running degraded`,
+			);
 		}
 	}
 
@@ -630,7 +772,7 @@ async function runLaunchUp(projectDir: string, opts: LaunchUpOpts): Promise<void
 			console.log(`  \u2193 Wiring environment variables... done (${Object.keys(env).length} vars)`);
 		} else {
 			const { mkdir } = await import("node:fs/promises");
-			await mkdir(join(projectDir, ".launchfile", "env"), { recursive: true });
+			await mkdir(join(projectDir, ".launchfile", "env"), { recursive: true, mode: 0o700 });
 			await writeEnvFile(join(projectDir, ".launchfile", "env", `${name}.env`), env);
 			console.log(`  \u2193 Wiring ${name} environment... done (${Object.keys(env).length} vars)`);
 		}
@@ -805,7 +947,7 @@ export async function launchDown(opts: { destroy?: boolean; projectDir?: string 
 			const provisioner = getProvisioner(resourceState.type);
 			if (provisioner) {
 				console.log(`  Destroying ${resourceState.type} (${name})...`);
-				await provisioner.destroy(resourceState);
+				await provisioner.destroy(resourceState, { projectDir });
 			}
 		}
 

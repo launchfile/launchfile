@@ -7,7 +7,9 @@
     "test-app": "bun run src/test-app.ts",
     "test-all": "bun run src/test-all.ts",
     "portability-lint-counts": "bun run src/portability-lint-counts.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "validate-catalog": "bun run src/validate-catalog.ts"
   },
   "dependencies": {
     "playwright": "^1.59.1",

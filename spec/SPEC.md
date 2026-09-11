@@ -160,6 +160,17 @@ Declares what network endpoints a component exposes. Value is an array of object
 | `bind` | `string` | no | `0.0.0.0` | Bind address |
 | `exposed` | `boolean` | no | `false` | Whether the port is reachable from outside the host. Most components in a multi-component app are internal services — only frontends and API gateways typically need `exposed: true`. |
 | `spec` | `map<string, string>` | no | -- | API spec references (e.g. `openapi: file:docs/openapi.yaml`) |
+| `tls` | `string` or `object` | no | -- | Names one `supports:` entry of type `certificate` on the same component: the certificate this listener serves when native TLS is selected. See [Native TLS](#native-tls-with-a-certificate-binding). |
+
+Each `provides` entry's `protocol` describes what that component's own listener
+speaks on that entry's `port`, in the configuration this Launchfile describes. It
+never describes a public endpoint's scheme. A provider may publish an `https://`
+URL while forwarding cleartext HTTP to a component declaring `protocol: http`;
+that is not a mismatch and no tool may report it as one. The app's primary public
+scheme is `$app.scheme`, derived from `$app.url`; other published endpoints have
+no declared public address ([D-58](DESIGN.md#d-58-orchestrator-supplied-publication-context--app-under-an-owning-orchestrator) rule 4). Declaring one listener configuration
+says nothing about the other configurations an app supports — a consumer MUST NOT
+infer from `protocol: http` that a component cannot be configured to serve TLS.
 
 ```yaml
 provides:
@@ -170,6 +181,43 @@ provides:
     spec:
       openapi: file:docs/openapi.yaml
 ```
+
+### Native TLS with a certificate binding
+
+Some apps terminate TLS on their own listener when they are given a certificate. `tls:` says so, by naming one `supports:` entry of type `certificate` on the same component ([D-61](DESIGN.md#d-61-an-active-certificate-binding-selects-a-provides-entrys-effective-listener)):
+
+```yaml
+provides:
+  - name: web
+    protocol: http       # the baseline listener (D-59)
+    port: 3000
+    exposed: true
+    tls: server-cert     # shorthand for `tls: { certificate: server-cert }`
+supports:
+  - name: server-cert
+    type: certificate
+    set_env:
+      GITEA__server__PROTOCOL: https
+      GITEA__server__HTTP_PORT: "3000"
+      GITEA__server__CERT_FILE: $cert_file
+      GITEA__server__KEY_FILE: $key_file
+env:
+  GITEA__server__PROTOCOL: http
+```
+
+*"I serve HTTP on 3000. I can serve HTTPS on that same listener with this certificate; here is the wiring."*
+
+**Declared and effective.** Every `provides` entry has a **declared** protocol and port — the fields in the file — and an **effective** protocol and port, which is what the listener speaks in the configuration the deployment selected. They are equal unless a bound certificate is **active**; then the effective protocol is `https` and the effective port is the declared `port:`. Validation, tooling and the audit surface read the declared value; every URL-emitting expression derived from a listener (`$components.<name>.url`, and `$app.url` where the provider computes it from its own publication of that listener) reads the effective one. An orchestrator-supplied publication context still wins ([PROVIDERS.md](PROVIDERS.md) §7).
+
+Five rules bind the binding:
+
+1. **It binds one entry, by identity.** The named entry must exist in the same component's `supports:` and declare `type: certificate`. A certificate named by two `provides` entries is a **validation error**, active or not. Naming a `requires:` entry is a validation error too: required native TLS is out of scope here. The bound entry must speak an HTTP-family protocol — `http`, `https`, `ws` or `grpc` — because an active binding makes its effective protocol `https`; `tls:` on a `tcp` or `udp` entry is a validation error naming the entry, the same family line an [`https-origin`](#public-https-origins) `endpoint:` draws.
+2. **Availability is not activation.** A certificate being available does not turn the binding on — the consumer selects native TLS, outside the file, the same way any other optional resource is selected ([D-8](DESIGN.md#d-8-supports-with-set_env-for-optional-capabilities)).
+3. **Active `set_env` beats `env:`.** With the binding active the app receives `GITEA__server__PROTOCOL: https` from `set_env`, not the `http` its `env:` declares; inactive, the `env:` value applies unchanged and the binding's keys are absent. This holds for every `set_env` binding, not only certificates — see [PROVIDERS.md](PROVIDERS.md) §7.
+4. **It composes with `https-origin`, and implies nothing about it.** A certificate binding does not by itself satisfy an [`https-origin`](#public-https-origins) entry, and an `https-origin` entry does not imply a certificate. An app may declare both, either, or neither.
+5. **Delivery, then refuse or run the baseline.** `cert_file` and `key_file` arrive through the provider's supplied-resource channel ([D-56](DESIGN.md#d-56-orchestrator-satisfied-requiressupports--the-supplied-resource-channel)) and the provider does not verify them. Selected but missing either one, or selected on a provider that cannot activate native TLS, **fails before launch naming the entry** — never a silent fall back to HTTP. Not selected, the component runs its declared HTTP baseline.
+
+A reader that ignores `tls:` and the `certificate` entry launches the declared baseline, which is correct rather than degraded: nobody selected the capability.
 
 ## Requires
 
@@ -183,6 +231,7 @@ An object entry is one of two kinds, distinguished by its marker field: a **back
 |---|---|---|---|
 | `name` | `string` | no | Resource name for expression references (defaults to `type`) |
 | `type` | `string` | **yes** | Resource type (see [Resource Property Vocabulary](#resource-property-vocabulary)) |
+| `endpoint` | `string` | conditional | The `provides` entry this resource fronts, by its `name`. **Required** on a `type: https-origin` entry; meaningless on any other type — see [Public HTTPS origins](#public-https-origins) |
 | `version` | `string` | no | Version constraint using semver ranges (e.g. `>=15`, `^7.0`, `20.x`) |
 | `config` | `map<string, any>` | no | Resource provisioning hints (platform-interpreted) |
 | `set_env` | `map<string, string>` | no | Maps resource properties to app env vars using `$` expressions |
@@ -252,6 +301,52 @@ Values in `set_env` use the [expression syntax](#expression-syntax). Inside a `r
 
 > **Real-world examples:** See how [Ghost](https://launchfile.io/apps/ghost/), [Metabase](https://launchfile.io/apps/metabase/), and [Miniflux](https://launchfile.io/apps/miniflux/) declare their database requirements. [Browse all apps →](https://launchfile.io/apps/)
 
+### Public HTTPS origins
+
+An app that only works over HTTPS says so with the backing-service type `https-origin`: *browsers reach this app at a public origin whose scheme is `https`*. Like any backing service, the provider **provisions and wires it, or refuses** — it is not a hint and not a probe.
+
+```yaml
+provides:
+  - name: web
+    protocol: http
+    port: 80
+    exposed: true
+requires:
+  - type: https-origin
+    endpoint: web
+    set_env:
+      DOMAIN: $url
+```
+
+The app's own listener is untouched: `protocol: http` still describes what the component speaks on its own port ([D-59](DESIGN.md#d-59-providesprotocol-describes-the-components-own-listener)). Where TLS terminates, and which certificate it uses, stay outside the file ([D-5](DESIGN.md#d-5-proxy-is-a-platform-concern-not-an-app-concern), [D-15](DESIGN.md#d-15-routing-is-a-deployment-concern-not-an-app-concern)).
+
+Six rules bind the entry:
+
+1. **The type names an interface, never a product.** `https-origin` is an [origin](https://www.rfc-editor.org/rfc/rfc6454) whose scheme is `https` — never `caddy`, `traefik`, or `acme`.
+2. **`endpoint:` names a `provides` entry by its `name`** ([named endpoints](#provides)). It is required on an `https-origin` entry and meaningless on any other type. The entry MUST sit on the **component that owns the endpoint**; at the top level of a file that declares `components:` it is a **validation error**, because top-level `requires` defaults into every component that declares none and one entry would face several `provides` lists. The name must match exactly one entry on that component; that entry must be `exposed: true` and declare an **HTTP-family** listener — `http`, `https`, `ws`, or `grpc`. Naming a `tcp` or `udp` entry is a **validation error**: those listeners have no origin.
+3. **One per app, and it defines "primary".** At most one `https-origin` entry across all components; a second is a validation error. The named endpoint is the app's **primary** endpoint for `$app.*` derivation and for orchestrator-supplied publication context ([D-58](DESIGN.md#d-58-orchestrator-supplied-publication-context--app-under-an-owning-orchestrator) rule 4). **Declaring the entry fixes the primary** — whether or not a provider fulfills it — so `$app.url` never changes value with a provider's capability. It reaches `$app.*` only: `$components.<name>.url` is unaffected. With no entry declared, providers keep their own positional choice.
+4. **One property: `url`** — the same value as `$app.url`, from one derivation. No `host`, `port`, `scheme`, `authority`, or `tls` property is registered; [`$app.*`](#app-properties) already standardises those.
+5. **Fulfillment, no probe.** The provider provisions the origin, or accepts one supplied through its orchestrator-facing publication channel, or refuses with a clear message. A supplied URL whose scheme is not `https` is refused. The provider does not verify the origin exists or is reachable. See [PROVIDERS.md](PROVIDERS.md) §7 and §10 item 5.
+6. **`supports:` is the optional mood.** Unfulfilled, the entry's `set_env` is absent and the provider notes the un-granted dependency — the app deploys and degrades.
+
+```yaml
+# mailpit — the endpoint reference takes whatever the app called it
+provides:
+  - name: web-ui
+    protocol: http
+    port: 8025
+    exposed: true
+  - name: smtp
+    protocol: tcp
+    port: 1025
+    exposed: true
+supports:
+  - type: https-origin
+    endpoint: web-ui        # `endpoint: smtp` would be a validation error (rule 2)
+```
+
+A `ws` endpoint behind an `https-origin` resolves `url` to `https://…`, not `wss://…`: `url` is fixed as the https origin for every admitted listener protocol. A `wss` spelling, if it ever arrives, arrives as a new property, never as a change to what `url` resolves to.
+
 ### Host capabilities
 
 A `requires`/`supports` entry can request a **host capability** — a privileged grant from the machine the app runs on — instead of a backing service. A capability entry is marked with `host:`. The provider **grants** it (mounts or forwards the underlying coordinate and populates the capability's properties) or **refuses** the deployment with a clear message; it never provisions anything. See [PROVIDERS.md](PROVIDERS.md) for the provider-side contract.
@@ -303,7 +398,7 @@ Properties a provider cannot supply resolve to the empty string, matching unknow
 
 ## Supports
 
-Declares optional resources that enhance the app when available. Same schema as `requires`. Env vars from `set_env` are only injected when the resource is actually provisioned.
+Declares optional resources that enhance the app when available. Same schema as `requires`. Env vars from `set_env` are only injected when the resource is actually provisioned. When they are, an injected value takes precedence over an `env:` declaration of the same name; when the entry is inactive the `env:` value applies unchanged and the binding's keys are absent — the rule is stated normatively in [PROVIDERS.md](PROVIDERS.md) §7 and binds every `requires`/`supports` binding.
 
 ```yaml
 supports:
@@ -315,7 +410,7 @@ supports:
 
 The literal `"1"` is injected alongside the dynamic `$url` -- `set_env` values without `$` are passed through verbatim.
 
-`supports` entries can also request [host capabilities](#host-capabilities). The capability is optional: when the provider grants it, the entry's `set_env` vars are injected; when it doesn't, they are simply absent and the app degrades gracefully.
+`supports` entries can also request a [public HTTPS origin](#public-https-origins), a [certificate for native TLS](#native-tls-with-a-certificate-binding), or [host capabilities](#host-capabilities). The capability is optional: when the provider grants it, the entry's `set_env` vars are injected; when it doesn't, they are simply absent and the app degrades gracefully.
 
 The expected app-side pattern: the app checks for the env var at startup and enables the feature if present. In this example, the app checks `CACHE_URL` — if it's set, caching is enabled; if Redis wasn't provisioned, the variable is simply absent and the app runs without caching. No conditional logic in the Launchfile.
 
@@ -568,6 +663,8 @@ commands:
         pattern: "https?://\\S+"
         description: "One-time invite link"
         sensitive: true
+```
+
 ### Command Capture
 
 Any command that uses the expanded form can declare **captures** — named values extracted from the command's stdout via regex patterns. The platform matches each capture's regex against the command's stdout and stores the first capture group's value (or, if the pattern has no capture group, the full match).
@@ -1075,8 +1172,12 @@ Each resource type exposes well-known properties for use in `set_env` expression
 | `clickhouse` | `url`, `host`, `port`, `user`, `password`, `name` |
 | `kafka` | `url`, `host`, `port` |
 | `s3` | `url`, `access_key`, `secret_key`, `bucket`, `region` |
+| `https-origin` | `url` |
+| `certificate` | `cert_file`, `key_file` |
 
-The `url` property is always a fully-formed connection string (e.g. `postgresql://user:pass@host:5432/dbname`). Other properties provide individual components for apps that require them separately.
+Not every type registers `url`: [`certificate`](#native-tls-with-a-certificate-binding) registers two app-filesystem paths and no address at all. Where a type does register it, the `url` property is the fully-formed address of the resource — a connection string for a backing service (e.g. `postgresql://user:pass@host:5432/dbname`), and the public origin for [`https-origin`](#public-https-origins) (e.g. `https://vault.example.com`, the same value as `$app.url`). Where a type registers more than one property, the others provide individual components for apps that require them separately.
+
+`key_file` — and every `*_key` / `*_key_file` property name, in any type's vocabulary or outside one — is **credential-bearing**: a provider registers its value with its redactor before generating anything, exactly as it does for `password`, `secret_key` and `access_key` ([D-56](DESIGN.md#d-56-orchestrator-satisfied-requiressupports--the-supplied-resource-channel) rule 5). Membership of a type's vocabulary never turns that off.
 
 This vocabulary is also published in machine-readable form as [`schema/resource-properties.json`](schema/resource-properties.json), which adds a one-line semantic per property and is what tooling reads for advisory typo warnings (see [DESIGN.md D-46](DESIGN.md#d-46-resource-property-registry--vocabulary-is-standard-but-open)).
 

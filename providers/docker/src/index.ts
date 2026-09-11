@@ -17,7 +17,14 @@ export {
 	type DockerUpOpts,
 	type DockerUpResult,
 } from "./provider.js";
-export { computeAppProperties, InvalidAppUrlError, normalizeAppUrl } from "./app-url.js";
+export {
+	computeAppProperties,
+	InvalidAppUrlError,
+	normalizeAppUrl,
+	// The provider's one derivation of a published endpoint's address (#473).
+	publishedAddress,
+	type PublishedAddress,
+} from "./app-url.js";
 export {
 	declaredEnvKeys,
 	DOCKER_PROVIDER,
@@ -33,6 +40,7 @@ export {
 	launchToCompose,
 	type ComposeResult,
 	type ComposeOpts,
+	type InitOnlyExtensions,
 	type StorageBind,
 	type UnboundOperatorVolume,
 	type UnsuppliedRequiredVar,
