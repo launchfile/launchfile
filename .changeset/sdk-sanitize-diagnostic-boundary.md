@@ -1,5 +1,5 @@
 ---
-"@launchfile/sdk": patch
+"@launchfile/sdk": minor
 "launchfile": patch
 ---
 
