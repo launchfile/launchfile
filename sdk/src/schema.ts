@@ -36,7 +36,7 @@ const SecretSchema = z.object({
 // --- Provides ---
 
 /**
- * `tls: <name>` is shorthand for `tls: { certificate: <name> }` (D-next rule
+ * `tls: <name>` is shorthand for `tls: { certificate: <name> }` (D-61 rule
  * 1). Both spellings name one `supports:` entry of type `certificate` on the
  * same component; `checkCertificateBindings` below resolves the name, which
  * needs the whole component to answer.
@@ -44,7 +44,7 @@ const SecretSchema = z.object({
 const TlsBindingSchema = z.union([
 	NameSchema,
 	// Strict, unlike the requirement objects around it: a binding-level `port:`
-	// override is D-next Left open (1), and strip mode would accept one and
+	// override is D-61 Left open (1), and strip mode would accept one and
 	// silently drop it — the listener would then serve TLS on a port the author
 	// believes they changed (P-14). The published JSON Schema rejects it too.
 	z.strictObject({ certificate: NameSchema }),
@@ -508,7 +508,7 @@ function checkHttpsOrigin(
 	}
 }
 
-/** The `supports:` resource type a `tls:` binding names (D-next rule 1). */
+/** The `supports:` resource type a `tls:` binding names (D-61 rule 1). */
 const CERTIFICATE = "certificate";
 
 /** A `provides` entry, as far as the certificate rules need to see it. */
@@ -537,7 +537,7 @@ function providesLabel(entry: TlsProvidesLike, index: number): string {
 }
 
 /**
- * Enforce the structural rules a `tls:` binding carries (D-next rule 1), none
+ * Enforce the structural rules a `tls:` binding carries (D-61 rule 1), none
  * of which a per-entry schema can see: the bound entry speaks an HTTP-family
  * protocol, the named certificate exists in the same component's `supports:`,
  * it declares `type: certificate`, no certificate is named by two entries, and
@@ -617,8 +617,8 @@ function checkCertificateBindings(
 						`\`protocol: ${protocol}\`; an active binding makes a listener's ` +
 						"effective protocol `https`, which only an HTTP-family listener " +
 						"(`http`, `https`, `ws`, `grpc`) can speak — a `tcp` or `udp` " +
-						"listener cannot (D-next rule 1, on D-60 rule 2's family line). " +
-						"TLS on a non-HTTP listener is D-next Left open (6).",
+						"listener cannot (D-61 rule 1, on D-60 rule 2's family line). " +
+						"TLS on a non-HTTP listener is D-61 Left open (6).",
 				});
 				continue;
 			}
@@ -632,7 +632,7 @@ function checkCertificateBindings(
 						`certificate "${certificate}" is bound by two \`provides\` entries on ` +
 						`${scope.label} — ${providesLabel(provides[first]!, first)} and ` +
 						`${providesLabel(entry, index)}. A certificate binds exactly one listener ` +
-						"(D-next rule 1); declare a second `certificate` entry for the other.",
+						"(D-61 rule 1); declare a second `certificate` entry for the other.",
 				});
 				continue;
 			}
@@ -647,9 +647,9 @@ function checkCertificateBindings(
 						path,
 						message:
 							`\`tls: ${certificate}\` names a \`requires:\` entry on ${scope.label}. ` +
-							"Required native TLS is out of scope for D-next, which binds the optional " +
+							"Required native TLS is out of scope for D-61, which binds the optional " +
 							"mood only — move the entry to `supports:`, or track the requirement on " +
-							"D-next Left open (2) (github.com/launchfile/launchfile/issues/314, " +
+							"D-61 Left open (2) (github.com/launchfile/launchfile/issues/314, " +
 							"dimension A's `requires:` half).",
 					});
 					continue;
@@ -667,7 +667,7 @@ function checkCertificateBindings(
 					path,
 					message:
 						`\`tls: ${certificate}\` names no \`supports:\` entry on ${scope.label} ` +
-						"(D-next rule 1). " +
+						"(D-61 rule 1). " +
 						(available.length > 0
 							? `Entries there: ${available.join(", ")}.`
 							: "That component declares no `supports:` entry — add one of `type: certificate`."),
@@ -682,7 +682,7 @@ function checkCertificateBindings(
 					message:
 						`\`tls: ${certificate}\` names a \`supports:\` entry of \`type: ` +
 						`${String(supported.type)}\` on ${scope.label}; a \`tls:\` binding names ` +
-						`an entry of \`type: ${CERTIFICATE}\` (D-next rule 1)`,
+						`an entry of \`type: ${CERTIFICATE}\` (D-61 rule 1)`,
 				});
 			}
 		}

@@ -1,5 +1,5 @@
 /**
- * Declared versus effective listener (D-next rule 2).
+ * Declared versus effective listener (D-61 rule 2).
  *
  * A `provides` entry's `protocol` and `port` are its **declared** values — the
  * component's own listener in the baseline configuration the file describes
@@ -16,7 +16,7 @@
 
 import type { Component, Protocol, Provides } from "./types.js";
 
-/** The `supports:` resource type a `tls:` binding names (D-next rule 1). */
+/** The `supports:` resource type a `tls:` binding names (D-61 rule 1). */
 export const CERTIFICATE = "certificate";
 
 /** A `provides` entry's listener, in both readings. */
@@ -29,7 +29,7 @@ export interface EffectiveListener {
 	protocol: Protocol;
 	/**
 	 * The port the listener speaks on in the selected configuration. Always
-	 * the declared port in this scope — a binding-level override is D-next
+	 * the declared port in this scope — a binding-level override is D-61
 	 * Left open (1).
 	 */
 	port: number;
@@ -56,7 +56,7 @@ export function boundCertificate(entry: Provides): string | undefined {
  *
  * `activeCertificates` names the certificate bindings the deployment selected
  * AND satisfied — the provider's answer, never the file's: an available
- * certificate does not activate a binding (D-next rule 1, D-8). Omit it and
+ * certificate does not activate a binding (D-61 rule 1, D-8). Omit it and
  * every entry reads as its baseline, which is what a consumer with no
  * selection to report wants.
  */

@@ -9,7 +9,7 @@ import { LaunchSchema } from "../schema.js";
 import { writeLaunch } from "../writer.js";
 
 /**
- * D-next: a `provides` entry may bind one `supports:` entry of type
+ * D-61: a `provides` entry may bind one `supports:` entry of type
  * `certificate`, and while that binding is active the entry's EFFECTIVE
  * protocol is `https`. The declared fields never move.
  */
@@ -46,7 +46,7 @@ function errorsFor(input: unknown): string {
 	return result.error!.issues.map((i) => i.message).join("\n");
 }
 
-describe("`tls:` accepts both spellings (D-next rule 1)", () => {
+describe("`tls:` accepts both spellings (D-61 rule 1)", () => {
 	it("accepts the string shorthand", () => {
 		expect(LaunchSchema.safeParse(GITEA).success).toBe(true);
 	});
@@ -78,7 +78,7 @@ describe("`tls:` accepts both spellings (D-next rule 1)", () => {
 	});
 });
 
-describe("structural rules the schema enforces (D-next rule 1)", () => {
+describe("structural rules the schema enforces (D-61 rule 1)", () => {
 	it("names an entry that exists in the same component's `supports:`", () => {
 		const bad = structuredClone(GITEA) as Record<string, unknown>;
 		(bad.provides as Array<Record<string, unknown>>)[0]!.tls = "missing-cert";
@@ -199,7 +199,7 @@ describe("structural rules the schema enforces (D-next rule 1)", () => {
 	});
 });
 
-describe("declared versus effective listener (D-next rule 2)", () => {
+describe("declared versus effective listener (D-61 rule 2)", () => {
 	const entry = { name: "web", protocol: "http", port: 3000, tls: "server-cert" } as const;
 
 	it("reads the declared values when nothing is active", () => {
@@ -247,7 +247,7 @@ describe("declared versus effective listener (D-next rule 2)", () => {
 	});
 });
 
-describe("`certificate` composes with `https-origin` (D-next rule 4)", () => {
+describe("`certificate` composes with `https-origin` (D-61 rule 4)", () => {
 	it("validates a file declaring both, and neither satisfies the other", () => {
 		const both = {
 			version: "launch/v1",

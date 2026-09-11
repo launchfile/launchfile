@@ -76,7 +76,7 @@ export interface Provides {
 	spec?: Record<string, string>;
 	/**
 	 * The certificate this listener serves when native TLS is selected
-	 * (D-next): the `name` of one `supports:` entry of type `certificate` on
+	 * (D-61): the `name` of one `supports:` entry of type `certificate` on
 	 * the same component. `tls: "server-cert"` is shorthand for
 	 * `tls: { certificate: "server-cert" }`.
 	 *
@@ -87,7 +87,7 @@ export interface Provides {
 	tls?: string | TlsBinding;
 }
 
-/** The expanded form of a `provides` entry's `tls:` binding (D-next rule 1). */
+/** The expanded form of a `provides` entry's `tls:` binding (D-61 rule 1). */
 export interface TlsBinding {
 	/** Name of the `supports:` entry of type `certificate` this listener binds. */
 	certificate: string;
