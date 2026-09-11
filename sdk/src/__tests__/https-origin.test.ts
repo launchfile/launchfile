@@ -4,7 +4,7 @@ import { RESOURCE_PROPERTY_VOCABULARY } from "../resource-properties.js";
 import { writeLaunch } from "../writer.js";
 
 /**
- * `https-origin` — the declaration and its two cross-field rules (D-next).
+ * `https-origin` — the declaration and its two cross-field rules (D-60).
  *
  * Rule 2 (the endpoint reference) and rule 3 (one per app) cannot be expressed
  * per entry: both need the whole file. They are hard validation errors, not

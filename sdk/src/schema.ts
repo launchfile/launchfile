@@ -119,7 +119,7 @@ const RequirementSchema = z
 				code: "custom",
 				message:
 					"`endpoint:` names the `provides` entry a `type: https-origin` resource " +
-					"fronts (D-next rule 2); a host capability fronts nothing — remove it",
+					"fronts (D-60 rule 2); a host capability fronts nothing — remove it",
 			});
 		}
 	})
@@ -284,13 +284,13 @@ const ComponentSchema = z.object({
 	host: HostSchema.optional(),
 });
 
-// --- `https-origin` structural rules (D-next rules 2 and 3) ---
+// --- `https-origin` structural rules (D-60 rules 2 and 3) ---
 
 /** The one backing-service type that fronts the app instead of backing it. */
 const HTTPS_ORIGIN = "https-origin";
 
 /**
- * Listener protocols an https origin can front (D-next rule 2). All four are
+ * Listener protocols an https origin can front (D-60 rule 2). All four are
  * addressed by a web origin (RFC 6454) and each already has a defined secure
  * scheme; `tcp` and `udp` have no origin at all.
  */
@@ -385,7 +385,7 @@ function checkHttpsOrigin(
 							message:
 								"`endpoint:` is only meaningful on a `type: " +
 								`${HTTPS_ORIGIN}\` entry — this one declares \`type: ${String(entry.type)}\`` +
-								" (D-next rule 2). Remove it, or change the type.",
+								" (D-60 rule 2). Remove it, or change the type.",
 						});
 					}
 					continue;
@@ -401,7 +401,7 @@ function checkHttpsOrigin(
 							`a \`${HTTPS_ORIGIN}\` entry must sit on the component that owns the endpoint, ` +
 							"never at the top level of a file that declares `components:` — top-level " +
 							"`requires` defaults into every component that declares none, so one entry " +
-							"would face several `provides` lists (D-next rule 2). Move it onto that component.",
+							"would face several `provides` lists (D-60 rule 2). Move it onto that component.",
 					});
 					continue;
 				}
@@ -412,7 +412,7 @@ function checkHttpsOrigin(
 						path: [...path, "endpoint"],
 						message:
 							`a \`${HTTPS_ORIGIN}\` entry must name the \`provides\` entry it fronts ` +
-							"with `endpoint:` (D-next rule 2)",
+							"with `endpoint:` (D-60 rule 2)",
 					});
 					continue;
 				}
@@ -434,7 +434,7 @@ function checkHttpsOrigin(
 						path: [...path, "endpoint"],
 						message:
 							`${HTTPS_ORIGIN} endpoint "${entry.endpoint}" matches no \`provides\` entry on ` +
-							`${scope.label} (D-next rule 2). ` +
+							`${scope.label} (D-60 rule 2). ` +
 							(named.length > 0
 								? `Named endpoints there: ${named.join(", ")}.`
 								: "That component declares no named endpoint — add a `name:` to the one this origin fronts."),
@@ -447,7 +447,7 @@ function checkHttpsOrigin(
 						path: [...path, "endpoint"],
 						message:
 							`${HTTPS_ORIGIN} endpoint "${entry.endpoint}" matches ${matches.length} \`provides\` ` +
-							`entries on ${scope.label}; it must match exactly one (D-next rule 2)`,
+							`entries on ${scope.label}; it must match exactly one (D-60 rule 2)`,
 					});
 					continue;
 				}
@@ -459,7 +459,7 @@ function checkHttpsOrigin(
 						path: [...path, "endpoint"],
 						message:
 							`${HTTPS_ORIGIN} endpoint "${entry.endpoint}" is not \`exposed: true\`; an origin ` +
-							"is a public address, and an unpublished endpoint has none (D-next rule 2)",
+							"is a public address, and an unpublished endpoint has none (D-60 rule 2)",
 					});
 					continue;
 				}
@@ -472,7 +472,7 @@ function checkHttpsOrigin(
 						message:
 							`${HTTPS_ORIGIN} endpoint "${entry.endpoint}" declares \`protocol: ${protocol}\`; ` +
 							"an https-origin fronts an HTTP-family listener (`http`, `https`, `ws`, `grpc`) — " +
-							"a `tcp` or `udp` listener has no origin (D-next rule 2). " +
+							"a `tcp` or `udp` listener has no origin (D-60 rule 2). " +
 							"Name the app's web endpoint instead.",
 					});
 				}
@@ -486,7 +486,7 @@ function checkHttpsOrigin(
 			path: [],
 			message:
 				`an app declares at most one \`${HTTPS_ORIGIN}\` entry, and this one declares ` +
-				`${originEntries} (D-next rule 3) — the named endpoint is the app's primary, and ` +
+				`${originEntries} (D-60 rule 3) — the named endpoint is the app's primary, and ` +
 				"only one endpoint can be that",
 		});
 	}
