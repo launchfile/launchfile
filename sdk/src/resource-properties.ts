@@ -13,6 +13,7 @@ const VOCABULARY: Readonly<Record<string, readonly string[]>> = {
 	kafka: ["url", "host", "port"],
 	s3: ["url", "access_key", "secret_key", "bucket", "region"],
 	"https-origin": ["url"],
+	certificate: ["cert_file", "key_file"],
 };
 
 /**
