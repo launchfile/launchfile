@@ -167,8 +167,11 @@ speaks on that entry's `port`, in the configuration this Launchfile describes. I
 never describes a public endpoint's scheme. A provider may publish an `https://`
 URL while forwarding cleartext HTTP to a component declaring `protocol: http`;
 that is not a mismatch and no tool may report it as one. The app's primary public
-scheme is `$app.scheme`, derived from `$app.url`; other published endpoints have
-no declared public address ([D-58](DESIGN.md#d-58-orchestrator-supplied-publication-context--app-under-an-owning-orchestrator) rule 4). Declaring one listener configuration
+scheme is `$app.scheme`, derived from `$app.url`; every other published endpoint's
+public address is `$app.endpoints.<name>.*`, reachable by the entry's `name:`
+([Per-endpoint properties](#per-endpoint-properties), [D-next](DESIGN.md#d-next-appendpointsname--per-endpoint-publication-context)) — a
+supplied publication context still asserts the primary's address only
+([D-58](DESIGN.md#d-58-orchestrator-supplied-publication-context--app-under-an-owning-orchestrator) rule 4). Declaring one listener configuration
 says nothing about the other configurations an app supports — a consumer MUST NOT
 infer from `protocol: http` that a component cannot be configured to serve TLS.
 
@@ -1037,6 +1040,7 @@ The `$` reference system is used in `set_env` values and `env` defaults to wire 
 | `$components.name.endpoint.prop` | Property from a named endpoint on another component |
 | `$secrets.name` | App-wide generated secret |
 | `$app.prop` | Platform-injected app property (see [App Properties](#app-properties)) |
+| `$app.endpoints.name.prop` | Public address of a named published endpoint (see [Per-endpoint properties](#per-endpoint-properties)) |
 | `$ref\|transform` | Any reference piped through a transform (e.g. `\|base64`) |
 | `${prop}` | Explicit braced form (same as `$prop`) |
 | `${prop:-default}` | Reference with fallback value |
@@ -1057,7 +1061,7 @@ flowchart TD
 
 **Resolution order** for a path:
 
-1. Starts with `app` -- platform-injected app property (see [App Properties](#app-properties))
+1. Starts with `app` -- platform-injected app property (see [App Properties](#app-properties)); `app.endpoints.<name>.<prop>` is the per-endpoint form (see [Per-endpoint properties](#per-endpoint-properties))
 2. Starts with `secrets` -- app-wide secret lookup
 3. Starts with `components` -- component endpoint lookup
 4. Starts with `storage` -- provider-resolved storage path (see [Storage Properties](#storage-properties))
@@ -1123,6 +1127,47 @@ env:
   CMD_DOMAIN: $app.authority          # public host[:port] HedgeDoc serves from
   CMD_PROTOCOL_USESSL: $app.tls       # whether the public URL is HTTPS
   CMD_URL_ADDPORT: "false"            # authority already carries the public port
+```
+
+### Per-endpoint properties
+
+`$app.*` describes the app's **primary** endpoint only. An app that publishes more than one endpoint reaches the others through `$app.endpoints.<name>.*`, where `<name>` is the `provides` entry's `name:` ([named endpoints](#provides)) and the entry is `exposed: true` ([D-next](DESIGN.md#d-next-appendpointsname--per-endpoint-publication-context)):
+
+| Property | Description |
+|---|---|
+| `$app.endpoints.<name>.url` | The endpoint's public URL; `""` for a `tcp` or `udp` endpoint, which has no origin |
+| `$app.endpoints.<name>.host` | The endpoint's public hostname |
+| `$app.endpoints.<name>.port` | The published host-side port the provider allocated for that endpoint — never the container port |
+| `$app.endpoints.<name>.authority` | Public host **and** port, port omitted when it is the scheme default; a `tcp`/`udp` endpoint always carries its port |
+| `$app.endpoints.<name>.scheme` | The public URL's scheme — `http` or `https`; `""` for a `tcp` or `udp` endpoint |
+| `$app.endpoints.<name>.tls` | The string `true` when the scheme is `https`, else `false` |
+
+The six are the standard `$app.*` set less `name`, each defined per endpoint exactly as [App Properties](#app-properties) defines it for the primary, and each is a **public** address: `$components.<name>.*` stays the component-side address. Five rules:
+
+1. A provider computes every endpoint's address through the same derivation it uses for `$app.*`. Where a provider publishes a per-endpoint address, the **primary** endpoint's `$app.endpoints.<name>.url` **is** `$app.url` — the same value, never a second computation.
+2. `scheme`, `tls` and `url` read the entry's **effective** listener ([Native TLS](#native-tls-with-a-certificate-binding)): an active certificate binding makes them read `https` and `true`.
+3. Unnamed endpoints are not addressable — add a `name:`. An endpoint name is app-wide: the same name on two components is a **validation error** naming both.
+4. Anything else resolves `""` with a `validate` warning naming it: an unknown name, a named endpoint that is not `exposed: true`, `$app.endpoints` with no name, `$app.endpoints.<name>` with no property, a property outside the six, and an endpoint the provider publishes no address for (`@launchfile/macos-dev` and `@launchfile/aws` today, where this reaches the primary too and `$app.url` keeps its own value). A `tcp`/`udp` endpoint's `""` `url` and `scheme` are a defined answer and draw no warning.
+5. An orchestrator-supplied publication context asserts the **primary** endpoint's address only ([D-58](DESIGN.md#d-58-orchestrator-supplied-publication-context--app-under-an-owning-orchestrator) rule 4): while one is supplied, every other named endpoint resolves `""`.
+
+```yaml
+# gitea — the clone URL wants the published SSH address in two pieces
+provides:
+  - name: web
+    protocol: http
+    port: 3000
+    exposed: true
+  - name: ssh
+    protocol: tcp
+    port: 22
+    exposed: true
+env:
+  GITEA__server__ROOT_URL:
+    default: $app.url                        # the primary — same value as $app.endpoints.web.url
+  GITEA__server__SSH_DOMAIN:
+    default: $app.endpoints.ssh.host         # the published SSH hostname
+  GITEA__server__SSH_PORT:
+    default: $app.endpoints.ssh.port         # the published SSH port, not 22
 ```
 
 ## Storage Properties
