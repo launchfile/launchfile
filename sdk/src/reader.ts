@@ -124,17 +124,17 @@ function normalizeComponent(component: Component, defaults?: Launch): Normalized
 		image: component.image ?? defaults?.image,
 		build: normalizeBuild(component.build ?? defaults?.build),
 		source: component.source ?? defaults?.source,
-		provides: component.provides,
-		requires: normalizeRequirements(component.requires),
-		supports: normalizeRequirements(component.supports),
-		env: normalizeEnv(component.env),
-		commands: normalizeCommands(component.commands),
-		health: normalizeHealth(component.health),
-		depends_on: normalizeDependsOn(component.depends_on),
-		storage: component.storage,
+		provides: component.provides ?? defaults?.provides,
+		requires: normalizeRequirements(component.requires ?? defaults?.requires),
+		supports: normalizeRequirements(component.supports ?? defaults?.supports),
+		env: normalizeEnv(component.env ?? defaults?.env),
+		commands: normalizeCommands(component.commands ?? defaults?.commands),
+		health: normalizeHealth(component.health ?? defaults?.health),
+		depends_on: normalizeDependsOn(component.depends_on ?? defaults?.depends_on),
+		storage: component.storage ?? defaults?.storage,
 		restart: component.restart ?? defaults?.restart,
-		schedule: component.schedule,
-		singleton: component.singleton,
+		schedule: component.schedule ?? defaults?.schedule,
+		singleton: component.singleton ?? defaults?.singleton,
 		platform: component.platform ?? defaults?.platform,
 		host: component.host ?? defaults?.host,
 	};
@@ -169,6 +169,7 @@ function normalizeRequirements(
 		return {
 			name: r.name,
 			type: r.type,
+			endpoint: r.endpoint,
 			version: r.version,
 			config: r.config,
 			set_env: r.set_env,
@@ -192,6 +193,7 @@ function normalizeEnv(
 				required: val.required,
 				generator: val.generator,
 				sensitive: val.sensitive,
+				example: val.example,
 			};
 		}
 	}

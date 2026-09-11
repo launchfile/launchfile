@@ -18,14 +18,17 @@
 
 import { spawn } from "node:child_process";
 import {
+	formatCaptures,
 	parseDurationMs,
 	resolveExpression,
+	sensitiveCaptureValues,
 	type CaptureEntry,
 	type NormalizedLaunch,
 	type ResolverContext,
 } from "@launchfile/sdk";
 import { computeAppProperties } from "./app-url.js";
-import { redactSecrets } from "./redact.js";
+import { getLogger } from "./logger.js";
+import { redactSecrets, registerDeclaredSecret } from "./redact.js";
 import { declaredSecrets } from "./secrets-namespace.js";
 import { loadState, composeProject } from "./state.js";
 
@@ -258,9 +261,21 @@ const defaultExec: BootstrapExec = (cmd, args, opts) =>
  */
 export async function runBootstraps(
 	plan: BootstrapPlanItem[],
-	opts: { project: string; cwd?: string; exec?: BootstrapExec },
+	opts: {
+		project: string;
+		cwd?: string;
+		exec?: BootstrapExec;
+		/**
+		 * Print sensitive captures instead of masking them — the operator's
+		 * explicit act on the invoking command (`launchfile bootstrap
+		 * --reveal`). Display only: the values are registered with the
+		 * redactor either way.
+		 */
+		reveal?: boolean;
+	},
 ): Promise<BootstrapResult[]> {
 	const exec = opts.exec ?? defaultExec;
+	const reveal = opts.reveal === true;
 	const results: BootstrapResult[] = [];
 
 	for (const item of plan) {
@@ -301,7 +316,27 @@ export async function runBootstraps(
 			{ timeoutMs: item.timeoutMs, cwd: opts.cwd },
 		);
 
+		const captureMeta = item.capture ?? {};
 		const captures = item.capture ? extractCaptures(stdout, item.capture) : {};
+
+		// A `sensitive: true` capture is a declared secret (D-18): it registers
+		// before any log line, result, or failure record is built, so the value
+		// can leak through none of them (CWE-532). `--reveal` changes what the
+		// display loop below prints, never this.
+		for (const value of sensitiveCaptureValues(captures, captureMeta)) {
+			registerDeclaredSecret(value);
+		}
+
+		getLogger().debug(
+			{
+				component: item.component,
+				composeService: item.service,
+				exitCode,
+				captured: Object.keys(captures),
+				...(exitCode !== 0 ? { stderr: redactSecrets(stderr) } : {}),
+			},
+			"bootstrap command finished",
+		);
 
 		results.push({
 			component: item.component,
@@ -310,19 +345,15 @@ export async function runBootstraps(
 			ok: exitCode === 0,
 			exitCode,
 			captures,
-			captureMeta: item.capture ?? {},
+			captureMeta,
 			stdout,
 			stderr,
 		});
 
-		if (Object.keys(captures).length > 0) {
-			console.log("\n  Captured:");
-			for (const [key, value] of Object.entries(captures)) {
-				const meta = item.capture?.[key];
-				const displayValue = meta?.sensitive ? "***" : value;
-				const desc = meta?.description ? ` — ${meta.description}` : "";
-				console.log(`    ${key}: ${displayValue}${desc}`);
-			}
+		const lines = formatCaptures(captures, captureMeta, reveal);
+		if (lines.length > 0) {
+			console.log("");
+			for (const line of lines) console.log(line);
 		}
 
 		if (exitCode !== 0) {
@@ -348,6 +379,8 @@ export async function dockerBootstrap(opts: {
 	launch: NormalizedLaunch;
 	slug: string;
 	component?: string;
+	/** `launchfile bootstrap --reveal`: print sensitive captures. */
+	reveal?: boolean;
 	exec?: BootstrapExec;
 }): Promise<BootstrapResult[]> {
 	const state = await loadState(opts.slug);
@@ -365,6 +398,7 @@ export async function dockerBootstrap(opts: {
 	const results = await runBootstraps(plan, {
 		project: composeProject(opts.slug),
 		exec: opts.exec,
+		reveal: opts.reveal,
 	});
 
 	if (results.length === 0) {

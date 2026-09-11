@@ -74,6 +74,23 @@ export interface Provides {
 	exposed?: boolean;
 	/** API spec references */
 	spec?: Record<string, string>;
+	/**
+	 * The certificate this listener serves when native TLS is selected
+	 * (D-61): the `name` of one `supports:` entry of type `certificate` on
+	 * the same component. `tls: "server-cert"` is shorthand for
+	 * `tls: { certificate: "server-cert" }`.
+	 *
+	 * `protocol` and `port` keep describing the baseline configuration; the
+	 * effective protocol is `https` only while the binding is active. Use
+	 * {@link effectiveListener} rather than reading this field directly.
+	 */
+	tls?: string | TlsBinding;
+}
+
+/** The expanded form of a `provides` entry's `tls:` binding (D-61 rule 1). */
+export interface TlsBinding {
+	/** Name of the `supports:` entry of type `certificate` this listener binds. */
+	certificate: string;
 }
 
 // --- Requires / Supports ---
@@ -84,6 +101,11 @@ export interface Requirement {
 	name?: string;
 	/** Resource type (e.g., "postgres", "redis") */
 	type: ResourceType;
+	/**
+	 * The `provides` entry this resource fronts, by its `name` (D-6). Required
+	 * on a `type: https-origin` entry, meaningless on any other type.
+	 */
+	endpoint?: string;
 	/** Version constraint (semver ranges, e.g., ">=15", "^7.0") */
 	version?: string;
 	/** Resource provisioning hints (platform-interpreted) */
@@ -121,6 +143,11 @@ export interface Support {
 	name?: string;
 	/** Resource type */
 	type: ResourceType;
+	/**
+	 * The `provides` entry this resource fronts, by its `name` (D-6). Required
+	 * on a `type: https-origin` entry, meaningless on any other type.
+	 */
+	endpoint?: string;
 	/** Version constraint */
 	version?: string;
 	/** Resource provisioning hints (platform-interpreted) */
@@ -145,6 +172,8 @@ export interface EnvVar {
 	generator?: Generator;
 	/** Whether this value should be stored in a secrets manager */
 	sensitive?: boolean;
+	/** Example value showing expected format (informational, D-31) */
+	example?: string;
 }
 
 // --- Build ---
@@ -398,12 +427,18 @@ export interface NormalizedEnvVar {
 	required?: boolean;
 	generator?: Generator;
 	sensitive?: boolean;
+	example?: string;
 }
 
 /** Fully expanded requirement (no string shorthand) */
 export interface NormalizedRequirement {
 	name?: string;
 	type: ResourceType;
+	/**
+	 * The `provides` entry this resource fronts, by its `name` (D-6). Required
+	 * on a `type: https-origin` entry, meaningless on any other type.
+	 */
+	endpoint?: string;
 	version?: string;
 	config?: Record<string, unknown>;
 	set_env?: Record<string, string>;

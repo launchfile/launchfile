@@ -244,6 +244,17 @@ export interface ComposeResult {
    * the marker flip `health_check_passed` without anyone deciding it.
    */
   storageRefusals: { component: string; volume: string; message: string }[];
+  /**
+   * `https-origin` entries in `requires:` that this run cannot satisfy
+   * (D-60 rule 5): no `appUrl` was supplied, or the supplied one is not
+   * `https://`. The component is ABSENT from the emitted compose — the same
+   * refusal `@launchfile/docker` performs. The runner turns a non-empty list
+   * into a hard failure naming the app and the entry, exactly as it does for
+   * `unsuppliedRequired`: starting the app anyway would record
+   * `health_check_passed: true` for a deployment whose own web client cannot
+   * be used, which is the failure the declaration exists to surface.
+   */
+  originRefusals: { component: string; entry: string; message: string }[];
 }
 
 export interface ComposeOpts {
@@ -266,6 +277,38 @@ export interface ComposeOpts {
    * refused, never created.
    */
   storagePaths?: Record<string, string>;
+  /**
+   * The public URL an owning orchestrator publishes this app at (D-58), the
+   * same input as the Docker provider's `ComposeOpts.appUrl`. It answers
+   * `$app.*` in place of the harness's `http://localhost:<port>` default, and
+   * — when its scheme is `https` — it is what satisfies an `https-origin`
+   * entry (D-60 rule 5: one channel, not two).
+   */
+  appUrl?: string;
+}
+
+/** The backing-service type that declares the app's public HTTPS origin (D-60). */
+const HTTPS_ORIGIN = "https-origin";
+
+/**
+ * Wire one satisfied `https-origin` entry: register its single property and
+ * resolve its `set_env` against it, exactly as the Docker provider does for a
+ * supplied resource. `url` IS `$app.url` — one derivation, one value.
+ */
+function applyHttpsOrigin(
+  entry: NormalizedRequirement,
+  env: Record<string, string>,
+  baseCtx: ResolverContext,
+  resources: Record<string, Record<string, string>>,
+  appCtx: Record<string, string | number>,
+): void {
+  const properties = { url: String(appCtx.url) };
+  resources[entry.name ?? entry.type] = properties;
+  if (!entry.set_env) return;
+  const scopedCtx: ResolverContext = { ...baseCtx, resource: properties, resources };
+  for (const [envKey, expr] of Object.entries(entry.set_env)) {
+    env[envKey] = resolveExpression(expr, scopedCtx);
+  }
 }
 
 export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}): ComposeResult {
@@ -273,6 +316,7 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
   const images: string[] = [];
   const unsuppliedRequired: ComposeResult["unsuppliedRequired"] = [];
   const storageRefusals: ComposeResult["storageRefusals"] = [];
+  const originRefusals: ComposeResult["originRefusals"] = [];
   const services: Record<string, Record<string, unknown>> = {};
   const volumes: Record<string, Record<string, unknown>> = {};
 
@@ -291,6 +335,14 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
       else if (secret.generator === "port") secretValues[name] = generatePort();
     }
   }
+
+  // Whether an `https-origin` entry can be satisfied at all on this run
+  // (D-60 rule 5). The harness runs no edge, so the only satisfaction is an
+  // `https://` URL the caller supplied; the probe is computed once, from the
+  // same derivation every component's $app.* uses.
+  const appPropertiesProbe = computeAppProperties(launch, undefined, opts.appUrl);
+  const httpsOriginSatisfied =
+    opts.appUrl !== undefined && appPropertiesProbe.scheme === "https";
 
   // App-wide resource properties for $<resource>.prop set_env resolution, shared
   // across components like the Docker provider's resourceMap (compose-generator).
@@ -330,6 +382,26 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
         `${componentName}: requires host capabilities this harness cannot grant ` +
           `(${refusedCapabilities.join("; ")}) — skipped`,
       );
+      continue;
+    }
+
+    // A required `https-origin` (D-60) this run cannot satisfy REFUSES the
+    // component, as the shipped Docker provider does. The harness has no edge
+    // of its own; the only satisfaction it can offer is an `https://` appUrl
+    // the caller supplied. No probe — the check is on the scheme alone.
+    const originRefused = (component.requires ?? [])
+      .filter((r) => r.type === HTTPS_ORIGIN)
+      .filter(() => !httpsOriginSatisfied)
+      .map((r) => ({
+        component: componentName,
+        entry: `${r.name ?? r.type} (endpoint "${r.endpoint ?? "?"}")`,
+        message:
+          opts.appUrl === undefined
+            ? "no publication URL supplied — pass --url https://<host>"
+            : `the supplied publication URL's scheme is "${String(appPropertiesProbe.scheme)}", not https`,
+      }));
+    if (originRefused.length > 0) {
+      originRefusals.push(...originRefused);
       continue;
     }
 
@@ -414,7 +486,11 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
     // http://localhost:<port>. The component context (secrets, storage, app)
     // is shared by both `env:` defaults and `set_env`, exactly as the
     // providers resolve them.
-    const appCtx: Record<string, string | number> = computeAppProperties(launch, undefined);
+    const appCtx: Record<string, string | number> = computeAppProperties(
+      launch,
+      undefined,
+      opts.appUrl,
+    );
     const baseCtx: ResolverContext = { secrets: secretValues, storage: storageCtx, app: appCtx, components };
 
     // Resolve env vars from the Launchfile
@@ -433,6 +509,13 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
     if (component.requires?.length) {
       for (const req of component.requires) {
         if (req.host) continue; // capability, not a backing service (D-44)
+        if (req.type === HTTPS_ORIGIN) {
+          // Reached only when satisfied — the refusal above skipped the
+          // component otherwise. One registered property, `url` (D-60 rule
+          // 4), holding the same string as `$app.url`.
+          applyHttpsOrigin(req, env, baseCtx, resources, appCtx);
+          continue;
+        }
         const backingResult = addBackingService(
           launch.name,
           serviceName,
@@ -463,6 +546,21 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
             condition: "service_healthy",
           };
         }
+      }
+    }
+
+    // `supports: https-origin` (D-60 rule 6) — the optional mood. Satisfied,
+    // it wires like any other resource; unsatisfied, the component still runs
+    // and its set_env bindings are simply absent.
+    for (const sup of component.supports ?? []) {
+      if (sup.type !== HTTPS_ORIGIN) continue;
+      if (httpsOriginSatisfied) {
+        applyHttpsOrigin(sup, env, baseCtx, resources, appCtx);
+      } else {
+        warnings.push(
+          `${componentName}: optional public HTTPS origin ${sup.name ?? sup.type} ` +
+            `(endpoint "${sup.endpoint ?? "?"}") not satisfied — running degraded`,
+        );
       }
     }
 
@@ -606,6 +704,7 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
     images: [...new Set(images)],
     unsuppliedRequired,
     storageRefusals,
+    originRefusals,
   };
 }
 

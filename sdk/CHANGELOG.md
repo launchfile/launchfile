@@ -1,5 +1,48 @@
 # @launchfile/sdk
 
+## 0.9.0
+
+### Minor Changes
+
+- [#484](https://github.com/launchfile/launchfile/pull/484) [`b5022ae`](https://github.com/launchfile/launchfile/commit/b5022aed608e2ccd65857fb9a045337faeb94830) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - `formatCaptures(captures, captureMeta, reveal)` — the one display formatter for a command's captures ([#464](https://github.com/launchfile/launchfile/issues/464)).
+  
+  A capture declared `sensitive: true` prints as `***` on every display surface unless `reveal` is true, and a masked list ends with one hint line naming `launchfile bootstrap --reveal`. Non-sensitive captures print the same either way. `sensitiveCaptureValues` returns the values a provider must register with its redactor. The SDK returns lines; the provider prints them. `CAPTURE_MASK` and `REVEAL_HINT` are exported so tests and providers agree on the text.
+
+## 0.8.0
+
+### Minor Changes
+
+- [#468](https://github.com/launchfile/launchfile/pull/468) [`fc92434`](https://github.com/launchfile/launchfile/commit/fc9243433293ac0c2061d25f6c83b352985c023f) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Add the `tls:` certificate binding: a `provides` entry can name one `supports:` entry of type `certificate` on the same component, and while that binding is active the entry's **effective** listener protocol is `https` (D-61).
+  
+  `tls: server-cert` is shorthand for `tls: { certificate: server-cert }`; both spellings parse, normalize and serialize, and are mirrored in `spec/schema/launchfile.schema.json`. The object form is strict — an unknown key inside it is an error, because a binding-level `port:` override is Left open and strip mode would accept one and silently drop it.
+  
+  Five cross-field rules are hard validation errors, none of them visible per entry:
+  
+  - the bound `provides` entry declares an HTTP-family listener (`http`, `https`, `ws`, `grpc`) — `tls:` on a `tcp` or `udp` entry is rejected, naming the entry and its protocol, on the family line D-60 rule 2 draws for `https-origin`;
+  - the named certificate exists in the **same component's** `supports:`;
+  - that entry declares `type: certificate`;
+  - no certificate is bound by two `provides` entries;
+  - a binding naming a `requires:` entry is rejected as out of scope, with a message pointing at the follow-up.
+  
+  New API: `effectiveListener(entry, activeCertificates)` returns the declared and effective protocol/port for one `provides` entry — one definition, so validation and tooling read the declared value while every URL-emitting expression reads the effective one. `boundCertificate`, `certificateBindings` and the `CERTIFICATE` type constant come with it.
+  
+  The registry gains `certificate: { cert_file, key_file }` — two app-filesystem paths and no address. `key_file` is credential-bearing whatever its vocabulary membership.
+  
+  Every file that declares no `tls:` parses, validates and serializes exactly as before.
+
+- [#465](https://github.com/launchfile/launchfile/pull/465) [`dc8a759`](https://github.com/launchfile/launchfile/commit/dc8a75968f56be9811d9feda38ceb640e453be9b) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Add the `https-origin` backing-service type: an app can declare that browsers must reach it at a public origin whose scheme is `https` (D-60).
+  
+  A `requires`/`supports` entry of that type carries a new optional field, `endpoint`, naming the `provides` entry the origin fronts by its `name` (D-6). The field is parsed, normalized and serialized, so it survives a parse → serialize round trip, and is mirrored in `spec/schema/launchfile.schema.json`.
+  
+  Two cross-field rules are hard validation errors, because neither can be seen per entry and a silently skipped declaration is the failure the type exists to remove:
+  
+  - **Rule 2** — `endpoint` is required on an `https-origin` entry and rejected on any other type. The entry must sit on the component that owns the endpoint (top level in a file that declares `components:` is an error), the name must match exactly one `provides` entry on that component, and that entry must be `exposed: true` with an HTTP-family listener — `http`, `https`, `ws`, or `grpc`. Naming a `tcp` or `udp` entry fails, quoting the endpoint and its protocol.
+  - **Rule 3** — an app declares at most one `https-origin` entry.
+  
+  The registry gains `https-origin: { url }` — one property, the public origin, the same string `$app.url` resolves to.
+  
+  Every file that declares no `https-origin` entry parses, validates and serializes exactly as before.
+
 ## 0.7.0
 
 ### Minor Changes

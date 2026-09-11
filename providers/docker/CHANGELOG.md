@@ -1,5 +1,55 @@
 # @launchfile/docker
 
+## 0.9.0
+
+### Minor Changes
+
+- [#484](https://github.com/launchfile/launchfile/pull/484) [`b5022ae`](https://github.com/launchfile/launchfile/commit/b5022aed608e2ccd65857fb9a045337faeb94830) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - `dockerBootstrap({ reveal })` prints sensitive captures on the operator's explicit request, and every sensitive capture registers with the redactor at extraction ([#464](https://github.com/launchfile/launchfile/issues/464)).
+  
+  A bootstrap capture declared `sensitive: true` prints masked with a hint naming `launchfile bootstrap --reveal`; `reveal: true` prints the value. Masking is display only: the value is registered with the redactor before any result, failure record, or log line is built — also under `reveal` — so a bootstrap that fails after producing the value no longer carries it raw into the record `launchfile diagnose` prints. Each bootstrap command now leaves one debug log line (component, exit code, captured keys, scrubbed stderr on failure). `release` captures use the same formatter, always masked, and register the same way.
+
+- [#474](https://github.com/launchfile/launchfile/pull/474) [`e74e0b3`](https://github.com/launchfile/launchfile/commit/e74e0b32ef61d854e878bbfec8afd9cd52c2e6a0) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - One derivation of a published endpoint's address ([#473](https://github.com/launchfile/launchfile/issues/473)).
+  
+  Three places used to mint the address of a host-published endpoint independently, and they had drifted. An entry declaring `protocol: https` with no certificate binding resolved `$app.url` to `http://localhost:<port>` while `status` and `up` printed `https://localhost:<port>` for that same entry — so the app was configured with one origin and the operator was told another. An active certificate binding on a declared-`http` entry drifted the other way.
+  
+  `publishedAddress(effectiveProtocol, hostPort, appUrl?)` is now the single derivation, exported from the package. It returns the `host`/`port`/`url`/`authority`/`scheme`/`tls` set with the rules already ratified: the scheme is `https` exactly when the listener's **effective** protocol is `https` (D-61 rule 2), `ws` and `grpc` keep the http origin (D-60 rule 4), and a supplied `appUrl` wins outright (D-58 rules 2 and 5). `$app.*`, `endpointAddress`, and the endpoint metadata the compose generator persists all read it, so the primary endpoint's `$app.url` and its printed address are now byte-identical.
+  
+  The persisted endpoint protocol is the effective one, not the declared one. Output is unchanged for every Launchfile that declares neither `protocol: https` nor `tls:`.
+
+### Patch Changes
+
+- Updated dependencies [[`b5022ae`](https://github.com/launchfile/launchfile/commit/b5022aed608e2ccd65857fb9a045337faeb94830)]:
+  - @launchfile/sdk@0.9.0
+
+## 0.8.0
+
+### Minor Changes
+
+- [#468](https://github.com/launchfile/launchfile/pull/468) [`fc92434`](https://github.com/launchfile/launchfile/commit/fc9243433293ac0c2061d25f6c83b352985c023f) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Activate a certificate binding, or refuse before launch (D-61 rule 5).
+  
+  Selection is arrival through `ComposeOpts.resources` — the D-56 supplied-resource channel every other optional resource already uses here, keyed by the certificate entry's `name ?? type`. Three states, no fourth:
+  
+  - **not selected** — the component deploys its declared HTTP baseline, the binding's `set_env` is absent, and the un-granted dependency is noted (D-8);
+  - **selected and satisfied** (`cert_file` and `key_file` both supplied) — the binding's `set_env` is written after `env:`, so it wins over a same-named `env:` declaration (PROVIDERS.md §7), and the entry's effective protocol becomes `https`;
+  - **selected but unsatisfied**, either property missing — the component is **refused before launch** with a message naming the entry and what is missing. Never a fall back to HTTP.
+  
+  `$components.<name>.url` and the provider's own `$app.url` now read the **effective** protocol: a sibling of a TLS-active component gets `https://…`. An orchestrator-supplied `appUrl` still wins (D-58 rule 5). Output is byte-identical for every Launchfile that declares no `tls:`.
+  
+  `key_file` — and every `*_key` / `*_key_file` property name — now registers with the redactor whatever its vocabulary membership. Registering `certificate` moved `key_file` *inside* a vocabulary, which would otherwise have switched its fail-closed redaction off and let private-key paths reach diagnostics (CWE-532). D-56 rule 3 still stands: no path is opened, parsed or probed.
+
+- [#465](https://github.com/launchfile/launchfile/pull/465) [`dc8a759`](https://github.com/launchfile/launchfile/commit/dc8a75968f56be9811d9feda38ceb640e453be9b) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Satisfy or refuse an `https-origin` entry, and let a declared one fix the app's primary endpoint (D-60).
+  
+  This provider runs no edge of its own, so the only satisfaction it can offer is an origin the orchestrator already owns, supplied through `ComposeOpts.appUrl` — which for this type IS the supplied-resource channel (D-56), not a second one. With an `https://` value the entry's `url` resolves to it and its `set_env` is wired; with an `http://` one, or none, a `requires:` entry **refuses the component** with a surfaced `refused: …` message naming the entry and the supplied scheme, and a `supports:` entry is left unfulfilled with a note. No branch makes a network request: D-56 rule 3 stands, and the provider does not verify the origin exists.
+  
+  `computeAppProperties` now resolves `$app.*` from the endpoint an `https-origin` entry names, when the file declares one, instead of from the first published endpoint in declaration order. **Declaration** fixes it, not fulfillment, so `$app.*` does not change value with what the provider can satisfy. `$components.<name>.url` is untouched. Apps that declare no such entry keep the positional answer, byte for byte.
+  
+  A new export, `declaredPrimaryEndpoint(launch)`, returns that endpoint (component, name, allocation key, container port) or `undefined`.
+
+### Patch Changes
+
+- Updated dependencies [[`fc92434`](https://github.com/launchfile/launchfile/commit/fc9243433293ac0c2061d25f6c83b352985c023f), [`dc8a759`](https://github.com/launchfile/launchfile/commit/dc8a75968f56be9811d9feda38ceb640e453be9b)]:
+  - @launchfile/sdk@0.8.0
+
 ## 0.7.1
 
 ### Patch Changes
