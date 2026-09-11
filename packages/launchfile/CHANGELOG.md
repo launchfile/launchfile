@@ -1,5 +1,27 @@
 # launchfile
 
+## 0.9.0
+
+### Minor Changes
+
+- [#484](https://github.com/launchfile/launchfile/pull/484) [`b5022ae`](https://github.com/launchfile/launchfile/commit/b5022aed608e2ccd65857fb9a045337faeb94830) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - `launchfile bootstrap --reveal` prints the captures an app marks `sensitive` ([#464](https://github.com/launchfile/launchfile/issues/464)).
+  
+  Masking stays the default: a sensitive capture prints as `***` followed by one line naming the flag. `--reveal` is a bare boolean — no alias, no value, no terminal heuristic — and reveals every sensitive capture of that one run on either provider. It changes what the terminal prints only; the provider registers the value with its redactor either way, so it never reaches a log, a state file, or the failure record `diagnose` shows.
+
+### Patch Changes
+
+- Updated dependencies [[`b5022ae`](https://github.com/launchfile/launchfile/commit/b5022aed608e2ccd65857fb9a045337faeb94830), [`b5022ae`](https://github.com/launchfile/launchfile/commit/b5022aed608e2ccd65857fb9a045337faeb94830), [`e74e0b3`](https://github.com/launchfile/launchfile/commit/e74e0b32ef61d854e878bbfec8afd9cd52c2e6a0)]:
+  - @launchfile/docker@0.9.0
+  - @launchfile/sdk@0.9.0
+
+## 0.8.0
+
+### Patch Changes
+
+- Updated dependencies [[`fc92434`](https://github.com/launchfile/launchfile/commit/fc9243433293ac0c2061d25f6c83b352985c023f), [`fc92434`](https://github.com/launchfile/launchfile/commit/fc9243433293ac0c2061d25f6c83b352985c023f), [`dc8a759`](https://github.com/launchfile/launchfile/commit/dc8a75968f56be9811d9feda38ceb640e453be9b), [`dc8a759`](https://github.com/launchfile/launchfile/commit/dc8a75968f56be9811d9feda38ceb640e453be9b)]:
+  - @launchfile/docker@0.8.0
+  - @launchfile/sdk@0.8.0
+
 ## 0.7.1
 
 ### Patch Changes

@@ -714,3 +714,132 @@ describe("reference grammar parity across positions", () => {
 		expect(resolveExpression("x $$secrets.api-key", ctx)).toBe("x $secrets.api-key");
 	});
 });
+
+/*--- test-spec
+title: inherited Object.prototype keys degrade to empty string (D-33, D-39, L-4)
+covers:
+  - the seven Object.prototype keys resolve to "" in every namespace
+  - a prototype key used as a resource/volume/component NAME degrades too
+  - $secrets.* never returns a non-string
+  - a real property legitimately spelled like a prototype key still resolves
+  - $__proto__ is unreachable — the grammar needs a letter after $
+tags: [launch-spec, resolver, prototype-keys, d-33, d-39, l-4]
+---*/
+describe("resolveExpression — inherited prototype keys (D-33, D-39, L-4)", () => {
+	// Every Object.prototype own key reachable through the reference grammar.
+	// `__proto__` is an accessor on Object.prototype, the other six are methods
+	// or the constructor.
+	const PROTO_KEYS = [
+		"constructor",
+		"__proto__",
+		"toString",
+		"valueOf",
+		"hasOwnProperty",
+		"isPrototypeOf",
+		"propertyIsEnumerable",
+	] as const;
+
+	const ctx = {
+		app: { url: "https://my-app.example.com" },
+		secrets: { token: "abc123" },
+		components: { web: { host: "web", port: 8080 } },
+		storage: { data: { path: "/srv/app/data" } },
+		resource: { host: "db", port: 5432 },
+		resources: { postgres: { host: "db" } },
+	};
+
+	for (const key of PROTO_KEYS) {
+		it(`resolves inherited "${key}" to empty string in every namespace`, () => {
+			// Property position — the key names a property on a known object.
+			expect(resolveExpression(`$app.${key}`, ctx)).toBe("");
+			expect(resolveExpression(`$secrets.${key}`, ctx)).toBe("");
+			expect(resolveExpression(`$components.web.${key}`, ctx)).toBe("");
+			expect(resolveExpression(`$storage.data.${key}`, ctx)).toBe("");
+			expect(resolveExpression(`$postgres.${key}`, ctx)).toBe("");
+
+			// Name position — the key names the resource / component / volume
+			// itself. An unguarded lookup here passes the truthiness check and
+			// then finds real own properties on the inherited value.
+			expect(resolveExpression(`$components.${key}.host`, ctx)).toBe("");
+			expect(resolveExpression(`$storage.${key}.path`, ctx)).toBe("");
+			// `$__proto__...` is not a reference at all — the grammar needs a letter
+			// after `$`, so it stays literal text (asserted separately below).
+			if (key !== "__proto__") {
+				expect(resolveExpression(`$${key}.host`, ctx)).toBe("");
+			}
+		});
+	}
+
+	it("resolves a bare single-segment prototype key to empty string", () => {
+		for (const key of PROTO_KEYS) {
+			if (key === "__proto__") continue; // not reachable — see below
+			expect(resolveExpression(`$${key}`, ctx)).toBe("");
+		}
+	});
+
+	// The four cases a guard on the property lookups alone would still fail:
+	// `constructor` is truthy, and `name`/`length` are own properties of every
+	// function, so the inner check succeeds on the inherited value.
+	it("does not leak Function.name through an unguarded volume name", () => {
+		expect(resolveExpression("$storage.constructor.name", ctx)).toBe("");
+	});
+
+	it("does not leak Function.length through an unguarded volume name", () => {
+		expect(resolveExpression("$storage.constructor.length", ctx)).toBe("");
+	});
+
+	it("does not leak the prototype object through $app.__proto__", () => {
+		expect(resolveExpression("$app.__proto__", ctx)).toBe("");
+	});
+
+	it("never returns a non-string from the $secrets branch", () => {
+		for (const key of PROTO_KEYS) {
+			expect(typeof resolveExpression(`$secrets.${key}`, ctx)).toBe("string");
+		}
+	});
+
+	it("applies the :-default fallback to an inherited key", () => {
+		expect(resolveExpression("${app.constructor:-none}", ctx)).toBe("none");
+		expect(resolveExpression("${storage.constructor.name:-none}", ctx)).toBe("none");
+	});
+
+	// The guard must not break real data. A resource, component, volume, secret
+	// or app property genuinely spelled like a prototype key is an own property,
+	// so it resolves normally (L-4: the vocabulary is open).
+	it("still resolves a real own property spelled like a prototype key", () => {
+		const shadowed = {
+			app: { toString: "app-to-string" },
+			secrets: { constructor: "secret-value" },
+			components: { valueOf: { host: "vo-host" } },
+			storage: { constructor: { path: "/srv/ctor" } },
+			resource: { hasOwnProperty: "own-prop" },
+			resources: { toString: { host: "ts-host" } },
+		};
+		expect(resolveExpression("$app.toString", shadowed)).toBe("app-to-string");
+		expect(resolveExpression("$secrets.constructor", shadowed)).toBe("secret-value");
+		expect(resolveExpression("$components.valueOf.host", shadowed)).toBe("vo-host");
+		expect(resolveExpression("$storage.constructor.path", shadowed)).toBe("/srv/ctor");
+		expect(resolveExpression("$hasOwnProperty", shadowed)).toBe("own-prop");
+		expect(resolveExpression("$toString.host", shadowed)).toBe("ts-host");
+	});
+
+	// The dotted-key-then-last-segment double fallback still probes both keys.
+	it("keeps the dotted-key → last-segment fallback on guarded lookups", () => {
+		const nested = {
+			components: { web: { host: "web-host" } },
+			resources: { postgres: { host: "pg-host" } },
+		};
+		expect(resolveExpression("$components.web.deep.host", nested)).toBe("web-host");
+		expect(resolveExpression("$postgres.deep.host", nested)).toBe("pg-host");
+	});
+
+	// The reference grammar requires a letter after `$`, so `$__proto__` never
+	// becomes a reference at all — it stays literal text.
+	it("treats a bare $__proto__ as a literal, not a reference", () => {
+		expect(parseExpression("$__proto__")).toEqual({
+			kind: "template",
+			parts: [{ kind: "text", value: "$__proto__" }],
+		});
+		expect(resolveExpression("$__proto__", ctx)).toBe("$__proto__");
+	});
+});

@@ -3,6 +3,10 @@ version: launch/v1
 name: chatwoot
 description: "Open-source customer support platform"
 
+secrets:
+  secret-key-base:
+    generator: secret
+
 components:
   web:
     image: chatwoot/chatwoot:latest
@@ -19,7 +23,7 @@ components:
           REDIS_URL: $url
     env:
       SECRET_KEY_BASE:
-        generator: secret
+        default: "$secrets.secret-key-base"
         sensitive: true
       FRONTEND_URL:
         required: true
@@ -44,7 +48,7 @@ components:
           REDIS_URL: $url
     env:
       SECRET_KEY_BASE:
-        generator: secret
+        default: "$secrets.secret-key-base"
         sensitive: true
       RAILS_ENV:
         default: "production"
