@@ -20,13 +20,19 @@
 
 import {
 	type CaptureEntry,
+	formatCaptures,
 	type NormalizedLaunch,
 	parseDurationMs,
 	type ResolverContext,
 	resolveExpression,
+	sensitiveCaptureValues,
 } from "@launchfile/sdk";
 import { computeAppProperties, extractCaptures } from "./bootstrap.js";
-import { redactSecrets, registerSecrets } from "./redact.js";
+import {
+	redactSecrets,
+	registerDeclaredSecret,
+	registerSecrets,
+} from "./redact.js";
 import { shell } from "./shell.js";
 
 /** Default budget for a release one-shot when no `timeout` is declared. */
@@ -223,14 +229,16 @@ export async function runReleases(
 
 		if (item.capture) {
 			const captures = extractCaptures(stdout, item.capture);
-			if (Object.keys(captures).length > 0) {
-				console.log("  Captured:");
-				for (const [key, value] of Object.entries(captures)) {
-					const meta = item.capture[key];
-					const displayValue = meta?.sensitive ? "***" : value;
-					const desc = meta?.description ? ` — ${meta.description}` : "";
-					console.log(`    ${key}: ${displayValue}${desc}`);
-				}
+			// Declared secrets register before anything else sees them (D-18,
+			// CWE-532) — the same discipline as bootstrap captures.
+			for (const value of sensitiveCaptureValues(captures, item.capture)) {
+				registerDeclaredSecret(value);
+			}
+			// Release captures are always masked: `release` runs inside `up`,
+			// not on an operator's own invocation, and no reveal path exists for
+			// it — so the hint that names one is left out.
+			for (const line of formatCaptures(captures, item.capture, false, { hint: false })) {
+				console.log(line);
 			}
 		}
 

@@ -141,6 +141,8 @@ Options:
                     member's required services (D-41). Comma-separated and
                     repeatable; omit it to start every component (with up, dev)
   --component <n>  Limit bootstrap to a single component
+  --reveal         (bootstrap) Print captures marked \`sensitive\` instead of
+                    masking them — they never reach logs or state either way
   --detached       (validate) Evaluate as fetched standalone, not read from the
                     app's own checkout — enables the D-43 reduced-portability check
   --json           Machine-readable output (with diagnose, validate)
@@ -234,6 +236,9 @@ async function main(): Promise<void> {
 			await handleBootstrap(target, {
 				component: getFlagValue("component"),
 				components: flagAsTyped("components"),
+				// `flagPresent` matches `--reveal` and `--reveal=<anything>`, so
+				// `--reveal=false` also reveals — the rule for every boolean flag here (#485).
+				reveal: argsFlagPresent(args, "reveal"),
 			});
 			break;
 

@@ -7,9 +7,15 @@ logo: https://raw.githubusercontent.com/grocy/grocy/master/public/img/grocy_logo
 
 image: linuxserver/grocy:latest
 provides:
-  - protocol: http
+  - name: web
+    protocol: http
     port: 80
     exposed: true
+supports:
+  # Camera barcode scanning needs a secure connection; the rest of the app
+  # works over plain HTTP, so this is the optional mood (README.md:98).
+  - type: https-origin
+    endpoint: web
 storage:
   config:
     path: /config
