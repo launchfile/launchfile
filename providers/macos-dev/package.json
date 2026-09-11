@@ -40,11 +40,11 @@
     "semver": "^7.7.4"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.10",
+    "@biomejs/biome": "^2.5.12",
     "@launchfile/docker": "^0.7.1",
-    "@types/bun": "^1.3.11",
+    "@types/bun": "^1.4.2",
     "@types/semver": "^7.7.1",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.3"
+    "vitest": "^5.0.0"
   }
 }
