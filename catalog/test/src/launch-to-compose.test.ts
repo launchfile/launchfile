@@ -569,7 +569,7 @@ components:
 });
 
 /**
- * `https-origin` (D-next): the harness's publication-context channel, and the
+ * `https-origin` (D-60): the harness's publication-context channel, and the
  * refusal that keeps it from certifying an app it could not honestly deploy.
  *
  * The harness runs no edge, so the only satisfaction it can offer is an
@@ -577,7 +577,7 @@ components:
  * `requires:` entry and leaves a `supports:` one unfulfilled — matching
  * `@launchfile/docker`, which is the point of the harness existing.
  */
-describe("https-origin (D-next)", () => {
+describe("https-origin (D-60)", () => {
   const REQUIRES = `
 name: vaultwarden
 image: vaultwarden/server:latest

@@ -7,7 +7,7 @@
  *
  * `--url` is the harness's publication-context channel (D-58), the same input
  * the Docker provider takes as `ComposeOpts.appUrl`: it answers `$app.*`, and
- * an `https://` value is what satisfies an app's `https-origin` entry (D-next).
+ * an `https://` value is what satisfies an app's `https-origin` entry (D-60).
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
@@ -128,12 +128,12 @@ if (result.unsuppliedRequired.length > 0) {
 }
 
 // A required `https-origin` this run cannot satisfy is a hard failure for the
-// same reason (D-next rule 5): the shipped Docker provider refuses the
+// same reason (D-60 rule 5): the shipped Docker provider refuses the
 // component, so starting it here and recording `health_check_passed: true`
 // would certify a deployment whose own web client does not work. Fails before
 // any pull, container, or volume exists.
 if (result.originRefusals.length > 0) {
-  console.error(`\n=== ${appName}: FAIL — required HTTPS origin not satisfied (D-next) ===`);
+  console.error(`\n=== ${appName}: FAIL — required HTTPS origin not satisfied (D-60) ===`);
   for (const { component, entry, message } of result.originRefusals) {
     console.error(`  - ${appName} [${component}]: ${entry} — ${message}`);
   }

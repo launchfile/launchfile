@@ -246,7 +246,7 @@ export interface ComposeResult {
   storageRefusals: { component: string; volume: string; message: string }[];
   /**
    * `https-origin` entries in `requires:` that this run cannot satisfy
-   * (D-next rule 5): no `appUrl` was supplied, or the supplied one is not
+   * (D-60 rule 5): no `appUrl` was supplied, or the supplied one is not
    * `https://`. The component is ABSENT from the emitted compose — the same
    * refusal `@launchfile/docker` performs. The runner turns a non-empty list
    * into a hard failure naming the app and the entry, exactly as it does for
@@ -282,12 +282,12 @@ export interface ComposeOpts {
    * same input as the Docker provider's `ComposeOpts.appUrl`. It answers
    * `$app.*` in place of the harness's `http://localhost:<port>` default, and
    * — when its scheme is `https` — it is what satisfies an `https-origin`
-   * entry (D-next rule 5: one channel, not two).
+   * entry (D-60 rule 5: one channel, not two).
    */
   appUrl?: string;
 }
 
-/** The backing-service type that declares the app's public HTTPS origin (D-next). */
+/** The backing-service type that declares the app's public HTTPS origin (D-60). */
 const HTTPS_ORIGIN = "https-origin";
 
 /**
@@ -337,7 +337,7 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
   }
 
   // Whether an `https-origin` entry can be satisfied at all on this run
-  // (D-next rule 5). The harness runs no edge, so the only satisfaction is an
+  // (D-60 rule 5). The harness runs no edge, so the only satisfaction is an
   // `https://` URL the caller supplied; the probe is computed once, from the
   // same derivation every component's $app.* uses.
   const appPropertiesProbe = computeAppProperties(launch, undefined, opts.appUrl);
@@ -385,7 +385,7 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
       continue;
     }
 
-    // A required `https-origin` (D-next) this run cannot satisfy REFUSES the
+    // A required `https-origin` (D-60) this run cannot satisfy REFUSES the
     // component, as the shipped Docker provider does. The harness has no edge
     // of its own; the only satisfaction it can offer is an `https://` appUrl
     // the caller supplied. No probe — the check is on the scheme alone.
@@ -511,7 +511,7 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
         if (req.host) continue; // capability, not a backing service (D-44)
         if (req.type === HTTPS_ORIGIN) {
           // Reached only when satisfied — the refusal above skipped the
-          // component otherwise. One registered property, `url` (D-next rule
+          // component otherwise. One registered property, `url` (D-60 rule
           // 4), holding the same string as `$app.url`.
           applyHttpsOrigin(req, env, baseCtx, resources, appCtx);
           continue;
@@ -549,7 +549,7 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
       }
     }
 
-    // `supports: https-origin` (D-next rule 6) — the optional mood. Satisfied,
+    // `supports: https-origin` (D-60 rule 6) — the optional mood. Satisfied,
     // it wires like any other resource; unsatisfied, the component still runs
     // and its set_env bindings are simply absent.
     for (const sup of component.supports ?? []) {
