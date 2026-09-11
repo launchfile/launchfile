@@ -12,7 +12,7 @@ import {
 	selectionClosure,
 	UnboundOperatorStorageError,
 } from "@launchfile/sdk";
-import { normalizeAppUrl } from "./app-url.js";
+import { normalizeAppUrl, publishedAddress } from "./app-url.js";
 import { checkPrereqs, composeSupportsIgnoreBuildable } from "./prereqs.js";
 import { resolveSource } from "./source-resolver.js";
 import {
@@ -896,11 +896,16 @@ export function componentOfPortKey(
  * because an `http://` link to an SMTP or DNS port would be wrong. Keys with
  * no endpoint metadata (state files written by older versions) keep the
  * legacy `http://` form.
+ *
+ * The http/https choice is NOT made here: `publishedAddress` makes it, the
+ * same call `$app.url` goes through, so the address printed to the operator
+ * and the address written into the app's own config are one derivation
+ * (#473). `protocol` is the endpoint's EFFECTIVE protocol as persisted in
+ * state (D-61 rule 2), which is why an active certificate needs no second
+ * branch here.
  */
 export function endpointAddress(port: number, protocol?: string): string {
 	switch (protocol) {
-		case "https":
-			return `https://localhost:${port}`;
 		case "ws":
 			return `ws://localhost:${port}`;
 		case "tcp":
@@ -908,7 +913,7 @@ export function endpointAddress(port: number, protocol?: string): string {
 		case "grpc":
 			return `localhost:${port} (${protocol})`;
 		default:
-			return `http://localhost:${port}`;
+			return publishedAddress(protocol, port).url;
 	}
 }
 

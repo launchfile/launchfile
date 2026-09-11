@@ -24,7 +24,11 @@ import {
 	unsuppliedRequiredEnv,
 } from "@launchfile/sdk";
 import { stringify } from "yaml";
-import { computeAppProperties, HTTPS_ORIGIN } from "./app-url.js";
+import {
+	computeAppProperties,
+	HTTPS_ORIGIN,
+	publishedEndpointAddresses,
+} from "./app-url.js";
 import {
 	certificateRefusalMessage,
 	planCertificates,
@@ -34,7 +38,6 @@ import {
 	registerSuppliedEnv,
 	registerSuppliedResourceProperties,
 } from "./env-secrets.js";
-import { publishedEndpoints } from "./port-allocator.js";
 import { registerSecret } from "./redact.js";
 import type { StateEndpoint } from "./state.js";
 
@@ -967,11 +970,14 @@ export function launchToCompose(
 			// `exposed: false`, which speaks to the host boundary and not to the
 			// container network.
 			//
-			// The scheme is the EFFECTIVE protocol of that entry (D-61 rule
-			// 2): `https` exactly when a certificate bound to it is active,
-			// `http` for every other app — byte-identical to before for any
-			// file that declares no `tls:`. The remaining hardcoded `http://`
-			// for non-web listener protocols is #391's scope, not this one.
+			// The scheme here follows `effectiveListener(...).active` — `https`
+			// only when a certificate bound to the entry is active. That is NOT
+			// the effective protocol of D-61 rule 2, which is also `https` when
+			// the entry declares `protocol: https` with no binding; this site
+			// writes `http://` for that entry. #391 tracks the fix, along with
+			// the hardcoded `http://` for non-web listener protocols. The
+			// published-address derivation below reads
+			// `effectiveListener(...).protocol` and does not share this defect.
 			const primaryListener = effectiveListener(
 				component.provides[0]!,
 				certificates.active,
@@ -994,19 +1000,30 @@ export function launchToCompose(
 			// app-level check after this loop catches the case that actually
 			// leaves the user stranded.
 			declaredProvides = true;
-			const published = publishedEndpoints(componentName, component.provides);
+			// One derivation of every published endpoint's address (#473):
+			// `status`/`up` print `endpointAddress(hostPort, protocol)` from
+			// this metadata, and `$app.*` reads the same derivation for the
+			// primary, so the persisted protocol is the EFFECTIVE one (D-61
+			// rule 2). The compose port mapping below still reads the DECLARED
+			// protocol — `/udp` is a wire-level fact a certificate cannot move.
+			const published = publishedEndpointAddresses(
+				componentName,
+				component.provides,
+				opts.hostPorts,
+				certificates.active,
+			);
 			if (published.length > 0) {
 				const seen = new Set<string>();
 				const mappings: string[] = [];
 				for (const endpoint of published) {
-					const hostPort = opts.hostPorts?.[endpoint.key] ?? endpoint.port;
+					const hostPort = endpoint.hostPort;
 					ports[endpoint.key] = hostPort;
 					endpoints[endpoint.key] = {
 						component: componentName,
 						name: endpoint.name,
 						containerPort: endpoint.port,
 						hostPort,
-						protocol: endpoint.protocol,
+						protocol: endpoint.effectiveProtocol,
 					};
 					const bind =
 						endpoint.bind && endpoint.bind !== "0.0.0.0"
