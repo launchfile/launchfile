@@ -19,7 +19,8 @@ import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import { parse } from "yaml";
 import { readLaunch } from "../../../sdk/src/reader.ts";
-import { launchToCompose } from "./launch-to-compose.ts";
+import { resourcePropertyKeys } from "../../../providers/docker/src/compose-generator.ts";
+import { harnessBackingServiceTypes, launchToCompose } from "./launch-to-compose.ts";
 
 /** Compose a Launchfile YAML and return the resolved `environment` for a service. */
 function envOf(yaml: string, serviceName: string): Record<string, string> {
@@ -344,8 +345,12 @@ env:
   });
 
   // 5
-  it("does NOT treat a binding on an unmappable resource as supplying the value", () => {
-    const { yaml, unsuppliedRequired } = compose(`
+  it("does NOT treat a binding on an unprovisionable resource as supplying the value", () => {
+    // `sqlite` has no factory here, so the binding can never inject. The
+    // component is refused before its environment is resolved (D-next):
+    // the key is absent, and a component that is not launching reports no
+    // unsupplied variable — the runner fails on the refusal instead.
+    const { yaml, unsuppliedRequired, resourceRefusals } = compose(`
 name: app
 image: acme/app:1
 requires:
@@ -358,9 +363,9 @@ env:
     sensitive: true
 `);
     expect(yaml).not.toContain("DB_URL");
-    expect(unsuppliedRequired).toEqual([
-      { component: "default", key: "DB_URL", sensitive: true },
-    ]);
+    expect(yaml).not.toContain("acme/app:1");
+    expect(resourceRefusals.map((r) => r.entry)).toEqual(["sqlite"]);
+    expect(unsuppliedRequired).toEqual([]);
   });
 
   // 6
@@ -679,5 +684,99 @@ env:
     expect(compose.services.plain!.environment).toMatchObject({
       PUBLIC_URL: "https://plain.example.test",
     });
+  });
+});
+
+/**
+ * A required backing-service type with no factory is refused, never warned
+ * about and skipped (D-next, PROVIDERS.md §10 item 5). The harness gates
+ * catalog PRs: a warn-and-skip here let `posthog` record
+ * `health_check_passed: true` on a `kafka` the shipped provider did not stand
+ * up. The provider's factory set is the authority on what may be certified.
+ */
+describe("unprovisionable requires — refused, not silently deployed (D-next)", () => {
+  const compose = (yaml: string) => {
+    const result = launchToCompose(readLaunch(yaml));
+    const doc = parse(result.yaml) as { services?: Record<string, unknown> };
+    return { ...result, services: Object.keys(doc.services ?? {}) };
+  };
+
+  it("refuses a component requiring a type with no factory, and omits it", () => {
+    const { services, resourceRefusals, warnings } = compose(`
+version: launch/v1
+name: app
+image: acme/app:1
+requires:
+  - type: snowflake
+`);
+    expect(services).toEqual([]);
+    expect(resourceRefusals).toEqual([
+      {
+        component: "default",
+        entry: "snowflake",
+        message: 'this harness has no factory for type "snowflake"',
+      },
+    ]);
+    expect(warnings.join(" ")).not.toContain("Unknown backing service type");
+  });
+
+  it("names a named entry as name plus type", () => {
+    const { resourceRefusals } = compose(`
+version: launch/v1
+name: app
+image: acme/app:1
+requires:
+  - type: snowflake
+    name: warehouse
+`);
+    expect(resourceRefusals[0]!.entry).toBe('warehouse (type "snowflake")');
+  });
+
+  it("still deploys siblings that require only what it stands up", () => {
+    const { services, resourceRefusals } = compose(`
+version: launch/v1
+name: app
+components:
+  web:
+    image: acme/web:1
+    requires:
+      - type: postgres
+  worker:
+    image: acme/worker:1
+    requires:
+      - type: snowflake
+`);
+    expect(services.sort()).toEqual(["app-postgres", "app-web"]);
+    expect(resourceRefusals.map((r) => r.component)).toEqual(["worker"]);
+  });
+
+  it("does not refuse a `supports:` entry — optional resources are not preconditions", () => {
+    const { services, resourceRefusals } = compose(`
+version: launch/v1
+name: app
+image: acme/app:1
+supports:
+  - type: snowflake
+`);
+    expect(services).toEqual(["app"]);
+    expect(resourceRefusals).toEqual([]);
+  });
+
+  it("stands up no type the docker provider cannot — the provider is the authority", () => {
+    const provider = new Set(Object.keys(resourcePropertyKeys()));
+    const beyondProvider = harnessBackingServiceTypes().filter((t) => !provider.has(t));
+    expect(beyondProvider).toEqual([]);
+  });
+
+  it("runs every catalog app under apps/ with no resource refusal", () => {
+    const appsDir = fileURLToPath(new URL("../../apps", import.meta.url));
+    const refused: string[] = [];
+    for (const app of readdirSync(appsDir)) {
+      const path = resolve(appsDir, app, "Launchfile");
+      if (!existsSync(path)) continue;
+      const { resourceRefusals } = launchToCompose(readLaunch(readFileSync(path, "utf8")));
+      for (const r of resourceRefusals) refused.push(`${app} [${r.component}]: ${r.entry}`);
+    }
+    expect(refused).toEqual([]);
   });
 });
