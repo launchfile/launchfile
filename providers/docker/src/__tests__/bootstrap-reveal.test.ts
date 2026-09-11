@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { REVEAL_HINT, readLaunch } from "@launchfile/sdk";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { BootstrapExec } from "../bootstrap.js";
 
 // `/var/...` (macOS's tmpdir) is on the logger's sensitive-path list; its
 // realpath `/private/var/...` is not.
@@ -54,7 +55,7 @@ const plan = () =>
 	});
 
 /** A fake `docker compose exec` whose child prints the link on stdout (and, when failing, echoes it on stderr too). */
-function fakeExec(exitCode: number): bootstrap.BootstrapExec {
+function fakeExec(exitCode: number): BootstrapExec {
 	return async () => ({
 		exitCode,
 		stdout: `Created invite\nuser: admin\n${INVITE}\n`,
