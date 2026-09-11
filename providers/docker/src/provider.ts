@@ -844,8 +844,10 @@ export interface PsContainer {
  *
  * Fail-closed in both directions: a service that declares a check is healthy
  * only at `healthy`, and a container that matches no generated service at all
- * is never healthy — the provider wrote both sides, so an unmatched name is a
- * gap to report, not to absorb into a pass (the D-51/D-52 posture).
+ * is never healthy. The poll that feeds this is scoped to the generated
+ * services ({@link healthPsArgs}), so an orphan left behind by a rename never
+ * reaches here; a row that still does is a gap to report, not one to absorb
+ * into a pass (the D-51/D-52 posture).
  */
 export function isContainerHealthy(
 	container: PsContainer,
@@ -854,13 +856,45 @@ export function isContainerHealthy(
 	if (container.State !== "running") return false;
 
 	const service = container.Service;
-	if (service === undefined || !(service in healthchecks)) return false;
+	if (service === undefined || !Object.hasOwn(healthchecks, service)) return false;
 
 	return healthchecks[service] ? container.Health === "healthy" : true;
 }
 
 /** One `docker compose ps --format json` poll. Injected by the tests. */
 export type ComposePs = () => Promise<{ exitCode: number; stdout: string }>;
+
+/**
+ * The `docker compose ps` argv for one health poll, scoped to the services the
+ * generator emitted.
+ *
+ * `up -d` runs without `--remove-orphans`, so a container whose service was
+ * renamed or removed keeps running, and an unscoped `ps` still lists it under
+ * its old `Service` name. That name is not a key of `healthchecks`, so the
+ * fail-closed match holds the gate open for the whole budget and then names a
+ * component the app no longer has. Naming the generated services keeps the poll
+ * to what this `up` wrote.
+ *
+ * With no generated services there is nothing the gate can accept, so the bare
+ * poll it returns then costs nothing: every row fails closed either way.
+ */
+export function healthPsArgs(
+	project: string,
+	composeFile: string,
+	healthchecks: Readonly<Record<string, boolean>>,
+): string[] {
+	return [
+		"compose",
+		"-p",
+		project,
+		"-f",
+		composeFile,
+		"ps",
+		"--format",
+		"json",
+		...Object.keys(healthchecks),
+	];
+}
 
 export interface WaitForHealthOpts {
 	/** Total budget. Defaults to {@link HEALTH_TIMEOUT_MS}. */
@@ -883,10 +917,10 @@ export async function waitForHealth(
 	const ps: ComposePs =
 		opts.ps ??
 		(() =>
-			shell(
-				"docker", ["compose", "-p", project, "-f", composeFile, "ps", "--format", "json"],
-				{ allowFailure: true, silent: true },
-			));
+			shell("docker", healthPsArgs(project, composeFile, healthchecks), {
+				allowFailure: true,
+				silent: true,
+			}));
 	const start = Date.now();
 	let stuck: string[] = [];
 

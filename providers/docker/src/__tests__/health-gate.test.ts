@@ -1,5 +1,32 @@
-import { describe, expect, it } from "vitest";
-import { healthFailureMessage, isContainerHealthy, waitForHealth } from "../provider.js";
+import { describe, expect, it, vi } from "vitest";
+
+/** Every argv the provider hands to `shell`, newest last. */
+const shellCalls: string[][] = [];
+
+vi.mock("../shell.js", () => ({
+	shell: async (cmd: string, args: string[]) => {
+		shellCalls.push([cmd, ...args]);
+		return {
+			exitCode: 0,
+			stdout: JSON.stringify({
+				State: "running",
+				Health: "healthy",
+				Name: "proj-api-1",
+				Service: "api",
+			}),
+			stderr: "",
+		};
+	},
+	shellStream: async () => 0,
+	shellOk: async () => true,
+}));
+
+import {
+	healthFailureMessage,
+	healthPsArgs,
+	isContainerHealthy,
+	waitForHealth,
+} from "../provider.js";
 
 /**
  * `Health: ""` from `docker compose ps` is ambiguous: it means "no check
@@ -79,6 +106,51 @@ describe("isContainerHealthy", () => {
 		).toBe(false);
 		expect(isContainerHealthy({ State: "running", Health: "" }, { web: false })).toBe(false);
 	});
+
+	it("does not match a service named after an Object.prototype key", () => {
+		// `healthchecks` is a lookup of generated service names, not a prototype
+		// chain. A container calling itself `toString` matches no generated
+		// service, so it is a stranger like any other.
+		expect(
+			isContainerHealthy({ State: "running", Health: "healthy", Service: "toString" }, { web: true }),
+		).toBe(false);
+		expect(
+			isContainerHealthy({ State: "running", Health: "", Service: "constructor" }, { web: false }),
+		).toBe(false);
+	});
+});
+
+describe("healthPsArgs", () => {
+	it("scopes the poll to the generated services", () => {
+		expect(healthPsArgs("proj", "/tmp/compose.yaml", { web: true, db: false })).toEqual([
+			"compose", "-p", "proj", "-f", "/tmp/compose.yaml", "ps", "--format", "json", "web", "db",
+		]);
+	});
+
+	it("leaves behind the orphan a rename strands", () => {
+		// `up -d` runs without `--remove-orphans`, so the container of a service
+		// renamed `web` -> `api` keeps running and an unscoped `ps` still reports
+		// `Service: "web"`. Unmatched rows fail closed, so an unscoped poll would
+		// spend the whole budget and then name a component the app no longer has.
+		const args = healthPsArgs("proj", "/tmp/compose.yaml", { api: true });
+
+		expect(args).toContain("api");
+		expect(args).not.toContain("web");
+	});
+
+	it("names the services after the format flag, where docker takes them", () => {
+		const args = healthPsArgs("proj", "/tmp/compose.yaml", { web: true });
+
+		expect(args.slice(-3)).toEqual(["--format", "json", "web"]);
+	});
+
+	it("polls bare when the generator emitted no services", () => {
+		// Nothing was generated, so there is nothing the gate can accept: every
+		// row the bare poll returns fails closed anyway.
+		expect(healthPsArgs("proj", "/tmp/compose.yaml", {})).toEqual([
+			"compose", "-p", "proj", "-f", "/tmp/compose.yaml", "ps", "--format", "json",
+		]);
+	});
 });
 
 /** `docker compose ps --format json` output for the given rows. */
@@ -147,6 +219,18 @@ describe("waitForHealth", () => {
 		});
 
 		expect(outcome).toEqual({ ok: false, stuck: [] });
+	});
+
+	it("polls the generated services when no ps is injected", async () => {
+		shellCalls.length = 0;
+
+		const outcome = await waitForHealth("proj", "/tmp/compose.yaml", { api: true }, fast);
+
+		expect(outcome).toEqual({ ok: true, stuck: [] });
+		expect(shellCalls).toHaveLength(1);
+		expect(shellCalls[0]).toEqual([
+			"docker", "compose", "-p", "proj", "-f", "/tmp/compose.yaml", "ps", "--format", "json", "api",
+		]);
 	});
 
 	it("keeps polling while ps itself fails", async () => {
