@@ -23,7 +23,7 @@ import {
 	unsuppliedRequiredEnv,
 } from "@launchfile/sdk";
 import { stringify } from "yaml";
-import { computeAppProperties } from "./app-url.js";
+import { computeAppProperties, HTTPS_ORIGIN } from "./app-url.js";
 import {
 	registerSensitiveEnv,
 	registerSuppliedEnv,
@@ -781,6 +781,20 @@ export function launchToCompose(
 	// $components.<name>.url instead.
 	const appProperties = computeAppProperties(launch, opts.hostPorts, opts.appUrl);
 
+	// `https-origin` (D-60) — the one backing service that sits in FRONT of
+	// the app. This provider runs no edge of its own, so it cannot provision
+	// one; it can only accept an origin the orchestrator already owns, through
+	// the publication-context channel, which for this type IS the D-56
+	// supplied-resource channel (D-60 rule 5) — `opts.appUrl`, not a second
+	// one. Satisfaction is decided on the supplied scheme alone: no request is
+	// made, and D-56 rule 3 stands — the provider does not verify the origin
+	// exists or is ready. A built-in Caddy/Traefik/tunnel provisioner would be
+	// the provision branch; it is future work, and refusing is conformant
+	// until it exists (PROVIDERS.md §10 item 5).
+	const httpsOriginSatisfied =
+		opts.appUrl !== undefined && appProperties.scheme === "https";
+	const httpsOriginProperties = { url: String(appProperties.url) };
+
 	const resolverContext: ResolverContext = {
 		resources: resourceMap,
 		components: componentMap,
@@ -841,6 +855,31 @@ export function launchToCompose(
 						"not granted — its set_env vars are omitted and the app runs degraded",
 				);
 			}
+		}
+
+		// A required `https-origin` this provider cannot satisfy REFUSES the
+		// component, exactly as an unprovisionable postgres would (PROVIDERS.md
+		// §10 item 5). Deploying it anyway is the silent success the type exists
+		// to remove: the container starts, the healthcheck passes, and the app is
+		// unusable through its own web client.
+		const refusedOrigins: string[] = [];
+		if (!httpsOriginSatisfied) {
+			for (const req of component.requires ?? []) {
+				if (req.type !== HTTPS_ORIGIN) continue;
+				const entry = `${req.name ?? req.type} (endpoint "${req.endpoint ?? "?"}")`;
+				refusedOrigins.push(
+					opts.appUrl === undefined
+						? `${entry}: no publication URL was supplied, and this provider has no edge of its own`
+						: `${entry}: the supplied publication URL's scheme is "${String(appProperties.scheme)}", not https`,
+				);
+			}
+		}
+		if (refusedOrigins.length > 0) {
+			warnings.push(
+				`refused: ${componentName} requires a public HTTPS origin this provider cannot supply ` +
+					`(${refusedOrigins.join("; ")}) — component skipped`,
+			);
+			continue;
 		}
 
 		if (component.schedule) {
@@ -1024,6 +1063,20 @@ export function launchToCompose(
 		if (component.requires?.length) {
 			for (const req of component.requires) {
 				const resourceName = req.name ?? req.type;
+				if (req.type === HTTPS_ORIGIN) {
+					// Reached only when satisfied — the refusal above skipped the
+					// component otherwise. One registered property, `url` (D-60
+					// rule 4), holding the same string as `$app.url`.
+					if (opts.resources?.[resourceName]) {
+						warnings.push(
+							`${componentName}: a supplied resource is keyed ${resourceName}, but this type is ` +
+								"satisfied through the publication-context channel (appUrl), not the supplied-resource " +
+								"map — the map entry is ignored",
+						);
+					}
+					applySuppliedResource(req, resourceName, httpsOriginProperties);
+					continue;
+				}
 				const suppliedResource = opts.resources?.[resourceName];
 				if (suppliedResource) {
 					// The supplied entry wins over factory dispatch — always,
@@ -1079,6 +1132,22 @@ export function launchToCompose(
 		for (const sup of component.supports ?? []) {
 			if (sup.host) continue;
 			const resourceName = sup.name ?? sup.type;
+			if (sup.type === HTTPS_ORIGIN) {
+				// The optional mood (D-60 rule 6): satisfied, it wires like any
+				// other resource; unsatisfied, the component still deploys, its
+				// set_env is absent, and the un-granted dependency is noted.
+				if (httpsOriginSatisfied) {
+					applySuppliedResource(sup, resourceName, httpsOriginProperties);
+				} else {
+					warnings.push(
+						`${componentName}: optional public HTTPS origin ${resourceName} (endpoint ` +
+							`"${sup.endpoint ?? "?"}") is not satisfied — this provider has no edge of its own and ` +
+							`${opts.appUrl === undefined ? "no publication URL was supplied" : `the supplied publication URL's scheme is "${String(appProperties.scheme)}", not https`}; ` +
+							"its set_env bindings are omitted and the app runs degraded",
+					);
+				}
+				continue;
+			}
 			const suppliedResource = opts.resources?.[resourceName];
 			if (!suppliedResource) {
 				warnings.push(

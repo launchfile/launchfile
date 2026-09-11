@@ -169,6 +169,7 @@ function normalizeRequirements(
 		return {
 			name: r.name,
 			type: r.type,
+			endpoint: r.endpoint,
 			version: r.version,
 			config: r.config,
 			set_env: r.set_env,

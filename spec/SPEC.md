@@ -193,6 +193,7 @@ An object entry is one of two kinds, distinguished by its marker field: a **back
 |---|---|---|---|
 | `name` | `string` | no | Resource name for expression references (defaults to `type`) |
 | `type` | `string` | **yes** | Resource type (see [Resource Property Vocabulary](#resource-property-vocabulary)) |
+| `endpoint` | `string` | conditional | The `provides` entry this resource fronts, by its `name`. **Required** on a `type: https-origin` entry; meaningless on any other type — see [Public HTTPS origins](#public-https-origins) |
 | `version` | `string` | no | Version constraint using semver ranges (e.g. `>=15`, `^7.0`, `20.x`) |
 | `config` | `map<string, any>` | no | Resource provisioning hints (platform-interpreted) |
 | `set_env` | `map<string, string>` | no | Maps resource properties to app env vars using `$` expressions |
@@ -262,6 +263,52 @@ Values in `set_env` use the [expression syntax](#expression-syntax). Inside a `r
 
 > **Real-world examples:** See how [Ghost](https://launchfile.io/apps/ghost/), [Metabase](https://launchfile.io/apps/metabase/), and [Miniflux](https://launchfile.io/apps/miniflux/) declare their database requirements. [Browse all apps →](https://launchfile.io/apps/)
 
+### Public HTTPS origins
+
+An app that only works over HTTPS says so with the backing-service type `https-origin`: *browsers reach this app at a public origin whose scheme is `https`*. Like any backing service, the provider **provisions and wires it, or refuses** — it is not a hint and not a probe.
+
+```yaml
+provides:
+  - name: web
+    protocol: http
+    port: 80
+    exposed: true
+requires:
+  - type: https-origin
+    endpoint: web
+    set_env:
+      DOMAIN: $url
+```
+
+The app's own listener is untouched: `protocol: http` still describes what the component speaks on its own port ([D-59](DESIGN.md#d-59-providesprotocol-describes-the-components-own-listener)). Where TLS terminates, and which certificate it uses, stay outside the file ([D-5](DESIGN.md#d-5-proxy-is-a-platform-concern-not-an-app-concern), [D-15](DESIGN.md#d-15-routing-is-a-deployment-concern-not-an-app-concern)).
+
+Six rules bind the entry:
+
+1. **The type names an interface, never a product.** `https-origin` is an [origin](https://www.rfc-editor.org/rfc/rfc6454) whose scheme is `https` — never `caddy`, `traefik`, or `acme`.
+2. **`endpoint:` names a `provides` entry by its `name`** ([named endpoints](#provides)). It is required on an `https-origin` entry and meaningless on any other type. The entry MUST sit on the **component that owns the endpoint**; at the top level of a file that declares `components:` it is a **validation error**, because top-level `requires` defaults into every component that declares none and one entry would face several `provides` lists. The name must match exactly one entry on that component; that entry must be `exposed: true` and declare an **HTTP-family** listener — `http`, `https`, `ws`, or `grpc`. Naming a `tcp` or `udp` entry is a **validation error**: those listeners have no origin.
+3. **One per app, and it defines "primary".** At most one `https-origin` entry across all components; a second is a validation error. The named endpoint is the app's **primary** endpoint for `$app.*` derivation and for orchestrator-supplied publication context ([D-58](DESIGN.md#d-58-orchestrator-supplied-publication-context--app-under-an-owning-orchestrator) rule 4). **Declaring the entry fixes the primary** — whether or not a provider fulfills it — so `$app.url` never changes value with a provider's capability. It reaches `$app.*` only: `$components.<name>.url` is unaffected. With no entry declared, providers keep their own positional choice.
+4. **One property: `url`** — the same value as `$app.url`, from one derivation. No `host`, `port`, `scheme`, `authority`, or `tls` property is registered; [`$app.*`](#app-properties) already standardises those.
+5. **Fulfillment, no probe.** The provider provisions the origin, or accepts one supplied through its orchestrator-facing publication channel, or refuses with a clear message. A supplied URL whose scheme is not `https` is refused. The provider does not verify the origin exists or is reachable. See [PROVIDERS.md](PROVIDERS.md) §7 and §10 item 5.
+6. **`supports:` is the optional mood.** Unfulfilled, the entry's `set_env` is absent and the provider notes the un-granted dependency — the app deploys and degrades.
+
+```yaml
+# mailpit — the endpoint reference takes whatever the app called it
+provides:
+  - name: web-ui
+    protocol: http
+    port: 8025
+    exposed: true
+  - name: smtp
+    protocol: tcp
+    port: 1025
+    exposed: true
+supports:
+  - type: https-origin
+    endpoint: web-ui        # `endpoint: smtp` would be a validation error (rule 2)
+```
+
+A `ws` endpoint behind an `https-origin` resolves `url` to `https://…`, not `wss://…`: `url` is fixed as the https origin for every admitted listener protocol. A `wss` spelling, if it ever arrives, arrives as a new property, never as a change to what `url` resolves to.
+
 ### Host capabilities
 
 A `requires`/`supports` entry can request a **host capability** — a privileged grant from the machine the app runs on — instead of a backing service. A capability entry is marked with `host:`. The provider **grants** it (mounts or forwards the underlying coordinate and populates the capability's properties) or **refuses** the deployment with a clear message; it never provisions anything. See [PROVIDERS.md](PROVIDERS.md) for the provider-side contract.
@@ -325,7 +372,7 @@ supports:
 
 The literal `"1"` is injected alongside the dynamic `$url` -- `set_env` values without `$` are passed through verbatim.
 
-`supports` entries can also request [host capabilities](#host-capabilities). The capability is optional: when the provider grants it, the entry's `set_env` vars are injected; when it doesn't, they are simply absent and the app degrades gracefully.
+`supports` entries can also request a [public HTTPS origin](#public-https-origins) or [host capabilities](#host-capabilities). The capability is optional: when the provider grants it, the entry's `set_env` vars are injected; when it doesn't, they are simply absent and the app degrades gracefully.
 
 The expected app-side pattern: the app checks for the env var at startup and enables the feature if present. In this example, the app checks `CACHE_URL` — if it's set, caching is enabled; if Redis wasn't provisioned, the variable is simply absent and the app runs without caching. No conditional logic in the Launchfile.
 
@@ -1085,8 +1132,9 @@ Each resource type exposes well-known properties for use in `set_env` expression
 | `clickhouse` | `url`, `host`, `port`, `user`, `password`, `name` |
 | `kafka` | `url`, `host`, `port` |
 | `s3` | `url`, `access_key`, `secret_key`, `bucket`, `region` |
+| `https-origin` | `url` |
 
-The `url` property is always a fully-formed connection string (e.g. `postgresql://user:pass@host:5432/dbname`). Other properties provide individual components for apps that require them separately.
+The `url` property is always the fully-formed address of the resource — a connection string for a backing service (e.g. `postgresql://user:pass@host:5432/dbname`), and the public origin for [`https-origin`](#public-https-origins) (e.g. `https://vault.example.com`, the same value as `$app.url`). Where a type registers more than one property, the others provide individual components for apps that require them separately.
 
 This vocabulary is also published in machine-readable form as [`schema/resource-properties.json`](schema/resource-properties.json), which adds a one-line semantic per property and is what tooling reads for advisory typo warnings (see [DESIGN.md D-46](DESIGN.md#d-46-resource-property-registry--vocabulary-is-standard-but-open)).
 

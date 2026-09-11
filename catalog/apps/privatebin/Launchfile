@@ -7,9 +7,15 @@ logo: https://raw.githubusercontent.com/PrivateBin/PrivateBin/master/img/icon.sv
 
 image: privatebin/nginx-fpm-alpine:latest
 provides:
-  - protocol: http
+  - name: web
+    protocol: http
     port: 8080
     exposed: true
+requires:
+  # "For security, a PrivateBin installation has to be used over HTTPS!"
+  # (README.md:35-36)
+  - type: https-origin
+    endpoint: web
 storage:
   data:
     path: /srv/data

@@ -34,9 +34,11 @@ function parseSpecVocabulary(): Record<string, string[]> {
 
 	const vocabulary: Record<string, string[]> = {};
 	for (const line of section.split("\n")) {
-		const row = /^\|\s*`([a-z0-9_]+)`\s*\|(.+)\|\s*$/.exec(line);
+		// Type and property identifiers admit `-` as well as `_`: the vocabulary
+		// carries `https-origin` alongside the underscored `access_key` family.
+		const row = /^\|\s*`([a-z0-9_-]+)`\s*\|(.+)\|\s*$/.exec(line);
 		if (!row) continue;
-		const properties = [...row[2]!.matchAll(/`([a-z0-9_]+)`/g)].map(
+		const properties = [...row[2]!.matchAll(/`([a-z0-9_-]+)`/g)].map(
 			(m) => m[1]!,
 		);
 		vocabulary[row[1]!] = properties;
@@ -47,11 +49,12 @@ function parseSpecVocabulary(): Record<string, string[]> {
 describe("resource property registry consistency (D-46)", () => {
 	const specVocabulary = parseSpecVocabulary();
 
-	it("parses all 12 resource types from the SPEC.md table", () => {
+	it("parses all 13 resource types from the SPEC.md table", () => {
 		expect(Object.keys(specVocabulary).sort()).toEqual(
 			[
 				"clickhouse",
 				"elasticsearch",
+				"https-origin",
 				"kafka",
 				"memcache",
 				"minio",

@@ -525,3 +525,53 @@ describe("host capabilities — grant/refuse (D-44, PROVIDERS.md §11)", () => {
 		expect(gapsOf(launch)).toContain("blocker:requires:host.container_runtime");
 	});
 });
+
+describe("translate — https-origin (D-60 rule 5)", () => {
+	const APP = `
+version: launch/v1
+name: vaultwarden
+image: vaultwarden/server:latest
+provides:
+  - name: web
+    protocol: http
+    port: 80
+    exposed: true
+`;
+
+	it("reports a required entry unmapped, as a blocker", () => {
+		const { hcl, conformance } = tf(
+			`${APP}requires:\n  - type: https-origin\n    endpoint: web\n`,
+		);
+		const gap = conformance.gaps.find(
+			(g) => g.field === "requires:https-origin",
+		);
+		expect(gap).toBeDefined();
+		expect(gap!.severity).toBe("blocker");
+		expect(gap!.reason).toContain("endpoint 'web'");
+		// Emitted nothing for it: no managed resource, and no certificate
+		// invented to make the declaration look satisfied.
+		expect(hcl).not.toContain("aws_acm_certificate");
+	});
+
+	it("reports a supports entry unmapped, as nice-to-have", () => {
+		const { conformance } = tf(
+			`${APP}supports:\n  - type: https-origin\n    endpoint: web\n`,
+		);
+		const gap = conformance.gaps.find(
+			(g) => g.field === "supports:https-origin",
+		);
+		expect(gap).toBeDefined();
+		expect(gap!.severity).toBe("nice-to-have");
+	});
+
+	it("does not grade it as a missing managed-service mapping", () => {
+		const { conformance } = tf(
+			`${APP}requires:\n  - type: https-origin\n    endpoint: web\n`,
+		);
+		expect(
+			conformance.gaps.some((g) =>
+				g.reason.includes("no managed AWS service mapping"),
+			),
+		).toBe(false);
+	});
+});

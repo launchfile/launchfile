@@ -53,6 +53,11 @@ const RequirementObjectSchema = z.object({
 	// union's strip mode would silently swallow `host:` on a `type:` entry,
 	// erasing a declared privilege from the audit surface (D-44).
 	host: z.never().optional(),
+	// The `provides` entry this resource fronts, by its `name` (D-6).
+	// Required on a `type: https-origin` entry and meaningless on any other
+	// type — both enforced by `checkHttpsOrigin` below, which needs the whole
+	// file to answer them.
+	endpoint: NameSchema.optional(),
 	version: z.string().max(256).optional(),
 	// Security: config is intentionally unconstrained — providers MUST validate/sanitize
 	// these values before using them in shell commands, SQL, or other injectable contexts.
@@ -74,6 +79,10 @@ const HostCapabilityObjectSchema = z.object({
 	// backing-service `type:`. Mutually exclusive with the branch above: an
 	// entry with both keys matches neither and is reported, not silently fixed.
 	type: z.never().optional(),
+	// `endpoint:` belongs to a backing service that fronts one of the app's own
+	// listeners; a capability fronts nothing. Listed for the same reason `host:`
+	// is listed above — strip mode would swallow it without a word.
+	endpoint: z.never().optional(),
 	set_env: z.record(z.string(), z.string()).optional(),
 });
 
@@ -95,6 +104,22 @@ const RequirementSchema = z
 				message:
 					"an entry is either a backing service (`type:`) or a host capability " +
 					"(`host:`), never both (D-44) — split it into two entries",
+			});
+		}
+		// Same reason, for the same reader: the union would report an
+		// `endpoint:` on a capability entry as a bare "Invalid input".
+		if (
+			typeof val === "object" &&
+			val !== null &&
+			!Array.isArray(val) &&
+			"host" in val &&
+			"endpoint" in val
+		) {
+			ctx.addIssue({
+				code: "custom",
+				message:
+					"`endpoint:` names the `provides` entry a `type: https-origin` resource " +
+					"fronts (D-60 rule 2); a host capability fronts nothing — remove it",
 			});
 		}
 	})
@@ -259,6 +284,214 @@ const ComponentSchema = z.object({
 	host: HostSchema.optional(),
 });
 
+// --- `https-origin` structural rules (D-60 rules 2 and 3) ---
+
+/** The one backing-service type that fronts the app instead of backing it. */
+const HTTPS_ORIGIN = "https-origin";
+
+/**
+ * Listener protocols an https origin can front (D-60 rule 2). All four are
+ * addressed by a web origin (RFC 6454) and each already has a defined secure
+ * scheme; `tcp` and `udp` have no origin at all.
+ */
+const HTTP_FAMILY_PROTOCOLS = new Set(["http", "https", "ws", "grpc"]);
+
+interface EntryLike {
+	type?: unknown;
+	endpoint?: unknown;
+	host?: unknown;
+}
+
+interface ProvidesLike {
+	name?: unknown;
+	protocol?: unknown;
+	exposed?: unknown;
+}
+
+/** One `requires`/`supports` home: the top level, or a named component. */
+interface OriginScope {
+	/** How the scope is named in an error message. */
+	label: string;
+	/** Issue path prefix — `[]` at the top level, `["components", name]` otherwise. */
+	prefix: Array<string | number>;
+	requires?: unknown;
+	supports?: unknown;
+	provides?: unknown;
+}
+
+/**
+ * Enforce the two cross-field rules an `https-origin` entry carries, neither of
+ * which a per-entry schema can see: rule 2 (the endpoint reference resolves, on
+ * the component that owns it, to one exposed HTTP-family listener) and rule 3
+ * (at most one such entry across the whole app).
+ *
+ * Scoped deliberately to the component's OWN `provides`. Rule 2 requires the
+ * entry to sit on the component that owns the endpoint, and a component that
+ * declares no listener of its own owns none — resolving against an inherited
+ * top-level list would reintroduce the one-entry-several-`provides`-lists
+ * ambiguity the rule exists to forbid.
+ */
+function checkHttpsOrigin(
+	launch: Record<string, unknown>,
+	ctx: z.RefinementCtx,
+): void {
+	const components = launch.components as
+		| Record<string, Record<string, unknown>>
+		| undefined;
+	const hasComponents =
+		components !== undefined && Object.keys(components).length > 0;
+
+	const scopes: OriginScope[] = [
+		{
+			label: "(top-level)",
+			prefix: [],
+			requires: launch.requires,
+			supports: launch.supports,
+			provides: launch.provides,
+		},
+	];
+	if (hasComponents) {
+		for (const [name, component] of Object.entries(components)) {
+			if (typeof component !== "object" || component === null) continue;
+			scopes.push({
+				label: name,
+				prefix: ["components", name],
+				requires: component.requires,
+				supports: component.supports,
+				provides: component.provides,
+			});
+		}
+	}
+
+	let originEntries = 0;
+
+	for (const scope of scopes) {
+		for (const field of ["requires", "supports"] as const) {
+			const list = scope[field];
+			if (!Array.isArray(list)) continue;
+			for (const [index, raw] of list.entries()) {
+				if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+					continue;
+				}
+				const entry = raw as EntryLike;
+				const path = [...scope.prefix, field, index];
+				const isOrigin = entry.type === HTTPS_ORIGIN;
+
+				if (!isOrigin) {
+					if (entry.endpoint !== undefined && entry.host === undefined) {
+						ctx.addIssue({
+							code: "custom",
+							path: [...path, "endpoint"],
+							message:
+								"`endpoint:` is only meaningful on a `type: " +
+								`${HTTPS_ORIGIN}\` entry — this one declares \`type: ${String(entry.type)}\`` +
+								" (D-60 rule 2). Remove it, or change the type.",
+						});
+					}
+					continue;
+				}
+
+				originEntries++;
+
+				if (hasComponents && scope.prefix.length === 0) {
+					ctx.addIssue({
+						code: "custom",
+						path,
+						message:
+							`a \`${HTTPS_ORIGIN}\` entry must sit on the component that owns the endpoint, ` +
+							"never at the top level of a file that declares `components:` — top-level " +
+							"`requires` defaults into every component that declares none, so one entry " +
+							"would face several `provides` lists (D-60 rule 2). Move it onto that component.",
+					});
+					continue;
+				}
+
+				if (typeof entry.endpoint !== "string") {
+					ctx.addIssue({
+						code: "custom",
+						path: [...path, "endpoint"],
+						message:
+							`a \`${HTTPS_ORIGIN}\` entry must name the \`provides\` entry it fronts ` +
+							"with `endpoint:` (D-60 rule 2)",
+					});
+					continue;
+				}
+
+				const provides = Array.isArray(scope.provides)
+					? (scope.provides as ProvidesLike[])
+					: [];
+				const matches = provides.filter(
+					(p) =>
+						typeof p === "object" && p !== null && p.name === entry.endpoint,
+				);
+
+				if (matches.length === 0) {
+					const named = provides
+						.map((p) => p?.name)
+						.filter((n): n is string => typeof n === "string");
+					ctx.addIssue({
+						code: "custom",
+						path: [...path, "endpoint"],
+						message:
+							`${HTTPS_ORIGIN} endpoint "${entry.endpoint}" matches no \`provides\` entry on ` +
+							`${scope.label} (D-60 rule 2). ` +
+							(named.length > 0
+								? `Named endpoints there: ${named.join(", ")}.`
+								: "That component declares no named endpoint — add a `name:` to the one this origin fronts."),
+					});
+					continue;
+				}
+				if (matches.length > 1) {
+					ctx.addIssue({
+						code: "custom",
+						path: [...path, "endpoint"],
+						message:
+							`${HTTPS_ORIGIN} endpoint "${entry.endpoint}" matches ${matches.length} \`provides\` ` +
+							`entries on ${scope.label}; it must match exactly one (D-60 rule 2)`,
+					});
+					continue;
+				}
+
+				const [target] = matches as [ProvidesLike];
+				if (target.exposed !== true) {
+					ctx.addIssue({
+						code: "custom",
+						path: [...path, "endpoint"],
+						message:
+							`${HTTPS_ORIGIN} endpoint "${entry.endpoint}" is not \`exposed: true\`; an origin ` +
+							"is a public address, and an unpublished endpoint has none (D-60 rule 2)",
+					});
+					continue;
+				}
+				const protocol =
+					typeof target.protocol === "string" ? target.protocol : "";
+				if (!HTTP_FAMILY_PROTOCOLS.has(protocol)) {
+					ctx.addIssue({
+						code: "custom",
+						path: [...path, "endpoint"],
+						message:
+							`${HTTPS_ORIGIN} endpoint "${entry.endpoint}" declares \`protocol: ${protocol}\`; ` +
+							"an https-origin fronts an HTTP-family listener (`http`, `https`, `ws`, `grpc`) — " +
+							"a `tcp` or `udp` listener has no origin (D-60 rule 2). " +
+							"Name the app's web endpoint instead.",
+					});
+				}
+			}
+		}
+	}
+
+	if (originEntries > 1) {
+		ctx.addIssue({
+			code: "custom",
+			path: [],
+			message:
+				`an app declares at most one \`${HTTPS_ORIGIN}\` entry, and this one declares ` +
+				`${originEntries} (D-60 rule 3) — the named endpoint is the app's primary, and ` +
+				"only one endpoint can be that",
+		});
+	}
+}
+
 // --- Top-Level Launch ---
 
 export const LaunchSchema = z.object({
@@ -297,6 +530,8 @@ export const LaunchSchema = z.object({
 
 	// Multi-component
 	components: z.record(z.string(), ComponentSchema).optional(),
+}).superRefine((launch, ctx) => {
+	checkHttpsOrigin(launch as Record<string, unknown>, ctx);
 });
 
 // --- Exported sub-schemas for testing ---
