@@ -1,5 +1,34 @@
 # @launchfile/docker
 
+## 0.8.0
+
+### Minor Changes
+
+- [#468](https://github.com/launchfile/launchfile/pull/468) [`fc92434`](https://github.com/launchfile/launchfile/commit/fc9243433293ac0c2061d25f6c83b352985c023f) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Activate a certificate binding, or refuse before launch (D-61 rule 5).
+  
+  Selection is arrival through `ComposeOpts.resources` — the D-56 supplied-resource channel every other optional resource already uses here, keyed by the certificate entry's `name ?? type`. Three states, no fourth:
+  
+  - **not selected** — the component deploys its declared HTTP baseline, the binding's `set_env` is absent, and the un-granted dependency is noted (D-8);
+  - **selected and satisfied** (`cert_file` and `key_file` both supplied) — the binding's `set_env` is written after `env:`, so it wins over a same-named `env:` declaration (PROVIDERS.md §7), and the entry's effective protocol becomes `https`;
+  - **selected but unsatisfied**, either property missing — the component is **refused before launch** with a message naming the entry and what is missing. Never a fall back to HTTP.
+  
+  `$components.<name>.url` and the provider's own `$app.url` now read the **effective** protocol: a sibling of a TLS-active component gets `https://…`. An orchestrator-supplied `appUrl` still wins (D-58 rule 5). Output is byte-identical for every Launchfile that declares no `tls:`.
+  
+  `key_file` — and every `*_key` / `*_key_file` property name — now registers with the redactor whatever its vocabulary membership. Registering `certificate` moved `key_file` *inside* a vocabulary, which would otherwise have switched its fail-closed redaction off and let private-key paths reach diagnostics (CWE-532). D-56 rule 3 still stands: no path is opened, parsed or probed.
+
+- [#465](https://github.com/launchfile/launchfile/pull/465) [`dc8a759`](https://github.com/launchfile/launchfile/commit/dc8a75968f56be9811d9feda38ceb640e453be9b) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Satisfy or refuse an `https-origin` entry, and let a declared one fix the app's primary endpoint (D-60).
+  
+  This provider runs no edge of its own, so the only satisfaction it can offer is an origin the orchestrator already owns, supplied through `ComposeOpts.appUrl` — which for this type IS the supplied-resource channel (D-56), not a second one. With an `https://` value the entry's `url` resolves to it and its `set_env` is wired; with an `http://` one, or none, a `requires:` entry **refuses the component** with a surfaced `refused: …` message naming the entry and the supplied scheme, and a `supports:` entry is left unfulfilled with a note. No branch makes a network request: D-56 rule 3 stands, and the provider does not verify the origin exists.
+  
+  `computeAppProperties` now resolves `$app.*` from the endpoint an `https-origin` entry names, when the file declares one, instead of from the first published endpoint in declaration order. **Declaration** fixes it, not fulfillment, so `$app.*` does not change value with what the provider can satisfy. `$components.<name>.url` is untouched. Apps that declare no such entry keep the positional answer, byte for byte.
+  
+  A new export, `declaredPrimaryEndpoint(launch)`, returns that endpoint (component, name, allocation key, container port) or `undefined`.
+
+### Patch Changes
+
+- Updated dependencies [[`fc92434`](https://github.com/launchfile/launchfile/commit/fc9243433293ac0c2061d25f6c83b352985c023f), [`dc8a759`](https://github.com/launchfile/launchfile/commit/dc8a75968f56be9811d9feda38ceb640e453be9b)]:
+  - @launchfile/sdk@0.8.0
+
 ## 0.7.1
 
 ### Patch Changes

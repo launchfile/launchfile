@@ -1,5 +1,13 @@
 # launchfile
 
+## 0.8.0
+
+### Patch Changes
+
+- Updated dependencies [[`fc92434`](https://github.com/launchfile/launchfile/commit/fc9243433293ac0c2061d25f6c83b352985c023f), [`fc92434`](https://github.com/launchfile/launchfile/commit/fc9243433293ac0c2061d25f6c83b352985c023f), [`dc8a759`](https://github.com/launchfile/launchfile/commit/dc8a75968f56be9811d9feda38ceb640e453be9b), [`dc8a759`](https://github.com/launchfile/launchfile/commit/dc8a75968f56be9811d9feda38ceb640e453be9b)]:
+  - @launchfile/docker@0.8.0
+  - @launchfile/sdk@0.8.0
+
 ## 0.7.1
 
 ### Patch Changes

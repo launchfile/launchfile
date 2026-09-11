@@ -1,5 +1,24 @@
 # @launchfile/macos-dev
 
+## 0.8.0
+
+### Minor Changes
+
+- [#468](https://github.com/launchfile/launchfile/pull/468) [`fc92434`](https://github.com/launchfile/launchfile/commit/fc9243433293ac0c2061d25f6c83b352985c023f) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Refuse a selected certificate binding instead of starting the component in cleartext (D-61 rule 5).
+  
+  This provider has no supplied-resource channel, so it can never receive a `cert_file`/`key_file` pair and can never activate native TLS. Selection here is `--with-optional`: without it a `tls:` binding is inactive and the declared HTTP baseline is the correct deployment (D-8); with it the operator asked for TLS this provider cannot give, and the component is removed from the run with a surfaced message naming the entry — the refusal PROVIDERS.md §10 item 5 makes conformant.
+
+- [#465](https://github.com/launchfile/launchfile/pull/465) [`dc8a759`](https://github.com/launchfile/launchfile/commit/dc8a75968f56be9811d9feda38ceb640e453be9b) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Refuse a component whose `requires:` declares an `https-origin` (D-60 rule 5).
+  
+  This provider has no edge and no orchestrator-facing publication channel ([#294](https://github.com/launchfile/launchfile/issues/294)), so it can neither provision a public HTTPS origin nor accept a supplied one. It refuses — which PROVIDERS.md §10 item 5 makes conformant — and the refusal is the removal: the component is dropped from the run before anything is installed, wired, registered or started, exactly as for an ungrantable host capability. A `supports:` entry is not refused; the component runs and the un-granted dependency is noted.
+  
+  New exports: `refusedHttpsOrigins(launch)` and `applyHttpsOriginRefusals(launch)`.
+
+### Patch Changes
+
+- Updated dependencies [[`fc92434`](https://github.com/launchfile/launchfile/commit/fc9243433293ac0c2061d25f6c83b352985c023f), [`dc8a759`](https://github.com/launchfile/launchfile/commit/dc8a75968f56be9811d9feda38ceb640e453be9b)]:
+  - @launchfile/sdk@0.8.0
+
 ## 0.7.0
 
 ### Minor Changes
