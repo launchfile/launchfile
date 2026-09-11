@@ -13,7 +13,9 @@ import {
 	getFlagValues,
 	getPositional,
 	hasFlag,
+	parseComponentNames,
 	parseStoragePairs,
+	selectorRefusal,
 } from "../cli-args.js";
 
 describe("getPositional (#248)", () => {
@@ -44,6 +46,14 @@ describe("getPositional (#248)", () => {
 	it("does not skip the token after a boolean flag", () => {
 		const args = ["up", "--dry-run", "ghost"];
 		expect(getPositional(args, 1)).toBe("ghost");
+	});
+
+	it("skips --components values so a name is never the up target (D-41)", () => {
+		const args = ["up", "--components", "web"];
+		expect(getPositional(args, 0)).toBe("up");
+		// `web` is the selector's value; the target stays the cwd.
+		expect(getPositional(args, 1)).toBeUndefined();
+		expect(getPositional(["up", "--components", "web", "ghost"], 1)).toBe("ghost");
 	});
 
 	it("skips --storage values so a pair is never the up target (D-50)", () => {
@@ -151,6 +161,87 @@ describe("launchfile up --name with no value (built CLI)", () => {
 			const { output, exitCode } = run(argv);
 			expect(exitCode).toBe(1);
 			expect(output).toContain("--name requires a value");
+		}
+	});
+});
+
+describe("parseComponentNames (--components, D-41)", () => {
+	it("splits a comma-separated value", () => {
+		expect(parseComponentNames(["web,api"])).toEqual(["web", "api"]);
+	});
+
+	it("composes repeated flags with comma lists, in order", () => {
+		expect(parseComponentNames(["web,api", "worker"])).toEqual(["web", "api", "worker"]);
+	});
+
+	it("trims spacing and drops blanks and duplicates", () => {
+		expect(parseComponentNames([" web , ,api", "web"])).toEqual(["web", "api"]);
+	});
+
+	it("returns no names for an empty value — D-41's select-nothing means all", () => {
+		expect(parseComponentNames([""])).toEqual([]);
+		expect(parseComponentNames([])).toEqual([]);
+	});
+});
+
+describe("selectorRefusal (D-41, #232)", () => {
+	it("refuses both spellings on a verb that acts on the whole deployment", () => {
+		for (const argv of [
+			["down", "--components", "web"],
+			["down", "--components=web"],
+			["down", "--component", "web"],
+		]) {
+			const lines = selectorRefusal(argv, "down", "stops the whole deployment");
+			expect(lines).toBeDefined();
+			expect(lines?.[0]).toContain("`down` stops the whole deployment");
+		}
+	});
+
+	it("names the spelling typed and the verb that spelling belongs to", () => {
+		const plural = selectorRefusal(["down", "--components", "web"], "down", "x");
+		const singular = selectorRefusal(["down", "--component", "web"], "down", "x");
+		expect(plural?.[0]).toContain("--components selects which components `up`/`dev` start");
+		expect(singular?.[0]).toContain("--component limits `bootstrap` to a single component");
+	});
+
+	it("stays out of the way when no selector is given", () => {
+		expect(selectorRefusal(["down", "--destroy"], "down", "x")).toBeUndefined();
+		expect(selectorRefusal(["status"], "status", "x")).toBeUndefined();
+	});
+});
+
+describe("down/status refuse a selector rather than swallowing it (built CLI)", () => {
+	const CLI = join(resolve(import.meta.dirname, "..", ".."), "dist", "cli.js");
+
+	function run(cliArgs: string[]): { output: string; exitCode: number } {
+		try {
+			const output = execFileSync("node", [CLI, ...cliArgs], {
+				encoding: "utf-8",
+				stdio: ["ignore", "pipe", "pipe"],
+			});
+			return { output, exitCode: 0 };
+		} catch (err) {
+			const e = err as { stdout?: string; stderr?: string; status?: number };
+			return { output: `${e.stdout ?? ""}${e.stderr ?? ""}`, exitCode: e.status ?? 1 };
+		}
+	}
+
+	// `--components` is in the global VALUE_FLAGS table, so it parses on every
+	// verb. Without the refusal, `down --destroy --components web` would drop
+	// `web` and destroy the whole app the operator was narrowing.
+	it("exits 1 and never reaches the provider", () => {
+		for (const argv of [
+			["down", "--components", "web"],
+			["down", "--destroy", "--components", "web"],
+			["down", "--component", "web"],
+			["status", "--components", "web"],
+			["status", "--components=web"],
+		]) {
+			const { output, exitCode } = run(argv);
+			expect(exitCode).toBe(1);
+			expect(output).toMatch(/^--components?\s/);
+			// Nothing was resolved, stopped, or reported behind the ignored flag.
+			expect(output).not.toContain("No deployment");
 		}
 	});
 });

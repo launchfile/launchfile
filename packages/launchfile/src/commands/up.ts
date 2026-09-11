@@ -40,6 +40,21 @@ export interface UpFlags {
 	dryRun?: boolean;
 	name?: string;
 	/**
+	 * Component selector (D-41): these components plus their transitive downward
+	 * `depends_on` closure are started, and every closure member's `requires`
+	 * comes along. Passed to whichever provider runs the launch, which resolves
+	 * it through the SDK's shared `selectionClosure` so both produce the same
+	 * running topology (P-5). Absent or empty selects all components.
+	 */
+	components?: string[];
+	/**
+	 * The singular `--component` as typed, present only so `up` can refuse it.
+	 * It is `bootstrap`'s single-component limiter, and the CLI's declared-flag
+	 * table is global, so `up . --component web` parses and consumes `web` here.
+	 * Without this the operator would get a whole-app start with no error.
+	 */
+	component?: string;
+	/**
 	 * Host paths for `content: operator` volumes (D-50), keyed as typed on the
 	 * repeatable `--storage <volume>=<path>` / `--storage <component>.<volume>=<path>`
 	 * flag — the component/volume split happens in the provider, against the
@@ -101,6 +116,16 @@ export async function handleUp(
 	flags: UpFlags,
 	deps: UpDeps = {},
 ): Promise<void> {
+	if (flags.component !== undefined) {
+		console.error(
+			"--component is `bootstrap`'s single-component limiter; `up` does not select with it.",
+		);
+		console.error(
+			"Use --components <name>[,<name>...] to start only the named components and their dependencies.",
+		);
+		process.exit(1);
+	}
+
 	const upTarget = resolveUpTarget(target);
 	const provider = await detectProvider({ docker: flags.docker, native: flags.native });
 	const indexDir = deps.indexDir;
@@ -152,6 +177,7 @@ export async function handleUp(
 						detach: flags.detach,
 						dryRun: flags.dryRun,
 						name: flags.name,
+						components: flags.components,
 						storage: flags.storage,
 					}),
 				recordDir,
@@ -246,6 +272,7 @@ export async function handleUp(
 						projectDir,
 						dryRun: flags.dryRun,
 						detach: flags.detach,
+						components: flags.components,
 						storage: flags.storage,
 					}),
 				recordDir,
