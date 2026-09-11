@@ -2,7 +2,7 @@
 "@launchfile/sdk": minor
 ---
 
-Add the `tls:` certificate binding: a `provides` entry can name one `supports:` entry of type `certificate` on the same component, and while that binding is active the entry's **effective** listener protocol is `https` (D-next).
+Add the `tls:` certificate binding: a `provides` entry can name one `supports:` entry of type `certificate` on the same component, and while that binding is active the entry's **effective** listener protocol is `https` (D-61).
 
 `tls: server-cert` is shorthand for `tls: { certificate: server-cert }`; both spellings parse, normalize and serialize, and are mirrored in `spec/schema/launchfile.schema.json`. The object form is strict — an unknown key inside it is an error, because a binding-level `port:` override is Left open and strip mode would accept one and silently drop it.
 

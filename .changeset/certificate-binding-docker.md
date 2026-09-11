@@ -2,7 +2,7 @@
 "@launchfile/docker": minor
 ---
 
-Activate a certificate binding, or refuse before launch (D-next rule 5).
+Activate a certificate binding, or refuse before launch (D-61 rule 5).
 
 Selection is arrival through `ComposeOpts.resources` — the D-56 supplied-resource channel every other optional resource already uses here, keyed by the certificate entry's `name ?? type`. Three states, no fourth:
 

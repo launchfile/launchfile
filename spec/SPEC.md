@@ -184,7 +184,7 @@ provides:
 
 ### Native TLS with a certificate binding
 
-Some apps terminate TLS on their own listener when they are given a certificate. `tls:` says so, by naming one `supports:` entry of type `certificate` on the same component ([D-61](DESIGN.md#d-next-an-active-certificate-binding-selects-a-provides-entrys-effective-listener)):
+Some apps terminate TLS on their own listener when they are given a certificate. `tls:` says so, by naming one `supports:` entry of type `certificate` on the same component ([D-61](DESIGN.md#d-61-an-active-certificate-binding-selects-a-provides-entrys-effective-listener)):
 
 ```yaml
 provides:
