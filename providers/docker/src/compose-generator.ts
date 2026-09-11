@@ -23,6 +23,7 @@ import {
 	type UnboundOperatorVolume,
 	unsuppliedRequiredEnv,
 } from "@launchfile/sdk";
+import { intersects, subset, validRange } from "semver";
 import { stringify } from "yaml";
 import {
 	computeAppProperties,
@@ -216,6 +217,80 @@ function applyPostgresConfig(
 		sql: `${sqlNames.map((n) => `CREATE EXTENSION IF NOT EXISTS "${n}";`).join("\n")}\n`,
 		sqlNames,
 	};
+}
+
+// --- requires.version handling ---
+
+/**
+ * The version family an image tag denotes, as a semver range — `undefined`
+ * when the tag names no version (`latest`). A tag is a family, not a release:
+ * `16` covers every 16.x the registry may resolve it to. Some tags carry a
+ * short alphabetic prefix that is not part of the version
+ * (`pgvector/pgvector:pg16`).
+ */
+function tagVersionRange(image: string): string | undefined {
+	const lastSlash = image.lastIndexOf("/");
+	const colon = image.indexOf(":", lastSlash + 1);
+	if (colon === -1) return undefined;
+	const match = /^[a-z]*(\d+(?:\.\d+)*)/.exec(image.slice(colon + 1));
+	if (!match) return undefined;
+	const parts = match[1]!.split(".");
+	if (parts.length === 1) return `${parts[0]}.x`;
+	if (parts.length === 2) return `${parts[0]}.${parts[1]}.x`;
+	return match[1]!;
+}
+
+/**
+ * Honor `requires[].version` (PROVIDERS.md §10 rule 8: report gaps, not silent
+ * drops). This provider provisions fixed image tags and never selects a
+ * version, so the declared range is compared against the tag the deployment
+ * will actually run — after any extension substitution. A range the tag
+ * provably satisfies is honored, and honoring it is silent. Anything else —
+ * provably unsatisfiable, undecidable, or an unparseable range — is a gap and
+ * is surfaced. The message states what this provider does and never asserts
+ * what the app will do (the D-51 rule).
+ */
+function checkVersionConstraint(
+	req: NormalizedRequirement,
+	image: string,
+	warnings: string[],
+): void {
+	const declared = req.version;
+	if (!declared) return;
+	const key = req.name ?? req.type;
+	const quoted = JSON.stringify(declared);
+
+	if (validRange(declared) === null) {
+		warnings.push(
+			`requires[${key}]: declared version ${quoted} is not a valid semver range — ` +
+				`this provider cannot check it against ${image}.`,
+		);
+		return;
+	}
+
+	const tagRange = tagVersionRange(image);
+	if (tagRange === undefined) {
+		warnings.push(
+			`requires[${key}]: declared version ${quoted} cannot be checked — this provider provisions ` +
+				`${image}, whose version is not fixed, and does not select versions.`,
+		);
+		return;
+	}
+
+	if (subset(tagRange, declared)) return;
+
+	if (!intersects(tagRange, declared)) {
+		warnings.push(
+			`requires[${key}]: declared version ${quoted} is not satisfied — this provider provisions the ` +
+				`fixed image ${image} and does not select versions.`,
+		);
+		return;
+	}
+
+	warnings.push(
+		`requires[${key}]: declared version ${quoted} cannot be checked against the fixed image ${image} — ` +
+			`this provider does not select versions.`,
+	);
 }
 
 /**
@@ -1653,6 +1728,13 @@ function addBackingService(
 
 		services[serviceName] = service;
 	}
+
+	// The image checked is the one the deployment actually runs — after any
+	// extension substitution above — so the message never names an image that
+	// is not in the compose file. A shared service is checked per requirement:
+	// a second entry declaring a version the first entry's image does not
+	// satisfy is its own gap.
+	checkVersionConstraint(req, services[serviceName]!.image as string, warnings);
 
 	return {
 		serviceName,
