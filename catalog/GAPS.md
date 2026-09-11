@@ -148,7 +148,7 @@ Each gap includes the apps that exposed it and a severity rating.
 | G-3 | Appwrite |
 | G-4 | Plausible |
 | G-5 | Rocket.Chat |
-| G-9 | Home Assistant |
+| G-9 | Home Assistant, Syncthing |
 | G-9b | Home Assistant |
 | G-10 | Ollama, Jellyfin, Plex, Immich |
 | G-11 | Jellyfin, Home Assistant, Diun, Calibre Web |
