@@ -36,6 +36,12 @@ import {
 	tfName,
 } from "./hcl.js";
 
+/** The backing-service type that declares the app's public HTTPS origin (D-60). */
+const HTTPS_ORIGIN = "https-origin";
+
+/** The `supports:` type a `provides` entry's `tls:` binds (D-61). */
+const CERTIFICATE = "certificate";
+
 export interface TranslateOptions {
 	/** AWS region for the provider block. Default: us-east-1. */
 	region?: string;
@@ -287,6 +293,21 @@ export function translate(
 			if (req.host) continue;
 			const resourceName = req.name ?? req.type;
 			if (provisioned.has(resourceName)) continue;
+			// `https-origin` (D-60) sits in FRONT of the app, so no managed
+			// service maps it: this probe composes `$app.*` from the ALB's
+			// `${aws_lb.main.dns_name}`, an http:// address that does not exist
+			// until apply time and carries no certificate. Reported unmapped
+			// rather than silently dropped (PROVIDERS.md §10 items 5 and 8);
+			// wiring an ACM certificate and an HTTPS listener is separate work.
+			if (req.type === HTTPS_ORIGIN) {
+				c.gap(
+					`requires:${HTTPS_ORIGIN}`,
+					"blocker",
+					`the app requires a public HTTPS origin in front of endpoint '${req.endpoint ?? "?"}', and this probe emits an http-only load balancer`,
+					"terminate TLS at the ALB (aws_acm_certificate + an HTTPS listener) before deploying this app",
+				);
+				continue;
+			}
 			const spec = MANAGED_RESOURCES[req.type];
 			if (!spec) {
 				c.gap(
@@ -321,6 +342,36 @@ export function translate(
 		}
 		for (const sup of comp.supports ?? []) {
 			if (sup.host) continue; // capability, not a backing service (D-44)
+			// A `certificate` (D-61) is delivered material, not a managed
+			// service: it activates the app's OWN listener. This probe emits no
+			// way to place a certificate inside the task, and on `translate`
+			// there is no launch at which to refuse — so the entry is reported
+			// unmapped rather than silently dropped (PROVIDERS.md §10 items 5
+			// and 8). Terminating TLS at the ALB is a different arrangement and
+			// does not fulfil this entry (D-61 rule 4).
+			if (sup.type === CERTIFICATE) {
+				const bound = (comp.provides ?? []).find((p) => {
+					const tls = p.tls;
+					const name = typeof tls === "string" ? tls : tls?.certificate;
+					return name === (sup.name ?? sup.type);
+				});
+				c.gap(
+					`supports:${CERTIFICATE}`,
+					"nice-to-have",
+					`the app can serve TLS on its own listener${bound?.name ? ` '${bound.name}'` : ""} with the certificate '${sup.name ?? sup.type}', and this probe has no way to place one in the task`,
+					"mount the certificate into the task and supply cert_file/key_file, or terminate TLS at the ALB instead — a different arrangement, not this entry",
+				);
+				continue;
+			}
+			if (sup.type === HTTPS_ORIGIN) {
+				c.gap(
+					`supports:${HTTPS_ORIGIN}`,
+					"nice-to-have",
+					`the app would use a public HTTPS origin in front of endpoint '${sup.endpoint ?? "?"}', and this probe emits an http-only load balancer`,
+					"terminate TLS at the ALB (aws_acm_certificate + an HTTPS listener)",
+				);
+				continue;
+			}
 			c.gap(
 				`supports:${sup.type}`,
 				"nice-to-have",

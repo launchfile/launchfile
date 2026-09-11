@@ -48,6 +48,16 @@ export interface ProvisionOpts {
 	projectDir: string;
 }
 
+/**
+ * The trusted context a teardown runs in. `state.json` is repo-supplied and
+ * parsed without validation (`state.ts`), so a provisioner cannot treat a
+ * stored path or identifier as its own; `projectDir` comes from the caller and
+ * is the only trustworthy boundary a destroy can confine itself to.
+ */
+export interface DestroyOpts {
+	projectDir: string;
+}
+
 export interface ResourceProvisioner {
 	readonly type: string;
 
@@ -62,5 +72,5 @@ export interface ResourceProvisioner {
 	): Promise<{ properties: ResourceProperties; state: ResourceState }>;
 
 	/** Drop app-specific databases/users (destroy mode) */
-	destroy(state: ResourceState): Promise<void>;
+	destroy(state: ResourceState, opts: DestroyOpts): Promise<void>;
 }

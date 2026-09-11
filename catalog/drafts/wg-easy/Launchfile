@@ -5,21 +5,48 @@ version: launch/v1
 name: wg-easy
 description: "WireGuard VPN server with simple web management UI"
 repository: https://github.com/wg-easy/wg-easy
-logo: https://raw.githubusercontent.com/wg-easy/wg-easy/master/src/www/img/logo.svg
+logo: https://raw.githubusercontent.com/wg-easy/wg-easy/master/src/public/logo.png
 
-image: ghcr.io/wg-easy/wg-easy:latest
+# Pinned to the v15 major. v15 does not read the v14 env names (WG_HOST,
+# WG_PORT, PASSWORD_HASH); its unattended first-boot setup is the INIT_* group
+# (docs/content/advanced/config/unattended-setup.md). INIT_* is read on the
+# first start only — after that the settings live in /etc/wireguard.
+image: ghcr.io/wg-easy/wg-easy:15
 provides:
-  - protocol: http
+  - name: web
+    protocol: http
     port: 51821
     exposed: true
-  - protocol: udp
+  # The WireGuard endpoint every VPN client connects to.
+  - name: wg
+    protocol: udp
     port: 51820
+    exposed: true
 env:
-  WG_HOST:
-    required: true
-    description: "Public hostname or IP for WireGuard"
-  PASSWORD_HASH:
+  INIT_ENABLED:
+    default: "true"
+    description: "Enable unattended first-boot setup from the INIT_* variables"
+  INIT_USERNAME:
+    default: "admin"
+    description: "Admin username for the web UI (first boot only)"
+  INIT_PASSWORD:
     generator: secret
     sensitive: true
-    description: "bcrypt hash of admin password"
+    description: "Admin password for the web UI (first boot only)"
+  INIT_HOST:
+    default: $app.host
+    required: true
+    description: "Public hostname or IP of the `wg` endpoint — what VPN clients connect to"
+  # INIT_PORT also sets WireGuard's in-container listen port, so the `wg`
+  # endpoint needs a 1:1 host publication (host port == container port).
+  INIT_PORT:
+    default: "51820"
+    description: "Public UDP port of the `wg` endpoint — must equal the port the `wg` endpoint is published on"
+  INSECURE:
+    default: "true"
+    description: "Drops the Secure flag from the admin session cookie so login works over plain HTTP; set false when a TLS-terminating proxy fronts the `web` endpoint"
 restart: always
+storage:
+  config:
+    path: /etc/wireguard
+    persistent: true

@@ -12,7 +12,7 @@ import {
 	selectionClosure,
 	UnboundOperatorStorageError,
 } from "@launchfile/sdk";
-import { normalizeAppUrl } from "./app-url.js";
+import { normalizeAppUrl, publishedAddress } from "./app-url.js";
 import { checkPrereqs, composeSupportsIgnoreBuildable } from "./prereqs.js";
 import { resolveSource } from "./source-resolver.js";
 import {
@@ -30,6 +30,7 @@ import {
 import { allocatePorts } from "./port-allocator.js";
 import {
 	launchToCompose,
+	type InitOnlyExtensions,
 	type StorageBind,
 	type UnsuppliedRequiredVar,
 } from "./compose-generator.js";
@@ -45,6 +46,72 @@ import {
 	type PhaseContext,
 } from "./errors.js";
 import { readdir } from "node:fs/promises";
+
+/**
+ * Reads a docker volume's existence. Injected in tests; defaults to `shell`.
+ */
+export type VolumeProbe = (
+	cmd: string,
+	args: string[],
+) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
+
+const defaultProbe: VolumeProbe = (cmd, args) =>
+	shell(cmd, args, { allowFailure: true, silent: true });
+
+/**
+ * Resolve the volume Compose actually created for a compose-file volume KEY,
+ * or null when none exists.
+ *
+ * Compose scopes every volume it creates to the project, so the bare key from
+ * the compose file matches nothing on the host and a lookup by that name would
+ * report "absent" for a volume that is plainly there. The query goes through
+ * the two labels Compose writes on each volume it creates — the project and
+ * the unscoped key — so the answer holds whatever naming scheme the installed
+ * Compose uses. A docker failure returns null: a warning this provider cannot
+ * ground is worse than none.
+ */
+export async function composeVolumeName(
+	project: string,
+	volumeKey: string,
+	probe: VolumeProbe = defaultProbe,
+): Promise<string | null> {
+	const result = await probe("docker", [
+		"volume",
+		"ls",
+		"--quiet",
+		"--filter",
+		`label=com.docker.compose.project=${project}`,
+		"--filter",
+		`label=com.docker.compose.volume=${volumeKey}`,
+	]);
+	if (result.exitCode !== 0) return null;
+	const name = result.stdout.trim().split("\n")[0]?.trim();
+	return name ? name : null;
+}
+
+/**
+ * The §10 rule 8 warning for `config.extensions` on a postgres service whose
+ * data volume already exists.
+ *
+ * It reports what this provider does — it creates no extension on this run —
+ * and never what the database now contains: the provider does not query the
+ * database, so an extension created by hand earlier is indistinguishable from
+ * one that was never created. Both remedies are named, with the cost of the
+ * destructive one stated.
+ */
+export function initOnlyExtensionsWarning(
+	entry: InitOnlyExtensions,
+	volumeName: string,
+): string {
+	return (
+		`${entry.service}: config.extensions (${entry.extensions.join(", ")}) reaches postgres ` +
+		"through an init script postgres reads only while it initializes an empty data directory. " +
+		`Volume ${volumeName} already exists, so this run creates none of them. ` +
+		"To have this provider create them, run `launchfile down --destroy` then `launchfile up` — " +
+		`that deletes ${entry.service}'s data. To keep the data, run the CREATE EXTENSION ` +
+		"statements against the running database yourself."
+	);
+}
 
 export interface DockerUpOpts {
 	detach?: boolean;
@@ -477,6 +544,28 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// disk, so the state directory is created here rather than earlier.
 		await ensureStateDir(slug);
 
+		// `config.extensions` reaches postgres through an init script that only
+		// an initializing, empty data directory runs, and this provider keeps
+		// that directory on a named volume `down` preserves. So on a deployment
+		// that has already run, a newly declared extension is never created and
+		// nothing fails — the silent drop §10 rule 8 forbids. The volume's
+		// existence is the trigger, not the database's contents: this provider
+		// runs no SQL of its own here, so a volume that exists but never
+		// initialized costs one advisory line rather than a query. Scoped to
+		// the components actually starting, like the storage checks above.
+		// Skipped on a dry run — that path runs no docker command at all, and
+		// does not even check that docker is installed.
+		if (!opts.dryRun) {
+			const composeProjectName = composeProject(slug);
+			for (const entry of result.initOnlyExtensions) {
+				if (!launching.has(entry.component)) continue;
+				const volumeName = await composeVolumeName(composeProjectName, entry.volume);
+				if (volumeName !== null) {
+					result.warnings.push(initOnlyExtensionsWarning(entry, volumeName));
+				}
+			}
+		}
+
 		// Log warnings; refusals (un-grantable host capabilities, D-44) are
 		// surfaced distinctly — a refusal is user-visible output, not a line
 		// buried in a warnings list (PROVIDERS.md §11).
@@ -896,11 +985,16 @@ export function componentOfPortKey(
  * because an `http://` link to an SMTP or DNS port would be wrong. Keys with
  * no endpoint metadata (state files written by older versions) keep the
  * legacy `http://` form.
+ *
+ * The http/https choice is NOT made here: `publishedAddress` makes it, the
+ * same call `$app.url` goes through, so the address printed to the operator
+ * and the address written into the app's own config are one derivation
+ * (#473). `protocol` is the endpoint's EFFECTIVE protocol as persisted in
+ * state (D-61 rule 2), which is why an active certificate needs no second
+ * branch here.
  */
 export function endpointAddress(port: number, protocol?: string): string {
 	switch (protocol) {
-		case "https":
-			return `https://localhost:${port}`;
 		case "ws":
 			return `ws://localhost:${port}`;
 		case "tcp":
@@ -908,7 +1002,7 @@ export function endpointAddress(port: number, protocol?: string): string {
 		case "grpc":
 			return `localhost:${port} (${protocol})`;
 		default:
-			return `http://localhost:${port}`;
+			return publishedAddress(protocol, port).url;
 	}
 }
 

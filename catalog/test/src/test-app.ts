@@ -3,7 +3,11 @@
  * Test a single catalog app by generating docker-compose, launching it,
  * checking health, collecting metrics, and tearing it down.
  *
- * Usage: bun run src/test-app.ts <app-name> [--keep] [--dry-run]
+ * Usage: bun run src/test-app.ts <app-name> [--keep] [--dry-run] [--url <public-url>]
+ *
+ * `--url` is the harness's publication-context channel (D-58), the same input
+ * the Docker provider takes as `ComposeOpts.appUrl`: it answers `$app.*`, and
+ * an `https://` value is what satisfies an app's `https-origin` entry (D-60).
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
@@ -15,15 +19,40 @@ import { launchToCompose } from "./launch-to-compose.ts";
 // --- CLI args ---
 
 const args = process.argv.slice(2);
-const flags = new Set(args.filter((a) => a.startsWith("--")));
-const positional = args.filter((a) => !a.startsWith("--"));
+
+// `--url` takes a value, in either spelling: `--url=<v>` or `--url <v>`. It is
+// pulled out before the flag/positional split so its value is never mistaken
+// for the app name.
+let appUrl: string | undefined;
+const rest: string[] = [];
+for (let i = 0; i < args.length; i++) {
+  const arg = args[i]!;
+  if (arg.startsWith("--url=")) {
+    appUrl = arg.slice("--url=".length);
+    continue;
+  }
+  if (arg === "--url") {
+    appUrl = args[++i];
+    continue;
+  }
+  rest.push(arg);
+}
+
+const flags = new Set(rest.filter((a) => a.startsWith("--")));
+const positional = rest.filter((a) => !a.startsWith("--"));
 
 const appName = positional[0];
 const keepRunning = flags.has("--keep");
 const dryRun = flags.has("--dry-run");
 
 if (!appName) {
-  console.error("Usage: bun run src/test-app.ts <app-name> [--keep] [--dry-run]");
+  console.error(
+    "Usage: bun run src/test-app.ts <app-name> [--keep] [--dry-run] [--url <public-url>]",
+  );
+  process.exit(1);
+}
+if (appUrl !== undefined && appUrl.length === 0) {
+  console.error("--url needs a value, e.g. --url https://app.example.test");
   process.exit(1);
 }
 
@@ -85,7 +114,7 @@ const testStorage: Record<string, string> = Object.fromEntries(
   ]),
 );
 
-const result = launchToCompose(launch, { testEnv, storagePaths: testStorage });
+const result = launchToCompose(launch, { testEnv, appUrl, storagePaths: testStorage });
 
 // A required variable with no fixture entry is a hard failure naming the app and
 // the variable — never a silent pass. Passing here would let this app's
@@ -106,6 +135,23 @@ if (result.unsuppliedRequired.length > 0) {
   for (const { key } of result.unsuppliedRequired) {
     console.error(`    ${key}: "<value>"`);
   }
+  process.exit(1);
+}
+
+// A required `https-origin` this run cannot satisfy is a hard failure for the
+// same reason (D-60 rule 5): the shipped Docker provider refuses the
+// component, so starting it here and recording `health_check_passed: true`
+// would certify a deployment whose own web client does not work. Fails before
+// any pull, container, or volume exists.
+if (result.originRefusals.length > 0) {
+  console.error(`\n=== ${appName}: FAIL — required HTTPS origin not satisfied (D-60) ===`);
+  for (const { component, entry, message } of result.originRefusals) {
+    console.error(`  - ${appName} [${component}]: ${entry} — ${message}`);
+  }
+  console.error(
+    "\nThe Launchfile declares it needs a public HTTPS origin. Supply one:\n",
+  );
+  console.error(`  bun run src/test-app.ts ${appName} --url https://${appName}.example.test\n`);
   process.exit(1);
 }
 

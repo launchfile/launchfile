@@ -63,7 +63,7 @@ export async function allocatePort(
  * Returns a map of component name → port.
  */
 export async function allocatePorts(
-	components: Record<string, { provides?: Array<{ port: number }> }>,
+	components: Record<string, { provides?: Array<{ port: number; exposed?: boolean }> }>,
 	appName: string,
 	savedPorts?: Record<string, number>,
 ): Promise<Record<string, number>> {
@@ -79,8 +79,24 @@ export async function allocatePorts(
 			continue;
 		}
 
-		// Use the component's declared port if free
-		const declaredPort = component.provides?.[0]?.port;
+		// Use the component's declared port if free.
+		//
+		// D-27: only an `exposed: true` endpoint is reachable from outside the
+		// host, so it anchors the single port this provider allocates. Fully
+		// internal components keep provides[0]. The docker provider answers
+		// $app.* by this same rule (app-url.ts), and this line is what makes the
+		// two agree on a file whose first entry is not the exposed one.
+		//
+		// Residual: this provider runs one host process per component and
+		// allocates it one port, so a component declaring several endpoints
+		// collapses to the anchor — every non-anchor endpoint is unallocated
+		// here. The allocated port also need not equal any declared port: when
+		// the preferred one is taken, the fall-through below picks a
+		// deterministic free port instead. See #276 for what that costs
+		// `$components.<name>.<endpoint>.*` on this provider.
+		const declaredPort = (
+			component.provides?.find((p) => p.exposed === true) ?? component.provides?.[0]
+		)?.port;
 		if (declaredPort && !allocated.has(declaredPort) && (await isPortFree(declaredPort))) {
 			result[name] = declaredPort;
 			allocated.add(declaredPort);

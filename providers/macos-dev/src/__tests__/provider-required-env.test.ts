@@ -26,7 +26,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -50,6 +50,9 @@ vi.mock("node:fs/promises", () => ({
 	},
 	mkdir: async (path: string, opts?: { recursive?: boolean; mode?: number }) => {
 		mkdirSync(path, opts);
+	},
+	chmod: async (path: string, mode: number) => {
+		chmodSync(path, mode);
 	},
 }));
 

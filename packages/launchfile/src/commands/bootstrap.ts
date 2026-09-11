@@ -1,7 +1,13 @@
 /**
- * `launchfile bootstrap [target] [--component <name>]` — Run a deployment's
- * commands.bootstrap stage (D-34) against the running component, capture
- * stdout against the declared patterns, and print results.
+ * `launchfile bootstrap [target] [--component <name>] [--reveal]` — Run a
+ * deployment's commands.bootstrap stage (D-34) against the running component,
+ * capture stdout against the declared patterns, and print results.
+ *
+ * A capture declared `sensitive: true` prints masked unless `--reveal` is
+ * given: that flag is the operator's explicit act on the invoking command,
+ * and it changes only what this process prints — the provider registers the
+ * value with its redactor either way, so no log, state file, or failure
+ * record carries it.
  *
  * Dispatches to the provider-specific implementation:
  * - docker:    dockerBootstrap from @launchfile/docker
@@ -24,13 +30,43 @@ import { dockerSlugFor, type DeploymentEntry } from "../state/index.js";
 
 export interface BootstrapFlags {
 	component?: string;
+	/** Print sensitive captures instead of masking them. */
+	reveal?: boolean;
+}
+
+/** What the docker provider's bootstrap entry point takes from this command. */
+export interface DockerBootstrapOpts {
+	launch: NormalizedLaunch;
+	slug: string;
+	component?: string;
+	reveal?: boolean;
+}
+
+/** What the macOS provider's bootstrap entry point takes from this command. */
+export interface MacosBootstrapOpts {
+	projectDir: string;
+	component?: string;
+	reveal?: boolean;
+}
+
+/**
+ * Injection points for tests (the repo's injection-over-module-mocking
+ * rule): the provider entry points and the two state directories, so a test
+ * never touches the real ~/.launchfile and never talks to docker.
+ */
+export interface BootstrapDeps {
+	dockerBootstrap?: (opts: DockerBootstrapOpts) => Promise<BootstrapResult[]>;
+	macosBootstrap?: (opts: MacosBootstrapOpts) => Promise<{ ok: boolean }[]>;
+	indexDir?: string;
+	recordDir?: string;
 }
 
 export async function handleBootstrap(
 	target: string | undefined,
 	flags: BootstrapFlags,
+	deps: BootstrapDeps = {},
 ): Promise<void> {
-	const deployment = await resolveDeploymentTarget(target);
+	const deployment = await resolveDeploymentTarget(target, deps.indexDir);
 
 	if (deployment.entry.provider === "docker") {
 		// Identity (#48): use the same slug docker keyed its state under.
@@ -56,24 +92,27 @@ export async function handleBootstrap(
 
 		const launch = readLaunch(content);
 
-		const results = await dockerBootstrap({
+		const results = await (deps.dockerBootstrap ?? dockerBootstrap)({
 			launch,
 			slug,
 			component: flags.component,
+			reveal: flags.reveal,
 		});
 
 		if (results.length === 0) process.exit(0);
 		const failed = results.find((r) => !r.ok);
-		if (failed) await recordBootstrapFailure(launch, slug, failed);
+		if (failed) await recordBootstrapFailure(launch, slug, failed, deps.recordDir);
 		process.exit(failed ? 1 : 0);
 	}
 
 	if (deployment.entry.provider === "macos") {
 		try {
-			const { launchBootstrap } = await import("@launchfile/macos-dev");
-			const results = await launchBootstrap({
+			const bootstrap =
+				deps.macosBootstrap ?? (await import("@launchfile/macos-dev")).launchBootstrap;
+			const results = await bootstrap({
 				projectDir: deployment.entry.source,
 				component: flags.component,
+				reveal: flags.reveal,
 			});
 			if (results.length === 0) process.exit(0);
 			const anyFailed = results.some((r) => !r.ok);
@@ -103,6 +142,7 @@ async function recordBootstrapFailure(
 	launch: NormalizedLaunch,
 	slug: string,
 	failed: BootstrapResult,
+	recordDir?: string,
 ): Promise<void> {
 	const error = dockerLaunchError({
 		phase: "bootstrap",
@@ -117,7 +157,7 @@ async function recordBootstrapFailure(
 		stderr: failed.stderr,
 		env: declaredEnvKeys(launch, failed.component),
 	});
-	await writeLaunchErrorRecord(error.context).catch(() => undefined);
+	await writeLaunchErrorRecord(error.context, recordDir).catch(() => undefined);
 	console.error("  Captured. Run `launchfile diagnose` for the full context.");
 }
 
