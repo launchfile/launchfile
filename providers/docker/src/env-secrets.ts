@@ -58,7 +58,7 @@ const CREDENTIAL_PROPERTIES = new Set(["password", "secret_key", "access_key"]);
 
 /**
  * Key material, by name, whatever vocabulary it belongs to (D-56 rule 5, as
- * cross-referenced by D-next rule 5): `key`, `key_file`, and every
+ * cross-referenced by D-61 rule 5): `key`, `key_file`, and every
  * `*_key` / `*_key_file` spelling.
  *
  * Vocabulary membership is what normally exempts a property from

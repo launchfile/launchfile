@@ -7,7 +7,7 @@ import {
 
 /**
  * This provider has no supplied-resource channel, so it can never receive a
- * `cert_file`/`key_file` pair and can never activate native TLS (D-next rule
+ * `cert_file`/`key_file` pair and can never activate native TLS (D-61 rule
  * 5, PROVIDERS.md §10 item 5).
  *
  * Selection here is `--with-optional`, the only switch that turns a
@@ -36,7 +36,7 @@ commands:
   start: run
 `;
 
-describe("refusedCertificates (D-next rule 5)", () => {
+describe("refusedCertificates (D-61 rule 5)", () => {
 	it("refuses a component whose certificate binding the operator selected", () => {
 		const launch = mk(WEB);
 		expect([...refusedCertificates(launch, true).keys()]).toEqual(["default"]);

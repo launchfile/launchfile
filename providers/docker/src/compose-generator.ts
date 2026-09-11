@@ -784,7 +784,7 @@ export function launchToCompose(
 	// publication context (`opts.appUrl`, #290), which answers instead. For
 	// multi-exposed-component apps that need a specific component's URL, use
 	// $components.<name>.url instead.
-	// Certificate bindings (D-next). Decided before anything is generated,
+	// Certificate bindings (D-61). Decided before anything is generated,
 	// because `$app.*` is: the app's public URL is derived below and has to
 	// know whether the primary endpoint's listener speaks https.
 	const certificates = planCertificates(launch, opts.resources);
@@ -898,7 +898,7 @@ export function launchToCompose(
 		}
 
 		// A selected certificate this provider cannot satisfy REFUSES the
-		// component (D-next rule 5). Never a fall back to HTTP: the operator
+		// component (D-61 rule 5). Never a fall back to HTTP: the operator
 		// asked for TLS on this listener, and a cleartext one that every
 		// sibling URL addresses as `https://` is the silent success the
 		// decision exists to forbid. Not selected is a different state
@@ -967,7 +967,7 @@ export function launchToCompose(
 			// `exposed: false`, which speaks to the host boundary and not to the
 			// container network.
 			//
-			// The scheme is the EFFECTIVE protocol of that entry (D-next rule
+			// The scheme is the EFFECTIVE protocol of that entry (D-61 rule
 			// 2): `https` exactly when a certificate bound to it is active,
 			// `http` for every other app — byte-identical to before for any
 			// file that declares no `tls:`. The remaining hardcoded `http://`

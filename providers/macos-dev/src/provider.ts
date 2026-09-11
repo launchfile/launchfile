@@ -230,7 +230,7 @@ export function applyHttpsOriginRefusals(
 
 /**
  * Components this provider must refuse because native TLS was selected on a
- * listener it cannot activate (D-next rule 5), mapped to the entries.
+ * listener it cannot activate (D-61 rule 5), mapped to the entries.
  *
  * Selection on this provider is `--with-optional`: it is the only way a
  * `supports:` entry is ever turned on here. Without the flag a certificate
@@ -364,7 +364,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		process.exit(1);
 	}
 	// 2a-ter. A SELECTED certificate binding (`--with-optional`) is refused on
-	// the same grounds (D-next rule 5): no channel to receive the material, so
+	// the same grounds (D-61 rule 5): no channel to receive the material, so
 	// the listener the operator asked to secure would come up cleartext.
 	// Unselected, the binding is inactive and the baseline is correct (D-8).
 	if (applyCertificateRefusals(launch, opts.withOptional === true) === "none-left") {

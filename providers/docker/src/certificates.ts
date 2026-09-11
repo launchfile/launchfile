@@ -1,5 +1,5 @@
 /**
- * Certificate bindings — activate, or refuse before launch (D-next rule 5).
+ * Certificate bindings — activate, or refuse before launch (D-61 rule 5).
  *
  * A `provides` entry's `tls:` names a `supports:` entry of type `certificate`
  * on the same component. This provider issues nothing: the certificate arrives
@@ -120,6 +120,6 @@ export function certificateRefusalMessage(
 	return (
 		`refused: ${componentName} selected native TLS and the certificate was not satisfied ` +
 		`(${entries}) — component skipped; this provider never falls back to HTTP on a ` +
-		"listener a selected certificate was meant to secure (D-next rule 5)"
+		"listener a selected certificate was meant to secure (D-61 rule 5)"
 	);
 }

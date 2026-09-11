@@ -1,5 +1,5 @@
 /**
- * Certificate bindings on `@launchfile/docker` (D-next): activate from the
+ * Certificate bindings on `@launchfile/docker` (D-61): activate from the
  * supplied-resource channel, or refuse before launch.
  *
  * Selection is arrival through `ComposeOpts.resources` — the D-56 channel
@@ -72,7 +72,7 @@ beforeEach(() => {
 	clearRegisteredSecrets();
 });
 
-describe("the binding is inactive unless it is selected (D-next rule 1)", () => {
+describe("the binding is inactive unless it is selected (D-61 rule 1)", () => {
 	it("deploys the declared HTTP baseline with the `env:` value intact", () => {
 		const { doc, warnings } = compose(GITEA);
 		const env = doc.services["gitea-gitea"]!.environment!;
@@ -95,7 +95,7 @@ describe("the binding is inactive unless it is selected (D-next rule 1)", () => 
 	});
 });
 
-describe("a selected, satisfied binding activates (D-next rules 2 and 3)", () => {
+describe("a selected, satisfied binding activates (D-61 rules 2 and 3)", () => {
 	it("writes the binding's `set_env` over a same-named `env:` value", () => {
 		const { doc } = compose(GITEA, { resources: SELECTED });
 		const env = doc.services["gitea-gitea"]!.environment!;
@@ -146,7 +146,7 @@ describe("a selected, satisfied binding activates (D-next rules 2 and 3)", () =>
 	});
 });
 
-describe("selected but unsatisfied refuses before launch (D-next rule 5)", () => {
+describe("selected but unsatisfied refuses before launch (D-61 rule 5)", () => {
 	for (const missing of ["cert_file", "key_file"] as const) {
 		it(`refuses the component when only ${missing} is missing`, () => {
 			const properties: Record<string, string> = {
@@ -244,8 +244,8 @@ describe("a supplied `key_file` never reaches a diagnostic (D-56 rule 5, CWE-532
 describe("one supplied entry serves every component that names it (D-56 keying)", () => {
 	// `ComposeOpts.resources` is app-global and keyed by `name ?? type`, so two
 	// components whose `supports:` entries share a name share the one supplied
-	// certificate. D-next rule 1 resolves the binding within a component, which
-	// makes the file valid; the supply channel is where they meet. D-next Left
+	// certificate. D-61 rule 1 resolves the binding within a component, which
+	// makes the file valid; the supply channel is where they meet. D-61 Left
 	// open (4) — shared certificates are a validation error — holds WITHIN a
 	// component, not across two.
 	const PAIR = `

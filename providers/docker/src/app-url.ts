@@ -229,7 +229,7 @@ export function computeAppProperties(
 	 * The primary endpoint's `provides` entry, when the positional or declared
 	 * choice resolves to one — the listener `$app.url` is computed from. This
 	 * branch IS the provider computing the public address from its own direct
-	 * publication of that listener, which is the one place D-next rule 2 has
+	 * publication of that listener, which is the one place D-61 rule 2 has
 	 * `$app.*` read the EFFECTIVE protocol. The supplied-URL branch above never
 	 * does: a supplied publication context wins (D-58 rule 5).
 	 */
@@ -260,7 +260,7 @@ export function computeAppProperties(
 	}
 
 	// `https` only when a certificate bound to that very entry is active
-	// (D-next rule 2). Every other app keeps the localhost answer byte for byte.
+	// (D-61 rule 2). Every other app keeps the localhost answer byte for byte.
 	const scheme =
 		primaryEntry !== undefined &&
 		effectiveListener(primaryEntry, activeCertificates).active

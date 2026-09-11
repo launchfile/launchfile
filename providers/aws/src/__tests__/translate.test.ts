@@ -576,7 +576,7 @@ provides:
 	});
 });
 
-describe("translate — certificate binding (D-next rule 5)", () => {
+describe("translate — certificate binding (D-61 rule 5)", () => {
 	const APP = `
 version: launch/v1
 name: gitea
@@ -606,7 +606,7 @@ supports:
 		expect(gap!.reason).toContain("'server-cert'");
 		// Nothing invented to make the declaration look satisfied, and no ALM
 		// certificate conjured: terminating at the ALB is a different
-		// arrangement, not this entry (D-next rule 4).
+		// arrangement, not this entry (D-61 rule 4).
 		expect(hcl).not.toContain("aws_acm_certificate");
 	});
 

@@ -39,7 +39,7 @@ import {
 /** The backing-service type that declares the app's public HTTPS origin (D-60). */
 const HTTPS_ORIGIN = "https-origin";
 
-/** The `supports:` type a `provides` entry's `tls:` binds (D-next). */
+/** The `supports:` type a `provides` entry's `tls:` binds (D-61). */
 const CERTIFICATE = "certificate";
 
 export interface TranslateOptions {
@@ -342,13 +342,13 @@ export function translate(
 		}
 		for (const sup of comp.supports ?? []) {
 			if (sup.host) continue; // capability, not a backing service (D-44)
-			// A `certificate` (D-next) is delivered material, not a managed
+			// A `certificate` (D-61) is delivered material, not a managed
 			// service: it activates the app's OWN listener. This probe emits no
 			// way to place a certificate inside the task, and on `translate`
 			// there is no launch at which to refuse — so the entry is reported
 			// unmapped rather than silently dropped (PROVIDERS.md §10 items 5
 			// and 8). Terminating TLS at the ALB is a different arrangement and
-			// does not fulfil this entry (D-next rule 4).
+			// does not fulfil this entry (D-61 rule 4).
 			if (sup.type === CERTIFICATE) {
 				const bound = (comp.provides ?? []).find((p) => {
 					const tls = p.tls;
