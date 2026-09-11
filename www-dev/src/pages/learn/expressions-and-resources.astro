@@ -111,7 +111,26 @@ const metabaseYaml = metabaseYamlRaw.replace(/^#.*\n/gm, "").trim();
 <h2 id="the-vocabulary">The property vocabulary</h2>
 
 <p>
-  What can go after the <code>$</code>? Each resource type exposes a <GlossaryTip term="property vocabulary" definition="The standard set of properties a resource type exposes — e.g. url, host, port, user, password, name for postgres. Published in machine-readable form as resource-properties.json.">standard property set</GlossaryTip>: <code>postgres</code> gives you <code>url</code>, <code>host</code>, <code>port</code>, <code>user</code>, <code>password</code>, and <code>name</code>; <code>redis</code> gives <code>url</code>, <code>host</code>, <code>port</code>, <code>password</code>; and so on. <code>url</code> is always the fully-formed connection string; the rest are its pieces, for apps that want them separately.
+  What can go after the <code>$</code>? Each resource type exposes a <GlossaryTip term="property vocabulary" definition="The standard set of properties a resource type exposes — e.g. url, host, port, user, password, name for postgres. Published in machine-readable form as resource-properties.json.">standard property set</GlossaryTip>: <code>postgres</code> gives you <code>url</code>, <code>host</code>, <code>port</code>, <code>user</code>, <code>password</code>, and <code>name</code>; <code>redis</code> gives <code>url</code>, <code>host</code>, <code>port</code>, <code>password</code>; and so on. <code>url</code> is always the resource's fully-formed address — a connection string for a database, cache or queue — and where a type exposes more than one property, the rest are its pieces, for apps that want them separately.
+</p>
+
+<p>
+  One type registers <code>url</code> and nothing else: <code>https-origin</code>, which asks for a public HTTPS origin in front of the app rather than a service behind it. There <code>url</code> is that origin — <code>https://vault.example.com</code> — the same string <code>$app.url</code> resolves to. It is the one entry that references one of the app's own listeners, with an <code>endpoint:</code> naming a <code>provides</code> entry:
+</p>
+
+<pre><code>{`provides:
+  - name: web
+    protocol: http
+    port: 80
+    exposed: true
+requires:
+  - type: https-origin
+    endpoint: web
+    set_env:
+      DOMAIN: $url`}</code></pre>
+
+<p>
+  <code>endpoint:</code> is not a keyword — it is whatever the app called that endpoint. It is required on an <code>https-origin</code> entry, meaningless on any other type, and must name an <code>exposed: true</code> listener speaking <code>http</code>, <code>https</code>, <code>ws</code> or <code>grpc</code> on the same component; naming a <code>tcp</code> or <code>udp</code> one is a validation error, because those listeners have no origin. An app declares at most one, and the endpoint it names is the app's primary — the one <code>$app.*</code> describes.
 </p>
 
 <BeforeAfter

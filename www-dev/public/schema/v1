@@ -184,6 +184,11 @@
           "type": "string",
           "description": "Resource type (e.g., 'postgres', 'redis')"
         },
+        "endpoint": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "The `provides` entry this resource fronts, by its `name` (D-6). Required on a `type: https-origin` entry, meaningless on any other type."
+        },
         "version": {
           "type": "string",
           "description": "Version constraint (e.g., '>=15')"
