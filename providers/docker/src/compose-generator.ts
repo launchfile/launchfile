@@ -970,11 +970,14 @@ export function launchToCompose(
 			// `exposed: false`, which speaks to the host boundary and not to the
 			// container network.
 			//
-			// The scheme is the EFFECTIVE protocol of that entry (D-61 rule
-			// 2): `https` exactly when a certificate bound to it is active,
-			// `http` for every other app — byte-identical to before for any
-			// file that declares no `tls:`. The remaining hardcoded `http://`
-			// for non-web listener protocols is #391's scope, not this one.
+			// The scheme here follows `effectiveListener(...).active` — `https`
+			// only when a certificate bound to the entry is active. That is NOT
+			// the effective protocol of D-61 rule 2, which is also `https` when
+			// the entry declares `protocol: https` with no binding; this site
+			// writes `http://` for that entry. #391 tracks the fix, along with
+			// the hardcoded `http://` for non-web listener protocols. The
+			// published-address derivation below reads
+			// `effectiveListener(...).protocol` and does not share this defect.
 			const primaryListener = effectiveListener(
 				component.provides[0]!,
 				certificates.active,
