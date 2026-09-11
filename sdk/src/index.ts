@@ -6,6 +6,13 @@ export {
 	collectOperatorStorage,
 } from "./commands.js";
 export {
+	boundCertificate,
+	CERTIFICATE,
+	certificateBindings,
+	type EffectiveListener,
+	effectiveListener,
+} from "./effective-listener.js";
+export {
 	DEPRECATED_IN,
 	DEPRECATION_REGISTRY,
 	type Deprecation,

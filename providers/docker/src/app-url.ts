@@ -9,7 +9,12 @@
  * of that derivation exists here.
  */
 
-import { deriveAppUrlProperties, type NormalizedLaunch } from "@launchfile/sdk";
+import {
+	deriveAppUrlProperties,
+	effectiveListener,
+	type NormalizedLaunch,
+	type Provides,
+} from "@launchfile/sdk";
 import { publishedEndpoints } from "./port-allocator.js";
 
 /** The backing-service type that declares the app's public HTTPS origin (D-60). */
@@ -203,6 +208,7 @@ export function computeAppProperties(
 	launch: NormalizedLaunch,
 	hostPorts: Record<string, number> | undefined,
 	appUrl?: string,
+	activeCertificates?: ReadonlySet<string>,
 ): Record<string, string | number> {
 	if (appUrl !== undefined) {
 		const url = normalizeAppUrl(appUrl);
@@ -219,6 +225,15 @@ export function computeAppProperties(
 	}
 
 	let primaryPort = 0;
+	/**
+	 * The primary endpoint's `provides` entry, when the positional or declared
+	 * choice resolves to one — the listener `$app.url` is computed from. This
+	 * branch IS the provider computing the public address from its own direct
+	 * publication of that listener, which is the one place D-61 rule 2 has
+	 * `$app.*` read the EFFECTIVE protocol. The supplied-URL branch above never
+	 * does: a supplied publication context wins (D-58 rule 5).
+	 */
+	let primaryEntry: Provides | undefined;
 	const declared = declaredPrimaryEndpoint(launch);
 	if (declared) {
 		// A declared `https-origin` names the primary explicitly, so the
@@ -227,6 +242,9 @@ export function computeAppProperties(
 		// which is how a non-first endpoint (openclaw's `bridge`) gets the
 		// host port that was actually allocated for it.
 		primaryPort = hostPorts?.[declared.key] ?? declared.port;
+		primaryEntry = launch.components[declared.component]?.provides?.find(
+			(p) => p.name === declared.name,
+		);
 	} else {
 		for (const [name, component] of Object.entries(launch.components)) {
 			// Only endpoints explicitly marked `exposed: true` are reachable from the
@@ -236,11 +254,19 @@ export function computeAppProperties(
 			if (published.length === 0) continue;
 			// Prefer caller-supplied host port, fall back to the declared container port.
 			primaryPort = hostPorts?.[name] ?? published[0]!.port;
+			primaryEntry = published[0];
 			break;
 		}
 	}
 
-	const url = primaryPort > 0 ? `http://localhost:${primaryPort}` : "";
+	// `https` only when a certificate bound to that very entry is active
+	// (D-61 rule 2). Every other app keeps the localhost answer byte for byte.
+	const scheme =
+		primaryEntry !== undefined &&
+		effectiveListener(primaryEntry, activeCertificates).active
+			? "https"
+			: "http";
+	const url = primaryPort > 0 ? `${scheme}://localhost:${primaryPort}` : "";
 	return {
 		name: launch.name,
 		host: "localhost",

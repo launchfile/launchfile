@@ -74,6 +74,23 @@ export interface Provides {
 	exposed?: boolean;
 	/** API spec references */
 	spec?: Record<string, string>;
+	/**
+	 * The certificate this listener serves when native TLS is selected
+	 * (D-61): the `name` of one `supports:` entry of type `certificate` on
+	 * the same component. `tls: "server-cert"` is shorthand for
+	 * `tls: { certificate: "server-cert" }`.
+	 *
+	 * `protocol` and `port` keep describing the baseline configuration; the
+	 * effective protocol is `https` only while the binding is active. Use
+	 * {@link effectiveListener} rather than reading this field directly.
+	 */
+	tls?: string | TlsBinding;
+}
+
+/** The expanded form of a `provides` entry's `tls:` binding (D-61 rule 1). */
+export interface TlsBinding {
+	/** Name of the `supports:` entry of type `certificate` this listener binds. */
+	certificate: string;
 }
 
 // --- Requires / Supports ---

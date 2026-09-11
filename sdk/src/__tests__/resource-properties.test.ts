@@ -49,9 +49,10 @@ function parseSpecVocabulary(): Record<string, string[]> {
 describe("resource property registry consistency (D-46)", () => {
 	const specVocabulary = parseSpecVocabulary();
 
-	it("parses all 13 resource types from the SPEC.md table", () => {
+	it("parses all 14 resource types from the SPEC.md table", () => {
 		expect(Object.keys(specVocabulary).sort()).toEqual(
 			[
+				"certificate",
 				"clickhouse",
 				"elasticsearch",
 				"https-origin",

@@ -575,3 +575,49 @@ provides:
 		).toBe(false);
 	});
 });
+
+describe("translate — certificate binding (D-61 rule 5)", () => {
+	const APP = `
+version: launch/v1
+name: gitea
+image: gitea/gitea:latest
+provides:
+  - name: web
+    protocol: http
+    port: 3000
+    exposed: true
+    tls: server-cert
+supports:
+  - name: server-cert
+    type: certificate
+    set_env:
+      GITEA__server__CERT_FILE: $cert_file
+      GITEA__server__KEY_FILE: $key_file
+`;
+
+	it("reports the entry unmapped, naming the listener it binds", () => {
+		const { hcl, conformance } = tf(APP);
+		const gap = conformance.gaps.find(
+			(g) => g.field === "supports:certificate",
+		);
+		expect(gap).toBeDefined();
+		expect(gap!.severity).toBe("nice-to-have");
+		expect(gap!.reason).toContain("'web'");
+		expect(gap!.reason).toContain("'server-cert'");
+		// Nothing invented to make the declaration look satisfied, and no ALM
+		// certificate conjured: terminating at the ALB is a different
+		// arrangement, not this entry (D-61 rule 4).
+		expect(hcl).not.toContain("aws_acm_certificate");
+	});
+
+	it("does not grade it as a missing managed-service mapping", () => {
+		const { conformance } = tf(APP);
+		expect(
+			conformance.gaps.some(
+				(g) =>
+					g.field === "supports:certificate" &&
+					g.reason.includes("no managed AWS service mapping"),
+			),
+		).toBe(false);
+	});
+});

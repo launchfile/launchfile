@@ -35,6 +35,21 @@ const SecretSchema = z.object({
 
 // --- Provides ---
 
+/**
+ * `tls: <name>` is shorthand for `tls: { certificate: <name> }` (D-61 rule
+ * 1). Both spellings name one `supports:` entry of type `certificate` on the
+ * same component; `checkCertificateBindings` below resolves the name, which
+ * needs the whole component to answer.
+ */
+const TlsBindingSchema = z.union([
+	NameSchema,
+	// Strict, unlike the requirement objects around it: a binding-level `port:`
+	// override is D-61 Left open (1), and strip mode would accept one and
+	// silently drop it — the listener would then serve TLS on a port the author
+	// believes they changed (P-14). The published JSON Schema rejects it too.
+	z.strictObject({ certificate: NameSchema }),
+]);
+
 const ProvidesSchema = z.object({
 	name: NameSchema.optional(),
 	protocol: ProtocolSchema,
@@ -42,6 +57,7 @@ const ProvidesSchema = z.object({
 	bind: z.string().optional(),
 	exposed: z.boolean().optional(),
 	spec: z.record(z.string(), z.string()).optional(),
+	tls: TlsBindingSchema.optional(),
 });
 
 // --- Requirement (full form) ---
@@ -492,6 +508,187 @@ function checkHttpsOrigin(
 	}
 }
 
+/** The `supports:` resource type a `tls:` binding names (D-61 rule 1). */
+const CERTIFICATE = "certificate";
+
+/** A `provides` entry, as far as the certificate rules need to see it. */
+interface TlsProvidesLike {
+	name?: unknown;
+	protocol?: unknown;
+	tls?: unknown;
+}
+
+/** The certificate name a `provides` entry binds, in either spelling. */
+function tlsCertificateName(entry: TlsProvidesLike): string | undefined {
+	const tls = entry.tls;
+	if (typeof tls === "string") return tls;
+	if (typeof tls === "object" && tls !== null && !Array.isArray(tls)) {
+		const certificate = (tls as { certificate?: unknown }).certificate;
+		if (typeof certificate === "string") return certificate;
+	}
+	return undefined;
+}
+
+/** How a `provides` entry is named in a message: its `name`, else its index. */
+function providesLabel(entry: TlsProvidesLike, index: number): string {
+	return typeof entry.name === "string"
+		? `"${entry.name}"`
+		: `#${index + 1} (unnamed)`;
+}
+
+/**
+ * Enforce the structural rules a `tls:` binding carries (D-61 rule 1), none
+ * of which a per-entry schema can see: the bound entry speaks an HTTP-family
+ * protocol, the named certificate exists in the same component's `supports:`,
+ * it declares `type: certificate`, no certificate is named by two entries, and
+ * a binding naming a `requires:` entry is rejected as out of scope.
+ *
+ * Scoped to the component that declares the listener, for the same reason
+ * {@link checkHttpsOrigin} is: the certificate is wired into that component's
+ * environment, and resolving against another component's `supports:` would
+ * bind a listener to material it never receives.
+ */
+function checkCertificateBindings(
+	launch: Record<string, unknown>,
+	ctx: z.RefinementCtx,
+): void {
+	const components = launch.components as
+		| Record<string, Record<string, unknown>>
+		| undefined;
+
+	const scopes: OriginScope[] = [
+		{
+			label: "(top-level)",
+			prefix: [],
+			requires: launch.requires,
+			supports: launch.supports,
+			provides: launch.provides,
+		},
+	];
+	if (components !== undefined) {
+		for (const [name, component] of Object.entries(components)) {
+			if (typeof component !== "object" || component === null) continue;
+			scopes.push({
+				label: name,
+				prefix: ["components", name],
+				requires: component.requires,
+				supports: component.supports,
+				provides: component.provides,
+			});
+		}
+	}
+
+	for (const scope of scopes) {
+		const provides = Array.isArray(scope.provides)
+			? (scope.provides as TlsProvidesLike[])
+			: [];
+		const supports = Array.isArray(scope.supports) ? scope.supports : [];
+		const requires = Array.isArray(scope.requires) ? scope.requires : [];
+
+		/** Entry index in this scope's `supports:`, keyed by `name ?? type`. */
+		const namedEntry = (list: unknown[], name: string): EntryLike | undefined =>
+			list.find((raw) => {
+				if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+					return false;
+				}
+				const entry = raw as { name?: unknown; type?: unknown };
+				const key = typeof entry.name === "string" ? entry.name : entry.type;
+				return key === name;
+			}) as EntryLike | undefined;
+
+		/** First `provides` index that bound each certificate, for rule 1's twin check. */
+		const claimed = new Map<string, number>();
+
+		for (const [index, entry] of provides.entries()) {
+			if (typeof entry !== "object" || entry === null) continue;
+			const certificate = tlsCertificateName(entry);
+			if (certificate === undefined) continue;
+			const path = [...scope.prefix, "provides", index, "tls"];
+
+			const protocol =
+				typeof entry.protocol === "string" ? entry.protocol : "";
+			if (!HTTP_FAMILY_PROTOCOLS.has(protocol)) {
+				ctx.addIssue({
+					code: "custom",
+					path,
+					message:
+						`\`tls: ${certificate}\` binds \`provides\` entry ` +
+						`${providesLabel(entry, index)} on ${scope.label}, which declares ` +
+						`\`protocol: ${protocol}\`; an active binding makes a listener's ` +
+						"effective protocol `https`, which only an HTTP-family listener " +
+						"(`http`, `https`, `ws`, `grpc`) can speak — a `tcp` or `udp` " +
+						"listener cannot (D-61 rule 1, on D-60 rule 2's family line). " +
+						"TLS on a non-HTTP listener is D-61 Left open (6).",
+				});
+				continue;
+			}
+
+			const first = claimed.get(certificate);
+			if (first !== undefined) {
+				ctx.addIssue({
+					code: "custom",
+					path,
+					message:
+						`certificate "${certificate}" is bound by two \`provides\` entries on ` +
+						`${scope.label} — ${providesLabel(provides[first]!, first)} and ` +
+						`${providesLabel(entry, index)}. A certificate binds exactly one listener ` +
+						"(D-61 rule 1); declare a second `certificate` entry for the other.",
+				});
+				continue;
+			}
+			claimed.set(certificate, index);
+
+			const supported = namedEntry(supports, certificate);
+			if (!supported) {
+				const required = namedEntry(requires, certificate);
+				if (required) {
+					ctx.addIssue({
+						code: "custom",
+						path,
+						message:
+							`\`tls: ${certificate}\` names a \`requires:\` entry on ${scope.label}. ` +
+							"Required native TLS is out of scope for D-61, which binds the optional " +
+							"mood only — move the entry to `supports:`, or track the requirement on " +
+							"D-61 Left open (2) (github.com/launchfile/launchfile/issues/314, " +
+							"dimension A's `requires:` half).",
+					});
+					continue;
+				}
+				const available = supports
+					.map((raw) =>
+						typeof raw === "object" && raw !== null && !Array.isArray(raw)
+							? ((raw as { name?: unknown; type?: unknown }).name ??
+								(raw as { type?: unknown }).type)
+							: raw,
+					)
+					.filter((n): n is string => typeof n === "string");
+				ctx.addIssue({
+					code: "custom",
+					path,
+					message:
+						`\`tls: ${certificate}\` names no \`supports:\` entry on ${scope.label} ` +
+						"(D-61 rule 1). " +
+						(available.length > 0
+							? `Entries there: ${available.join(", ")}.`
+							: "That component declares no `supports:` entry — add one of `type: certificate`."),
+				});
+				continue;
+			}
+
+			if (supported.type !== CERTIFICATE) {
+				ctx.addIssue({
+					code: "custom",
+					path,
+					message:
+						`\`tls: ${certificate}\` names a \`supports:\` entry of \`type: ` +
+						`${String(supported.type)}\` on ${scope.label}; a \`tls:\` binding names ` +
+						`an entry of \`type: ${CERTIFICATE}\` (D-61 rule 1)`,
+				});
+			}
+		}
+	}
+}
+
 // --- Top-Level Launch ---
 
 export const LaunchSchema = z.object({
@@ -532,6 +729,7 @@ export const LaunchSchema = z.object({
 	components: z.record(z.string(), ComponentSchema).optional(),
 }).superRefine((launch, ctx) => {
 	checkHttpsOrigin(launch as Record<string, unknown>, ctx);
+	checkCertificateBindings(launch as Record<string, unknown>, ctx);
 });
 
 // --- Exported sub-schemas for testing ---
@@ -544,6 +742,7 @@ export {
 	GeneratorSchema,
 	RestartPolicySchema,
 	ProvidesSchema,
+	TlsBindingSchema,
 	RequirementObjectSchema,
 	RequirementSchema,
 	HostCapabilityObjectSchema,

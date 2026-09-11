@@ -8,6 +8,7 @@
 
 import { resolve as resolvePath } from "node:path";
 import {
+	effectiveListener,
 	indexOperatorStoragePaths,
 	isExpression,
 	type NormalizedEnvVar,
@@ -24,6 +25,10 @@ import {
 } from "@launchfile/sdk";
 import { stringify } from "yaml";
 import { computeAppProperties, HTTPS_ORIGIN } from "./app-url.js";
+import {
+	certificateRefusalMessage,
+	planCertificates,
+} from "./certificates.js";
 import {
 	registerSensitiveEnv,
 	registerSuppliedEnv,
@@ -779,7 +784,17 @@ export function launchToCompose(
 	// publication context (`opts.appUrl`, #290), which answers instead. For
 	// multi-exposed-component apps that need a specific component's URL, use
 	// $components.<name>.url instead.
-	const appProperties = computeAppProperties(launch, opts.hostPorts, opts.appUrl);
+	// Certificate bindings (D-61). Decided before anything is generated,
+	// because `$app.*` is: the app's public URL is derived below and has to
+	// know whether the primary endpoint's listener speaks https.
+	const certificates = planCertificates(launch, opts.resources);
+
+	const appProperties = computeAppProperties(
+		launch,
+		opts.hostPorts,
+		opts.appUrl,
+		certificates.active,
+	);
 
 	// `https-origin` (D-60) — the one backing service that sits in FRONT of
 	// the app. This provider runs no edge of its own, so it cannot provision
@@ -882,6 +897,20 @@ export function launchToCompose(
 			continue;
 		}
 
+		// A selected certificate this provider cannot satisfy REFUSES the
+		// component (D-61 rule 5). Never a fall back to HTTP: the operator
+		// asked for TLS on this listener, and a cleartext one that every
+		// sibling URL addresses as `https://` is the silent success the
+		// decision exists to forbid. Not selected is a different state
+		// entirely and never reaches here — the baseline is correct.
+		const certificateRefusals = certificates.refusals.get(componentName);
+		if (certificateRefusals) {
+			warnings.push(
+				certificateRefusalMessage(componentName, certificateRefusals),
+			);
+			continue;
+		}
+
 		if (component.schedule) {
 			warnings.push(
 				`${componentName}: declares a schedule (\`${component.schedule}\`) — this provider will not run it on a timer; if the component does not schedule itself, the job will not run`,
@@ -937,9 +966,19 @@ export function launchToCompose(
 			// endpoint is reachable by sibling components, including one marked
 			// `exposed: false`, which speaks to the host boundary and not to the
 			// container network.
-			const containerPort = component.provides[0]!.port;
+			//
+			// The scheme is the EFFECTIVE protocol of that entry (D-61 rule
+			// 2): `https` exactly when a certificate bound to it is active,
+			// `http` for every other app — byte-identical to before for any
+			// file that declares no `tls:`. The remaining hardcoded `http://`
+			// for non-web listener protocols is #391's scope, not this one.
+			const primaryListener = effectiveListener(
+				component.provides[0]!,
+				certificates.active,
+			);
+			const containerPort = primaryListener.port;
 			componentMap[componentName] = {
-				url: `http://${serviceName}:${containerPort}`,
+				url: `${primaryListener.active ? "https" : "http"}://${serviceName}:${containerPort}`,
 				host: serviceName,
 				port: containerPort,
 			};
