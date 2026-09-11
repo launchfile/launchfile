@@ -177,8 +177,12 @@ export interface ValidateOpts {
  * Sanitization here is deliberately partial, and a caller that renders this
  * object needs to know where the boundary sits. `warnings` and `errors` are
  * diagnostics — display prose the SDK composes — so they arrive already run
- * through `stripControlInline`/`stripControl` and carry no ANSI escape or
- * control character. `name`, `components`, `requires`, `hostCapabilities`,
+ * through `stripControlInline`/`stripControl` and carry no ANSI escape. Every
+ * `warnings` entry is also single-line. `errors` is single-line except on a
+ * YAML parse failure, where the entry keeps the literal newlines and tabs
+ * that lay out the quoted source snippet and its caret — a caller that feeds
+ * `errors` to a line-oriented log sink must split or re-escape it first.
+ * `name`, `components`, `requires`, `hostCapabilities`,
  * `operatorStorage` and `deprecations[].path` are data: they hold the
  * document's own strings verbatim, so a programmatic caller can match them
  * against the file it validated. A caller that prints one of those to a
