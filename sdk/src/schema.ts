@@ -160,6 +160,7 @@ const EnvVarObjectSchema = z.object({
 	required: z.boolean().optional(),
 	generator: GeneratorSchema.optional(),
 	sensitive: z.boolean().optional(),
+	example: z.string().max(256).optional(),
 });
 
 /** Accepts string shorthand ("8080") or full object */
