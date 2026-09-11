@@ -57,6 +57,20 @@ export function registerSuppliedEnv(
 const CREDENTIAL_PROPERTIES = new Set(["password", "secret_key", "access_key"]);
 
 /**
+ * Key material, by name, whatever vocabulary it belongs to (D-56 rule 5, as
+ * cross-referenced by D-61 rule 5): `key`, `key_file`, and every
+ * `*_key` / `*_key_file` spelling.
+ *
+ * Vocabulary membership is what normally exempts a property from
+ * registration, and that is exactly the hazard here: registering
+ * `certificate` with `cert_file`/`key_file` moves `key_file` INSIDE a
+ * vocabulary, which would switch its fail-closed redaction off and let
+ * private-key paths reach diagnostics and CI logs (CWE-532). This test runs
+ * first, so membership can never turn it off.
+ */
+const KEY_MATERIAL = /(?:^|_)key(?:_file)?$/;
+
+/**
  * Structural property names whose values are addresses and identifiers, not
  * credentials. These are exempt from registration: scrubbing "localhost" or
  * "5432" out of every diagnostic would corrupt the output redaction exists to
@@ -82,17 +96,17 @@ const STRUCTURAL_PROPERTIES = new Set([
  * Unlike the env channel, indiscriminate registration is wrong here — a
  * resource property map carries hostnames and ports alongside its credentials.
  * Classification is by property name against the D-46 vocabulary:
- * `password`/`secret_key`/`access_key` always register; the structural set is
- * exempt; any name outside the type's registry vocabulary registers too (fail
- * closed — an extension property this provider cannot classify is treated as a
- * credential, never assumed benign).
+ * `password`/`secret_key`/`access_key` and every `*_key` / `*_key_file` name
+ * always register; the structural set is exempt; any name outside the type's
+ * registry vocabulary registers too (fail closed — an extension property this
+ * provider cannot classify is treated as a credential, never assumed benign).
  */
 export function registerSuppliedResourceProperties(
 	properties: Readonly<Record<string, string>>,
 	vocabulary: readonly string[] | undefined,
 ): void {
 	for (const [prop, value] of Object.entries(properties)) {
-		if (CREDENTIAL_PROPERTIES.has(prop)) {
+		if (CREDENTIAL_PROPERTIES.has(prop) || KEY_MATERIAL.test(prop)) {
 			registerDeclaredSecret(value);
 			continue;
 		}

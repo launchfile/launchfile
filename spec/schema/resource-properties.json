@@ -1,5 +1,5 @@
 {
-  "$comment": "Machine-readable registry of the standard resource property vocabulary (D-46, closes G-6). The canonical prose form is SPEC.md § Resource Property Vocabulary; an SDK test (sdk/src/__tests__/resource-properties.test.ts) keeps the two consistent, so drift fails CI. Semantics notes are descriptive only: they record the documented meaning and existing provider latitude, and never settle a semantic the spec leaves undefined. Known-type vocabularies are OPEN — providers MAY expose extension properties; tooling warns (never errors) on properties outside this registry. Unknown resource types have no vocabulary here and stay fully open (L-4).",
+  "$comment": "Machine-readable registry of the standard resource property vocabulary (D-46, closes G-6). The canonical prose form is SPEC.md § Resource Property Vocabulary; an SDK test (sdk/src/__tests__/resource-properties.test.ts) keeps the two consistent, so drift fails CI. Semantics notes are descriptive only: they record the documented meaning and existing provider latitude, and never settle a semantic the spec leaves undefined. Known-type vocabularies are OPEN — providers MAY expose extension properties; tooling warns (never errors) on properties outside this registry. Unknown resource types have no vocabulary here and stay fully open (L-4). Credential classification is independent of this registry: `password`, `secret_key`, `access_key`, and every `*_key` / `*_key_file` name are credential-bearing whether or not a type's vocabulary lists them (D-56 rule 5).",
   "types": {
     "postgres": {
       "url": "Fully-formed connection string (e.g. postgresql://user:pass@host:5432/dbname); TLS mode is provider latitude",
@@ -79,6 +79,13 @@
       "secret_key": "Secret access key credential",
       "bucket": "Name of the provisioned bucket",
       "region": "Region identifier of the provisioned bucket"
+    },
+    "https-origin": {
+      "url": "The public origin browsers reach the app at, scheme https (e.g. https://vault.example.com) — the same value as $app.url"
+    },
+    "certificate": {
+      "cert_file": "App-filesystem path of the PEM certificate (with any chain) the component's own listener serves",
+      "key_file": "App-filesystem path of the PEM private key for cert_file — credential-bearing: a provider registers its value with its redactor before generating anything (D-56 rule 5), whatever its vocabulary membership"
     }
   }
 }

@@ -7,13 +7,26 @@ logo: https://raw.githubusercontent.com/miniflux/v2/main/internal/ui/static/bin/
 
 image: miniflux/miniflux:latest
 provides:
-  - protocol: http
+  - name: web
+    protocol: http
     port: 8080
     exposed: true
+    tls: server-cert
 requires:
   - type: postgres
     set_env:
       DATABASE_URL: $url
+supports:
+  # Miniflux switches the SAME listen address to TLS when both files are
+  # supplied: internal/http/server/server.go:115 computes hasCertFiles and
+  # :135-141 selects the TLS server. CERT_FILE, KEY_FILE and PORT are
+  # configuration options (internal/config/options.go:121, :312, :519).
+  - name: server-cert
+    type: certificate
+    set_env:
+      PORT: "8080"
+      CERT_FILE: $cert_file
+      KEY_FILE: $key_file
 env:
   RUN_MIGRATIONS:
     default: "1"

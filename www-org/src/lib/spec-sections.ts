@@ -37,8 +37,17 @@ export function resolveSlug(title: string): string {
   return SLUG_OVERRIDES[defaultSlug] ?? defaultSlug;
 }
 
-/** Map of anchor → href for cross-reference rewriting */
+/** Map of anchor → href for cross-reference rewriting. Keys are the plain
+ * slug of an `##` section title or of an `###`+ heading anywhere in the
+ * document; values are `/spec/<slug>/` for a section, or
+ * `/spec/<enclosing-section-slug>/#<heading-slug>` for a sub-heading. */
 const sectionSlugs = new Map<string, string>();
+
+/** `###`+ heading slugs that collided with an earlier heading's slug — the
+ * earlier one (first in document order) kept the map entry; these lost the
+ * anchor and are unreachable by link until one heading is renamed. Surfaced
+ * by `check-spec-coverage.ts`. */
+const anchorCollisions: string[] = [];
 
 function rewriteInternalLinks(markdown: string): string {
   return markdown.replace(
@@ -100,6 +109,17 @@ export async function getSpecSections(): Promise<SpecSection[]> {
       return `<pre class="shiki github-dark"><code>${escaped}</code></pre>`;
     }
   };
+  renderer.heading = function ({ tokens, depth, text }: Tokens.Heading): string {
+    const html = this.parser.parseInline(tokens);
+    // The `##` line is stripped from each section's body before it reaches
+    // marked (see below), so this only ever renders `###`+ headings — which
+    // are exactly the ones that need an id for a same-page or cross-page
+    // `#anchor` link to have something to scroll to.
+    if (depth < 3) {
+      return `<h${depth}>${html}</h${depth}>\n`;
+    }
+    return `<h${depth} id="${slugify(text)}">${html}</h${depth}>\n`;
+  };
 
   // Remove the h1 title line
   const withoutH1 = raw.replace(/^# .+\n/, "");
@@ -124,7 +144,30 @@ export async function getSpecSections(): Promise<SpecSection[]> {
     }
   }
 
-  // Second pass: parse and render
+  // Second pass: register `###`+ heading anchors, keyed to their enclosing
+  // `##` section. The fragment is the plain heading slug — what an author
+  // writes and what GitHub already resolves — never a second override
+  // table. First occurrence in document order wins a slug; a later heading
+  // that produces the same slug is recorded as a collision rather than
+  // silently overwriting the winner's href (reported by
+  // check-spec-coverage.ts).
+  for (const part of parts) {
+    const titleMatch = part.match(/^## (.+)$/m);
+    if (!titleMatch) continue;
+    const defaultSlug = slugify(titleMatch[1]);
+    const enclosingSlug = SLUG_OVERRIDES[defaultSlug] ?? defaultSlug;
+
+    for (const [, headingText] of part.matchAll(/^#{3,6} (.+)$/gm)) {
+      const headingSlug = slugify(headingText);
+      if (sectionSlugs.has(headingSlug)) {
+        anchorCollisions.push(headingSlug);
+        continue;
+      }
+      sectionSlugs.set(headingSlug, `/spec/${enclosingSlug}/#${headingSlug}`);
+    }
+  }
+
+  // Third pass: parse and render
   const sections: SpecSection[] = [];
   for (const part of parts) {
     const titleMatch = part.match(/^## (.+)$/m);
@@ -151,4 +194,20 @@ export async function getSpecSection(
 ): Promise<SpecSection | undefined> {
   const sections = await getSpecSections();
   return sections.find((s) => s.slug === slug);
+}
+
+/** The anchor → href map, keyed by every `##` section slug and every
+ * `###`+ heading slug in `spec/SPEC.md`. Used by `check-spec-coverage.ts`
+ * to verify every `](#anchor)` in the spec resolves to a real heading. */
+export async function getAnchorMap(): Promise<Map<string, string>> {
+  await getSpecSections();
+  return sectionSlugs;
+}
+
+/** Heading slugs produced by more than one `###`+ heading — the first in
+ * document order won the anchor in `getAnchorMap()`; the rest are
+ * unreachable by link until one heading is renamed. */
+export async function getAnchorCollisions(): Promise<string[]> {
+  await getSpecSections();
+  return anchorCollisions;
 }
