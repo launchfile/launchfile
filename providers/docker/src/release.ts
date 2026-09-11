@@ -33,6 +33,7 @@ import {
 	registerDeclaredSecret,
 	registerSecrets,
 } from "./redact.js";
+import { declaredSecrets } from "./secrets-namespace.js";
 import { shell } from "./shell.js";
 
 /** Default budget for a release one-shot when no `timeout` is declared. */
@@ -95,7 +96,18 @@ export function planReleases(
 		services: Record<string, string>;
 		/** Component name → allocated host port (for $app.* resolution). */
 		hostPorts: Record<string, number>;
+		/**
+		 * Persisted secret values. Narrowed to the names the Launchfile declares
+		 * before it becomes a resolver context — a release command addresses
+		 * `$secrets.<name>`, and only a declared name is such a reference.
+		 */
 		secrets: Record<string, string>;
+		/**
+		 * Persisted backing-service passwords. No release command can address
+		 * them — they are registered for redaction and nothing else, because a
+		 * release command's resolved text is echoed and captured (D-18).
+		 */
+		resourcePasswords?: Record<string, string>;
 		/**
 		 * Orchestrator-supplied publication context (#290) — the same value the
 		 * compose file was generated with, so release commands resolve identical
@@ -108,11 +120,15 @@ export function planReleases(
 ): ReleasePlanItem[] {
 	// `$secrets.*` resolves to live credentials below, and the resolved string
 	// is echoed and can be echoed back by the container. Register the values
-	// before any of them can reach a sink (D-18, CWE-532).
+	// before any of them can reach a sink (D-18, CWE-532). Backing-service
+	// passwords register too: a release command reaches a database through the
+	// connection string in its own `env:`, so the password can surface in the
+	// captured output even though no `$secrets.*` names it.
 	registerSecrets(Object.values(opts.secrets));
+	registerSecrets(Object.values(opts.resourcePasswords ?? {}));
 
 	const resolverContext: ResolverContext = {
-		secrets: opts.secrets,
+		secrets: declaredSecrets(launch.secrets, opts.secrets),
 		app: computeAppProperties(launch, opts.hostPorts, opts.appUrl),
 	};
 
