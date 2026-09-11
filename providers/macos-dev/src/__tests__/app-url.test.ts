@@ -12,6 +12,7 @@
  */
 
 import {
+	chmodSync,
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
@@ -50,6 +51,9 @@ vi.mock("node:fs/promises", () => ({
 		opts?: { recursive?: boolean; mode?: number },
 	) => {
 		mkdirSync(path, opts);
+	},
+	chmod: async (path: string, mode: number) => {
+		chmodSync(path, mode);
 	},
 }));
 
