@@ -3,6 +3,10 @@ version: launch/v1
 name: dify
 description: "AI application development platform"
 
+secrets:
+  secret-key:
+    generator: secret
+
 components:
   api:
     image: langgenius/dify-api:latest
@@ -25,7 +29,7 @@ components:
           REDIS_PASSWORD: $password
     env:
       SECRET_KEY:
-        generator: secret
+        default: "$secrets.secret-key"
         sensitive: true
         description: "Application secret key"
       CONSOLE_WEB_URL:
@@ -75,9 +79,9 @@ components:
           REDIS_PASSWORD: $password
     env:
       SECRET_KEY:
-        generator: secret
+        default: "$secrets.secret-key"
         sensitive: true
-        description: "Application secret key (must match api)"
+        description: "Application secret key, shared with api via secrets.secret-key"
       MODE:
         default: worker
         description: "Run mode"

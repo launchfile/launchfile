@@ -193,6 +193,7 @@ function normalizeEnv(
 				required: val.required,
 				generator: val.generator,
 				sensitive: val.sensitive,
+				example: val.example,
 			};
 		}
 	}

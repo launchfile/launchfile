@@ -730,7 +730,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// the deployment on this path so `status`/`logs`/`down` reach them.
 		await inPhase("health", withLogs(), () =>
 			withSpan("up:health", { project }, async () => {
-				const health = await waitForHealth(project, composeFile);
+				const health = await waitForHealth(project, composeFile, result.healthchecks);
 				if (!health.ok) {
 					const message = healthFailureMessage(
 						health.stuck,
@@ -910,22 +910,106 @@ export function healthFailureMessage(
 		: `no container was running after ${seconds}s`;
 }
 
-/** A container is healthy when it is running and either passes or declares no check. */
-export function isContainerHealthy(container: { State: string; Health: string }): boolean {
-	const declaresNoCheck = container.Health === "";
-	return (
-		container.State === "running" &&
-		(container.Health === "healthy" || declaresNoCheck)
-	);
+/** A row of `docker compose ps --format json`, as the health gate reads it. */
+export interface PsContainer {
+	State: string;
+	Health: string;
+	Name?: string;
+	Service?: string;
 }
 
-async function waitForHealth(
+/**
+ * Whether one `docker compose ps` row counts as healthy, given the generator's
+ * record of which services it wrote a `healthcheck:` block for
+ * (`ComposeResult.healthchecks`, keyed by compose service name — the same
+ * string `ps` returns as `Service`).
+ *
+ * The row's `Health` field cannot answer this on its own: docker reports `""`
+ * both for a service that declares no check and for a checked container whose
+ * check has not been evaluated yet. A crash-looping container sits in the
+ * second state for ~230ms windows, and any poll landing in one used to pass the
+ * gate (#325). So the declared-check fact comes from the generator, and `Health`
+ * only ever answers the narrower question "has this declared check passed".
+ *
+ * Fail-closed in both directions: a service that declares a check is healthy
+ * only at `healthy`, and a container that matches no generated service at all
+ * is never healthy. The poll that feeds this is scoped to the generated
+ * services ({@link healthPsArgs}), so an orphan left behind by a rename never
+ * reaches here; a row that still does is a gap to report, not one to absorb
+ * into a pass (the D-51/D-52 posture).
+ */
+export function isContainerHealthy(
+	container: PsContainer,
+	healthchecks: Readonly<Record<string, boolean>>,
+): boolean {
+	if (container.State !== "running") return false;
+
+	const service = container.Service;
+	if (service === undefined || !Object.hasOwn(healthchecks, service)) return false;
+
+	return healthchecks[service] ? container.Health === "healthy" : true;
+}
+
+/** One `docker compose ps --format json` poll. Injected by the tests. */
+export type ComposePs = () => Promise<{ exitCode: number; stdout: string }>;
+
+/**
+ * The `docker compose ps` argv for one health poll, scoped to the services the
+ * generator emitted.
+ *
+ * `up -d` runs without `--remove-orphans`, so a container whose service was
+ * renamed or removed keeps running, and an unscoped `ps` still lists it under
+ * its old `Service` name. That name is not a key of `healthchecks`, so the
+ * fail-closed match holds the gate open for the whole budget and then names a
+ * component the app no longer has. Naming the generated services keeps the poll
+ * to what this `up` wrote.
+ *
+ * With no generated services there is nothing the gate can accept, so the bare
+ * poll it returns then costs nothing: every row fails closed either way.
+ */
+export function healthPsArgs(
 	project: string,
 	composeFile: string,
+	healthchecks: Readonly<Record<string, boolean>>,
+): string[] {
+	return [
+		"compose",
+		"-p",
+		project,
+		"-f",
+		composeFile,
+		"ps",
+		"--format",
+		"json",
+		...Object.keys(healthchecks),
+	];
+}
+
+export interface WaitForHealthOpts {
+	/** Total budget. Defaults to {@link HEALTH_TIMEOUT_MS}. */
+	maxWaitMs?: number;
+	/** Gap between polls. Defaults to 3s. */
+	pollIntervalMs?: number;
+	/** How to read container status. Defaults to `docker compose ps`. */
+	ps?: ComposePs;
+}
+
+export async function waitForHealth(
+	project: string,
+	composeFile: string,
+	healthchecks: Readonly<Record<string, boolean>>,
+	opts: WaitForHealthOpts = {},
 ): Promise<HealthOutcome> {
 	const log = getLogger();
-	const maxWait = HEALTH_TIMEOUT_MS;
-	const pollInterval = 3_000;
+	const maxWait = opts.maxWaitMs ?? HEALTH_TIMEOUT_MS;
+	const pollInterval = opts.pollIntervalMs ?? 3_000;
+	const ps: ComposePs =
+		opts.ps ??
+		(() =>
+			shell("docker", healthPsArgs(project, composeFile, healthchecks), {
+				allowFailure: true,
+				silent: true,
+			}));
 	const start = Date.now();
 	let stuck: string[] = [];
 
@@ -933,10 +1017,7 @@ async function waitForHealth(
 		const elapsed = Date.now() - start;
 		log.trace({ elapsed, project }, "health poll");
 
-		const result = await shell(
-			"docker", ["compose", "-p", project, "-f", composeFile, "ps", "--format", "json"],
-			{ allowFailure: true, silent: true },
-		);
+		const result = await ps();
 
 		if (result.exitCode !== 0) {
 			await new Promise((r) => setTimeout(r, pollInterval));
@@ -950,10 +1031,10 @@ async function waitForHealth(
 
 		for (const line of lines) {
 			try {
-				const container = JSON.parse(line) as { State: string; Health: string; Name: string; Service: string };
+				const container = JSON.parse(line) as PsContainer;
 				hasContainers = true;
-				if (!isContainerHealthy(container)) {
-					unhealthy.push(container.Service || container.Name);
+				if (!isContainerHealthy(container, healthchecks)) {
+					unhealthy.push(container.Service || container.Name || "(unnamed container)");
 				}
 			} catch {
 				// Skip unparseable lines
