@@ -7,9 +7,21 @@ logo: https://raw.githubusercontent.com/grafana/grafana/main/public/img/grafana_
 
 image: grafana/grafana:latest
 provides:
-  - protocol: http
+  - name: web
+    protocol: http
     port: 3000
     exposed: true
+    tls: server-cert
+supports:
+  # Grafana's [server] section carries protocol, http_port, cert_file and
+  # cert_key (conf/defaults.ini:44, :53, :78-79); the env spelling is GF_SERVER_*.
+  - name: server-cert
+    type: certificate
+    set_env:
+      GF_SERVER_PROTOCOL: https
+      GF_SERVER_HTTP_PORT: "3000"
+      GF_SERVER_CERT_FILE: $cert_file
+      GF_SERVER_CERT_KEY: $key_file
 env:
   GF_SECURITY_ADMIN_PASSWORD:
     generator: secret

@@ -235,8 +235,26 @@ commands:
     { line: "commands:", text: "The commands block defines start and bootstrap. No release or build command needed since the Dockerfile handles compilation." },
     { line: "bootstrap:", text: "Runs on user request after the app is up. Creates an admin invite and captures the URL from stdout." },
     { line: "capture:", text: "Extracts the invite link via regex — it's captured and surfaced to the user." },
+    { line: "sensitive: true", text: "Masks the value on every display surface — the CLI's own output included. The operator who ran the command reveals it with <code>launchfile bootstrap --reveal</code>." },
   ]}
 />
+
+<p>
+  A capture marked <code>sensitive: true</code> is masked wherever it is displayed, including the terminal that ran the command:
+</p>
+
+<pre><code>$ launchfile bootstrap my-app
+  ↓ Bootstrap [default] via docker compose exec my-app
+    $ my-app-cli create-invite --name admin --url http://localhost:9999
+
+  Captured:
+    invite_link: *** — One-time invite link — open in a browser to register your account
+  (masked — re-run with `launchfile bootstrap --reveal` to print these values)
+  ✓ Bootstrap [default] complete</code></pre>
+
+<p>
+  Revealing is an explicit act on the command you run: <code>launchfile bootstrap my-app --reveal</code> prints every sensitive capture of that one run. Bootstrap is re-runnable, so the masked run costs nothing. The flag changes only what your terminal prints — the provider registers the value with its redactor either way, so it never reaches a log, a state file, or the failure record <code>launchfile diagnose</code> shows. <code>release</code> captures stay masked; there is no reveal path for them.
+</p>
 
 <h2 id="check-your-understanding">Check your understanding</h2>
 
@@ -258,7 +276,7 @@ commands:
     <li><strong>Durations</strong> are an integer plus one unit (<code>30s</code>, <code>5m</code>) — for <code>timeout</code> and the health check timings. <code>validate</code> warns on anything else.</li>
     <li><strong><code>install</code></strong> / <strong><code>dev</code></strong> run the app <strong>from source</strong> (<code>launchfile dev</code>) — the source-mode pair of <code>build</code> / <code>start</code>. Only these two are mode-aware.</li>
     <li><strong><code>release</code></strong> runs once per deploy (migrations). <strong><code>bootstrap</code></strong> runs once ever (initial setup).</li>
-    <li>Commands can use the <strong>capture</strong> pattern to extract values from stdout via regex.</li>
+    <li>Commands can use the <strong>capture</strong> pattern to extract values from stdout via regex. A capture marked <strong><code>sensitive</code></strong> is masked everywhere it is shown; <code>launchfile bootstrap --reveal</code> prints it for the operator who ran the command.</li>
     <li>Top-level <strong><code>build:</code></strong> configures Docker image builds. <strong><code>commands.build</code></strong> runs shell commands inside a container.</li>
   </ul>
 </div>

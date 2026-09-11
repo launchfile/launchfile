@@ -132,12 +132,13 @@ function denormalizeRequirements(
 			return capability;
 		}
 		// Collapse to string if only type is set
-		if (!r.name && !r.version && !r.config && !r.set_env) {
+		if (!r.name && !r.endpoint && !r.version && !r.config && !r.set_env) {
 			return r.type;
 		}
 		const result: Record<string, unknown> = {};
 		if (r.name) result.name = r.name;
 		result.type = r.type;
+		if (r.endpoint) result.endpoint = r.endpoint;
 		if (r.version) result.version = r.version;
 		if (r.config) result.config = r.config;
 		if (r.set_env) result.set_env = r.set_env;
@@ -158,7 +159,8 @@ function denormalizeEnv(
 			!val.label &&
 			!val.required &&
 			!val.generator &&
-			!val.sensitive
+			!val.sensitive &&
+			!val.example
 		) {
 			result[key] = val.default;
 		} else {
@@ -169,6 +171,7 @@ function denormalizeEnv(
 			if (val.required) obj.required = val.required;
 			if (val.generator) obj.generator = val.generator;
 			if (val.sensitive) obj.sensitive = val.sensitive;
+			if (val.example) obj.example = val.example;
 			result[key] = obj;
 		}
 	}

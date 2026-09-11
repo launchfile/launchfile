@@ -1,11 +1,12 @@
 import type { NormalizedRequirement } from "@launchfile/sdk";
 import { describe, expect, it } from "vitest";
 import { MysqlProvisioner } from "../resources/mysql.js";
-import type { ProvisionOpts } from "../resources/types.js";
+import type { DestroyOpts, ProvisionOpts } from "../resources/types.js";
 import type { ResourceState } from "../state.js";
 
 const REQ = { type: "mysql" } as NormalizedRequirement;
 const OPTS = { appName: "my-app" } as ProvisionOpts;
+const DESTROY_OPTS: DestroyOpts = { projectDir: "/tmp/lf-mysql-test" };
 
 /**
  * Records every command issued, flattened to `cmd arg arg` so the assertions
@@ -130,6 +131,7 @@ describe("MysqlProvisioner.destroy", () => {
 
 		await new MysqlProvisioner(deps).destroy(
 			state({ dbName: "x`; DROP DATABASE victim; -- `", user: "u'; -- " }),
+			DESTROY_OPTS,
 		);
 
 		expect(commands).toEqual([]);
@@ -138,7 +140,7 @@ describe("MysqlProvisioner.destroy", () => {
 	it("drops the database and user when both are safe", async () => {
 		const { commands, deps } = recorder();
 
-		await new MysqlProvisioner(deps).destroy(state());
+		await new MysqlProvisioner(deps).destroy(state(), DESTROY_OPTS);
 
 		expect(commands).toEqual([
 			"mysql -h localhost -u root -e DROP DATABASE IF EXISTS `launchfile_my_app`;",
