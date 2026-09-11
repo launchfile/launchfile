@@ -1,0 +1,12 @@
+---
+"@launchfile/sdk": minor
+"launchfile": patch
+---
+
+Sanitize file-derived text at `validate`'s diagnostic boundaries. Every lint warning (`checkResourceProperties`, the unknown-storage-key check, D-24/D-40/D-43/D-44/D-50 checks) embeds strings taken verbatim from the parsed Launchfile — resource types, storage keys, component names — and so do the `host capabilities requested:` and `operator-supplied storage:` summary lines `validate` prints. A crafted key containing a newline or an ANSI escape sequence could inject a spoofed line or terminal control codes into that output (CWE-117) when validating an untrusted third-party Launchfile.
+
+`sdk/src/errors.ts` now exports `stripControlInline`, applied where lint warnings are joined into `ValidateResult.warnings`, at every file-derived value `cmdValidate` prints (`name`, `components`, `requires`, `host capabilities requested:`, `operator-supplied storage:`, and each `deprecated:` line's path), and on the validation-failure lines `formatZodErrors` builds from a Zod issue path — a component name is an unconstrained map key, so it reaches the error path verbatim. It builds on the existing `stripControl` (ANSI-escape and control-character stripping) and additionally escapes any embedded backslash, tab or newline into its visible two-character form, so a diagnostic that must render as one line always does and a reader can tell a real newline from the two characters `\n` — `stripControl` alone keeps `\t`/`\n` literal, which is correct for its own multi-line command-output-tail use but not for a single-line diagnostic.
+
+`formatZodErrors`'s other two branches go through `stripControl` instead. A `yaml` parse error quotes the offending source line verbatim (the library's `prettyErrors` default), so a syntax error in a hostile file put that file's own bytes — ANSI escapes included — into the same `console.error` loop, in `cmdInspect` as well as `cmdValidate`. That quoted snippet is legitimately multi-line, so escapes and control characters go while the `\n`/`\t` laying out the caret stay.
+
+`ValidateResult` now documents where the boundary sits: `warnings` and `errors` are sanitized diagnostics, while `name`, `components`, `requires`, `hostCapabilities`, `operatorStorage` and `deprecations[].path` hold the document's strings verbatim for programmatic callers, which sanitize themselves before printing. No behavior change for any well-formed document.
