@@ -487,7 +487,9 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
 
     const allExposedPorts = [...directPorts, ...loopbackPorts];
     if (allExposedPorts.length > 0) {
-      service.ports = allExposedPorts.map((p) => `0:${p.port}`);
+      service.ports = allExposedPorts.map(
+        (p) => `0:${p.port}${p.protocol === "udp" ? "/udp" : ""}`,
+      );
     }
 
     // Register this component for $components.<name>.prop resolution, mirroring the

@@ -8,8 +8,8 @@
  *
  * Regression anchor for the PR #104 fix (set_env was using a resource-props-only
  * stub, so $secrets/$storage/$app silently resolved to the raw "$ref") and the
- * $components.* context follow-up. catalog/test is not in the CI build order, so
- * run this manually: `cd catalog/test && bun install && bun run test`.
+ * $components.* context follow-up. The "Catalog" CI job runs this suite on
+ * every PR (`.github/workflows/ci.yml`).
  */
 
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
@@ -791,5 +791,31 @@ supports:
       for (const r of resourceRefusals) refused.push(`${app} [${r.component}]: ${r.entry}`);
     }
     expect(refused).toEqual([]);
+  });
+});
+
+describe("service.ports — protocol suffix (matches providers/docker/src/compose-generator.ts)", () => {
+  it("suffixes a udp exposed port with /udp and leaves the http port bare", () => {
+    const yaml = `
+name: wg-easy
+image: ghcr.io/wg-easy/wg-easy:15
+provides:
+  - name: web
+    protocol: http
+    port: 51821
+    exposed: true
+  - name: wg
+    protocol: udp
+    port: 51820
+    exposed: true
+`;
+    const result = launchToCompose(readLaunch(yaml));
+    const compose = parse(result.yaml) as {
+      services: Record<string, { ports?: string[] }>;
+    };
+    expect(compose.services["wg-easy"]!.ports).toEqual(
+      expect.arrayContaining(["0:51820/udp", "0:51821"]),
+    );
+    expect(compose.services["wg-easy"]!.ports).not.toContain("0:51820");
   });
 });
