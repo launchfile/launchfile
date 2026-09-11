@@ -360,3 +360,17 @@ provides:
 		).not.toThrow();
 	});
 });
+
+describe("`endpoint:` on a host-capability entry", () => {
+	it("is reported by name, not as a bare union failure", () => {
+		expect(() =>
+			readLaunch(`
+name: app
+image: app:1
+requires:
+  - host: { container_runtime: docker }
+    endpoint: web
+`),
+		).toThrow(/a host capability fronts nothing/);
+	});
+});

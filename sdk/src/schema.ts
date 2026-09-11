@@ -106,6 +106,22 @@ const RequirementSchema = z
 					"(`host:`), never both (D-44) — split it into two entries",
 			});
 		}
+		// Same reason, for the same reader: the union would report an
+		// `endpoint:` on a capability entry as a bare "Invalid input".
+		if (
+			typeof val === "object" &&
+			val !== null &&
+			!Array.isArray(val) &&
+			"host" in val &&
+			"endpoint" in val
+		) {
+			ctx.addIssue({
+				code: "custom",
+				message:
+					"`endpoint:` names the `provides` entry a `type: https-origin` resource " +
+					"fronts (D-next rule 2); a host capability fronts nothing — remove it",
+			});
+		}
 	})
 	.pipe(
 		z.union([
