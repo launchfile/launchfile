@@ -241,6 +241,69 @@ describe("a supplied `key_file` never reaches a diagnostic (D-56 rule 5, CWE-532
 	});
 });
 
+describe("one supplied entry serves every component that names it (D-56 keying)", () => {
+	// `ComposeOpts.resources` is app-global and keyed by `name ?? type`, so two
+	// components whose `supports:` entries share a name share the one supplied
+	// certificate. D-next rule 1 resolves the binding within a component, which
+	// makes the file valid; the supply channel is where they meet. D-next Left
+	// open (4) — shared certificates are a validation error — holds WITHIN a
+	// component, not across two.
+	const PAIR = `
+name: pair
+components:
+  alpha:
+    image: alpha:1
+    provides:
+      - { name: web, protocol: http, port: 3000, exposed: true, tls: server-cert }
+    supports:
+      - name: server-cert
+        type: certificate
+        set_env:
+          ALPHA_CERT_FILE: $cert_file
+          ALPHA_KEY_FILE: $key_file
+  beta:
+    image: beta:1
+    provides:
+      - { name: web, protocol: http, port: 4000, exposed: true, tls: server-cert }
+    supports:
+      - name: server-cert
+        type: certificate
+        set_env:
+          BETA_CERT_FILE: $cert_file
+          BETA_KEY_FILE: $key_file
+  reader:
+    image: reader:1
+    env:
+      ALPHA: $components.alpha.url
+      BETA: $components.beta.url
+`;
+
+	it("activates both bindings off the one supplied certificate", () => {
+		const { doc } = compose(PAIR, { resources: SELECTED });
+		expect(doc.services["pair-alpha"]!.environment!.ALPHA_CERT_FILE).toBe(CERT_PATH);
+		expect(doc.services["pair-alpha"]!.environment!.ALPHA_KEY_FILE).toBe(KEY_PATH);
+		expect(doc.services["pair-beta"]!.environment!.BETA_CERT_FILE).toBe(CERT_PATH);
+		expect(doc.services["pair-beta"]!.environment!.BETA_KEY_FILE).toBe(KEY_PATH);
+	});
+
+	it("moves both effective listeners to `https`", () => {
+		const { doc } = compose(PAIR, { resources: SELECTED });
+		const env = doc.services["pair-reader"]!.environment!;
+		expect(env.ALPHA).toBe("https://pair-alpha:3000");
+		expect(env.BETA).toBe("https://pair-beta:4000");
+	});
+
+	it("leaves both on their declared baseline when nothing is supplied", () => {
+		const { doc } = compose(PAIR);
+		const env = doc.services["pair-reader"]!.environment!;
+		expect(env.ALPHA).toBe("http://pair-alpha:3000");
+		expect(env.BETA).toBe("http://pair-beta:4000");
+		// Neither binding injected, so neither component carries an environment.
+		expect(doc.services["pair-alpha"]!.environment).toBeUndefined();
+		expect(doc.services["pair-beta"]!.environment).toBeUndefined();
+	});
+});
+
 describe("output is unchanged for an app that declares no `tls:` (P-13)", () => {
 	const PLAIN = `
 name: plain
