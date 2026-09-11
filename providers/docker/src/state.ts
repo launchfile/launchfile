@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { registerSecrets } from "./redact.js";
+import { getLogger } from "./logger.js";
 
 /** Where the Launchfile that produced this state came from. */
 export type DockerSourceType = "local" | "catalog" | "url";
@@ -37,6 +38,11 @@ export interface DockerState {
 	slug: string;
 	appName: string;
 	composeProject: string;
+	/**
+	 * Hash of the Launchfile text that produced the current deployment. `up`
+	 * recompares it and warns on a mismatch (see `provider.ts` `dockerUp`),
+	 * which is how an in-place edit of the same file becomes visible.
+	 */
 	launchfileHash: string;
 	createdAt: string;
 	updatedAt: string;
@@ -178,23 +184,166 @@ export function instanceSlug(baseSlug: string, label?: string): string {
 	return slug;
 }
 
-function hashContent(content: string): string {
+/**
+ * The digest recorded in `DockerState.launchfileHash`, over the Launchfile
+ * text a deployment was produced from. Truncated to 16 hex chars: this
+ * detects an edit, it does not authenticate one.
+ */
+export function hashLaunchfile(content: string): string {
 	return createHash("sha256").update(content).digest("hex").slice(0, 16);
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isType(value: unknown, expected: "string" | "number"): boolean {
+	return expected === "string" ? typeof value === "string" : typeof value === "number";
+}
+
+/**
+ * One warning per dropped key, naming the file it came from so an operator
+ * can find and repair it. Goes through pino to stderr — a load happens under
+ * every verb, including ones whose stdout is the answer (`status`, `list`).
+ */
+function warnDropped(file: string, key: string, expected: string): void {
+	getLogger().warn({ stateFile: file, key, expected }, "ignoring invalid key in state file");
+}
+
+/** Top-level fields that hold a string when present. */
+const STRING_FIELDS = [
+	"slug",
+	"appName",
+	"composeProject",
+	"launchfileHash",
+	"createdAt",
+	"updatedAt",
+	"sourceType",
+	"sourcePath",
+	"sourceUrl",
+	"appUrl",
+] as const;
+
+/**
+ * Drop the entries of a `Record<string, T>` field whose values are not `T`,
+ * and the whole field when it is not an object at all. Returns the surviving
+ * map, or undefined when the field is absent or was dropped.
+ */
+function checkValueMap(
+	parsed: Record<string, unknown>,
+	key: string,
+	file: string,
+	valueType: "string" | "number",
+): Record<string, unknown> | undefined {
+	const value = parsed[key];
+	if (value === undefined) return undefined;
+	if (!isPlainObject(value)) {
+		warnDropped(file, key, "object");
+		delete parsed[key];
+		return undefined;
+	}
+	for (const [entryKey, entryValue] of Object.entries(value)) {
+		if (!isType(entryValue, valueType)) {
+			warnDropped(file, `${key}.${entryKey}`, valueType);
+			delete value[entryKey];
+		}
+	}
+	return value;
+}
+
+function isStateEndpoint(value: unknown): boolean {
+	return (
+		isPlainObject(value) &&
+		typeof value.component === "string" &&
+		typeof value.containerPort === "number" &&
+		typeof value.hostPort === "number" &&
+		(value.name === undefined || typeof value.name === "string") &&
+		(value.protocol === undefined || typeof value.protocol === "string")
+	);
+}
+
+/**
+ * Check a parsed state file field by field, in place, and hand back what
+ * survived. A field that fails its check is dropped and every other field is
+ * kept — a state file is an operator's record of a running deployment, so
+ * discarding all of it over one bad key would orphan real containers.
+ *
+ * Keys this function does not know are left untouched, so a field written by
+ * a newer provider version survives a load-and-save round trip through an
+ * older one instead of being written out of existence (P-13).
+ *
+ * `ports` is the one field with a default: every consumer reads it
+ * unguarded (`Object.keys(state.ports)`), so an absent or malformed map has
+ * to become `{}` here or it becomes a TypeError with no file name in it.
+ */
+function validateState(parsed: Record<string, unknown>, file: string): DockerState {
+	if (parsed.version !== undefined && typeof parsed.version !== "number") {
+		warnDropped(file, "version", "number");
+		delete parsed.version;
+	}
+
+	for (const key of STRING_FIELDS) {
+		if (parsed[key] !== undefined && typeof parsed[key] !== "string") {
+			warnDropped(file, key, "string");
+			delete parsed[key];
+		}
+	}
+
+	checkValueMap(parsed, "secrets", file, "string");
+	checkValueMap(parsed, "resourcePasswords", file, "string");
+	checkValueMap(parsed, "generatedEnv", file, "string");
+
+	const portsPresent = parsed.ports !== undefined;
+	if (checkValueMap(parsed, "ports", file, "number") === undefined) {
+		// An absent map breaks the readers exactly as a malformed one does, so
+		// both end at `{}`. Only the absent case warns here — `checkValueMap`
+		// has already warned about a malformed one.
+		if (!portsPresent) warnDropped(file, "ports", "object");
+		parsed.ports = {};
+	}
+
+	const endpoints = parsed.endpoints;
+	if (endpoints !== undefined) {
+		if (!isPlainObject(endpoints)) {
+			warnDropped(file, "endpoints", "object");
+			delete parsed.endpoints;
+		} else {
+			for (const [entryKey, entryValue] of Object.entries(endpoints)) {
+				if (!isStateEndpoint(entryValue)) {
+					warnDropped(file, `endpoints.${entryKey}`, "endpoint");
+					delete endpoints[entryKey];
+				}
+			}
+		}
+	}
+
+	// Every field named in `DockerState` has now been checked or dropped. A
+	// required one the file never carried stays absent — callers that read it
+	// see undefined instead of a value invented here.
+	return parsed as unknown as DockerState;
+}
+
 export async function loadState(slug: string): Promise<DockerState | null> {
+	const file = statePath(slug);
+	let parsed: unknown;
 	try {
-		const raw = await readFile(statePath(slug), "utf8");
-		const state = JSON.parse(raw) as DockerState;
-		// Persisted secrets are reused across runs, so a value generated in an
-		// earlier process still has to be scrubbable in this one (D-18).
-		registerSecrets(Object.values(state.secrets ?? {}));
-		registerSecrets(Object.values(state.resourcePasswords ?? {}));
-		registerSecrets(Object.values(state.generatedEnv ?? {}));
-		return state;
+		parsed = JSON.parse(await readFile(file, "utf8"));
 	} catch {
 		return null;
 	}
+	// A document that is not a JSON object holds no field to keep, so there is
+	// nothing to salvage — the same answer as unreadable bytes.
+	if (!isPlainObject(parsed)) {
+		getLogger().warn({ stateFile: file }, "state file is not a JSON object");
+		return null;
+	}
+	const state = validateState(parsed, file);
+	// Persisted secrets are reused across runs, so a value generated in an
+	// earlier process still has to be scrubbable in this one (D-18).
+	registerSecrets(Object.values(state.secrets ?? {}));
+	registerSecrets(Object.values(state.resourcePasswords ?? {}));
+	registerSecrets(Object.values(state.generatedEnv ?? {}));
+	return state;
 }
 
 export interface InitStateSource {
@@ -215,7 +364,7 @@ export function initState(
 		slug,
 		appName,
 		composeProject: composeProject(slug),
-		launchfileHash: hashContent(launchfileContent),
+		launchfileHash: hashLaunchfile(launchfileContent),
 		createdAt: now,
 		updatedAt: now,
 		secrets: {},

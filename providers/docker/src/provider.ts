@@ -25,6 +25,7 @@ import {
 	composeProject,
 	stateDir,
 	stateBaseDir,
+	hashLaunchfile,
 	type StateEndpoint,
 } from "./state.js";
 import { allocatePorts } from "./port-allocator.js";
@@ -478,6 +479,24 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 			state.sourceType = sourceInfo.sourceType;
 			if (sourceInfo.sourcePath !== undefined) state.sourcePath = sourceInfo.sourcePath;
 			if (sourceInfo.sourceUrl !== undefined) state.sourceUrl = sourceInfo.sourceUrl;
+
+			// The recorded Launchfile hash, re-read (#441). The foreign-source
+			// guard above (D-55 rule 3) compares where the source came from — a
+			// path or a URL — so it cannot see a Launchfile edited in place at
+			// the same path. The hash can. Different input, different action:
+			// that refuses, this warns and continues, because the
+			// edit-then-redeploy cycle D-49 needs in order to re-resolve
+			// derived values has to keep working. The recorded hash then
+			// follows the deployment this run produces.
+			const currentHash = hashLaunchfile(resolved.yaml);
+			if (state.launchfileHash !== undefined && state.launchfileHash !== currentHash) {
+				const message =
+					`the Launchfile for "${slug}" differs from the one this deployment was created from ` +
+					`(recorded ${state.launchfileHash}, current ${currentHash}) — redeploying with the current one.`;
+				log.warn({ slug, recordedHash: state.launchfileHash, currentHash }, message);
+				console.warn(`  Warning: ${message}`);
+			}
+			state.launchfileHash = currentHash;
 		}
 
 		// Publication context (#290), same preservation rule as the source info
