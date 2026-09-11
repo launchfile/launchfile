@@ -56,6 +56,54 @@ commands:
 	});
 });
 
+describe("translate — restart → systemd Restart= (P-11, D-52)", () => {
+	function unit(restart?: string) {
+		const declared = restart === undefined ? "" : `restart: ${restart}\n`;
+		return tf(`
+version: launch/v1
+name: my-app
+runtime: node
+${declared}commands:
+  start: "node server.js"
+`);
+	}
+
+	it("carries an author-declared restart: always onto the unit", () => {
+		expect(unit("always").hcl).toContain("Restart=always");
+	});
+
+	it("carries an author-declared restart: on-failure onto the unit", () => {
+		const { hcl } = unit("on-failure");
+		expect(hcl).toContain("Restart=on-failure");
+		expect(hcl).not.toContain("Restart=always");
+	});
+
+	it('carries an author-declared restart: "no" onto the unit', () => {
+		const { hcl } = unit('"no"');
+		expect(hcl).toContain("Restart=no");
+		expect(hcl).not.toContain("Restart=always");
+	});
+
+	it("falls back to Restart=always when the component declares no restart", () => {
+		expect(unit().hcl).toContain("Restart=always");
+	});
+
+	it("records the declared restart on the conformance ledger", () => {
+		const { conformance } = unit('"no"');
+		expect(conformance.mapped).toContainEqual({
+			field: "restart",
+			target: "systemd Restart=no",
+			component: "default",
+		});
+	});
+
+	it("records no restart mapping when the component declares none", () => {
+		const { conformance } = unit();
+		expect(conformance.mapped.some((m) => m.field === "restart")).toBe(false);
+		expect(conformance.gaps.some((g) => g.field === "restart")).toBe(false);
+	});
+});
+
 describe("translate — requires → managed services (P-1/P-11)", () => {
 	it("maps postgres to aws_db_instance and wires set_env to its connection url", () => {
 		const { hcl, conformance } = tf(`

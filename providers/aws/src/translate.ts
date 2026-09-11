@@ -20,6 +20,7 @@ import {
 	type NormalizedLaunch,
 	type NormalizedRequirement,
 	type ResolverContext,
+	type RestartPolicy,
 	resolveExpression,
 	unsuppliedRequiredEnv,
 } from "@launchfile/sdk";
@@ -38,6 +39,28 @@ import {
 
 /** The backing-service type that declares the app's public HTTPS origin (D-60). */
 const HTTPS_ORIGIN = "https-origin";
+
+/**
+ * Launchfile `restart:` → the systemd `Restart=` directive on the generated unit.
+ *
+ * The two enums are separate vocabularies that happen to share spellings today,
+ * so the mapping is explicit: a value added to Launchfile's `restart:` fails to
+ * compile here rather than reaching a systemd directive unreviewed (P-13).
+ * All three are meaningful because the unit sets no `Type=`, so systemd applies
+ * `Type=simple`.
+ */
+const RESTART_DIRECTIVE: Record<RestartPolicy, string> = {
+	always: "always",
+	"on-failure": "on-failure",
+	no: "no",
+};
+
+/**
+ * The directive used when a component declares no `restart:`. A long-running
+ * service the file says nothing about stays supervised; the cross-provider
+ * default for an undeclared `restart:` is decided in #234, not here.
+ */
+const DEFAULT_RESTART_DIRECTIVE = "always";
 
 /** The `supports:` type a `provides` entry's `tls:` binds (D-61). */
 const CERTIFICATE = "certificate";
@@ -190,7 +213,9 @@ function cloudInit(
 	lines.push("WorkingDirectory=/opt/app");
 	lines.push("EnvironmentFile=-/etc/launchfile/" + serviceName + ".env");
 	lines.push(`ExecStart=/bin/bash -lc ${JSON.stringify(start)}`);
-	lines.push("Restart=always");
+	lines.push(
+		`Restart=${component.restart ? RESTART_DIRECTIVE[component.restart] : DEFAULT_RESTART_DIRECTIVE}`,
+	);
 	lines.push("");
 	lines.push("[Install]");
 	lines.push("WantedBy=multi-user.target");
@@ -932,6 +957,12 @@ function emitComponent(
 	);
 	if (comp.commands?.start)
 		c.map("commands.start", "systemd unit (run slot)", name);
+	if (comp.restart)
+		c.map(
+			"restart",
+			`systemd Restart=${RESTART_DIRECTIVE[comp.restart]}`,
+			name,
+		);
 	if (comp.commands?.build)
 		c.map("commands.build", "cloud-init (prepare slot)", name);
 	if (comp.commands?.release)
