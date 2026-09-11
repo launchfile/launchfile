@@ -484,8 +484,8 @@ storage:
       const result = launchToCompose(readLaunch(MARKED), { storagePaths: { music: dir } });
       expect(result.storageRefusals).toEqual([]);
       expect(result.yaml).toContain(`${dir}:/music`);
-      // The unmarked volume keeps its anonymous-volume form.
-      expect(result.yaml).toContain("- /data");
+      // The unmarked volume is named, matching providers/docker's emission.
+      expect(result.yaml).toContain("- media-data:/data");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -565,6 +565,22 @@ components:
       for (const r of storageRefusals) refused.push(`${app} [${r.component}]: ${r.volume}`);
     }
     expect(refused).toEqual([]);
+  });
+});
+
+describe("unmarked storage volumes are named, matching providers/docker", () => {
+  it("names the service-list mount and declares it in the top-level volumes map (#466)", () => {
+    const result = launchToCompose(
+      readLaunch(`
+name: plain
+image: nginx
+storage:
+  data:
+    path: /data
+`),
+    );
+    expect(result.yaml).toContain("- plain-data:/data");
+    expect(result.yaml).toContain("volumes:\n  plain-data: {}");
   });
 });
 
