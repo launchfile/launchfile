@@ -1,0 +1,46 @@
+# Proposed RFC #445 input for the private native-TLS prototype only.
+# Derived from catalog/apps/gitea/Launchfile; this optional syntax is unaccepted.
+version: launch/v1
+name: gitea
+description: Lightweight self-hosted Git service
+repository: https://github.com/go-gitea/gitea
+logo: https://raw.githubusercontent.com/go-gitea/gitea/main/assets/logo.svg
+image: gitea/gitea:latest
+provides:
+  - protocol: http
+    port: 3000
+    exposed: true
+    tls: server-cert
+  - name: ssh
+    protocol: tcp
+    port: 22
+    exposed: true
+requires:
+  - type: postgres
+    set_env:
+      GITEA__database__DB_TYPE: postgres
+      GITEA__database__HOST: $host
+      GITEA__database__NAME: $name
+      GITEA__database__USER: $user
+      GITEA__database__PASSWD: $password
+env:
+  GITEA__database__DB_TYPE:
+    default: postgres
+  GITEA__server__ROOT_URL:
+    default: $app.url
+    description: Public base URL Gitea builds clone and web links from
+  GITEA__server__PROTOCOL: http
+  GITEA__server__HTTP_PORT: "3000"
+storage:
+  data:
+    path: /data
+    persistent: true
+restart: always
+supports:
+  - name: server-cert
+    type: certificate
+    set_env:
+      GITEA__server__PROTOCOL: https
+      GITEA__server__HTTP_PORT: $listener.port
+      GITEA__server__CERT_FILE: $cert_file
+      GITEA__server__KEY_FILE: $key_file

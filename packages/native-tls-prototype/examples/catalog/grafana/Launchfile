@@ -1,0 +1,37 @@
+# Proposed RFC #445 input for the private native-TLS prototype only.
+# Derived from catalog/apps/grafana/Launchfile; this optional syntax is unaccepted.
+version: launch/v1
+name: grafana
+description: Observability and data visualization platform for metrics and logs
+repository: https://github.com/grafana/grafana
+logo: https://raw.githubusercontent.com/grafana/grafana/main/public/img/grafana_icon.svg
+image: grafana/grafana:latest
+provides:
+  - protocol: http
+    port: 3000
+    exposed: true
+    tls: server-cert
+env:
+  GF_SECURITY_ADMIN_PASSWORD:
+    generator: secret
+    sensitive: true
+    description: Admin password
+  GF_SERVER_ROOT_URL:
+    default: $app.url
+    description: Public URL Grafana builds links and redirects from
+  GF_SERVER_PROTOCOL: http
+  GF_SERVER_HTTP_PORT: "3000"
+health: /api/health
+storage:
+  data:
+    path: /var/lib/grafana
+    persistent: true
+restart: always
+supports:
+  - name: server-cert
+    type: certificate
+    set_env:
+      GF_SERVER_PROTOCOL: https
+      GF_SERVER_HTTP_PORT: $listener.port
+      GF_SERVER_CERT_FILE: $cert_file
+      GF_SERVER_CERT_KEY: $key_file

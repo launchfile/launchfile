@@ -1,0 +1,45 @@
+# Proposed RFC #445 input for the private native-TLS prototype only.
+# Derived from catalog/apps/miniflux/Launchfile; this optional syntax is unaccepted.
+version: launch/v1
+name: miniflux
+description: Minimalist and opinionated feed reader
+repository: https://github.com/miniflux/v2
+logo: https://raw.githubusercontent.com/miniflux/v2/main/internal/ui/static/bin/icon-512.png
+image: miniflux/miniflux:latest
+provides:
+  - protocol: http
+    port: 8080
+    exposed: true
+    tls: server-cert
+requires:
+  - type: postgres
+    set_env:
+      DATABASE_URL: $url
+env:
+  RUN_MIGRATIONS:
+    default: "1"
+    description: Run database migrations on startup
+  CREATE_ADMIN:
+    default: "1"
+    description: Create admin user on first run
+  ADMIN_USERNAME:
+    default: admin
+    description: Admin username
+  ADMIN_PASSWORD:
+    required: true
+    sensitive: true
+    description: Admin password
+    generator: secret
+  BASE_URL:
+    default: $app.url
+    description: Public-facing URL; miniflux uses it for absolute links and feed URLs
+  PORT: "8080"
+health: /healthcheck
+restart: always
+supports:
+  - name: server-cert
+    type: certificate
+    set_env:
+      PORT: $listener.port
+      CERT_FILE: $cert_file
+      KEY_FILE: $key_file

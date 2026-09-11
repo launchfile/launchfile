@@ -1,0 +1,34 @@
+# Experimental issue #314 syntax; use this package's planner, not the v1 CLI.
+name: gitea-tls-prototype
+image: gitea/gitea:latest
+
+provides:
+  - name: web
+    protocol: http
+    port: 3000
+    exposed: true
+    tls: server-cert
+
+supports:
+  - name: server-cert
+    type: certificate
+    set_env:
+      GITEA__server__PROTOCOL: https
+      GITEA__server__HTTP_PORT: $listener.port
+      GITEA__server__CERT_FILE: $cert_file
+      GITEA__server__KEY_FILE: $key_file
+
+env:
+  GITEA__database__DB_TYPE: sqlite3
+  GITEA__security__INSTALL_LOCK: "true"
+  GITEA__server__DISABLE_SSH: "true"
+  GITEA__server__PROTOCOL: http
+  GITEA__server__HTTP_PORT: "3000"
+  GITEA__server__ROOT_URL: $app.url
+
+storage:
+  data:
+    path: /data
+    persistent: true
+
+health: /api/healthz
