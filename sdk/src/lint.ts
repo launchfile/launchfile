@@ -359,7 +359,7 @@ function* expressionSites(
 
 /**
  * Every `$app.endpoints…` reference in a Launchfile's `env:` defaults and
- * `set_env:` values (D-next), in declaration order. Providers use it to say
+ * `set_env:` values (D-63), in declaration order. Providers use it to say
  * which named endpoints an app actually asks for, so a provider that
  * publishes no per-endpoint address warns about the endpoints the file
  * references and stays silent about the rest.
@@ -400,7 +400,7 @@ function namedEndpoints(launch: NormalizedLaunch): NamedEndpoint[] {
 }
 
 /**
- * D-next rule 4: a `$app.endpoints…` reference that addresses no value
+ * D-63 rule 4: a `$app.endpoints…` reference that addresses no value
  * resolves `""` at deploy time, silently, so the file is told here. Four
  * shapes warn — no name (`$app.endpoints`), no property
  * (`$app.endpoints.<name>`), a name no `provides` entry carries or one whose
@@ -415,7 +415,7 @@ function checkAppEndpointReferences(
 ): void {
 	const endpoints = namedEndpoints(launch);
 	const published = endpoints.filter((e) => e.exposed).map((e) => e.name);
-	const form = "the form is `$app.endpoints.<name>.<property>` (D-next)";
+	const form = "the form is `$app.endpoints.<name>.<property>` (D-63)";
 	const properties = APP_ENDPOINT_PROPERTIES.join(", ");
 
 	for (const { component, site, path } of appEndpointReferences(launch)) {

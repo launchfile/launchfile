@@ -9,7 +9,7 @@ import {
 } from "../resolver.js";
 
 /**
- * `$app.endpoints.<name>.*` — per-endpoint publication context (D-next).
+ * `$app.endpoints.<name>.*` — per-endpoint publication context (D-63).
  *
  * The resolver half: only the four-segment form addresses a value, from a
  * sibling map on the context; every other shape resolves "" (rule 4, L-4).
@@ -50,7 +50,7 @@ const CONTEXT: ResolverContext = {
 	},
 };
 
-describe("resolveExpression — $app.endpoints.<name>.<prop> (D-next)", () => {
+describe("resolveExpression — $app.endpoints.<name>.<prop> (D-63)", () => {
 	it("resolves every one of the six properties", () => {
 		expect(resolveExpression("$app.endpoints.ssh.host", CONTEXT)).toBe(
 			"localhost",
@@ -192,7 +192,7 @@ env:
 const lint = (yaml: string): string[] =>
 	lintLaunch(readLaunch(yaml), { suppressPortabilityWarnings: true });
 
-describe("validate — $app.endpoints references (D-next rule 4)", () => {
+describe("validate — $app.endpoints references (D-63 rule 4)", () => {
 	it("is silent for a reference to a named published endpoint, tcp included", () => {
 		expect(lint(GITEA_SHAPE)).toEqual([]);
 	});
@@ -324,7 +324,7 @@ env:
 	});
 });
 
-describe("validate — a provides name on two components is refused (D-next rule 4)", () => {
+describe("validate — a provides name on two components is refused (D-63 rule 4)", () => {
 	it("names both components", () => {
 		expect(() =>
 			readLaunch(`

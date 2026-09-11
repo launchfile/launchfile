@@ -191,7 +191,7 @@ describe("structural rules the schema enforces (D-61 rule 1)", () => {
 				b: {
 					image: "b",
 					// A distinct endpoint name: `provides[].name` is app-wide
-					// (D-next rule 4), while a certificate name is component-local.
+					// (D-63 rule 4), while a certificate name is component-local.
 					provides: [{ name: "admin", protocol: "http", port: 80, tls: "cert" }],
 					supports: [{ name: "cert", type: "certificate" }],
 				},

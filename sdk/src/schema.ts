@@ -510,7 +510,7 @@ function checkHttpsOrigin(
 }
 
 /**
- * D-next rule 4: a `provides[].name` is addressable app-wide through
+ * D-63 rule 4: a `provides[].name` is addressable app-wide through
  * `$app.endpoints.<name>.*`, by name alone, so the same name on two
  * components would give one expression two answers. Refused naming both.
  * Scoped to declaration sites — the top level and each component — the same
@@ -559,7 +559,7 @@ function checkEndpointNames(
 				message:
 					`\`provides\` entry "${name}" is named on both ${owner} and ${scope.label}; ` +
 					"an endpoint name is app-wide — `$app.endpoints." +
-					`${name}.*\` addresses it by name alone (D-next rule 4). Rename one.`,
+					`${name}.*\` addresses it by name alone (D-63 rule 4). Rename one.`,
 			});
 		}
 	}

@@ -40,7 +40,7 @@ export interface ResolverContext {
 	 */
 	storage?: Record<string, Record<string, string>>;
 	/**
-	 * Per-endpoint publication context (D-next): the public address of every
+	 * Per-endpoint publication context (D-63): the public address of every
 	 * named published endpoint, keyed by the `provides` entry's `name` (D-6).
 	 * The primary endpoint's entry is the same value as `$app.*`, from the
 	 * same derivation. A sibling of {@link ResolverContext.app}, never nested
@@ -55,7 +55,7 @@ export interface ResolverContext {
 }
 
 /**
- * The properties `$app.endpoints.<name>.*` addresses (D-next): the standard
+ * The properties `$app.endpoints.<name>.*` addresses (D-63): the standard
  * `$app.*` set (D-33, D-35) less `name`, which names the app rather than an
  * endpoint.
  */
@@ -71,7 +71,7 @@ export const APP_ENDPOINT_PROPERTIES = [
 export type AppEndpointProperty = (typeof APP_ENDPOINT_PROPERTIES)[number];
 
 /**
- * One named published endpoint's public address (D-next), each field defined
+ * One named published endpoint's public address (D-63), each field defined
  * per endpoint exactly as the `$app.*` entry defines it for the primary: the
  * published host-side port, never the container port; `scheme`, `tls` and
  * `url` from the effective listener (D-61 rule 2). A `tcp`/`udp` endpoint has
@@ -89,7 +89,7 @@ export interface AppEndpointProperties {
 }
 
 /**
- * The answer for an endpoint the provider publishes no address for (D-next
+ * The answer for an endpoint the provider publishes no address for (D-63
  * rule 4): every property `""`, so the form degrades exactly as an unknown
  * `$app.*` property does (L-4).
  */
@@ -339,7 +339,7 @@ export function parseDotPath(path: string): string[] {
  *
  * Resolution order for a path:
  * 1. Starts with "app" → platform-injected app property (reserved namespace, D-33);
- *    "app.endpoints.<name>.<prop>" → per-endpoint publication context (D-next)
+ *    "app.endpoints.<name>.<prop>" → per-endpoint publication context (D-63)
  * 2. Starts with "secrets" → app-wide secret lookup
  * 3. Starts with "components" → component lookup
  * 4. Starts with "storage" → provider-resolved storage property (reserved namespace, D-39)
@@ -407,7 +407,7 @@ function resolvePath(
 		return undefined;
 	}
 
-	// app.endpoints.<name>.<prop> → per-endpoint publication context (D-next).
+	// app.endpoints.<name>.<prop> → per-endpoint publication context (D-63).
 	// Reserved with the rest of `$app.*`, so it is checked before any
 	// user-named resource. Only the four-segment form addresses a value: the
 	// two-segment `$app.endpoints` falls to the branch above (no `endpoints`
