@@ -46,6 +46,13 @@ describe("getPositional (#248)", () => {
 		expect(getPositional(args, 1)).toBe("ghost");
 	});
 
+	it("skips the --url value so a public URL is never the up target (D-58)", () => {
+		const args = ["up", "--url", "https://x.example.com"];
+		expect(getPositional(args, 0)).toBe("up");
+		expect(getPositional(args, 1)).toBeUndefined();
+		expect(getPositional(["up", "--url", "https://x.example.com", "ghost"], 1)).toBe("ghost");
+	});
+
 	it("skips --storage values so a pair is never the up target (D-50)", () => {
 		const args = ["up", "--storage", "music=/srv/music", "--storage", "books=/srv/books"];
 		expect(getPositional(args, 0)).toBe("up");

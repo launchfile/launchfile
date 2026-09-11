@@ -15,6 +15,12 @@ declare module "@launchfile/macos-dev" {
 		noBuild?: boolean;
 		/** Host paths for `content: operator` volumes (D-50 rule 1). */
 		storage?: Record<string, string>;
+		/**
+		 * The public URL of the app's primary endpoint when routing is owned
+		 * upstream of this provider (D-58). Raw as the operator typed it — the
+		 * provider normalizes or refuses it.
+		 */
+		appUrl?: string;
 	}): Promise<void>;
 
 	export function launchDown(opts?: {
