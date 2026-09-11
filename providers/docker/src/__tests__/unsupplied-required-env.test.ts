@@ -108,10 +108,13 @@ env:
 	});
 
 	// 5
-	it("does NOT treat a binding on an unmappable resource as supplying the value", () => {
+	it("does NOT treat a binding on an unprovisionable resource as supplying the value", () => {
 		// `sqlite` is a valid resource type with no compose backing service, so
-		// the binding declares the key without ever injecting it.
-		const { yaml, unsuppliedRequired } = compose(`
+		// the binding can never inject. The component is refused before its
+		// environment is resolved (D-next), so the key is absent from the
+		// compose and — like a component outside the start-set — the
+		// component is not launching, so it reports no unsupplied variable.
+		const { yaml, warnings, unsuppliedRequired } = compose(`
 name: app
 image: acme/app:1
 requires:
@@ -124,9 +127,9 @@ env:
     sensitive: true
 `);
 		expect(yaml).not.toContain("DB_URL");
-		expect(unsuppliedRequired).toEqual([
-			{ component: "default", key: "DB_URL", sensitive: true },
-		]);
+		expect(yaml).not.toContain("acme/app:1");
+		expect(warnings.filter((w) => w.startsWith("refused:"))).toHaveLength(1);
+		expect(unsuppliedRequired).toEqual([]);
 	});
 
 	// 6

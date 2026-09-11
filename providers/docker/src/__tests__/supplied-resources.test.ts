@@ -94,7 +94,7 @@ describe("docker — orchestrator-satisfied resources (#289)", () => {
 		);
 	});
 
-	it("satisfies a requires type this provider has no factory for — no unknown-type warning", () => {
+	it("satisfies a requires type this provider has no factory for — no refusal", () => {
 		const { doc, warnings } = compose(
 			`
 name: app
@@ -113,9 +113,7 @@ requires:
 			},
 		);
 
-		expect(warnings.some((w) => w.includes("Unknown backing service"))).toBe(
-			false,
-		);
+		expect(warnings.some((w) => w.startsWith("refused:"))).toBe(false);
 		expect(warnings).toHaveLength(0);
 		expect(doc.services.app!.environment!.SNOWFLAKE_URL).toBe(
 			"https://acct.snowflakecomputing.com",
