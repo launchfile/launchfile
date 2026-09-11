@@ -3,10 +3,15 @@
  * check-spec-coverage — enforce that every Launchfile schema field is reachable
  * at a predictable URL under /spec/.
  *
- * Runs in prebuild. Catches three real failure modes:
+ * Runs in prebuild. Catches these real failure modes:
  *   1. Schema field added but no ## section in SPEC.md.
  *   2. Schema field documented but no sidebar entry in navigation.ts.
  *   3. Sidebar href points at a slug with no matching SPEC.md section.
+ *   4. A `[text](#anchor)` cross-reference in SPEC.md points at a slug no
+ *      heading in the document produces (issue #198).
+ *   5. Two ###+ headings produce the same slug, so one shadows the other.
+ *   6. An anchor's target page never got the matching `id=` in its
+ *      rendered HTML (renderer.heading and the anchor map drifted apart).
  *
  * Slug convention: kebab-cased YAML key, verbatim, unless listed in
  * SLUG_OVERRIDES in spec-sections.ts (e.g. `env` → prose heading "Environment
@@ -18,6 +23,8 @@ import { resolve } from "path";
 import { navigation } from "../src/lib/navigation";
 import {
   SLUG_OVERRIDES,
+  getAnchorCollisions,
+  getAnchorMap,
   getSpecSections,
 } from "../src/lib/spec-sections";
 
@@ -114,7 +121,48 @@ async function main(): Promise<void> {
     }
   }
 
-  // 5. Report.
+  // 5. Every `](#anchor)` in SPEC.md must resolve to a real heading — a `##`
+  // section or a `###`+ sub-heading — and every heading-level anchor's
+  // fragment must actually be emitted as an `id=` in the rendered HTML.
+  const specPath = resolve(process.cwd(), "../spec/SPEC.md");
+  const specRaw = readFileSync(specPath, "utf-8");
+  const usedAnchors = new Set(
+    [...specRaw.matchAll(/\]\(#([^)]+)\)/g)].map((m) => m[1]),
+  );
+  const anchorMap = await getAnchorMap();
+  for (const anchor of usedAnchors) {
+    if (!anchorMap.has(anchor)) {
+      errors.push(
+        `SPEC.md links to "#${anchor}", but no ## section or ###+ heading in the document produces that slug.`,
+      );
+    }
+  }
+
+  const anchorCollisions = await getAnchorCollisions();
+  for (const slug of anchorCollisions) {
+    errors.push(
+      `Heading slug "${slug}" is produced by more than one ###+ heading in SPEC.md. The first in document order keeps the anchor; rename the others.`,
+    );
+  }
+
+  const sectionsBySlug = new Map(sections.map((s) => [s.slug, s]));
+  for (const [anchor, href] of anchorMap) {
+    const fragmentMatch = href.match(/^\/spec\/([^/]+)\/#(.+)$/);
+    if (!fragmentMatch) continue; // a ## section href has no fragment to check
+    const [, pageSlug, fragment] = fragmentMatch;
+    const page = sectionsBySlug.get(pageSlug);
+    if (!page) {
+      errors.push(`Anchor "#${anchor}" maps to unknown page slug "${pageSlug}".`);
+      continue;
+    }
+    if (!page.html.includes(`id="${fragment}"`)) {
+      errors.push(
+        `Anchor "#${anchor}" resolves to /spec/${pageSlug}/#${fragment}, but no heading with id="${fragment}" is emitted on that page — renderer.heading in spec-sections.ts must be emitting a mismatched id.`,
+      );
+    }
+  }
+
+  // 6. Report.
   if (errors.length > 0) {
     console.error("\n✗ Spec coverage check failed:\n");
     for (const err of errors) console.error(`  - ${err}`);
@@ -125,7 +173,7 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    `✓ Spec coverage: ${schemaFields.length} schema fields, ${sections.length} sections, ${specGroup?.items.length} sidebar entries — all reachable.`,
+    `✓ Spec coverage: ${schemaFields.length} schema fields, ${sections.length} sections, ${specGroup?.items.length} sidebar entries, ${usedAnchors.size} cross-reference anchors — all reachable.`,
   );
 }
 

@@ -1,8 +1,8 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it, expect, afterEach } from "vitest";
-import { initState, hashLaunchfile, loadState, saveState, type LaunchState } from "../state.js";
+import { initState, hashLaunchfile, loadState, saveState, ensureDirs, type LaunchState } from "../state.js";
 import { clearRegisteredSecrets, redactSecrets, REDACTED } from "../redact.js";
 
 describe("initState", () => {
@@ -137,6 +137,38 @@ describe("state persistence of env-level generator values (D-49, #186)", () => {
 			clearRegisteredSecrets();
 			await loadState(dir);
 			expect(redactSecrets(`token=${value}`)).toBe(`token=${REDACTED}`);
+		});
+	});
+});
+
+describe("ensureDirs (issue #252, CWE-276)", () => {
+	async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
+		const dir = await mkdtemp(join(tmpdir(), "launchfile-state-"));
+		try {
+			return await fn(dir);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	}
+
+	it("tightens a pre-existing .launchfile/env left at 0o755 to 0o700", async () => {
+		await withTempDir(async (dir) => {
+			const envDir = join(dir, ".launchfile", "env");
+			await mkdir(envDir, { recursive: true, mode: 0o755 });
+
+			await ensureDirs(dir);
+
+			expect((await stat(envDir)).mode & 0o777).toBe(0o700);
+		});
+	});
+
+	it("creates all five state dirs at 0o700", async () => {
+		await withTempDir(async (dir) => {
+			await ensureDirs(dir);
+
+			for (const d of ["storage", "tmp", "logs", "data", "env"]) {
+				expect((await stat(join(dir, ".launchfile", d))).mode & 0o777).toBe(0o700);
+			}
 		});
 	});
 });
