@@ -31,6 +31,7 @@ import {
 	getFlagValues as argsGetFlagValues,
 	getPositional as argsGetPositional,
 	flagPresent as argsFlagPresent,
+	valuedBooleanFlag,
 	parseStoragePairs,
 } from "./cli-args.js";
 
@@ -125,6 +126,15 @@ Examples:
 `;
 
 async function main(): Promise<void> {
+	// One pass before dispatch: a boolean flag's value is never read, so
+	// `--reveal=false` would reveal and `--dry-run=true` would deploy for real.
+	// Rejecting the spelling here covers every call site of both helpers (#485).
+	const valued = valuedBooleanFlag(args);
+	if (valued !== undefined) {
+		console.error(`--${valued} takes no value, e.g. --${valued}`);
+		process.exit(1);
+	}
+
 	if (hasFlag("version")) {
 		console.log(`launchfile ${VERSION}`);
 		return;
@@ -191,8 +201,9 @@ async function main(): Promise<void> {
 		case "bootstrap":
 			await handleBootstrap(target, {
 				component: getFlagValue("component"),
-				// `flagPresent` matches `--reveal` and `--reveal=<anything>`, so
-				// `--reveal=false` also reveals — the rule for every boolean flag here (#485).
+				// D-62 spells `--reveal` as a bare boolean with no alias, so it reads
+				// through `flagPresent` (exact long form) rather than `hasFlag`, which
+				// would also match a `-r` the decision refuses by name.
 				reveal: argsFlagPresent(args, "reveal"),
 			});
 			break;
