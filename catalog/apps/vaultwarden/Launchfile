@@ -7,9 +7,17 @@ logo: https://raw.githubusercontent.com/dani-garcia/vaultwarden/main/resources/v
 
 image: vaultwarden/server:latest
 provides:
-  - protocol: http
+  - name: web
+    protocol: http
     port: 80
     exposed: true
+requires:
+  # The web vault needs a secure context for the Web Crypto API; over plain
+  # HTTP it decrypts nothing while the container looks healthy (README.md:62).
+  - type: https-origin
+    endpoint: web
+    set_env:
+      DOMAIN: $url
 supports:
   - type: postgres
     set_env:

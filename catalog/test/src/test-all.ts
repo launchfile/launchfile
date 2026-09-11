@@ -2,7 +2,11 @@
 /**
  * Batch test runner for catalog apps. Runs apps tier by tier, smallest first.
  *
- * Usage: bun run src/test-all.ts [--tier N] [--dry-run]
+ * Usage: bun run src/test-all.ts [--tier N] [--dry-run] [--url <public-url>]
+ *
+ * `--url` is forwarded to every app (see test-app.ts). Apps that declare a
+ * required `https-origin` fail without an `https://` value, exactly as they
+ * would on the shipped Docker provider.
  */
 
 const TIERS: Record<number, { name: string; apps: string[] }> = {
@@ -90,7 +94,16 @@ const tierArg = tierFlag
   : args[args.indexOf("--tier") + 1];
 const selectedTier = tierArg !== undefined ? Number.parseInt(tierArg, 10) : undefined;
 const dryRun = args.includes("--dry-run");
-const extraFlags = dryRun ? ["--dry-run"] : [];
+const urlFlag = args.find((a) => a.startsWith("--url="));
+const appUrl = urlFlag
+  ? urlFlag.slice("--url=".length)
+  : args.includes("--url")
+    ? args[args.indexOf("--url") + 1]
+    : undefined;
+const extraFlags = [
+  ...(dryRun ? ["--dry-run"] : []),
+  ...(appUrl ? ["--url", appUrl] : []),
+];
 
 // --- Run ---
 
