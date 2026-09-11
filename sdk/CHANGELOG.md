@@ -1,5 +1,13 @@
 # @launchfile/sdk
 
+## 0.9.0
+
+### Minor Changes
+
+- [#484](https://github.com/launchfile/launchfile/pull/484) [`b5022ae`](https://github.com/launchfile/launchfile/commit/b5022aed608e2ccd65857fb9a045337faeb94830) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - `formatCaptures(captures, captureMeta, reveal)` — the one display formatter for a command's captures ([#464](https://github.com/launchfile/launchfile/issues/464)).
+  
+  A capture declared `sensitive: true` prints as `***` on every display surface unless `reveal` is true, and a masked list ends with one hint line naming `launchfile bootstrap --reveal`. Non-sensitive captures print the same either way. `sensitiveCaptureValues` returns the values a provider must register with its redactor. The SDK returns lines; the provider prints them. `CAPTURE_MASK` and `REVEAL_HINT` are exported so tests and providers agree on the text.
+
 ## 0.8.0
 
 ### Minor Changes

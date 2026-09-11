@@ -1,5 +1,26 @@
 # @launchfile/docker
 
+## 0.9.0
+
+### Minor Changes
+
+- [#484](https://github.com/launchfile/launchfile/pull/484) [`b5022ae`](https://github.com/launchfile/launchfile/commit/b5022aed608e2ccd65857fb9a045337faeb94830) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - `dockerBootstrap({ reveal })` prints sensitive captures on the operator's explicit request, and every sensitive capture registers with the redactor at extraction ([#464](https://github.com/launchfile/launchfile/issues/464)).
+  
+  A bootstrap capture declared `sensitive: true` prints masked with a hint naming `launchfile bootstrap --reveal`; `reveal: true` prints the value. Masking is display only: the value is registered with the redactor before any result, failure record, or log line is built — also under `reveal` — so a bootstrap that fails after producing the value no longer carries it raw into the record `launchfile diagnose` prints. Each bootstrap command now leaves one debug log line (component, exit code, captured keys, scrubbed stderr on failure). `release` captures use the same formatter, always masked, and register the same way.
+
+- [#474](https://github.com/launchfile/launchfile/pull/474) [`e74e0b3`](https://github.com/launchfile/launchfile/commit/e74e0b32ef61d854e878bbfec8afd9cd52c2e6a0) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - One derivation of a published endpoint's address ([#473](https://github.com/launchfile/launchfile/issues/473)).
+  
+  Three places used to mint the address of a host-published endpoint independently, and they had drifted. An entry declaring `protocol: https` with no certificate binding resolved `$app.url` to `http://localhost:<port>` while `status` and `up` printed `https://localhost:<port>` for that same entry — so the app was configured with one origin and the operator was told another. An active certificate binding on a declared-`http` entry drifted the other way.
+  
+  `publishedAddress(effectiveProtocol, hostPort, appUrl?)` is now the single derivation, exported from the package. It returns the `host`/`port`/`url`/`authority`/`scheme`/`tls` set with the rules already ratified: the scheme is `https` exactly when the listener's **effective** protocol is `https` (D-61 rule 2), `ws` and `grpc` keep the http origin (D-60 rule 4), and a supplied `appUrl` wins outright (D-58 rules 2 and 5). `$app.*`, `endpointAddress`, and the endpoint metadata the compose generator persists all read it, so the primary endpoint's `$app.url` and its printed address are now byte-identical.
+  
+  The persisted endpoint protocol is the effective one, not the declared one. Output is unchanged for every Launchfile that declares neither `protocol: https` nor `tls:`.
+
+### Patch Changes
+
+- Updated dependencies [[`b5022ae`](https://github.com/launchfile/launchfile/commit/b5022aed608e2ccd65857fb9a045337faeb94830)]:
+  - @launchfile/sdk@0.9.0
+
 ## 0.8.0
 
 ### Minor Changes

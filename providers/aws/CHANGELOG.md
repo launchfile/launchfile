@@ -1,5 +1,12 @@
 # @launchfile/aws
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [[`b5022ae`](https://github.com/launchfile/launchfile/commit/b5022aed608e2ccd65857fb9a045337faeb94830)]:
+  - @launchfile/sdk@0.9.0
+
 ## 0.3.0
 
 ### Minor Changes
