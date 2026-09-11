@@ -526,7 +526,7 @@ describe("host capabilities — grant/refuse (D-44, PROVIDERS.md §11)", () => {
 	});
 });
 
-describe("translate — https-origin (D-next rule 5)", () => {
+describe("translate — https-origin (D-60 rule 5)", () => {
 	const APP = `
 version: launch/v1
 name: vaultwarden

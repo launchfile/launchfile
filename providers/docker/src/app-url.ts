@@ -12,7 +12,7 @@
 import { deriveAppUrlProperties, type NormalizedLaunch } from "@launchfile/sdk";
 import { publishedEndpoints } from "./port-allocator.js";
 
-/** The backing-service type that declares the app's public HTTPS origin (D-next). */
+/** The backing-service type that declares the app's public HTTPS origin (D-60). */
 export const HTTPS_ORIGIN = "https-origin";
 
 /** The published endpoint an `https-origin` entry names as the app's primary. */
@@ -29,7 +29,7 @@ export interface DeclaredPrimaryEndpoint {
 
 /**
  * The app's primary endpoint when an `https-origin` entry declares one
- * (D-next rule 3), else `undefined`.
+ * (D-60 rule 3), else `undefined`.
  *
  * **Declaration** fixes the primary, not fulfillment: a `supports:` entry this
  * provider cannot satisfy still names the primary, so `$app.*` does not change
@@ -179,7 +179,7 @@ export function normalizeAppUrl(value: string): string {
  *
  * With no `appUrl`, the provider's own routing strategy answers. Which endpoint
  * it answers for is the app's **primary**: the one an `https-origin` entry
- * names when the file declares one (D-next rule 3), else — positionally, as
+ * names when the file declares one (D-60 rule 3), else — positionally, as
  * before — the first `exposed: true` entry of the first component that has
  * one. Its host port becomes `$app.port` and `http://localhost:<hostPort>`
  * becomes `$app.url`. Apps with no exposed component get `port: 0` and
@@ -223,7 +223,7 @@ export function computeAppProperties(
 	if (declared) {
 		// A declared `https-origin` names the primary explicitly, so the
 		// positional answer below does not run — that is the whole point of
-		// D-next rule 3. The named endpoint carries its own allocation key,
+		// D-60 rule 3. The named endpoint carries its own allocation key,
 		// which is how a non-first endpoint (openclaw's `bridge`) gets the
 		// host port that was actually allocated for it.
 		primaryPort = hostPorts?.[declared.key] ?? declared.port;

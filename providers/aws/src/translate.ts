@@ -36,7 +36,7 @@ import {
 	tfName,
 } from "./hcl.js";
 
-/** The backing-service type that declares the app's public HTTPS origin (D-next). */
+/** The backing-service type that declares the app's public HTTPS origin (D-60). */
 const HTTPS_ORIGIN = "https-origin";
 
 export interface TranslateOptions {
@@ -290,7 +290,7 @@ export function translate(
 			if (req.host) continue;
 			const resourceName = req.name ?? req.type;
 			if (provisioned.has(resourceName)) continue;
-			// `https-origin` (D-next) sits in FRONT of the app, so no managed
+			// `https-origin` (D-60) sits in FRONT of the app, so no managed
 			// service maps it: this probe composes `$app.*` from the ALB's
 			// `${aws_lb.main.dns_name}`, an http:// address that does not exist
 			// until apply time and carries no certificate. Reported unmapped

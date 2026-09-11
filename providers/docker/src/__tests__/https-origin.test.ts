@@ -1,5 +1,5 @@
 /**
- * `https-origin` on `@launchfile/docker` (D-next): satisfy from the
+ * `https-origin` on `@launchfile/docker` (D-60): satisfy from the
  * orchestrator-supplied publication context, or refuse.
  *
  * This provider runs no edge of its own, so the only satisfaction it can offer

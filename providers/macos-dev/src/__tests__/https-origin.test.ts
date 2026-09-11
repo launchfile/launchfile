@@ -5,7 +5,7 @@ import { applyHttpsOriginRefusals, refusedHttpsOrigins } from "../provider.js";
 /**
  * This provider has no edge and no orchestrator-facing publication channel
  * (#294), so it can neither provision an `https-origin` nor accept a supplied
- * one: it refuses (D-next rule 5, PROVIDERS.md §10 item 5). Refusing is
+ * one: it refuses (D-60 rule 5, PROVIDERS.md §10 item 5). Refusing is
  * conformant; starting the component anyway is the silent success the type
  * exists to remove, so only an outcome assertion pins it.
  */
@@ -22,7 +22,7 @@ commands:
   start: run
 `;
 
-describe("refusedHttpsOrigins (D-next rule 5)", () => {
+describe("refusedHttpsOrigins (D-60 rule 5)", () => {
 	it("refuses a component with a required https-origin", () => {
 		const launch = mk(`${WEB}requires:\n  - type: https-origin\n    endpoint: web\n`);
 		expect([...refusedHttpsOrigins(launch).keys()]).toEqual(["default"]);

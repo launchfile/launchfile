@@ -781,11 +781,11 @@ export function launchToCompose(
 	// $components.<name>.url instead.
 	const appProperties = computeAppProperties(launch, opts.hostPorts, opts.appUrl);
 
-	// `https-origin` (D-next) — the one backing service that sits in FRONT of
+	// `https-origin` (D-60) — the one backing service that sits in FRONT of
 	// the app. This provider runs no edge of its own, so it cannot provision
 	// one; it can only accept an origin the orchestrator already owns, through
 	// the publication-context channel, which for this type IS the D-56
-	// supplied-resource channel (D-next rule 5) — `opts.appUrl`, not a second
+	// supplied-resource channel (D-60 rule 5) — `opts.appUrl`, not a second
 	// one. Satisfaction is decided on the supplied scheme alone: no request is
 	// made, and D-56 rule 3 stands — the provider does not verify the origin
 	// exists or is ready. A built-in Caddy/Traefik/tunnel provisioner would be
@@ -1065,7 +1065,7 @@ export function launchToCompose(
 				const resourceName = req.name ?? req.type;
 				if (req.type === HTTPS_ORIGIN) {
 					// Reached only when satisfied — the refusal above skipped the
-					// component otherwise. One registered property, `url` (D-next
+					// component otherwise. One registered property, `url` (D-60
 					// rule 4), holding the same string as `$app.url`.
 					if (opts.resources?.[resourceName]) {
 						warnings.push(
@@ -1133,7 +1133,7 @@ export function launchToCompose(
 			if (sup.host) continue;
 			const resourceName = sup.name ?? sup.type;
 			if (sup.type === HTTPS_ORIGIN) {
-				// The optional mood (D-next rule 6): satisfied, it wires like any
+				// The optional mood (D-60 rule 6): satisfied, it wires like any
 				// other resource; unsatisfied, the component still deploys, its
 				// set_env is absent, and the un-granted dependency is noted.
 				if (httpsOriginSatisfied) {

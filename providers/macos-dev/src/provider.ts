@@ -176,12 +176,12 @@ export function applyHostCapabilityRefusals(
 	return Object.keys(launch.components).length === 0 ? "none-left" : "ok";
 }
 
-/** The backing-service type that declares the app's public HTTPS origin (D-next). */
+/** The backing-service type that declares the app's public HTTPS origin (D-60). */
 const HTTPS_ORIGIN = "https-origin";
 
 /**
  * Components this provider must refuse because they require a public HTTPS
- * origin (D-next rule 5), mapped to the entries it cannot satisfy.
+ * origin (D-60 rule 5), mapped to the entries it cannot satisfy.
  *
  * This provider has no orchestrator-facing publication channel ([#294]) and no
  * edge of its own, so it can neither provision the origin nor accept a supplied
@@ -289,7 +289,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		process.exit(1);
 	}
 	// 2a-bis. A required `https-origin` is refused for the same reason and in
-	// the same way (D-next rule 5, PROVIDERS.md §10 item 5): this provider has
+	// the same way (D-60 rule 5, PROVIDERS.md §10 item 5): this provider has
 	// no edge and no publication channel, so it cannot satisfy the entry, and
 	// starting the component anyway is the silent success the type removes.
 	if (applyHttpsOriginRefusals(launch) === "none-left") {
