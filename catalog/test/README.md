@@ -19,7 +19,26 @@ bun run src/test-app.ts memos --keep
 
 # Test all apps in a tier
 bun run src/test-all.ts --tier 0
+
+# Static checks only — schema + image-reference policy, nothing pulled or run
+bun run validate-catalog
+
+# The unit suite (Vitest — `bun test` is blocked by scripts/test-guard.ts)
+bun run typecheck && bun run test
 ```
+
+## Static validation
+
+`src/validate-catalog.ts` reads every `catalog/{apps,drafts}/*/Launchfile`, parses it
+with the SDK's `readLaunch` — the Zod schema in `sdk/src/schema.ts`, not the published
+JSON Schema, which nothing yet asserts agrees with it (issue #179) — and applies the
+image-reference policy in
+[`catalog/CONTRIBUTING.md`](../CONTRIBUTING.md#image-references). A missing tag or an
+`@sha256` digest is an error anywhere in the catalog; the `:latest`-without-rationale
+and `metadata.yaml`-drift checks are warnings, and only apply to Launchfiles the change
+under review touches. Set `CATALOG_DIFF_BASE=<sha>` to name the base to diff against —
+CI sets it from the pull request; with it unset, no file counts as changed and the
+warnings are not evaluated.
 
 ## Tiers
 

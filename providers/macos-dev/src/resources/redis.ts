@@ -6,6 +6,7 @@ import type { NormalizedRequirement } from "@launchfile/sdk";
 import { shell, shellOk } from "../shell.js";
 import type { ResourceState } from "../state.js";
 import type {
+	DestroyOpts,
 	ProvisionOpts,
 	ResourceProperties,
 	ResourceProvisioner,
@@ -67,7 +68,7 @@ export class RedisProvisioner implements ResourceProvisioner {
 		return { properties, state };
 	}
 
-	async destroy(_state: ResourceState): Promise<void> {
+	async destroy(_state: ResourceState, _opts: DestroyOpts): Promise<void> {
 		// Redis is shared, don't stop the service
 		// Could flush a specific database prefix, but not worth the complexity
 	}

@@ -1317,3 +1317,59 @@ components:
 		}
 	});
 });
+
+describe("ComposeResult.healthchecks", () => {
+	/**
+	 * The health gate reads this map instead of inferring "declares no check"
+	 * from an empty `Health` string, which docker also reports for a declared
+	 * check that has not been evaluated yet (#325). The map must therefore agree
+	 * with the emitted YAML exactly — for backing services as much as components,
+	 * since compose starts those too.
+	 */
+	function assertAgreesWithYaml(result: ReturnType<typeof launchToCompose>): void {
+		const doc = parse(result.yaml) as {
+			services: Record<string, { healthcheck?: unknown }>;
+		};
+		const expected = Object.fromEntries(
+			Object.entries(doc.services).map(([name, svc]) => [
+				name,
+				svc.healthcheck !== undefined,
+			]),
+		);
+		expect(result.healthchecks).toEqual(expected);
+	}
+
+	it("covers every emitted service, backing services included (ghost)", async () => {
+		const launch = await loadApp("ghost");
+		const result = launchToCompose(launch);
+
+		assertAgreesWithYaml(result);
+		// ghost declares `health:` and pulls in a mysql that ships its own check.
+		expect(result.healthchecks.ghost).toBe(true);
+		const backing = Object.keys(result.healthchecks).filter(
+			(name) => !Object.values(result.services).includes(name),
+		);
+		expect(backing.length).toBeGreaterThan(0);
+		expect(backing.some((name) => result.healthchecks[name])).toBe(true);
+	});
+
+	it("is keyed by compose service name, the same key `docker compose ps` returns", async () => {
+		const launch = await loadApp("ghost");
+		const result = launchToCompose(launch);
+
+		for (const serviceName of Object.values(result.services)) {
+			expect(result.healthchecks).toHaveProperty(serviceName);
+		}
+	});
+
+	it("records false for a component that declares no health check", async () => {
+		const launch = await loadApp("miniflux");
+		const result = launchToCompose(launch);
+
+		assertAgreesWithYaml(result);
+		for (const [name, declared] of Object.entries(result.healthchecks)) {
+			expect(typeof declared).toBe("boolean");
+			expect(result.yaml).toContain(`${name}:`);
+		}
+	});
+});

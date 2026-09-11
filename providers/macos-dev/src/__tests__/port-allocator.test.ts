@@ -1,5 +1,20 @@
 import { describe, it, expect } from "vitest";
+import { createServer } from "node:net";
 import { allocatePort, allocatePorts } from "../port-allocator.js";
+
+/** Hold a real listener on `port` for the duration of `fn`. */
+async function occupying<T>(port: number, fn: () => Promise<T>): Promise<T> {
+	const server = createServer();
+	await new Promise<void>((resolve, reject) => {
+		server.once("error", reject);
+		server.listen(port, "127.0.0.1", resolve);
+	});
+	try {
+		return await fn();
+	} finally {
+		await new Promise<void>((resolve) => server.close(() => resolve()));
+	}
+}
 
 describe("allocatePort", () => {
 	it("returns a port in the expected range", async () => {
@@ -55,5 +70,46 @@ describe("allocatePorts", () => {
 		const saved = { api: 9876 };
 		const ports = await allocatePorts(components, "test-app", saved);
 		expect(ports.api).toBe(9876);
+	});
+});
+
+describe("allocatePorts — the exposed endpoint anchors the port (D-27, P-5)", () => {
+	it("allocates the first exposed: true entry, not provides[0]", async () => {
+		const components = {
+			api: {
+				provides: [
+					{ port: 9000 },
+					{ port: 8080, exposed: true },
+				],
+			},
+		};
+		const ports = await allocatePorts(components, "anchor-test");
+		expect(ports.api).toBe(8080);
+	});
+
+	it("keeps provides[0] when nothing is exposed", async () => {
+		const components = {
+			worker: { provides: [{ port: 9000 }] },
+		};
+		const ports = await allocatePorts(components, "anchor-test");
+		expect(ports.worker).toBe(9000);
+	});
+
+	it("falls through to the deterministic allocator when the anchor port is taken", async () => {
+		const components = {
+			api: {
+				provides: [
+					{ port: 9000 },
+					{ port: 8080, exposed: true },
+				],
+			},
+		};
+		const ports = await occupying(8080, () => allocatePorts(components, "anchor-test"));
+		// Not the anchor (taken), and not provides[0] either — the anchor being
+		// unavailable does not hand the port back to the internal endpoint.
+		expect(ports.api).not.toBe(8080);
+		expect(ports.api).not.toBe(9000);
+		expect(ports.api).toBeGreaterThanOrEqual(10_000);
+		expect(ports.api).toBeLessThan(20_000);
 	});
 });
