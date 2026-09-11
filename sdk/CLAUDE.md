@@ -20,8 +20,9 @@ bun run build      # Compile to dist/
 
 See [`README.md`](./README.md) → "API" for the full, checked list. Every value
 export of `src/index.ts` is a row there or an explicit exclusion in
-`scripts/check-readme-exports.ts` — `bun run check:exports` fails the build if
-the two go out of sync, so this file doesn't keep a second copy of the list.
+`scripts/check-readme-exports.ts` — `bun run check:exports` fails `bun run
+test` (and CI's `sdk` job) if the two go out of sync, so this file doesn't
+keep a second copy of the list.
 
 ## Architecture
 

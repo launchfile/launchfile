@@ -135,8 +135,9 @@ isExpression("$$escaped");      // false (literal $)
 Every value export of `src/index.ts` is either a row below or an entry in
 `EXCLUDED_EXPORTS` (`scripts/check-readme-exports.ts`, with a one-line reason —
 mostly CLI-command implementations and the provider error-context vocabulary).
-`bun run check:exports` (wired as a `pretest` hook) fails the build if a value
-export is undocumented, or if a row/exclusion goes stale.
+`bun run check:exports` (wired as a `pretest` hook) fails `bun run test` — and
+CI's `sdk` job — if a value export is undocumented, or if a row/exclusion goes
+stale.
 
 ### Parse, validate, serialize
 
@@ -187,7 +188,7 @@ export is undocumented, or if a row/exclusion goes stale.
 | `unsuppliedRequiredEnv(component, suppliedKeys)` | List the component's `required:` variables that no value source in the file actually supplies |
 | `indexOperatorStoragePaths(launch, suppliedPaths)` | Index operator-supplied storage paths against the launch's `content: operator` volumes (D-50), for per-volume lookup |
 | `UnboundOperatorStorageError` | Thrown when a `content: operator` volume has no supplied path (D-50 row 2) |
-| `MissingOperatorStoragePathError` | Thrown when a supplied storage path names a volume the launch doesn't declare |
+| `MissingOperatorStoragePathError` | Thrown when an operator-supplied storage path does not exist or is not readable on the host (D-50 row 3); the directory is never created |
 | `collectHostCapabilities(launch)` | Collect the app's requested host capabilities (D-44) as `"name=value (required\|optional)"` strings |
 | `collectOperatorStorage(launch)` | Collect the volumes marked `content: operator` (D-50) as `"component.volume"` strings |
 | `RESOURCE_PROPERTY_VOCABULARY` | Standard resource property vocabulary by resource type (SPEC.md § Resource Property Vocabulary, D-46) |
@@ -196,7 +197,7 @@ export is undocumented, or if a row/exclusion goes stale.
 
 | Function | Description |
 |----------|-------------|
-| `resolveSourceRunCommand(component)` | Resolve which command runs a source-mode component (`commands.dev` → `commands.start`) |
+| `resolveSourceRunCommand(component)` | Resolve which command runs a source-mode component: `commands.dev` wins, then `commands.start` — but `image` (no `dev`) returns `undefined` rather than falling back to `start` |
 | `resolveSourcePrepareCommand(component)` | Resolve which command prepares a source-mode component (`commands.install` → `commands.build`) |
 
 ### Deployment state
@@ -214,7 +215,7 @@ diff two states back into events, and resolve `$`-references against a state.
 
 | Function | Description |
 |----------|-------------|
-| `extractToolchainVersions(repoDir)` | Discover per-language toolchain versions declared in a repo checkout (`package.json`, `.tool-versions`, …) |
+| `extractToolchainVersions(repoDir)` | Discover per-language toolchain versions declared in a repo checkout (`package.json`, `.tool-versions`, …) → `Promise<ToolchainVersions>` |
 
 ## Types
 

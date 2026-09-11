@@ -22,8 +22,8 @@
  * enough to classify every entry as value or type-only.
  */
 
-import { readFileSync } from "fs";
-import { resolve } from "path";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 /**
  * Value exports that are intentionally not part of the README's curated API
@@ -80,8 +80,7 @@ const EXCLUDED_EXPORTS: Record<string, string> = {
 	// Deprecation-registry data: the version constants and the registry table
 	// that `lintDeprecations` reads. Callers use `lintDeprecations`.
 	DEPRECATED_IN: "deprecation-registry data, read via lintDeprecations",
-	DEPRECATION_REGISTRY:
-		"deprecation-registry data, read via lintDeprecations",
+	DEPRECATION_REGISTRY: "deprecation-registry data, read via lintDeprecations",
 	REMOVED_IN: "deprecation-registry data, read via lintDeprecations",
 };
 
