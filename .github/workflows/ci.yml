@@ -102,6 +102,22 @@ jobs:
       - name: Verify dist/cli.js exists
         run: test -f packages/launchfile/dist/cli.js || (echo "dist/cli.js missing!" && exit 1)
 
+  # This private RFC experiment builds its own dependencies. Its macOS helper
+  # imports require the darwin workspace; no application or service is started.
+  strictness-prototype:
+    name: "Strictness prototype"
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - run: bun install --frozen-lockfile
+      - name: Verify prototype and report runtime
+        working-directory: packages/strictness-prototype
+        env:
+          FORCE_COLOR: "1"
+        run: bun run verify
+
   websites:
     name: "Website (${{ matrix.site }})"
     runs-on: ubuntu-latest

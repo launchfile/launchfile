@@ -1,0 +1,8 @@
+version: launch/v1
+name: nightly-job
+image: example/nightly-job:latest
+runtime: node
+commands:
+  start: node job.js
+  dev: node job.js
+schedule: "0 2 * * *"
