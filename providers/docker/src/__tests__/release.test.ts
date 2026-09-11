@@ -254,7 +254,7 @@ describe("command interpretation (SPEC.md § Command interpretation)", () => {
 	});
 });
 
-describe("sensitive release captures (D-next — release has no reveal path)", () => {
+describe("sensitive release captures (D-62 — release has no reveal path)", () => {
 	const SECRET = "https://acme.test/setup/PzEdyKQKfZIKDZ8HNtlm8g6K1ptolVAqjgIb4MWiRVg";
 	const plan = planReleases(
 		readLaunch(

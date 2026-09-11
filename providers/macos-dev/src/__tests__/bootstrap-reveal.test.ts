@@ -1,5 +1,5 @@
 /**
- * Sensitive bootstrap captures on `@launchfile/macos-dev` (#464, D-next):
+ * Sensitive bootstrap captures on `@launchfile/macos-dev` (#464, D-62):
  * masked on stdout unless the operator passes `--reveal`, and registered with
  * the redactor before anything prints or persists either way.
  *
@@ -80,7 +80,7 @@ const run = (opts: { reveal?: boolean; exitCode?: number } = {}) =>
 		reveal: opts.reveal,
 	});
 
-describe("masked by default (SPEC.md § Command Capture, D-next)", () => {
+describe("masked by default (SPEC.md § Command Capture, D-62)", () => {
 	it("prints *** for the sensitive capture, the non-sensitive one in clear, then one hint line", async () => {
 		await run();
 		const text = out.join("\n");

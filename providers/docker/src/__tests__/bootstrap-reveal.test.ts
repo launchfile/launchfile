@@ -1,5 +1,5 @@
 /**
- * Sensitive bootstrap captures on `@launchfile/docker` (#464, D-next):
+ * Sensitive bootstrap captures on `@launchfile/docker` (#464, D-62):
  * masked on stdout unless the operator passes `--reveal`, and registered with
  * the redactor before any log line or failure record either way.
  *
@@ -91,7 +91,7 @@ async function ndjson(): Promise<string> {
 	return readFile(LOG_FILE, "utf8").catch(() => "");
 }
 
-describe("masked by default (SPEC.md § Command Capture, D-next)", () => {
+describe("masked by default (SPEC.md § Command Capture, D-62)", () => {
 	it("prints *** for the sensitive capture, the non-sensitive one in clear, then one hint line", async () => {
 		await bootstrap.runBootstraps(plan(), {
 			project: "lf-acme",
