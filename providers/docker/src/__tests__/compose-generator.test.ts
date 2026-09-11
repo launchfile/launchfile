@@ -151,6 +151,49 @@ provides:
 		expect(minResult.yaml).toContain("unless-stopped");
 	});
 
+	describe("restart default for a scheduled component (D-next)", () => {
+		const scheduled = (extra = "") =>
+			readLaunch(`
+name: daily-sync
+image: alpine:3
+schedule: "0 3 * * *"
+commands:
+  start: "sh -c 'echo tick'"
+${extra}`);
+
+		it("defaults a schedule-bearing component to restart: no", () => {
+			const result = launchToCompose(scheduled());
+			const service = parse(result.yaml).services["daily-sync"];
+			expect(service.restart).toBe("no");
+			// Quoted, or a YAML 1.1 loader reads the bare token as boolean false.
+			expect(result.yaml).toContain('restart: "no"');
+		});
+
+		it("keeps an explicit restart on a schedule-bearing component", () => {
+			const result = launchToCompose(scheduled('restart: "always"'));
+			expect(parse(result.yaml).services["daily-sync"].restart).toBe("always");
+		});
+
+		it("names the chosen restart policy in the schedule warning", () => {
+			expect(launchToCompose(scheduled()).warnings.join(" ")).toContain(
+				'it runs once with `restart: "no"`',
+			);
+		});
+	});
+
+	it('quotes an explicit restart: "no" on a component with no schedule', () => {
+		const plain = readLaunch(`
+name: one-shot
+image: alpine:3
+restart: "no"
+commands:
+  start: "sh -c 'echo tick'"
+`);
+		// Read the raw YAML: yaml@2 resolves the bare token `no` to the string
+		// "no", so the parsed value cannot tell quoted from unquoted.
+		expect(launchToCompose(plain).yaml).toContain('restart: "no"');
+	});
+
 	it("adds a bridge network", async () => {
 		const launch = await loadApp("audiobookshelf");
 		const result = launchToCompose(launch);
