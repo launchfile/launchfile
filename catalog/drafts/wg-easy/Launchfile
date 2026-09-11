@@ -34,6 +34,7 @@ env:
     sensitive: true
     description: "Admin password for the web UI (first boot only)"
   INIT_HOST:
+    default: $app.host
     required: true
     description: "Public hostname or IP of the `wg` endpoint — what VPN clients connect to"
   # INIT_PORT also sets WireGuard's in-container listen port, so the `wg`
@@ -43,5 +44,9 @@ env:
     description: "Public UDP port of the `wg` endpoint — must equal the port the `wg` endpoint is published on"
   INSECURE:
     default: "true"
-    description: "Allow the web UI over plain HTTP; set to false behind a TLS-terminating reverse proxy"
+    description: "Drops the Secure flag from the admin session cookie so login works over plain HTTP; set false when a TLS-terminating proxy fronts the `web` endpoint"
 restart: always
+storage:
+  config:
+    path: /etc/wireguard
+    persistent: true
