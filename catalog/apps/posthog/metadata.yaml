@@ -1,28 +1,28 @@
 test_results:
-  last_tested: 2026-04-08
-  pull_time_seconds: 3
+  last_tested: 2026-09-12
+  pull_time_seconds: 106
   startup_time_seconds: 127
-  total_disk_mb: 11113
-  health_check_passed: true
-  notes: ""
+  total_disk_mb: 3070
+  health_check_passed: false
+  notes: Containers running but health check timed out
 images:
   - name: posthog/posthog:latest
-    size_mb: 9641
+    size_mb: 2530
     platform:
       - linux/arm64
   - name: postgres:16-alpine
-    size_mb: 259
+    size_mb: 109
     platform:
       - linux/arm64
   - name: redis:7-alpine
-    size_mb: 40
+    size_mb: 16
     platform:
       - linux/arm64
   - name: clickhouse/clickhouse-server:latest
-    size_mb: 786
+    size_mb: 249
     platform:
       - linux/arm64
-  - name: redpandadata/redpanda:latest
-    size_mb: 387
+  - name: redpandadata/redpanda:v25.1.12
+    size_mb: 166
     platform:
       - linux/arm64
