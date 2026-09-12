@@ -88,6 +88,7 @@ const metabaseYaml = metabaseYamlRaw.replace(/^#.*\n/gm, "").trim();
     <tr><td><code>$components.name.prop</code></td><td>Another component's endpoint (Lesson 6)</td></tr>
     <tr><td><code>$secrets.name</code></td><td>App-wide generated secret (Lesson 3)</td></tr>
     <tr><td><code>$app.prop</code></td><td>Platform-injected app property, like <code>$app.url</code> (Lesson 3)</td></tr>
+    <tr><td><code>$app.endpoints.name.prop</code></td><td>Public address of a named published endpoint, like <code>$app.endpoints.ssh.port</code> (Lesson 3)</td></tr>
     <tr><td><code>$storage.name.path</code></td><td>Provider-resolved storage path (Lesson 4)</td></tr>
     <tr><td><code>{"${prop}"}</code></td><td>Braced form — same reference, composable inside strings</td></tr>
     <tr><td><code>{"${prop:-default}"}</code></td><td>Reference with a fallback value</td></tr>

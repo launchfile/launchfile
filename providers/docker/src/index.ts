@@ -18,6 +18,9 @@ export {
 	type DockerUpResult,
 } from "./provider.js";
 export {
+	type AppContext,
+	// `$app.*` and `$app.endpoints.<name>.*` from one derivation (D-63).
+	computeAppContext,
 	computeAppProperties,
 	InvalidAppUrlError,
 	normalizeAppUrl,

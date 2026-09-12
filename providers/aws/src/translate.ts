@@ -20,8 +20,12 @@ import {
 	type NormalizedLaunch,
 	type NormalizedRequirement,
 	type ResolverContext,
+	type RestartPolicy,
 	resolveExpression,
 	unsuppliedRequiredEnv,
+	appEndpointReferences,
+	type AppEndpointProperties,
+	UNPUBLISHED_APP_ENDPOINT,
 } from "@launchfile/sdk";
 import { Conformance } from "./gaps.js";
 import {
@@ -38,6 +42,28 @@ import {
 
 /** The backing-service type that declares the app's public HTTPS origin (D-60). */
 const HTTPS_ORIGIN = "https-origin";
+
+/**
+ * Launchfile `restart:` → the systemd `Restart=` directive on the generated unit.
+ *
+ * The two enums are separate vocabularies that happen to share spellings today,
+ * so the mapping is explicit: a value added to Launchfile's `restart:` fails to
+ * compile here rather than reaching a systemd directive unreviewed (P-13).
+ * All three are meaningful because the unit sets no `Type=`, so systemd applies
+ * `Type=simple`.
+ */
+const RESTART_DIRECTIVE: Record<RestartPolicy, string> = {
+	always: "always",
+	"on-failure": "on-failure",
+	no: "no",
+};
+
+/**
+ * The directive used when a component declares no `restart:`. A long-running
+ * service the file says nothing about stays supervised; the cross-provider
+ * default for an undeclared `restart:` is decided in #234, not here.
+ */
+const DEFAULT_RESTART_DIRECTIVE = "always";
 
 /** The `supports:` type a `provides` entry's `tls:` binds (D-61). */
 const CERTIFICATE = "certificate";
@@ -190,7 +216,9 @@ function cloudInit(
 	lines.push("WorkingDirectory=/opt/app");
 	lines.push("EnvironmentFile=-/etc/launchfile/" + serviceName + ".env");
 	lines.push(`ExecStart=/bin/bash -lc ${JSON.stringify(start)}`);
-	lines.push("Restart=always");
+	lines.push(
+		`Restart=${component.restart ? RESTART_DIRECTIVE[component.restart] : DEFAULT_RESTART_DIRECTIVE}`,
+	);
 	lines.push("");
 	lines.push("[Install]");
 	lines.push("WantedBy=multi-user.target");
@@ -257,6 +285,37 @@ export function translate(
 		}
 	}
 
+	// --- `$app.endpoints.<name>.*` (D-63 rule 4): "" for every property ---
+	// The ALB above fronts one target group and yields one address, so this
+	// probe publishes no per-endpoint address — the primary's included: its
+	// `$app.endpoints` entry is "" rather than a copy of `$app.*`, since the
+	// per-endpoint form promises a per-endpoint publication (#487). Reported on
+	// the conformance record for every endpoint the file references, so the
+	// empty value is never a silent one.
+	const appEndpoints: Record<string, AppEndpointProperties> = {};
+	for (const comp of Object.values(launch.components)) {
+		for (const p of comp.provides ?? []) {
+			if (p.name !== undefined && p.exposed === true) {
+				appEndpoints[p.name] ??= UNPUBLISHED_APP_ENDPOINT;
+			}
+		}
+	}
+	const referencedEndpoints = new Map<string, string>();
+	for (const ref of appEndpointReferences(launch)) {
+		const name = ref.path[2] ?? "";
+		if (!referencedEndpoints.has(name)) referencedEndpoints.set(name, ref.component);
+	}
+	for (const [name, component] of referencedEndpoints) {
+		c.gap(
+			`$app.endpoints.${name}`,
+			"workaround",
+			"this provider publishes no per-endpoint public address, so every " +
+				`$app.endpoints.${name}.* property resolves "" (D-63 rule 4)`,
+			"supply the value through the environment, or front the endpoint yourself",
+			component,
+		);
+	}
+
 	// --- Resolver context (provider supplies home-#3 values) ---
 	const resourceMap: Record<string, Record<string, string | number>> = {};
 	const componentMap: Record<string, Record<string, string | number>> = {};
@@ -265,6 +324,7 @@ export function translate(
 		components: componentMap,
 		secrets: secretValues,
 		app: appProps,
+		appEndpoints,
 	};
 
 	// --- Register sibling component endpoints (private IP, container port) ---
@@ -932,6 +992,12 @@ function emitComponent(
 	);
 	if (comp.commands?.start)
 		c.map("commands.start", "systemd unit (run slot)", name);
+	if (comp.restart)
+		c.map(
+			"restart",
+			`systemd Restart=${RESTART_DIRECTIVE[comp.restart]}`,
+			name,
+		);
 	if (comp.commands?.build)
 		c.map("commands.build", "cloud-init (prepare slot)", name);
 	if (comp.commands?.release)

@@ -14,7 +14,47 @@ export const VALUE_FLAGS: ReadonlySet<string> = new Set([
 	"component",
 	"schema-path",
 	"storage",
+	"url",
 ]);
+
+/**
+ * Flags that are bare booleans — present or absent, never `--flag=value`.
+ * Every long flag `cli.ts` reads is in exactly one of the two tables; a boolean
+ * flag missing from this one silently accepts an ignored value (#485).
+ */
+export const BOOLEAN_FLAGS: ReadonlySet<string> = new Set([
+	"docker",
+	"native",
+	"detach",
+	"dry-run",
+	"destroy",
+	"follow",
+	"json",
+	"quiet",
+	"detached",
+	"no-color",
+	"version",
+	"help",
+	"reveal",
+]);
+
+/**
+ * The first boolean flag written as `--flag=value`, or undefined when none is.
+ * Neither helper below reads the value after `=`: `flagPresent` counts
+ * `--reveal=false` as present and `hasFlag` counts `--dry-run=true` as absent,
+ * so the spelling means the opposite of what it says in one direction or the
+ * other. The caller rejects it rather than guessing ([D-62]).
+ */
+export function valuedBooleanFlag(args: readonly string[]): string | undefined {
+	for (const arg of args) {
+		if (!arg.startsWith("--")) continue;
+		const eq = arg.indexOf("=");
+		if (eq === -1) continue;
+		const flag = arg.slice(2, eq);
+		if (BOOLEAN_FLAGS.has(flag)) return flag;
+	}
+	return undefined;
+}
 
 export function hasFlag(args: readonly string[], flag: string): boolean {
 	return args.includes(`--${flag}`) || args.includes(`-${flag[0]}`);

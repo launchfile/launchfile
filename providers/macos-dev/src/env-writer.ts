@@ -8,6 +8,7 @@
 import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
+	type AppEndpointProperties,
 	deriveAppUrlProperties,
 	resolveExpression,
 	isExpression,
@@ -15,9 +16,12 @@ import {
 	type NormalizedLaunch,
 	type ResolverContext,
 	type Secret,
+	suppliedAppProperties,
+	UNPUBLISHED_APP_ENDPOINT,
 	type UnsuppliedRequiredEnv,
 	unsuppliedRequiredEnv,
 } from "@launchfile/sdk";
+import { declaredPrimaryComponent } from "./https-origin.js";
 import type { ResourceProperties } from "./resources/types.js";
 import { generateValue } from "./secret-generator.js";
 
@@ -26,33 +30,56 @@ export type { ResolverContext, UnsuppliedRequiredEnv };
 
 /**
  * Compute the $app.* property set (D-33, D-35) for a Launchfile under the
- * macos-dev provider. The app's "primary" port comes from the first component
- * (in declaration order) that has at least one `exposed: true` provides entry.
- * The `authority`/`scheme`/`tls` trio is derived from the resulting URL via the
- * SDK so split-field tokens (e.g. `CMD_DOMAIN: $app.authority`) resolve.
+ * macos-dev provider.
+ *
+ * With no `appUrl`, this provider's own routing strategy answers: the app's
+ * "primary" port is the port of the component that declares an `https-origin`
+ * entry (D-60 rule 3 — declaration fixes the primary, fulfilled or not), else
+ * the first component (in declaration order) that has at least one
+ * `exposed: true` provides entry, and `http://localhost:<port>` is the address.
  * Apps with no exposed component get `port: 0` and `url: ""` (and empty
  * authority/scheme/tls).
  *
+ * With an `appUrl` — the orchestrator-supplied publication context (D-58) —
+ * routing has moved upstream and the supplied URL answers instead, via the
+ * SDK's `suppliedAppProperties`: the same derivation `@launchfile/docker` uses,
+ * so one Launchfile behind one proxy resolves identical `$app.*` under either
+ * provider (P-5). The allocated local ports stay orthogonal — still bound, just
+ * not the address anyone reaches the app at.
+ *
+ * Either way the `authority`/`scheme`/`tls` trio is derived from the resulting
+ * URL via the SDK so split-field tokens (e.g. `CMD_DOMAIN: $app.authority`)
+ * resolve from one definition (D-35).
+ *
  * For multi-exposed-component apps that need a specific component's URL,
  * use `$components.<name>.url` instead — `$app.*` always points at the
- * first exposed component to give a single, predictable answer.
+ * primary endpoint to give a single, predictable answer (D-58 rule 4). This
+ * provider allocates one port per component, so the named endpoint's address
+ * is its component's port.
  */
 export function computeAppProperties(
 	launch: NormalizedLaunch,
 	componentPorts: Record<string, number>,
+	appUrl?: string,
 ): Record<string, string | number> {
+	if (appUrl !== undefined) return suppliedAppProperties(launch.name, appUrl);
+
 	let primaryPort = 0;
-	for (const [name, component] of Object.entries(launch.components)) {
-		// Only endpoints explicitly marked `exposed: true` are reachable from
-		// outside the host (D-27), so only they can be the app's public address.
-		// This provider has no orchestrator-facing publication channel (#294), so
-		// $app.* always comes from its own routing strategy. The docker provider
-		// answers by this same rule only when no orchestrator supplies an appUrl
-		// (PROVIDERS.md §7).
-		const hasExposed = component.provides?.some((p) => p.exposed === true) ?? false;
-		if (hasExposed && componentPorts[name]) {
-			primaryPort = componentPorts[name]!;
-			break;
+	const declared = declaredPrimaryComponent(launch);
+	if (declared !== undefined) {
+		// A declared `https-origin` names the primary explicitly, so the
+		// positional answer below does not run — the point of D-60 rule 3. The
+		// SDK requires the named endpoint to be `exposed: true` on this component.
+		primaryPort = componentPorts[declared] ?? 0;
+	} else {
+		for (const [name, component] of Object.entries(launch.components)) {
+			// Only endpoints explicitly marked `exposed: true` are reachable from
+			// outside the host (D-27), so only they can be the app's public address.
+			const hasExposed = component.provides?.some((p) => p.exposed === true) ?? false;
+			if (hasExposed && componentPorts[name]) {
+				primaryPort = componentPorts[name]!;
+				break;
+			}
 		}
 	}
 
@@ -67,14 +94,42 @@ export function computeAppProperties(
 }
 
 /**
+ * `$app.endpoints.<name>.*` under this provider (D-63 rule 4): every
+ * property of every named published endpoint resolves `""`. The allocator
+ * hands out one port per **component** (`allocatePorts`, keyed by component
+ * name), so a second `exposed: true` entry on a component has no host-side
+ * address to publish — not the primary's, and not its own (#294). The
+ * primary's entry is `""` too, rather than a copy of `$app.*`, because the
+ * per-endpoint form promises a per-endpoint publication this provider does
+ * not perform; `$app.*` keeps its own routing answer. Registering the empty
+ * answer explicitly, rather than nothing, records that the provider has read
+ * the namespace and declined it.
+ */
+export function computeAppEndpoints(
+	launch: NormalizedLaunch,
+): Record<string, AppEndpointProperties> {
+	const endpoints: Record<string, AppEndpointProperties> = {};
+	for (const component of Object.values(launch.components)) {
+		for (const p of component.provides ?? []) {
+			if (p.name === undefined || p.exposed !== true) continue;
+			endpoints[p.name] ??= UNPUBLISHED_APP_ENDPOINT;
+		}
+	}
+	return endpoints;
+}
+
+/**
  * Build a ResolverContext from provisioned resources, component ports,
- * secrets, and (D-33) the platform-injected app properties.
+ * secrets, (D-33) the platform-injected app properties, and (D-63) the
+ * per-endpoint map — `computeAppEndpoints`, which under this provider is
+ * every named published endpoint resolving `""`.
  */
 export function buildResolverContext(
 	resourceMap: Record<string, ResourceProperties>,
 	componentPorts: Record<string, number>,
 	secrets: Record<string, string>,
 	app: Record<string, string | number>,
+	appEndpoints: Record<string, AppEndpointProperties> = {},
 ): ResolverContext {
 	// Build components map from ports
 	const components: Record<string, Record<string, string | number>> = {};
@@ -98,7 +153,7 @@ export function buildResolverContext(
 		resources[name] = record;
 	}
 
-	return { resources, components, secrets, app };
+	return { resources, components, secrets, app, appEndpoints };
 }
 
 /**

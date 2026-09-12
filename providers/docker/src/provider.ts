@@ -492,6 +492,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		const result = await inPhase("provision", failure(), async () =>
 			launchToCompose(launch, {
 				secrets: state.secrets,
+				resourcePasswords: state.resourcePasswords,
 				generatedEnv: state.generatedEnv,
 				hostPorts,
 				projectDir: resolved.dir,
@@ -582,6 +583,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// the allocator reads back on the next `up` — persisting only the
 		// primary would let every secondary endpoint move across restarts.
 		state.secrets = result.secrets;
+		state.resourcePasswords = result.resourcePasswords;
 		state.generatedEnv = result.generatedEnv;
 		state.ports = result.ports;
 		state.endpoints = result.endpoints;
@@ -690,6 +692,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 			services: result.services,
 			hostPorts: result.ports,
 			secrets: state.secrets,
+			resourcePasswords: state.resourcePasswords,
 			appUrl,
 			only: summaryOnly,
 		});

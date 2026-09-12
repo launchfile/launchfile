@@ -103,7 +103,18 @@ const testEnv: Record<string, string> = Object.fromEntries(
   ]),
 );
 
-const result = launchToCompose(launch, { testEnv, appUrl });
+// Same channel, for `content: operator` volumes (D-50): a `test_storage:` block
+// in metadata.yaml maps a volume key to a path relative to the app's directory —
+// the harness resolves it to an absolute host path before it ever reaches the
+// translator, so no host path enters the Launchfile or metadata.yaml.
+const testStorage: Record<string, string> = Object.fromEntries(
+  Object.entries((metadata.test_storage as Record<string, unknown>) ?? {}).map(([k, v]) => [
+    k,
+    resolve(appDir, String(v)),
+  ]),
+);
+
+const result = launchToCompose(launch, { testEnv, appUrl, storagePaths: testStorage });
 
 // A required variable with no fixture entry is a hard failure naming the app and
 // the variable — never a silent pass. Passing here would let this app's
@@ -170,6 +181,11 @@ if (result.storageRefusals.length > 0) {
   console.error(`\n=== ${appName}: FAIL — operator-supplied storage not bound (D-50) ===`);
   for (const { component, volume, message } of result.storageRefusals) {
     console.error(`  - ${appName} [${component}]: ${volume} — ${message}`);
+  }
+  console.error(`\nDeclare a fixture in ${metadataPath}:\n`);
+  console.error("  test_storage:");
+  for (const { volume } of result.storageRefusals) {
+    console.error(`    ${volume}: "<path relative to the app directory>"`);
   }
   process.exit(1);
 }

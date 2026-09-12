@@ -558,15 +558,28 @@ components:
     }
   });
 
-  it("no shipped catalog app is refused: none carries the marker yet (adoption gate)", () => {
-    // D-50 Conformance at adoption: the marker lands in the catalog only
-    // after every surface (this harness included) implements the channel.
+  it("every shipped catalog app's `content: operator` volumes are covered by its declared test_storage fixtures (D-50 adoption)", () => {
+    // Each app supplies its own storagePaths via metadata.yaml's `test_storage:`
+    // block (the same channel test-app.ts uses), so a marked volume with no
+    // fixture — or a fixture path that doesn't exist on disk — still fails
+    // here, the way it would fail `bun run src/test-app.ts <app>`.
     const appsDir = fileURLToPath(new URL("../../apps", import.meta.url));
     const refused: string[] = [];
     for (const app of readdirSync(appsDir)) {
       const file = resolve(appsDir, app, "Launchfile");
       if (!existsSync(file)) continue;
-      const { storageRefusals } = launchToCompose(readLaunch(readFileSync(file, "utf-8")));
+      const metadataPath = resolve(appsDir, app, "metadata.yaml");
+      const metadata: Record<string, unknown> = existsSync(metadataPath)
+        ? (parse(readFileSync(metadataPath, "utf-8")) ?? {})
+        : {};
+      const storagePaths = Object.fromEntries(
+        Object.entries((metadata.test_storage as Record<string, unknown>) ?? {}).map(
+          ([key, relPath]) => [key, resolve(appsDir, app, String(relPath))],
+        ),
+      );
+      const { storageRefusals } = launchToCompose(readLaunch(readFileSync(file, "utf-8")), {
+        storagePaths,
+      });
       for (const r of storageRefusals) refused.push(`${app} [${r.component}]: ${r.volume}`);
     }
     expect(refused).toEqual([]);

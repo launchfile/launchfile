@@ -11,6 +11,7 @@ import {
 	parseLaunchErrorContext,
 	slotForCommand,
 	stripControl,
+	stripControlInline,
 	TAIL_LINES,
 	tailLines,
 } from "../errors.js";
@@ -257,6 +258,30 @@ describe("helpers", () => {
 
 		expect(out).toBe("");
 		expect(elapsedMs).toBeLessThan(250);
+	});
+
+	it("stripControlInline escapes an embedded newline so hostile text stays one line (#279, CWE-117)", () => {
+		const hostile = "evil\n✓ valid";
+		const out = stripControlInline(hostile);
+		expect(out).not.toContain("\n");
+		expect(out).toBe("evil\\n✓ valid");
+	});
+
+	it("stripControlInline escapes tabs the same way", () => {
+		expect(stripControlInline("a\tb")).toBe("a\\tb");
+	});
+
+	it("stripControlInline doubles a literal backslash so the escaping is unambiguous", () => {
+		// Two different inputs, two different renderings.
+		expect(stripControlInline("evil\\n ok")).toBe("evil\\\\n ok");
+		expect(stripControlInline("evil\n ok")).toBe("evil\\n ok");
+	});
+
+	it("stripControlInline still strips ANSI escapes and other control characters", () => {
+		const esc = String.fromCharCode(27);
+		const bel = String.fromCharCode(7);
+		expect(stripControlInline(`${esc}[31mred${esc}[0m`)).toBe("red");
+		expect(stripControlInline(`a${bel}b`)).toBe("ab");
 	});
 
 	it("envKeysOf sorts and drops values", () => {

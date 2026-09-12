@@ -99,7 +99,7 @@ components:
 			`seed-admin --token ${REDACTED}`,
 		);
 
-		const password = result.secrets.postgres!;
+		const password = result.resourcePasswords.postgres!;
 		expect(password).toBeTruthy();
 		expect(redactSecrets(`psql ${password}`)).toBe(`psql ${REDACTED}`);
 	});
