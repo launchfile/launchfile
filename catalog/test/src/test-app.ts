@@ -156,12 +156,12 @@ if (result.originRefusals.length > 0) {
 }
 
 // A required backing-service type this harness cannot provision is the same
-// class of hard failure (D-next, PROVIDERS.md §10 item 5): the shipped Docker
+// class of hard failure (D-64, PROVIDERS.md §10 item 5): the shipped Docker
 // provider refuses the component, so starting the app without the resource
 // and recording `health_check_passed: true` would certify an app that does
 // not run. Fails before any pull, container, or volume exists.
 if (result.resourceRefusals.length > 0) {
-  console.error(`\n=== ${appName}: FAIL — required resource type not provisionable (D-next) ===`);
+  console.error(`\n=== ${appName}: FAIL — required resource type not provisionable (D-64) ===`);
   for (const { component, entry, message } of result.resourceRefusals) {
     console.error(`  - ${appName} [${component}]: ${entry} — ${message}`);
   }

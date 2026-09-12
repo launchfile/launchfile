@@ -261,7 +261,7 @@ export interface ComposeResult {
   originRefusals: { component: string; entry: string; message: string }[];
   /**
    * `requires:` entries naming a backing-service type this harness has no
-   * factory for (PROVIDERS.md §10 item 5, D-next). The component is ABSENT
+   * factory for (PROVIDERS.md §10 item 5, D-64). The component is ABSENT
    * from the emitted compose — the same refusal `@launchfile/docker`
    * performs for a type it cannot provision. The runner turns a non-empty
    * list into a hard failure naming the app and the entry, exactly as it
@@ -432,7 +432,7 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
     }
 
     // A required backing-service type this harness has no factory for
-    // REFUSES the component (D-next), as the shipped Docker provider does.
+    // REFUSES the component (D-64), as the shipped Docker provider does.
     // The harness has no supplied-resource channel, so nothing can satisfy
     // the entry from outside; warning and starting the app without the
     // resource is exactly what let `health_check_passed: true` certify an

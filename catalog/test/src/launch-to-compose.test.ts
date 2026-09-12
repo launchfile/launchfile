@@ -347,7 +347,7 @@ env:
   // 5
   it("does NOT treat a binding on an unprovisionable resource as supplying the value", () => {
     // `sqlite` has no factory here, so the binding can never inject. The
-    // component is refused before its environment is resolved (D-next):
+    // component is refused before its environment is resolved (D-64):
     // the key is absent, and a component that is not launching reports no
     // unsupplied variable — the runner fails on the refusal instead.
     const { yaml, unsuppliedRequired, resourceRefusals } = compose(`
@@ -702,12 +702,12 @@ env:
 
 /**
  * A required backing-service type with no factory is refused, never warned
- * about and skipped (D-next, PROVIDERS.md §10 item 5). The harness gates
+ * about and skipped (D-64, PROVIDERS.md §10 item 5). The harness gates
  * catalog PRs: a warn-and-skip here let `posthog` record
  * `health_check_passed: true` on a `kafka` the shipped provider did not stand
  * up. The provider's factory set is the authority on what may be certified.
  */
-describe("unprovisionable requires — refused, not silently deployed (D-next)", () => {
+describe("unprovisionable requires — refused, not silently deployed (D-64)", () => {
   const compose = (yaml: string) => {
     const result = launchToCompose(readLaunch(yaml));
     const doc = parse(result.yaml) as { services?: Record<string, unknown> };
