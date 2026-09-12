@@ -27,7 +27,8 @@ import {
 	resolveExpression,
 	sensitiveCaptureValues,
 } from "@launchfile/sdk";
-import { computeAppProperties, extractCaptures } from "./bootstrap.js";
+import { computeAppContext } from "./app-url.js";
+import { extractCaptures } from "./bootstrap.js";
 import {
 	redactSecrets,
 	registerDeclaredSecret,
@@ -127,9 +128,11 @@ export function planReleases(
 	registerSecrets(Object.values(opts.secrets));
 	registerSecrets(Object.values(opts.resourcePasswords ?? {}));
 
+	const { app, appEndpoints } = computeAppContext(launch, opts.hostPorts, opts.appUrl);
 	const resolverContext: ResolverContext = {
 		secrets: declaredSecrets(launch.secrets, opts.secrets),
-		app: computeAppProperties(launch, opts.hostPorts, opts.appUrl),
+		app,
+		appEndpoints,
 	};
 
 	const plan: ReleasePlanItem[] = [];

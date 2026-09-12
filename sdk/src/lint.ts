@@ -8,11 +8,19 @@
  * rejects a file; it only advises.
  */
 
-import { parseExpression } from "./resolver.js";
+import {
+	APP_ENDPOINT_PROPERTIES,
+	isExpression,
+	parseExpression,
+} from "./resolver.js";
 import { RESOURCE_PROPERTY_VOCABULARY } from "./resource-properties.js";
 import { lintDurations } from "./durations.js";
 import { StorageVolumeSchema } from "./schema.js";
-import type { NormalizedLaunch, NormalizedRequirement } from "./types.js";
+import type {
+	NormalizedComponent,
+	NormalizedLaunch,
+	NormalizedRequirement,
+} from "./types.js";
 
 export type { Deprecation, DeprecationRecord } from "./deprecations.js";
 // Deprecation reporting is a lint check, but its findings are structured
@@ -307,6 +315,155 @@ function checkPortability(
 	}
 }
 
+/** One `$app.endpoints…` reference found at a Launchfile expression site. */
+export interface AppEndpointReference {
+	/** The component whose `env:` or `set_env:` carries the reference. */
+	component: string;
+	/** Where in that component — `env.<KEY>` or `<requires|supports>[<name>].set_env.<KEY>`. */
+	site: string;
+	/** The reference path after `$`: `["app", "endpoints", <name>?, <property>?, …]`. */
+	path: string[];
+}
+
+/** Every reference path in one expression value, whatever its shape. */
+function referencePaths(value: string): string[][] {
+	if (!isExpression(value)) return [];
+	const parsed = parseExpression(value);
+	if (parsed.kind === "reference") return [parsed.path];
+	if (parsed.kind === "template") {
+		return parsed.parts.flatMap((p) => (p.kind === "ref" ? [p.path] : []));
+	}
+	return [];
+}
+
+/** The expression sites a component carries: `env:` defaults and every `set_env:`. */
+function* expressionSites(
+	component: NormalizedComponent,
+): Generator<{ site: string; value: string }> {
+	for (const [key, envVar] of Object.entries(component.env ?? {})) {
+		if (typeof envVar.default === "string") {
+			yield { site: `env.${key}`, value: envVar.default };
+		}
+	}
+	for (const field of ["requires", "supports"] as const) {
+		for (const entry of component[field] ?? []) {
+			for (const [key, value] of Object.entries(entry.set_env ?? {})) {
+				yield {
+					site: `${field}[${resourceName(entry)}].set_env.${key}`,
+					value,
+				};
+			}
+		}
+	}
+}
+
+/**
+ * Every `$app.endpoints…` reference in a Launchfile's `env:` defaults and
+ * `set_env:` values (D-63), in declaration order. Providers use it to say
+ * which named endpoints an app actually asks for, so a provider that
+ * publishes no per-endpoint address warns about the endpoints the file
+ * references and stays silent about the rest.
+ */
+export function appEndpointReferences(
+	launch: NormalizedLaunch,
+): AppEndpointReference[] {
+	const refs: AppEndpointReference[] = [];
+	for (const [component, def] of Object.entries(launch.components)) {
+		for (const { site, value } of expressionSites(def)) {
+			for (const path of referencePaths(value)) {
+				if (path[0] === "app" && path[1] === "endpoints") {
+					refs.push({ component, site, path });
+				}
+			}
+		}
+	}
+	return refs;
+}
+
+/** A named `provides` entry, with the component that declares it. */
+interface NamedEndpoint {
+	component: string;
+	name: string;
+	exposed: boolean;
+}
+
+function namedEndpoints(launch: NormalizedLaunch): NamedEndpoint[] {
+	const out: NamedEndpoint[] = [];
+	for (const [component, def] of Object.entries(launch.components)) {
+		for (const p of def.provides ?? []) {
+			if (p.name !== undefined) {
+				out.push({ component, name: p.name, exposed: p.exposed === true });
+			}
+		}
+	}
+	return out;
+}
+
+/**
+ * D-63 rule 4: a `$app.endpoints…` reference that addresses no value
+ * resolves `""` at deploy time, silently, so the file is told here. Four
+ * shapes warn — no name (`$app.endpoints`), no property
+ * (`$app.endpoints.<name>`), a name no `provides` entry carries or one whose
+ * entry is not `exposed: true` (D-27), and a property outside the six. A
+ * reference to a named published endpoint is clean whatever its protocol: a
+ * `tcp`/`udp` endpoint's `""` `url` is rule 3's defined answer, not a
+ * degradation, so it draws no warning.
+ */
+function checkAppEndpointReferences(
+	launch: NormalizedLaunch,
+	warnings: string[],
+): void {
+	const endpoints = namedEndpoints(launch);
+	const published = endpoints.filter((e) => e.exposed).map((e) => e.name);
+	const form = "the form is `$app.endpoints.<name>.<property>` (D-63)";
+	const properties = APP_ENDPOINT_PROPERTIES.join(", ");
+
+	for (const { component, site, path } of appEndpointReferences(launch)) {
+		const expr = `$${path.join(".")}`;
+		const where = `${component}: ${site} references \`${expr}\``;
+		if (path.length === 2) {
+			warnings.push(`${where}, which names no endpoint — ${form}; it resolves ""`);
+			continue;
+		}
+		const name = path[2]!;
+		if (path.length === 3) {
+			warnings.push(
+				`${where}, which names no property — ${form}; it resolves ""`,
+			);
+			continue;
+		}
+		const matches = endpoints.filter((e) => e.name === name);
+		if (matches.length === 0) {
+			warnings.push(
+				`${where}, but no \`provides\` entry is named "${name}" — ` +
+					(published.length > 0
+						? `named published endpoints: ${published.join(", ")}`
+						: "an endpoint is addressable by its `name:` only (D-6); add one to the entry this references") +
+					'; it resolves ""',
+			);
+			continue;
+		}
+		if (!matches.some((e) => e.exposed)) {
+			const owner = matches[0]!.component;
+			warnings.push(
+				`${where}, but endpoint "${name}" on ${owner} is not \`exposed: true\` — ` +
+					'an unpublished endpoint has no public address (D-27); it resolves ""',
+			);
+			continue;
+		}
+		const property = path[3]!;
+		if (
+			path.length > 4 ||
+			!(APP_ENDPOINT_PROPERTIES as readonly string[]).includes(property)
+		) {
+			warnings.push(
+				`${where}, but "${path.slice(3).join(".")}" is not a per-endpoint property ` +
+					`(${properties}); it resolves ""`,
+			);
+		}
+	}
+}
+
 /**
  * Lint a normalized Launch, returning non-fatal warning strings (empty = clean).
  *
@@ -391,6 +548,7 @@ export function lintLaunch(
 
 	checkResourceProperties(launch, warnings);
 	checkEnvBareReferences(launch, warnings);
+	checkAppEndpointReferences(launch, warnings);
 	checkOperatorStorageContradiction(launch, warnings);
 	checkPortability(launch, warnings, opts);
 

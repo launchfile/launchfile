@@ -39,7 +39,62 @@ export interface ResolverContext {
 	 * falls back to "" or `:-default`), matching `$app.*` (see {@link ResolverContext.app}).
 	 */
 	storage?: Record<string, Record<string, string>>;
+	/**
+	 * Per-endpoint publication context (D-63): the public address of every
+	 * named published endpoint, keyed by the `provides` entry's `name` (D-6).
+	 * The primary endpoint's entry is the same value as `$app.*`, from the
+	 * same derivation. A sibling of {@link ResolverContext.app}, never nested
+	 * inside it: the two-segment `$app.<prop>` branch stringifies whatever it
+	 * finds, and a map under `app.endpoints` would resolve `$app.endpoints`
+	 * to `"[object Object]"`. Reserved namespace, checked before user-named
+	 * resources. A provider that publishes no per-endpoint address registers
+	 * {@link UNPUBLISHED_APP_ENDPOINT} for each name, or nothing at all —
+	 * either way the form resolves `""` (L-4).
+	 */
+	appEndpoints?: Record<string, AppEndpointProperties>;
 }
+
+/**
+ * The properties `$app.endpoints.<name>.*` addresses (D-63): the standard
+ * `$app.*` set (D-33, D-35) less `name`, which names the app rather than an
+ * endpoint.
+ */
+export const APP_ENDPOINT_PROPERTIES = [
+	"url",
+	"host",
+	"port",
+	"scheme",
+	"authority",
+	"tls",
+] as const;
+
+export type AppEndpointProperty = (typeof APP_ENDPOINT_PROPERTIES)[number];
+
+/**
+ * One named published endpoint's public address (D-63), each field defined
+ * per endpoint exactly as the `$app.*` entry defines it for the primary: the
+ * published host-side port, never the container port; `scheme`, `tls` and
+ * `url` from the effective listener (D-61 rule 2). A `tcp`/`udp` endpoint has
+ * no origin, so its `url` and `scheme` are `""` and its `tls` is `"false"`.
+ * Every field is `""` when the provider publishes no address for it.
+ */
+export interface AppEndpointProperties {
+	url: string;
+	host: string;
+	/** Published host-side port; `""` when the provider publishes no address. */
+	port: number | string;
+	scheme: string;
+	authority: string;
+	tls: string;
+}
+
+/**
+ * The answer for an endpoint the provider publishes no address for (D-63
+ * rule 4): every property `""`, so the form degrades exactly as an unknown
+ * `$app.*` property does (L-4).
+ */
+export const UNPUBLISHED_APP_ENDPOINT: Readonly<AppEndpointProperties> =
+	Object.freeze({ url: "", host: "", port: "", scheme: "", authority: "", tls: "" });
 
 /**
  * Derive the URL-shaped members of the standard `$app.*` set (D-35) from a
@@ -283,7 +338,8 @@ export function parseDotPath(path: string): string[] {
  * Resolve an expression against a context, returning the final string value.
  *
  * Resolution order for a path:
- * 1. Starts with "app" → platform-injected app property (reserved namespace, D-33)
+ * 1. Starts with "app" → platform-injected app property (reserved namespace, D-33);
+ *    "app.endpoints.<name>.<prop>" → per-endpoint publication context (D-63)
  * 2. Starts with "secrets" → app-wide secret lookup
  * 3. Starts with "components" → component lookup
  * 4. Starts with "storage" → provider-resolved storage property (reserved namespace, D-39)
@@ -349,6 +405,24 @@ function resolvePath(
 		const val = own(context.app, propName);
 		if (val !== undefined) return String(val);
 		return undefined;
+	}
+
+	// app.endpoints.<name>.<prop> → per-endpoint publication context (D-63).
+	// Reserved with the rest of `$app.*`, so it is checked before any
+	// user-named resource. Only the four-segment form addresses a value: the
+	// two-segment `$app.endpoints` falls to the branch above (no `endpoints`
+	// key lives in `context.app`), and every other length, an unknown name,
+	// and an unknown property resolve to undefined — "" or `:-default` at the
+	// caller (L-4). `validate` warns on those forms; the resolver stays silent.
+	if (first === "app" && path[1] === "endpoints") {
+		if (path.length !== 4 || !context.appEndpoints) return undefined;
+		const name = path[2]!;
+		if (!Object.hasOwn(context.appEndpoints, name)) return undefined;
+		const prop = path[3]!;
+		if (!(APP_ENDPOINT_PROPERTIES as readonly string[]).includes(prop)) {
+			return undefined;
+		}
+		return String(context.appEndpoints[name]![prop as AppEndpointProperty]);
 	}
 
 	// secrets.name → app-wide generated secret
