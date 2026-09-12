@@ -1,0 +1,7 @@
+---
+"@launchfile/sdk": minor
+---
+
+Added `uses` on `requires`/`supports` entries ([#509](https://github.com/launchfile/launchfile/issues/509), SPEC.md § Resource uses): a list declaring which features of the resource the app uses — `db`, `pubsub`, `server` for redis; `database`, `server` for postgres and mysql. Undeclared keeps today's meaning (what the property vocabulary promises); a declared use registers its own `$<resource>.<use>.<property>` fields (`$redis.db.url` is `redis://host:port/<index>`, `$redis.db.index` the integer). The field round-trips through `readLaunch`/`writeLaunch`, is rejected on a host-capability entry, and is published under `$defs/requirement` of the JSON Schema. The use vocabulary ships under the `uses` key of `schema/resource-properties.json` and as `RESOURCE_USE_VOCABULARY`; `lintLaunch` warns on a token outside it (open vocabulary, never a validation error) and on same-name entries whose `uses` diverge.
+
+Changed expression resolution for a resource whose entry declares `uses`: a `$<resource>.<use>.<property>` path resolves from that use's registered properties (`ResolverContext.uses` names the declaring resources) or throws `UnresolvedUseError` — the last-segment fallback, which hands `$redis.db.url` the plain instance URL today, no longer applies to such a resource. Resources that declare no `uses` keep the fallback unchanged; the general fallback is tracked separately in [#514](https://github.com/launchfile/launchfile/issues/514).
