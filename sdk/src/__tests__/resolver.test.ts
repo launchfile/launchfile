@@ -5,6 +5,7 @@ import {
 	parseDotPath,
 	isExpression,
 	deriveAppUrlProperties,
+	UnresolvedUseError,
 } from "../resolver.js";
 
 /*---
@@ -823,8 +824,10 @@ describe("resolveExpression — inherited prototype keys (D-33, D-39, L-4)", () 
 		expect(resolveExpression("$toString.host", shadowed)).toBe("ts-host");
 	});
 
-	// The dotted-key-then-last-segment double fallback still probes both keys.
-	it("keeps the dotted-key → last-segment fallback on guarded lookups", () => {
+	// The dotted-key-then-last-segment double fallback still probes both keys
+	// — for a resource whose entry declares no `uses`. A resource that does
+	// declare `uses` takes the strict branch pinned in the suite below.
+	it("keeps the dotted-key → last-segment fallback on guarded lookups for entries without uses", () => {
 		const nested = {
 			components: { web: { host: "web-host" } },
 			resources: { postgres: { host: "pg-host" } },
@@ -841,5 +844,85 @@ describe("resolveExpression — inherited prototype keys (D-33, D-39, L-4)", () 
 			parts: [{ kind: "text", value: "$__proto__" }],
 		});
 		expect(resolveExpression("$__proto__", ctx)).toBe("$__proto__");
+	});
+});
+
+describe("$<resource>.<use>.<property> on an entry that declares uses", () => {
+	const ctx = {
+		resources: {
+			redis: {
+				url: "redis://app-redis:6379",
+				host: "app-redis",
+				port: "6379",
+				password: "",
+				"db.url": "redis://app-redis:6379/0",
+				"db.index": "0",
+			},
+			postgres: { url: "postgres://pg/app", host: "pg-host" },
+		},
+		uses: { redis: ["db", "pubsub"] },
+	};
+
+	it("resolves a declared use's registered property from the dotted key", () => {
+		expect(resolveExpression("$redis.db.url", ctx)).toBe("redis://app-redis:6379/0");
+		expect(resolveExpression("$redis.db.index", ctx)).toBe("0");
+	});
+
+	it("keeps the two-segment instance properties as they were", () => {
+		expect(resolveExpression("$redis.url", ctx)).toBe("redis://app-redis:6379");
+		expect(resolveExpression("$redis.host", ctx)).toBe("app-redis");
+	});
+
+	it("throws on a use the entry does not declare instead of falling back to the instance url", () => {
+		expect(() => resolveExpression("$redis.cache.url", ctx)).toThrow(UnresolvedUseError);
+		expect(() => resolveExpression("$redis.cache.url", ctx)).toThrow(
+			'$redis.cache.url does not resolve: redis declares no use "cache" (declared: db, pubsub)',
+		);
+	});
+
+	it("throws on a property the use does not register", () => {
+		expect(() => resolveExpression("$redis.db.host", ctx)).toThrow(
+			'$redis.db.host does not resolve: use "db" on redis registers no property "host"',
+		);
+	});
+
+	it("throws on a declared use that registers nothing", () => {
+		// `pubsub` is declared but registers no property: the instance
+		// vocabulary addresses it, so the three-segment form has no answer.
+		expect(() => resolveExpression("$redis.pubsub.url", ctx)).toThrow(UnresolvedUseError);
+	});
+
+	it("is not softened by a :-default — the path is wrong, not empty", () => {
+		expect(() => resolveExpression("${redis.cache.url:-none}", ctx)).toThrow(UnresolvedUseError);
+	});
+
+	it("throws inside a template too", () => {
+		expect(() => resolveExpression("redis://x/${redis.nope.index}", ctx)).toThrow(UnresolvedUseError);
+	});
+
+	it("leaves a resource that declares no uses on the general fallback", () => {
+		expect(resolveExpression("$postgres.deep.host", ctx)).toBe("pg-host");
+	});
+
+	it("carries the resource, use and property on the error", () => {
+		try {
+			resolveExpression("$redis.cache.url", ctx);
+		} catch (err) {
+			expect(err).toBeInstanceOf(UnresolvedUseError);
+			const e = err as UnresolvedUseError;
+			expect([e.resource, e.use, e.property]).toEqual(["redis", "cache", "url"]);
+			return;
+		}
+		throw new Error("did not throw");
+	});
+
+	it("throws when the resource declares uses but has no property map at all", () => {
+		expect(() => resolveExpression("$redis.db.url", { uses: { redis: ["db"] } })).toThrow(
+			UnresolvedUseError,
+		);
+	});
+
+	it("does not treat an inherited key as a declared resource", () => {
+		expect(resolveExpression("$constructor.db.url", ctx)).toBe("");
 	});
 });

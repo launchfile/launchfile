@@ -13,7 +13,10 @@ import {
 	isExpression,
 	parseExpression,
 } from "./resolver.js";
-import { RESOURCE_PROPERTY_VOCABULARY } from "./resource-properties.js";
+import {
+	RESOURCE_PROPERTY_VOCABULARY,
+	RESOURCE_USE_VOCABULARY,
+} from "./resource-properties.js";
 import { lintDurations } from "./durations.js";
 import { StorageVolumeSchema } from "./schema.js";
 import type {
@@ -71,6 +74,11 @@ function configKey(config: Record<string, unknown> | undefined): string {
 	const sorted: Record<string, unknown> = {};
 	for (const key of Object.keys(config).sort()) sorted[key] = config[key];
 	return JSON.stringify(sorted);
+}
+
+/** Stable string form of a `uses` list for divergence comparison — order is not a divergence. */
+function usesKey(uses: readonly string[] | undefined): string {
+	return uses ? [...uses].sort().join(",") : "";
 }
 
 /**
@@ -167,6 +175,47 @@ function checkResourceProperties(
 					warnings.push(
 						`"$${prop}" is not in the standard vocabulary for ${req.type} ` +
 							`(known: ${vocabulary.join(", ")})`,
+					);
+				}
+			}
+		}
+	}
+}
+
+/**
+ * Use-vocabulary check (SPEC.md § Resource Use Vocabulary): for each
+ * `requires`/`supports` entry whose type has a standard use vocabulary, warn
+ * on a declared token outside it. Warn-only for the same reason as
+ * {@link checkResourceProperties} — the vocabulary is open — but the stake is
+ * higher than a typo'd property, so the message says what happens at deploy
+ * time: a provider refuses a `requires` entry declaring a use it does not
+ * recognise, and leaves a `supports` entry unfulfilled. Types with no use
+ * vocabulary are silent (L-4).
+ */
+function checkResourceUses(launch: NormalizedLaunch, warnings: string[]): void {
+	for (const [componentName, component] of Object.entries(launch.components)) {
+		const where = componentName === "default" ? "(top-level)" : componentName;
+		for (const [field, entries] of [
+			["requires", component.requires ?? []],
+			["supports", component.supports ?? []],
+		] as const) {
+			for (const req of entries) {
+				if (!req.uses || req.host) continue;
+				// Guarded like the property lookup: `req.type` is user input.
+				const vocabulary = Object.hasOwn(RESOURCE_USE_VOCABULARY, req.type)
+					? RESOURCE_USE_VOCABULARY[req.type]
+					: undefined;
+				if (!vocabulary) continue;
+				const known = Object.keys(vocabulary);
+				for (const token of req.uses) {
+					if (Object.hasOwn(vocabulary, token)) continue;
+					const outcome =
+						field === "requires"
+							? "a provider refuses the component rather than cover a use it does not recognise"
+							: "a provider leaves the entry unfulfilled rather than cover a use it does not recognise";
+					warnings.push(
+						`${where}: use "${token}" is not in the standard use vocabulary for ${req.type} ` +
+							`(known: ${known.join(", ")}) — ${outcome}`,
 					);
 				}
 			}
@@ -534,6 +583,7 @@ export function lintLaunch(
 				conflicting.add("version");
 			if (configKey(req.config) !== configKey(first.config))
 				conflicting.add("config");
+			if (usesKey(req.uses) !== usesKey(first.uses)) conflicting.add("uses");
 		}
 
 		if (conflicting.size > 0) {
@@ -547,6 +597,7 @@ export function lintLaunch(
 	}
 
 	checkResourceProperties(launch, warnings);
+	checkResourceUses(launch, warnings);
 	checkEnvBareReferences(launch, warnings);
 	checkAppEndpointReferences(launch, warnings);
 	checkOperatorStorageContradiction(launch, warnings);

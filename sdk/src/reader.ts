@@ -172,6 +172,7 @@ function normalizeRequirements(
 			endpoint: r.endpoint,
 			version: r.version,
 			config: r.config,
+			uses: r.uses,
 			set_env: r.set_env,
 		};
 	});

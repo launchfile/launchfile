@@ -100,8 +100,12 @@ export {
 	type ResolverContext,
 	resolveExpression,
 	UNPUBLISHED_APP_ENDPOINT,
+	UnresolvedUseError,
 } from "./resolver.js";
-export { RESOURCE_PROPERTY_VOCABULARY } from "./resource-properties.js";
+export {
+	RESOURCE_PROPERTY_VOCABULARY,
+	RESOURCE_USE_VOCABULARY,
+} from "./resource-properties.js";
 export { LaunchSchema } from "./schema.js";
 export {
 	type SelectionClosureResult,

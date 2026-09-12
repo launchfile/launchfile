@@ -219,6 +219,20 @@ requires:
     host: { privileged: true }
 `;
 
+		it("rejects uses on a capability entry rather than stripping it silently", () => {
+			// A capability is granted or refused, never provisioned — it has no
+			// feature to use. Without the explicit exclusion the union's strip
+			// mode would drop the key and the file would validate clean.
+			expect(() =>
+				readLaunch(`
+name: app
+requires:
+  - host: { container_runtime: docker }
+    uses: [db]
+`),
+			).toThrow(/nothing to use/);
+		});
+
 		it("is rejected, not silently stripped of its privilege marker", () => {
 			expect(() => readLaunch(mixed)).toThrow(/never both/);
 		});

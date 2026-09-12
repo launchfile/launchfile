@@ -62,6 +62,18 @@ const ProvidesSchema = z.object({
 
 // --- Requirement (full form) ---
 
+/**
+ * One token of a requirement's `uses` list: a feature of the required resource
+ * the app uses (`db`, `pubsub`, `server`). The vocabulary is per type and open
+ * — lint warns on a token outside the standard set, the schema never rejects
+ * one. A token is also an expression path segment (`$redis.db.url`), so it
+ * takes the name grammar.
+ */
+const UseTokenSchema = z
+	.string()
+	.max(63)
+	.regex(namePattern, "Use tokens must match ^[a-z][a-z0-9-]*$");
+
 const RequirementObjectSchema = z.object({
 	name: NameSchema.optional(),
 	type: z.string().min(1).max(256),
@@ -78,6 +90,20 @@ const RequirementObjectSchema = z.object({
 	// Security: config is intentionally unconstrained — providers MUST validate/sanitize
 	// these values before using them in shell commands, SQL, or other injectable contexts.
 	config: z.record(z.string(), z.unknown()).optional(),
+	/**
+	 * Which features of the resource the app uses. Undeclared means what the
+	 * type's property vocabulary already promises; declared narrows the need
+	 * and selects the `$<resource>.<use>.<property>` fields. A provider covers
+	 * every declared use or refuses the component. Unnamed tokens only; a
+	 * repeated use takes a name in a later revision.
+	 */
+	uses: z
+		.array(UseTokenSchema)
+		.nonempty()
+		.refine((tokens) => new Set(tokens).size === tokens.length, {
+			message: "a use is declared once per entry",
+		})
+		.optional(),
 	set_env: z.record(z.string(), z.string()).optional(),
 });
 
@@ -99,6 +125,10 @@ const HostCapabilityObjectSchema = z.object({
 	// listeners; a capability fronts nothing. Listed for the same reason `host:`
 	// is listed above — strip mode would swallow it without a word.
 	endpoint: z.never().optional(),
+	// A capability is granted or refused, never provisioned, so it has no
+	// feature to use. Listed for the same reason `host:` and `endpoint:` are:
+	// strip mode would swallow it without a word.
+	uses: z.never().optional(),
 	set_env: z.record(z.string(), z.string()).optional(),
 });
 
@@ -136,6 +166,21 @@ const RequirementSchema = z
 				message:
 					"`endpoint:` names the `provides` entry a `type: https-origin` resource " +
 					"fronts (D-60 rule 2); a host capability fronts nothing — remove it",
+			});
+		}
+		if (
+			typeof val === "object" &&
+			val !== null &&
+			!Array.isArray(val) &&
+			"host" in val &&
+			"uses" in val
+		) {
+			ctx.addIssue({
+				code: "custom",
+				message:
+					"`uses:` declares which features of a backing service the app uses; " +
+					"a host capability is granted or refused, never provisioned, so it has " +
+					"nothing to use — remove it",
 			});
 		}
 	})
