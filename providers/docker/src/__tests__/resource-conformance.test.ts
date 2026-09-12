@@ -113,7 +113,7 @@ describe("docker provider — resource property conformance", () => {
 		}
 	});
 
-	it("refuses sqlite — a registry type it does not stand up (D-next)", () => {
+	it("refuses sqlite — a registry type it does not stand up (D-64)", () => {
 		// No factory, so nothing to conform; and no warn-and-skip either. A
 		// component requiring it is refused, never started without it
 		// (`unprovisionable-requires.test.ts` pins the outcome).

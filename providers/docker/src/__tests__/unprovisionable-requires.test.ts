@@ -1,7 +1,7 @@
 /**
  * A `requires` entry this provider has no factory for, with nothing supplied
  * through the D-56 channel, REFUSES the component (PROVIDERS.md §10 item 5,
- * D-next) — the ordinary case of the `https-origin` and `certificate`
+ * D-64) — the ordinary case of the `https-origin` and `certificate`
  * refusals. Starting the component anyway is the silent success the rule
  * forbids, so every test here asserts the outcome (the service is absent),
  * never only the message.
@@ -43,7 +43,7 @@ function compose(
 const refusals = (warnings: string[]) =>
 	warnings.filter((w) => w.startsWith("refused:"));
 
-describe("requires: a type with no factory is refused (D-next)", () => {
+describe("requires: a type with no factory is refused (D-64)", () => {
 	const APP = `
 name: app
 image: acme/app:1
@@ -189,8 +189,8 @@ components:
 	});
 
 	it("an unselected component's entry blocks nothing", () => {
-		// `dockerUp` narrows `launch.components` to the selector's D-41
-		// start-set before generating, so a component outside it never
+		// Narrow `launch.components` to the selector's D-41 start-set before
+		// generating, as a selecting caller does; a component outside it never
 		// reaches the refusal — the same bounding §10 item 5 gives selection.
 		const launch = readLaunch(TWO);
 		const startSet = new Set(selectionClosure(launch, ["web"]).start);

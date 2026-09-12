@@ -5,7 +5,7 @@ import { supportedResourceTypes } from "../resources/index.js";
 
 /**
  * A `requires` entry naming a type this provider has no provisioner for is
- * REFUSED (PROVIDERS.md §10 item 5, D-next) — the ordinary case of the
+ * REFUSED (PROVIDERS.md §10 item 5, D-64) — the ordinary case of the
  * `https-origin` refusal. This provider has no supplied-resource channel, so
  * nothing can satisfy such an entry from outside: provision or refuse are its
  * only conformant outcomes. Starting the component without the resource is
@@ -17,7 +17,7 @@ const mk = (body: string) =>
 
 const START = "commands:\n  start: run\n";
 
-describe("refusedResourceTypes (D-next)", () => {
+describe("refusedResourceTypes (D-64)", () => {
 	it("refuses a component requiring a type with no provisioner", () => {
 		const launch = mk(`${START}requires:\n  - type: kafka\n`);
 		expect([...refusedResourceTypes(launch).keys()]).toEqual(["default"]);

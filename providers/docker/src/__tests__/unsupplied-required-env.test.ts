@@ -111,7 +111,7 @@ env:
 	it("does NOT treat a binding on an unprovisionable resource as supplying the value", () => {
 		// `sqlite` is a valid resource type with no compose backing service, so
 		// the binding can never inject. The component is refused before its
-		// environment is resolved (D-next), so the key is absent from the
+		// environment is resolved (D-64), so the key is absent from the
 		// compose and — like a component outside the start-set — the
 		// component is not launching, so it reports no unsupplied variable.
 		const { yaml, warnings, unsuppliedRequired } = compose(`

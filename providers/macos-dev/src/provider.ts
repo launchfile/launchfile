@@ -326,7 +326,7 @@ export function applyCertificateRefusals(
 
 /**
  * Components this provider must refuse because a `requires` entry names a
- * resource type it has no provisioner for (PROVIDERS.md §10 item 5, D-next),
+ * resource type it has no provisioner for (PROVIDERS.md §10 item 5, D-64),
  * mapped to the entries. The ordinary case of {@link refusedHttpsOrigins}: a
  * `kafka` this provider cannot stand up is exactly a `postgres` it cannot
  * stand up.
@@ -478,7 +478,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		process.exit(1);
 	}
 	// 2a-quater. A required resource type this provider has no provisioner for
-	// is refused the same way (D-next, PROVIDERS.md §10 item 5). Decided after
+	// is refused the same way (D-64, PROVIDERS.md §10 item 5). Decided after
 	// the selector narrowed `launch.components`, so an unsatisfiable entry on a
 	// component outside the start-set blocks nothing (§10 item 5's selector
 	// rule), and before anything is provisioned, installed, wired or started.

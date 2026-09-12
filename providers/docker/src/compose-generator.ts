@@ -301,7 +301,7 @@ function checkVersionConstraint(
 
 /**
  * The surfaced refusal for a component with a `requires` entry this provider
- * has no factory for and nothing supplied (PROVIDERS.md §10 item 5, D-next).
+ * has no factory for and nothing supplied (PROVIDERS.md §10 item 5, D-64).
  * Names the component, each entry, and both ways out. It states what this
  * provider does and asserts nothing about the app or another provider.
  */
@@ -1192,7 +1192,7 @@ export function launchToCompose(
 
 		// A `requires` entry whose type this provider has no factory for, and
 		// that nothing supplied through the D-56 channel satisfies, REFUSES the
-		// component (D-next, PROVIDERS.md §10 item 5) — the ordinary case of
+		// component (D-64, PROVIDERS.md §10 item 5) — the ordinary case of
 		// the refusal the two branches above already perform. The vocabulary
 		// is open (L-4), so a type with no factory is a normal, permanent
 		// state; what is never acceptable is starting the component without
