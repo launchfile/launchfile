@@ -87,5 +87,58 @@
       "cert_file": "App-filesystem path of the PEM certificate (with any chain) the component's own listener serves",
       "key_file": "App-filesystem path of the PEM private key for cert_file — credential-bearing: a provider registers its value with its redactor before generating anything (D-56 rule 5), whatever its vocabulary membership"
     }
+  },
+  "uses": {
+    "$comment": "Standard resource USE vocabulary (SPEC.md § Resource Use Vocabulary). Sibling of `types`, not a member: these are features an author declares on a requires/supports entry with `uses:`, never properties a provider publishes. Each token maps to a description, the property keys it registers under `$<resource>.<use>.<property>` (an empty map registers nothing — the instance vocabulary addresses it), and whether it is repeatable (may occur more than once on one entry once named; this revision defines unnamed uses only). OPEN like `types`: tooling warns on a token outside this registry and never errors. Deploy time is not open — a provider refuses a `requires` entry declaring a token it does not recognise. A type absent here has no use vocabulary (L-4). An SDK test (sdk/src/__tests__/resource-properties.test.ts) keeps this registry consistent with the SPEC.md table.",
+    "redis": {
+      "db": {
+        "description": "One logical database (keyspace) on the instance, selected by index",
+        "properties": {
+          "url": "Standard Redis URL with the database selected by path: redis://[user:password@]host:port/<index>",
+          "index": "The database index, an integer"
+        },
+        "repeatable": true
+      },
+      "pubsub": {
+        "description": "Publish/subscribe channels; pub/sub ignores database numbers, so isolated channels need an instance the app does not share channels on",
+        "properties": {},
+        "repeatable": false
+      },
+      "server": {
+        "description": "The whole server: keyspace notifications, CONFIG, SELECT across databases, FLUSHALL, modules — anything that assumes the app owns the instance",
+        "properties": {},
+        "repeatable": false
+      }
+    },
+    "postgres": {
+      "database": {
+        "description": "One database on the server",
+        "properties": {
+          "url": "Standard connection URL with /<name> as its path",
+          "name": "The database name"
+        },
+        "repeatable": true
+      },
+      "server": {
+        "description": "The whole server: superuser access, CREATE DATABASE, server-wide settings",
+        "properties": {},
+        "repeatable": false
+      }
+    },
+    "mysql": {
+      "database": {
+        "description": "One database on the server",
+        "properties": {
+          "url": "Standard connection URL with /<name> as its path",
+          "name": "The database name"
+        },
+        "repeatable": true
+      },
+      "server": {
+        "description": "The whole server: root access, CREATE DATABASE, server-wide settings",
+        "properties": {},
+        "repeatable": false
+      }
+    }
   }
 }
