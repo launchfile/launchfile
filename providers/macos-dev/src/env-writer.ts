@@ -120,9 +120,11 @@ export function computeAppEndpoints(
 
 /**
  * Build a ResolverContext from provisioned resources, component ports,
- * secrets, (D-33) the platform-injected app properties, and (D-63) the
+ * secrets, (D-33) the platform-injected app properties, (D-63) the
  * per-endpoint map — `computeAppEndpoints`, which under this provider is
- * every named published endpoint resolving `""`.
+ * every named published endpoint resolving `""` — and the `uses` each
+ * resource entry declares (`declaredUses`), which the resolver reads to
+ * resolve `$<resource>.<use>.<property>` strictly.
  */
 export function buildResolverContext(
 	resourceMap: Record<string, ResourceProperties>,
@@ -130,6 +132,7 @@ export function buildResolverContext(
 	secrets: Record<string, string>,
 	app: Record<string, string | number>,
 	appEndpoints: Record<string, AppEndpointProperties> = {},
+	uses: Record<string, readonly string[]> = {},
 ): ResolverContext {
 	// Build components map from ports
 	const components: Record<string, Record<string, string | number>> = {};
@@ -153,7 +156,28 @@ export function buildResolverContext(
 		resources[name] = record;
 	}
 
-	return { resources, components, secrets, app, appEndpoints };
+	return { resources, components, secrets, app, appEndpoints, uses };
+}
+
+/**
+ * The `uses` each resource entry declares, keyed like the resource namespace
+ * (`name ?? type`, app-global). Same-name entries pool their tokens — D-24
+ * says they describe one resource. Host-capability entries have none.
+ */
+export function declaredUses(
+	launch: NormalizedLaunch,
+): Record<string, string[]> {
+	const uses: Record<string, string[]> = {};
+	for (const component of Object.values(launch.components)) {
+		for (const entry of [...(component.requires ?? []), ...(component.supports ?? [])]) {
+			if (entry.host || !entry.uses) continue;
+			const pooled = (uses[entry.name ?? entry.type] ??= []);
+			for (const use of entry.uses) {
+				if (!pooled.includes(use)) pooled.push(use);
+			}
+		}
+	}
+	return uses;
 }
 
 /**

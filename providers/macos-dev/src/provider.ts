@@ -37,6 +37,7 @@ import {
 import { loadState, initState, saveState, ensureDirs } from "./state.js";
 import {
 	buildResolverContext,
+	declaredUses,
 	computeAppEndpoints,
 	computeAppProperties,
 	resolveComponentEnv,
@@ -45,7 +46,9 @@ import {
 	writeEnvFile,
 	type UnsuppliedRequiredEnv,
 } from "./env-writer.js";
-import { getProvisioner, type ResourceProperties } from "./resources/index.js";
+import { getProvisioner,
+	uncoveredUses,
+	withCoveredUses, type ResourceProperties } from "./resources/index.js";
 import { allocatePorts } from "./port-allocator.js";
 import { getRuntimeInstaller } from "./runtimes/index.js";
 import { detectPackageManager } from "./lockfile-detect.js";
@@ -375,6 +378,58 @@ export function applyResourceTypeRefusals(
 	return Object.keys(launch.components).length === 0 ? "none-left" : "ok";
 }
 
+/**
+ * Components this provider must refuse because a `requires` entry declares a
+ * use its provisioner cannot cover (SPEC.md § Resource uses, D-56 rule 1,
+ * D-64), mapped to `<entry>: <use>` lines. Graded after
+ * {@link refusedResourceTypes}: a type with no provisioner is refused on the
+ * type, so only entries whose type this provider stands up reach here. A
+ * token this provider does not recognise is uncovered — no provider can
+ * claim to cover a use it does not know. `supports:` entries are optional
+ * (D-8) and are not graded here.
+ */
+export function refusedResourceUses(
+	launch: NormalizedLaunch,
+): Map<string, string[]> {
+	const refused = new Map<string, string[]>();
+	for (const [name, component] of Object.entries(launch.components)) {
+		const entries: string[] = [];
+		for (const req of component.requires ?? []) {
+			if (req.host || req.type === HTTPS_ORIGIN || !req.uses || !getProvisioner(req.type)) continue;
+			const resourceName = req.name ?? req.type;
+			for (const use of uncoveredUses(req.type, req.uses)) {
+				entries.push(`${resourceName}: ${use}`);
+			}
+		}
+		if (entries.length > 0) refused.set(name, entries);
+	}
+	return refused;
+}
+
+/**
+ * Remove every component with a required use this provider cannot cover, and
+ * say so on stderr. Same shape as {@link applyResourceTypeRefusals}: the
+ * removal IS the refusal.
+ */
+export function applyResourceUseRefusals(
+	launch: NormalizedLaunch,
+): "ok" | "none-left" {
+	const refused = refusedResourceUses(launch);
+	for (const [name, entries] of refused) {
+		const noun = entries.length === 1 ? "a use" : "uses";
+		console.error(
+			`  Refused: ${name} requires ${noun} of a resource this provider cannot cover ` +
+				`(${entries.join("; ")}) — a provider covers every declared use or refuses; declare only ` +
+				"what the app uses, or use a provider that covers it — component not started",
+		);
+	}
+	if (refused.size === 0) return "ok";
+	launch.components = Object.fromEntries(
+		Object.entries(launch.components).filter(([n]) => !refused.has(n)),
+	);
+	return Object.keys(launch.components).length === 0 ? "none-left" : "ok";
+}
+
 export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 
@@ -485,6 +540,17 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	if (applyResourceTypeRefusals(launch) === "none-left") {
 		console.error(
 			"Every selected component requires a resource this provider cannot provision.",
+		);
+		process.exit(1);
+	}
+	// 2a-quinquies. A required use this provider's provisioner cannot cover is
+	// refused the same way (SPEC.md § Resource uses, D-56 rule 1): a provider
+	// covers every declared use or refuses, and never hands over less than the
+	// entry declares. Graded here, after the type refusal, for the same
+	// selector and before-anything-happens reasons.
+	if (applyResourceUseRefusals(launch) === "none-left") {
+		console.error(
+			"Every selected component requires a use of a resource this provider cannot cover.",
 		);
 		process.exit(1);
 	}
@@ -667,8 +733,21 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	// 5. Generate secrets
 	state.secrets = await generateSecrets(launch.secrets, state.secrets);
 
-	// 6. Provision required resources
+	// 6. Provision required resources. Each declared use's `<use>.<property>`
+	// keys join the provisioner's instance vocabulary in the map; a redis `db`
+	// use gets one numbered database per entry, allocated in declaration order
+	// across the app so it is stable between runs.
 	const resourceMap: Record<string, ResourceProperties> = {};
+	const uses = declaredUses(launch);
+	const dbIndexes = new Map<string, number>();
+	const dbIndexOf = (resourceName: string): number => {
+		let index = dbIndexes.get(resourceName);
+		if (index === undefined) {
+			index = dbIndexes.size;
+			dbIndexes.set(resourceName, index);
+		}
+		return index;
+	};
 
 	for (const [_compName, component] of Object.entries(launch.components)) {
 		for (const req of component.requires ?? []) {
@@ -688,16 +767,23 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 				);
 			}
 
+			const dbIndex = req.uses?.includes("db") ? dbIndexOf(resourceName) : 0;
+
 			if (opts.dryRun) {
 				console.log(`  [dry-run] Would provision ${req.type} as "${resourceName}"`);
-				resourceMap[resourceName] = { url: "", host: "localhost", port: 0 }; // placeholder for dedup
+				resourceMap[resourceName] = withCoveredUses(
+					req.type,
+					req.uses,
+					{ url: "", host: "localhost", port: 0 }, // placeholder for dedup
+					dbIndex,
+				);
 				continue;
 			}
 
 			process.stdout.write(`  \u2193 Provisioning ${req.type}...`);
 			const existing = state.resources[resourceName];
 			const result = await provisioner.provision(req, { appName: launch.name, projectDir }, existing);
-			resourceMap[resourceName] = result.properties;
+			resourceMap[resourceName] = withCoveredUses(req.type, req.uses, result.properties, dbIndex);
 			state.resources[resourceName] = result.state;
 			console.log(" done");
 		}
@@ -713,9 +799,29 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 				const provisioner = getProvisioner(sup.type);
 				if (!provisioner) continue;
 
+				// An optional entry declaring a use this provider cannot cover is
+				// left unfulfilled — bindings absent, said out loud — never refused
+				// (D-8). The same shortfall on `requires:` refused the component
+				// at step 2a-quinquies.
+				const uncovered = sup.uses ? uncoveredUses(sup.type, sup.uses) : [];
+				if (uncovered.length > 0) {
+					console.warn(
+						`  Warning: ${_compName}: optional resource ${resourceName} not satisfied — this provider ` +
+							`does not cover ${uncovered.length === 1 ? "a use" : "uses"} it declares ` +
+							`(${uncovered.join(", ")}); running degraded`,
+					);
+					continue;
+				}
+				const dbIndex = sup.uses?.includes("db") ? dbIndexOf(resourceName) : 0;
+
 				if (opts.dryRun) {
 					console.log(`  [dry-run] Would provision optional ${sup.type} as "${resourceName}"`);
-					resourceMap[resourceName] = { url: "", host: "localhost", port: 0 };
+					resourceMap[resourceName] = withCoveredUses(
+						sup.type,
+						sup.uses,
+						{ url: "", host: "localhost", port: 0 },
+						dbIndex,
+					);
 					continue;
 				}
 
@@ -723,7 +829,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 					process.stdout.write(`  \u2193 Provisioning ${sup.type} (optional)...`);
 					const existing = state.resources[resourceName];
 					const result = await provisioner.provision(sup, { appName: launch.name, projectDir }, existing);
-					resourceMap[resourceName] = result.properties;
+					resourceMap[resourceName] = withCoveredUses(sup.type, sup.uses, result.properties, dbIndex);
 					state.resources[resourceName] = result.state;
 					console.log(" done");
 				} catch {
@@ -748,6 +854,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		state.secrets,
 		appProperties,
 		computeAppEndpoints(launch),
+		uses,
 	);
 	// `$app.endpoints.<name>.*` resolves "" here (D-63 rule 4, #294). Said
 	// once per `up`, and only when the file asks, so the empty value is not a
