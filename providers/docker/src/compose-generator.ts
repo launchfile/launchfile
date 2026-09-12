@@ -25,6 +25,12 @@ import {
 	unsuppliedRequiredEnv,
 } from "@launchfile/sdk";
 import { intersects, subset, validRange } from "semver";
+import {
+	uncoveredProvisionedUses,
+	uncoveredSuppliedUses,
+	usePropertyKeys,
+	withCoveredUses,
+} from "./resource-uses.js";
 import { stringify } from "yaml";
 import {
 	computeAppContext,
@@ -315,6 +321,24 @@ function unprovisionableResourceRefusal(
 		`(${entries.join("; ")}) — this provider has no provisioner for the type; supply it ` +
 		"through the provider's supplied-resource channel (D-56) or use a provider that " +
 		"provisions it — component skipped"
+	);
+}
+
+/**
+ * The surfaced refusal for a component with a `requires` entry declaring a
+ * use this provider cannot cover (SPEC.md § Resource uses, D-56 rule 1, D-64).
+ * Names the component, each entry and use, and the way out.
+ */
+function uncoveredUseRefusal(
+	componentName: string,
+	entries: readonly string[],
+): string {
+	const noun = entries.length === 1 ? "a use" : "uses";
+	return (
+		`refused: ${componentName} requires ${noun} of a resource this provider cannot cover ` +
+		`(${entries.join("; ")}) — a provider covers every declared use or refuses; declare only ` +
+		"what the app uses, supply a resource that covers it through the provider's " +
+		"supplied-resource channel (D-56), or use a provider that covers it — component skipped"
 	);
 }
 
@@ -983,6 +1007,29 @@ export function launchToCompose(
 	// across every component's requires/supports — the resource namespace is
 	// app-global — and an unmatched key has no type, so all of its
 	// non-structural properties register.
+	// The `uses` each entry declares, keyed like the resource namespace
+	// (`name ?? type`, app-global) and read before anything resolves: the
+	// resolver treats every resource listed here strictly (SPEC.md § Resource
+	// uses), and the redis `db` index each such resource gets is allocated in
+	// declaration order so it is stable across runs. Same-name entries pool
+	// their tokens — D-24 says they describe one resource.
+	const declaredUses: Record<string, string[]> = {};
+	const dbIndexes = new Map<string, number>();
+	for (const comp of Object.values(launch.components)) {
+		for (const entry of [...(comp.requires ?? []), ...(comp.supports ?? [])]) {
+			if (entry.host || !entry.uses) continue;
+			const key = entry.name ?? entry.type;
+			const pooled = (declaredUses[key] ??= []);
+			for (const use of entry.uses) {
+				if (!pooled.includes(use)) pooled.push(use);
+			}
+			if (entry.type === "redis" && entry.uses.includes("db") && !dbIndexes.has(key)) {
+				dbIndexes.set(key, dbIndexes.size);
+			}
+		}
+	}
+	const dbIndexOf = (key: string): number => dbIndexes.get(key) ?? 0;
+
 	if (opts.resources) {
 		const suppliedResourceTypes = new Map<string, string>();
 		for (const comp of Object.values(launch.components)) {
@@ -996,10 +1043,17 @@ export function launchToCompose(
 		}
 		for (const [key, resource] of Object.entries(opts.resources)) {
 			const type = suppliedResourceTypes.get(key);
-			registerSuppliedResourceProperties(
-				resource.properties,
-				type ? RESOURCE_PROPERTY_VOCABULARY[type] : undefined,
-			);
+			// A use's registered `<use>.<property>` keys are structural like the
+			// instance's `url`: URL-embedded credentials stay covered by pattern
+			// scrubbing, and a bare index registered as a secret would mask every
+			// digit that matches it.
+			const vocabulary = type
+				? [
+						...(RESOURCE_PROPERTY_VOCABULARY[type] ?? []),
+						...usePropertyKeys(type, declaredUses[key] ?? []),
+					]
+				: undefined;
+			registerSuppliedResourceProperties(resource.properties, vocabulary);
 		}
 	}
 	const usedResourceKeys = new Set<string>();
@@ -1094,6 +1148,7 @@ export function launchToCompose(
 		secrets: declaredSecrets(launch.secrets, secrets),
 		app: appProperties,
 		appEndpoints,
+		uses: declaredUses,
 	};
 
 	for (const [componentName, component] of Object.entries(launch.components)) {
@@ -1213,6 +1268,31 @@ export function launchToCompose(
 			warnings.push(
 				unprovisionableResourceRefusal(componentName, unprovisionable),
 			);
+			continue;
+		}
+
+		// A `requires` entry declaring a use this provider cannot cover REFUSES
+		// the component the same way (SPEC.md § Resource uses, D-56 rule 1):
+		// a supplied resource whose map lacks a declared use's registered
+		// properties, a use no factory here can hand over, or a token this
+		// provider does not recognise — it cannot claim to cover a use it does
+		// not know. Never a warning that hands the app less than it declared.
+		const uncoveredUses: string[] = [];
+		for (const req of component.requires ?? []) {
+			if (req.host || !req.uses) continue;
+			const resourceName = req.name ?? req.type;
+			const supplied = opts.resources?.[resourceName];
+			const uncovered = supplied
+				? uncoveredSuppliedUses(req.type, req.uses, supplied.properties)
+				: uncoveredProvisionedUses(req.type, req.uses).map(
+						(use) => `${use} (not a use this provider covers for ${req.type})`,
+					);
+			for (const detail of uncovered) {
+				uncoveredUses.push(`${resourceName}: ${detail}`);
+			}
+		}
+		if (uncoveredUses.length > 0) {
+			warnings.push(uncoveredUseRefusal(componentName, uncoveredUses));
 			continue;
 		}
 
@@ -1462,14 +1542,23 @@ export function launchToCompose(
 					backingServices,
 				);
 				if (backingResult) {
-					// Register this resource's properties for cross-resource resolution
-					resourceMap[resourceName] = backingResult.properties;
+					// Register this resource's properties for cross-resource
+					// resolution — with each declared use's `<use>.<property>`
+					// keys on top of the factory's instance vocabulary. An entry
+					// with no `uses` gets the factory map untouched.
+					const properties = withCoveredUses(
+						req.type,
+						req.uses,
+						backingResult.properties,
+						dbIndexOf(resourceName),
+					);
+					resourceMap[resourceName] = properties;
 
 					if (req.set_env) {
 						// Build scoped context with enclosing resource for $prop resolution
 						const scopedContext: ResolverContext = {
 							...componentContext,
-							resource: backingResult.properties,
+							resource: properties,
 						};
 						for (const [envKey, expr] of Object.entries(req.set_env)) {
 							env[envKey] = resolveExpression(expr, scopedContext);
@@ -1512,6 +1601,19 @@ export function launchToCompose(
 			if (!suppliedResource) {
 				warnings.push(
 					`${componentName}: optional resource ${resourceName} is not satisfied — this provider does not provision \`supports:\` resources and none was supplied; its set_env bindings are omitted and the app runs degraded`,
+				);
+				continue;
+			}
+			// An optional entry whose declared uses the supplied resource does
+			// not cover is unfulfilled, not refused (D-8): bindings absent, said
+			// out loud. The same shortfall on `requires:` refused the component
+			// above.
+			const uncovered = sup.uses
+				? uncoveredSuppliedUses(sup.type, sup.uses, suppliedResource.properties)
+				: [];
+			if (uncovered.length > 0) {
+				warnings.push(
+					`${componentName}: optional resource ${resourceName} is not satisfied — the supplied resource does not cover every declared use (${uncovered.join("; ")}); its set_env bindings are omitted and the app runs degraded`,
 				);
 				continue;
 			}
