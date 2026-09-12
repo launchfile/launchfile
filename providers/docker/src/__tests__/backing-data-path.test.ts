@@ -46,6 +46,7 @@ const DATA_PATHS: Record<string, string> = {
 	minio: "/data",
 	s3: "/data",
 	rabbitmq: "/var/lib/rabbitmq",
+	kafka: "/var/lib/redpanda/data",
 };
 
 describe("backing service data paths", () => {

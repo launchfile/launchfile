@@ -170,8 +170,11 @@ const BACKING_SERVICES: Record<string, (name: string) => BackingService> = {
     },
   }),
 
+  // The same image, command and readiness gate as `@launchfile/docker`'s
+  // factory, so a metadata.yaml regenerated from this harness lists the image
+  // the shipped provider runs.
   kafka: (name) => ({
-    image: "redpandadata/redpanda:latest",
+    image: "redpandadata/redpanda:v25.1.12",
     environment: {},
     properties: {
       host: `${name}-kafka`,
@@ -179,20 +182,21 @@ const BACKING_SERVICES: Record<string, (name: string) => BackingService> = {
       url: `${name}-kafka:9092`,
     },
     healthcheck: {
-      test: ["CMD-SHELL", "rpk topic list > /dev/null 2>&1"],
+      test: ["CMD-SHELL", "curl -sf http://localhost:9644/v1/status/ready || exit 1"],
       interval: "5s",
       timeout: "5s",
       retries: 10,
+      start_period: "20s",
     },
     extra: {
       command: [
         "redpanda", "start",
+        "--mode", "dev-container",
         "--smp", "1",
-        "--memory", "512M",
-        "--reserve-memory", "0M",
-        "--overprovisioned",
+        "--memory", "1G",
         "--kafka-addr", "PLAINTEXT://0.0.0.0:9092",
         "--advertise-kafka-addr", `PLAINTEXT://${name}-kafka:9092`,
+        "--set", "redpanda.auto_create_topics_enabled=true",
       ],
     },
   }),
@@ -255,6 +259,27 @@ export interface ComposeResult {
    * be used, which is the failure the declaration exists to surface.
    */
   originRefusals: { component: string; entry: string; message: string }[];
+  /**
+   * `requires:` entries naming a backing-service type this harness has no
+   * factory for (PROVIDERS.md §10 item 5, D-64). The component is ABSENT
+   * from the emitted compose — the same refusal `@launchfile/docker`
+   * performs for a type it cannot provision. The runner turns a non-empty
+   * list into a hard failure naming the app and the entry, exactly as it
+   * does for `originRefusals`: starting the app without the resource and
+   * recording `health_check_passed: true` would certify an app the shipped
+   * provider refuses to run.
+   */
+  resourceRefusals: { component: string; entry: string; message: string }[];
+}
+
+/**
+ * The backing-service types this harness stands up. The provider is the
+ * authority: `launch-to-compose.test.ts` fails when this set is not a subset
+ * of `@launchfile/docker`'s, so the harness can never certify an app on a
+ * type the shipped provider cannot provision.
+ */
+export function harnessBackingServiceTypes(): string[] {
+  return Object.keys(BACKING_SERVICES);
 }
 
 export interface ComposeOpts {
@@ -317,6 +342,7 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
   const unsuppliedRequired: ComposeResult["unsuppliedRequired"] = [];
   const storageRefusals: ComposeResult["storageRefusals"] = [];
   const originRefusals: ComposeResult["originRefusals"] = [];
+  const resourceRefusals: ComposeResult["resourceRefusals"] = [];
   const services: Record<string, Record<string, unknown>> = {};
   const volumes: Record<string, Record<string, unknown>> = {};
 
@@ -402,6 +428,24 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
       }));
     if (originRefused.length > 0) {
       originRefusals.push(...originRefused);
+      continue;
+    }
+
+    // A required backing-service type this harness has no factory for
+    // REFUSES the component (D-64), as the shipped Docker provider does.
+    // The harness has no supplied-resource channel, so nothing can satisfy
+    // the entry from outside; warning and starting the app without the
+    // resource is exactly what let `health_check_passed: true` certify an
+    // app the provider could not run.
+    const resourceRefused = (component.requires ?? [])
+      .filter((r) => !r.host && r.type !== HTTPS_ORIGIN && !BACKING_SERVICES[r.type])
+      .map((r) => ({
+        component: componentName,
+        entry: r.name === undefined ? r.type : `${r.name} (type "${r.type}")`,
+        message: `this harness has no factory for type "${r.type}"`,
+      }));
+    if (resourceRefused.length > 0) {
+      resourceRefusals.push(...resourceRefused);
       continue;
     }
 
@@ -705,6 +749,7 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
     unsuppliedRequired,
     storageRefusals,
     originRefusals,
+    resourceRefusals,
   };
 }
 
@@ -752,8 +797,11 @@ function addBackingService(
   const factory = BACKING_SERVICES[type];
 
   if (!factory) {
-    warnings.push(`Unknown backing service type: ${type} — skipped`);
-    return null;
+    // The component loop refuses a component with such an entry before it
+    // reaches here, so this is a bug in this file, not a translation outcome.
+    throw new Error(
+      `addBackingService: no factory for type "${type}" — the caller must refuse first`,
+    );
   }
 
   const serviceName = `${appName}-${type}`;

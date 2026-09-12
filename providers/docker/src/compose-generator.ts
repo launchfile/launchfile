@@ -300,6 +300,25 @@ function checkVersionConstraint(
 }
 
 /**
+ * The surfaced refusal for a component with a `requires` entry this provider
+ * has no factory for and nothing supplied (PROVIDERS.md §10 item 5, D-64).
+ * Names the component, each entry, and both ways out. It states what this
+ * provider does and asserts nothing about the app or another provider.
+ */
+function unprovisionableResourceRefusal(
+	componentName: string,
+	entries: readonly string[],
+): string {
+	const noun = entries.length === 1 ? "a resource" : "resources";
+	return (
+		`refused: ${componentName} requires ${noun} this provider cannot provision ` +
+		`(${entries.join("; ")}) — this provider has no provisioner for the type; supply it ` +
+		"through the provider's supplied-resource channel (D-56) or use a provider that " +
+		"provisions it — component skipped"
+	);
+}
+
+/**
  * Create a backing service factory with pre-generated or cached passwords.
  * Passwords are per-app to ensure consistency across restarts, and live in
  * their own state map (`DockerState.resourcePasswords`) — never in `secrets`,
@@ -631,6 +650,56 @@ function createBackingServices(
 				},
 			};
 		},
+
+		kafka: (name) => ({
+			// Redpanda speaks the Kafka wire protocol in one process with no
+			// ZooKeeper, which is what makes it the single-container answer to
+			// `requires: kafka`. The image publishes no major-only tag, so the
+			// pin is a full version.
+			image: "redpandadata/redpanda:v25.1.12",
+			// The image's one VOLUME declaration.
+			dataPath: "/var/lib/redpanda/data",
+			environment: {},
+			properties: {
+				host: `${name}-kafka`,
+				port: "9092",
+				// Kafka clients take a bootstrap list, not a URL with a scheme —
+				// `host:port` is the value a KAFKA_HOSTS-style variable expects.
+				url: `${name}-kafka:9092`,
+			},
+			extra: {
+				command: [
+					"redpanda",
+					"start",
+					"--mode",
+					"dev-container",
+					"--smp",
+					"1",
+					"--memory",
+					"1G",
+					"--kafka-addr",
+					"PLAINTEXT://0.0.0.0:9092",
+					// Clients inside the compose network dial the service name, so
+					// that is the address the broker must hand back on metadata.
+					"--advertise-kafka-addr",
+					`PLAINTEXT://${name}-kafka:9092`,
+					"--set",
+					"redpanda.auto_create_topics_enabled=true",
+				],
+			},
+			healthcheck: {
+				// The admin API's readiness endpoint; `rpk` can report a broker
+				// that is up before it is ready to serve.
+				test: [
+					"CMD-SHELL",
+					"curl -sf http://localhost:9644/v1/status/ready || exit 1",
+				],
+				interval: "5s",
+				timeout: "5s",
+				retries: 10,
+				start_period: "20s",
+			},
+		}),
 	};
 }
 
@@ -1117,6 +1186,32 @@ export function launchToCompose(
 		if (certificateRefusals) {
 			warnings.push(
 				certificateRefusalMessage(componentName, certificateRefusals),
+			);
+			continue;
+		}
+
+		// A `requires` entry whose type this provider has no factory for, and
+		// that nothing supplied through the D-56 channel satisfies, REFUSES the
+		// component (D-64, PROVIDERS.md §10 item 5) — the ordinary case of
+		// the refusal the two branches above already perform. The vocabulary
+		// is open (L-4), so a type with no factory is a normal, permanent
+		// state; what is never acceptable is starting the component without
+		// the resource its file says it cannot run without. Decided here, with
+		// the other refusals, so nothing of the component is emitted.
+		const unprovisionable: string[] = [];
+		for (const req of component.requires ?? []) {
+			if (req.host || req.type === HTTPS_ORIGIN) continue;
+			if (opts.resources?.[req.name ?? req.type]) continue;
+			if (backingServices[req.type]) continue;
+			unprovisionable.push(
+				req.name === undefined
+					? req.type
+					: `${req.name} (type "${req.type}")`,
+			);
+		}
+		if (unprovisionable.length > 0) {
+			warnings.push(
+				unprovisionableResourceRefusal(componentName, unprovisionable),
 			);
 			continue;
 		}
@@ -1721,8 +1816,12 @@ function addBackingService(
 	const factory = backingServices[type];
 
 	if (!factory) {
-		warnings.push(`Unknown backing service type: ${type} — skipped`);
-		return null;
+		// The component loop refuses a component with an unprovisionable
+		// entry before it reaches here, so this is a caller bug, not a
+		// launch outcome — never a warning that lets the component start.
+		throw new Error(
+			`addBackingService: no factory for type "${type}" on ${componentName} — the caller must refuse first`,
+		);
 	}
 
 	const serviceName = `${appName}-${type}`;
