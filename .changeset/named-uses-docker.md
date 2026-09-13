@@ -1,5 +1,0 @@
----
-"@launchfile/docker": minor
----
-
-Cover named repeatable uses ([#516](https://github.com/launchfile/launchfile/issues/516), SPEC.md § Resource uses). Each named redis `db` (`- db: cache`) gets its own numbered database on the per-app instance and registers `db.<name>.url` / `db.<name>.index`; the index allocation is one app-wide rule shared with `@launchfile/macos-dev` — resources in the order their first `db`-declaring entry appears, the bare `db` first within a resource, named `db` uses after it in name order — so the same file yields the same values under both. Each named `database` on postgres, mysql or mariadb is one more database on the provisioned server, `<app database>_<name>`, created by an init script the image reads only while initializing an empty data directory: `up` warns when the volume already exists, the way it does for `config.extensions` (`ComposeResult.initOnlyDatabases`). A name on a use that does not repeat, or a supplied resource whose map lacks a named use's registered keys, refuses the component naming the entry, the token and the name.
