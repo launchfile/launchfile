@@ -16,6 +16,11 @@
 # before launch, naming the entry and the use; it never hands over less than
 # the file declares.
 #
+# A repeatable use (`db` on redis, `database` on postgres and mysql) may occur
+# more than once on one entry, each occurrence named — `- db: cache` — and
+# addressed as `$<resource>.<use>.<name>.<property>`. An entry that needs one
+# database declares the bare token and addresses it as `$redis.db.url`.
+#
 # See also: spec/SPEC.md § Resource uses and § Resource Use Vocabulary.
 
 version: launch/v1
@@ -33,18 +38,24 @@ requires:
     set_env:
       DATABASE_URL: $url
 
-  # One logical database for the job queue and cache, plus pub/sub for the
-  # websocket fan-out between replicas. Pub/sub ignores database numbers, so a
-  # platform can only satisfy this from an instance whose channels the app
-  # does not share.
+  # Two isolated logical databases — one for the job queue, one for the
+  # session cache — plus pub/sub for the websocket fan-out between replicas.
+  # `db` is repeatable, so each occurrence carries a name. Pub/sub ignores
+  # database numbers, so a platform can only satisfy this from an instance
+  # whose channels the app does not share.
   - type: redis
-    uses: [db, pubsub]
+    uses:
+      - db: queue
+      - db: sessions
+      - pubsub
     set_env:
       # The standard Redis URL with the database selected by path,
-      # e.g. redis://redis:6379/3 — the app's own keyspace.
-      QUEUE_URL: $redis.db.url
+      # e.g. redis://redis:6379/3 — the queue's own keyspace.
+      QUEUE_URL: $redis.db.queue.url
       # The same database as an integer, for clients that take it separately.
-      QUEUE_DB: $redis.db.index
+      QUEUE_DB: $redis.db.queue.index
+      # A different database: the platform never hands two names one index.
+      SESSION_URL: $redis.db.sessions.url
       # The instance address, unchanged by `uses` — pub/sub connects here.
       PUBSUB_URL: $url
 
