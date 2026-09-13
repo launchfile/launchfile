@@ -277,6 +277,24 @@ export async function handleUp(
 				console.error(`\n${err.message}`);
 				process.exit(1);
 			}
+			// A failed health gate leaves the app processes running (SPEC.md
+			// § Failure semantics fails the invocation, not the processes), so
+			// the deployment is registered before re-throwing — the same row
+			// the docker branch writes — and `status`/`logs`/`down` reach it.
+			// Every earlier phase of this provider stops before a process
+			// exists, so only `health` earns a row.
+			if (!flags.dryRun && isLaunchError(err) && err.context.phase === "health") {
+				await record({
+					appName: inferAppName(upTarget.value),
+					provider: "macos",
+					source: sourceKey,
+					sourceType: upTarget.type,
+					status: "unhealthy",
+				});
+				console.error(
+					`  Deployment ${deployId} is recorded as unhealthy — \`launchfile down\` stops it.`,
+				);
+			}
 			throw err;
 		}
 
