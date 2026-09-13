@@ -558,6 +558,50 @@ components:
 			'name = "/launchfile/stack/frontend/TLS_PORT"\n  type = "String"\n  value = ""',
 		);
 	});
+
+	it("keeps the declared listener on a bound endpoint — this provider activates no certificate (D-61 rule 5, D-66 rule 3)", () => {
+		const { hcl } = tf(`
+version: launch/v1
+name: stack
+components:
+  backend:
+    runtime: node
+    provides:
+      - name: web
+        protocol: http
+        port: 3000
+        exposed: true
+        tls: server-cert
+    supports:
+      - name: server-cert
+        type: certificate
+        set_env:
+          CERT_FILE: $cert_file
+    commands:
+      start: "node api.js"
+  frontend:
+    runtime: node
+    provides:
+      - protocol: http
+        port: 3001
+        exposed: true
+    env:
+      WEB_URL:
+        default: $components.backend.web.url
+      WEB_PROTOCOL:
+        default: $components.backend.web.protocol
+    commands:
+      start: "node web.js"
+`);
+		// The binding is reported unmapped, never activated, so the effective
+		// listener equals the declared one and the named form says so.
+		expect(hcl).toContain(
+			'name = "/launchfile/stack/frontend/WEB_URL"\n  type = "String"\n  value = "http://${aws_instance.stack_backend.private_ip}:3000"',
+		);
+		expect(hcl).toContain(
+			'name = "/launchfile/stack/frontend/WEB_PROTOCOL"\n  type = "String"\n  value = "http"',
+		);
+	});
 });
 
 describe("host capabilities — grant/refuse (D-44, PROVIDERS.md §11)", () => {

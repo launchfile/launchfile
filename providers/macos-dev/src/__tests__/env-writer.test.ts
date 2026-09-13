@@ -99,6 +99,17 @@ describe("buildResolverContext — named endpoints (D-6)", () => {
 		expect(resolveExpression("$components.api.metrics.port", ctx)).toBe("");
 	});
 
+	it("keeps the declared listener on a bound endpoint — this provider activates no certificate (D-61 rule 5, D-66 rule 3)", () => {
+		const ctx = buildResolverContext({}, { api: 3000 }, {}, NO_APP, {}, {}, {
+			api: component([
+				{ name: "web", protocol: "http", port: 3000, exposed: true, tls: "server-cert" },
+			]),
+		});
+
+		expect(resolveExpression("$components.api.web.url", ctx)).toBe("http://localhost:3000");
+		expect(resolveExpression("$components.api.web.protocol", ctx)).toBe("http");
+	});
+
 	it("keeps the old shape when no component metadata is supplied", () => {
 		const ctx = buildResolverContext({}, { api: 3000 }, {}, NO_APP);
 		expect(ctx.components?.api).toEqual({
