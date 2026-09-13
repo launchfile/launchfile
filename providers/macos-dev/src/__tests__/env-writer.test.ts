@@ -43,6 +43,85 @@ describe("buildResolverContext", () => {
 	});
 });
 
+describe("buildResolverContext — named endpoints (D-6)", () => {
+	const component = (provides: NormalizedComponent["provides"]): NormalizedComponent =>
+		({ provides }) as NormalizedComponent;
+
+	it("registers every declared named endpoint, exposed or not", () => {
+		const ctx = buildResolverContext({}, { api: 3000 }, {}, NO_APP, {}, {}, {
+			api: component([
+				{ name: "http", protocol: "http", port: 3000, exposed: true },
+				{ name: "metrics", protocol: "http", port: 9090, exposed: false },
+			]),
+		});
+
+		expect(ctx.components?.api).toEqual({
+			url: "http://localhost:3000",
+			host: "localhost",
+			port: 3000,
+			"http.host": "localhost",
+			"http.port": 3000,
+			"http.protocol": "http",
+			"http.url": "http://localhost:3000",
+			"metrics.host": "localhost",
+			"metrics.port": 9090,
+			"metrics.protocol": "http",
+			"metrics.url": "http://localhost:9090",
+		});
+		expect(resolveExpression("$components.api.metrics.port", ctx)).toBe("9090");
+	});
+
+	it("resolves an unnamed endpoint to empty, not to the primary port", () => {
+		const ctx = buildResolverContext({}, { api: 3000 }, {}, NO_APP, {}, {}, {
+			api: component([{ name: "http", protocol: "http", port: 3000, exposed: true }]),
+		});
+
+		expect(resolveExpression("$components.api.https.port", ctx)).toBe("");
+		expect(resolveExpression("$components.api.port", ctx)).toBe("3000");
+	});
+
+	it("registers no endpoint properties when the allocator moved the component off its declared ports", () => {
+		// This provider allocates one host port per component. When that port is
+		// none of the declared ones, it cannot say which endpoint answers there,
+		// so it reports the primary keys only rather than a wrong address.
+		const ctx = buildResolverContext({}, { api: 49213 }, {}, NO_APP, {}, {}, {
+			api: component([
+				{ name: "http", protocol: "http", port: 3000, exposed: true },
+				{ name: "metrics", protocol: "http", port: 9090 },
+			]),
+		});
+
+		expect(ctx.components?.api).toEqual({
+			url: "http://localhost:49213",
+			host: "localhost",
+			port: 49213,
+		});
+		expect(resolveExpression("$components.api.metrics.port", ctx)).toBe("");
+	});
+
+	it("keeps the declared listener on a bound endpoint — this provider activates no certificate (D-61 rule 5, D-66 rule 3)", () => {
+		// The fixture carries the `supports:` entry the binding names (D-61
+		// rule 1), so it is the shape `readLaunch` would accept.
+		const api = {
+			provides: [{ name: "web", protocol: "http", port: 3000, exposed: true, tls: "server-cert" }],
+			supports: [{ name: "server-cert", type: "certificate" }],
+		} as NormalizedComponent;
+		const ctx = buildResolverContext({}, { api: 3000 }, {}, NO_APP, {}, {}, { api });
+
+		expect(resolveExpression("$components.api.web.url", ctx)).toBe("http://localhost:3000");
+		expect(resolveExpression("$components.api.web.protocol", ctx)).toBe("http");
+	});
+
+	it("keeps the old shape when no component metadata is supplied", () => {
+		const ctx = buildResolverContext({}, { api: 3000 }, {}, NO_APP);
+		expect(ctx.components?.api).toEqual({
+			url: "http://localhost:3000",
+			host: "localhost",
+			port: 3000,
+		});
+	});
+});
+
 describe("computeAppProperties (D-33)", () => {
 	const baseLaunch = (overrides: Partial<NormalizedLaunch>): NormalizedLaunch =>
 		({

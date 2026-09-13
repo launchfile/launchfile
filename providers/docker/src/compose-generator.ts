@@ -9,6 +9,7 @@
 import { resolve as resolvePath } from "node:path";
 import {
 	effectiveListener,
+	endpointProperties,
 	indexOperatorStoragePaths,
 	isExpression,
 	appEndpointReferences,
@@ -1418,6 +1419,14 @@ export function launchToCompose(
 				url: `${primaryListener.active ? "https" : "http"}://${serviceName}:${containerPort}`,
 				host: serviceName,
 				port: containerPort,
+				// Per-endpoint properties for `$components.<name>.<endpoint>.<prop>`
+				// (D-6, D-66). A container binds every port it declares, so each
+				// named endpoint is reachable at the service name and its own
+				// container port — including one marked `exposed: false`, per the
+				// D-27 boundary noted above. `protocol` and `url` read the
+				// effective listener (D-61 rule 2), so an entry whose certificate
+				// binding is active says `https` here as the primary `url` does.
+				...endpointProperties(component.provides, serviceName, certificates.active),
 			};
 
 			// Host publication: every endpoint marked `exposed: true` (D-27)

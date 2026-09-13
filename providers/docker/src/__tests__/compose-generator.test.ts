@@ -422,6 +422,101 @@ components:
 		expect(result.ports).toEqual({ web: 13000 });
 	});
 
+	it("resolves $components.<name>.<endpoint>.<prop> for every declared endpoint", () => {
+		// D-6 names endpoints so siblings can reference one specifically. A
+		// container binds every port it declares, so both endpoints are on the
+		// network whatever `exposed` says (D-27 is the host boundary).
+		const launch = readLaunch(`
+name: stack
+components:
+  api:
+    image: api-like
+    provides:
+      - name: http
+        port: 3000
+        protocol: http
+        exposed: true
+      - name: metrics
+        port: 9090
+        protocol: http
+        exposed: false
+  web:
+    image: nginx
+    provides:
+      - port: 8080
+        protocol: http
+        exposed: true
+    env:
+      API_URL: $components.api.http.url
+      METRICS_PORT: $components.api.metrics.port
+      METRICS_URL: $components.api.metrics.url
+      METRICS_HOST: $components.api.metrics.host
+`);
+		const result = launchToCompose(launch, { hostPorts: { api: 13000, web: 18080 } });
+		expect(result.yaml).toContain("API_URL: http://stack-api:3000");
+		expect(result.yaml).toContain('METRICS_PORT: "9090"');
+		expect(result.yaml).toContain("METRICS_URL: http://stack-api:9090");
+		expect(result.yaml).toContain("METRICS_HOST: stack-api");
+		// Only the `exposed: true` endpoint reaches the host (D-27).
+		expect(result.ports).toEqual({ api: 13000, web: 18080 });
+	});
+
+	it("resolves an unnamed endpoint reference to empty, not to the primary port", () => {
+		// The named form must never answer with another endpoint's value: a
+		// sibling would wire itself to a live, plausible, wrong port silently.
+		const launch = readLaunch(`
+name: stack
+components:
+  api:
+    image: api-like
+    provides:
+      - name: http
+        port: 3000
+        protocol: http
+        exposed: true
+  web:
+    image: nginx
+    provides:
+      - port: 8080
+        protocol: http
+        exposed: true
+    env:
+      TLS_PORT: $components.api.https.port
+      TLS_PORT_OR: "\${components.api.https.port:-8443}"
+`);
+		const result = launchToCompose(launch, { hostPorts: { api: 13000, web: 18080 } });
+		expect(result.yaml).toContain('TLS_PORT: ""');
+		expect(result.yaml).not.toContain('TLS_PORT: "3000"');
+		expect(result.yaml).toContain('TLS_PORT_OR: "8443"');
+	});
+
+	it("omits <endpoint>.url for a protocol that names no scheme", () => {
+		const launch = readLaunch(`
+name: stack
+components:
+  db:
+    image: postgres-like
+    provides:
+      - name: sql
+        port: 5432
+        protocol: tcp
+  web:
+    image: nginx
+    provides:
+      - port: 8080
+        protocol: http
+        exposed: true
+    env:
+      DB_PORT: $components.db.sql.port
+      DB_PROTOCOL: $components.db.sql.protocol
+      DB_URL: $components.db.sql.url
+`);
+		const result = launchToCompose(launch, { hostPorts: { web: 18080 } });
+		expect(result.yaml).toContain('DB_PORT: "5432"');
+		expect(result.yaml).toContain("DB_PROTOCOL: tcp");
+		expect(result.yaml).toContain('DB_URL: ""');
+	});
+
 	it("does not warn about publication when the app declares no provides at all", () => {
 		// A worker/cron app has nothing to publish; silence is correct.
 		const launch = readLaunch(`

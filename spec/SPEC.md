@@ -210,7 +210,7 @@ env:
 
 *"I serve HTTP on 3000. I can serve HTTPS on that same listener with this certificate; here is the wiring."*
 
-**Declared and effective.** Every `provides` entry has a **declared** protocol and port — the fields in the file — and an **effective** protocol and port, which is what the listener speaks in the configuration the deployment selected. They are equal unless a bound certificate is **active**; then the effective protocol is `https` and the effective port is the declared `port:`. Validation, tooling and the audit surface read the declared value; every URL-emitting expression derived from a listener (`$components.<name>.url`, and `$app.url` where the provider computes it from its own publication of that listener) reads the effective one. An orchestrator-supplied publication context still wins ([PROVIDERS.md](PROVIDERS.md) §7).
+**Declared and effective.** Every `provides` entry has a **declared** protocol and port — the fields in the file — and an **effective** protocol and port, which is what the listener speaks in the configuration the deployment selected. They are equal unless a bound certificate is **active**; then the effective protocol is `https` and the effective port is the declared `port:`. Validation, tooling and the audit surface read the declared value; every URL-emitting expression derived from a listener (`$components.<name>.url`, `$components.<name>.<endpoint>.url` with its `protocol`, and `$app.url` where the provider computes it from its own publication of that listener) reads the effective one. An orchestrator-supplied publication context still wins ([PROVIDERS.md](PROVIDERS.md) §7).
 
 Five rules bind the binding:
 

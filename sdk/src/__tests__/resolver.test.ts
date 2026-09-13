@@ -6,6 +6,7 @@ import {
 	isExpression,
 	deriveAppUrlProperties,
 	UnresolvedUseError,
+	endpointProperties,
 } from "../resolver.js";
 
 /*---
@@ -826,13 +827,15 @@ describe("resolveExpression — inherited prototype keys (D-33, D-39, L-4)", () 
 
 	// The dotted-key-then-last-segment double fallback still probes both keys
 	// — for a resource whose entry declares no `uses`. A resource that does
-	// declare `uses` takes the strict branch pinned in the suite below.
-	it("keeps the dotted-key → last-segment fallback on guarded lookups for entries without uses", () => {
+	// declare `uses` takes the strict branch pinned in the suite below, and a
+	// component has no last-segment fallback at all (D-66): the guarded
+	// component lookup resolves the dotted key only.
+	it("keeps the dotted-key → last-segment fallback on guarded resource lookups for entries without uses", () => {
 		const nested = {
 			components: { web: { host: "web-host" } },
 			resources: { postgres: { host: "pg-host" } },
 		};
-		expect(resolveExpression("$components.web.deep.host", nested)).toBe("web-host");
+		expect(resolveExpression("$components.web.deep.host", nested)).toBe("");
 		expect(resolveExpression("$postgres.deep.host", nested)).toBe("pg-host");
 	});
 
@@ -996,5 +999,132 @@ describe("$<resource>.<use>.<name>.<property> on an entry that names a repeatabl
 
 	it("is not softened by a :-default in the named form either", () => {
 		expect(() => resolveExpression("${redis.db.nosuch.url:-none}", ctx)).toThrow(UnresolvedUseError);
+	});
+});
+
+/*---
+req: REQ-422
+type: unit
+status: implemented
+area: launch-spec
+summary: Named-endpoint component references resolve by their own key only
+rationale: |
+  SPEC.md documents $components.<component>.<endpoint>.<property>. Providers
+  register those as dotted keys on the component's flat record. A reference to
+  an endpoint nobody registered must degrade to empty (L-4) — never to the
+  primary endpoint's value, which wires a sibling to a live but wrong port
+  with nothing reported.
+acceptance:
+  - Registered named endpoint resolves to its own value
+  - Unregistered endpoint name resolves to empty, not the primary property
+  - endpointProperties builds dotted keys for every named declared endpoint
+tags: [launch-spec, resolver, D-6]
+source:
+  type: implementation
+  ref: issue-276
+changed:
+  - date: 2026-09-09
+    note: Added with the per-endpoint $components registration fix (#276)
+---*/
+describe("$components named endpoints", () => {
+	const context = {
+		components: {
+			web: {
+				url: "http://web:3000",
+				host: "web",
+				port: 3000,
+				"api.host": "web",
+				"api.port": 3000,
+				"api.protocol": "http",
+				"api.url": "http://web:3000",
+				"metrics.host": "web",
+				"metrics.port": 9090,
+				"metrics.protocol": "http",
+				"metrics.url": "http://web:9090",
+			},
+		},
+	};
+
+	it("resolves a registered named endpoint", () => {
+		expect(resolveExpression("$components.web.metrics.port", context)).toBe("9090");
+		expect(resolveExpression("$components.web.metrics.url", context)).toBe("http://web:9090");
+	});
+
+	it("resolves an unknown endpoint name to empty, not the primary port", () => {
+		expect(resolveExpression("$components.web.https.port", context)).toBe("");
+		expect(resolveExpression("$components.web.https.url", context)).toBe("");
+	});
+
+	it("still resolves the flat three-segment form", () => {
+		expect(resolveExpression("$components.web.port", context)).toBe("3000");
+	});
+
+	it("takes a :-default when the endpoint is unknown", () => {
+		expect(resolveExpression("${components.web.https.port:-8443}", context)).toBe("8443");
+	});
+
+	it("resolves an unknown component to empty", () => {
+		expect(resolveExpression("$components.absent.api.port", context)).toBe("");
+	});
+});
+
+describe("endpointProperties", () => {
+	it("builds dotted keys for every named endpoint, exposed or not", () => {
+		expect(
+			endpointProperties(
+				[
+					{ name: "api", protocol: "http", port: 3000, exposed: true },
+					{ name: "metrics", protocol: "http", port: 9090, exposed: false },
+				],
+				"web",
+			),
+		).toEqual({
+			"api.host": "web",
+			"api.port": 3000,
+			"api.protocol": "http",
+			"api.url": "http://web:3000",
+			"metrics.host": "web",
+			"metrics.port": 9090,
+			"metrics.protocol": "http",
+			"metrics.url": "http://web:9090",
+		});
+	});
+
+	it("omits url for a protocol that names no scheme", () => {
+		expect(endpointProperties([{ name: "pg", protocol: "tcp", port: 5432 }], "db")).toEqual({
+			"pg.host": "db",
+			"pg.port": 5432,
+			"pg.protocol": "tcp",
+		});
+	});
+
+	it("writes the scheme the protocol names", () => {
+		expect(
+			endpointProperties([{ name: "web", protocol: "https", port: 443 }], "edge")["web.url"],
+		).toBe("https://edge:443");
+	});
+
+	it("ignores unnamed entries and an absent provides", () => {
+		expect(endpointProperties([{ protocol: "http", port: 3000 }], "web")).toEqual({});
+		expect(endpointProperties(undefined, "web")).toEqual({});
+	});
+
+	it("reads the effective listener under an active certificate binding (D-61 rule 2)", () => {
+		const provides = [
+			{ name: "web", protocol: "http" as const, port: 3000, tls: "server-cert" },
+			{ name: "ssh", protocol: "tcp" as const, port: 22 },
+		];
+		expect(endpointProperties(provides, "gitea", ["server-cert"])).toEqual({
+			"web.host": "gitea",
+			"web.port": 3000,
+			"web.protocol": "https",
+			"web.url": "https://gitea:3000",
+			"ssh.host": "gitea",
+			"ssh.port": 22,
+			"ssh.protocol": "tcp",
+		});
+		// Inactive — or never told about the binding — the declared values stand.
+		expect(endpointProperties(provides, "gitea", [])["web.url"]).toBe("http://gitea:3000");
+		expect(endpointProperties(provides, "gitea")["web.protocol"]).toBe("http");
 	});
 });
