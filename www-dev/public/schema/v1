@@ -231,7 +231,7 @@
                 "description": "One named occurrence of a repeatable use: { <token>: <name> }",
                 "minProperties": 1,
                 "maxProperties": 1,
-                "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
+                "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 63 },
                 "additionalProperties": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 63 }
               }
             ]
