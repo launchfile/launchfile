@@ -22,8 +22,11 @@ Budgets applied when a command declares no `timeout:`:
 | prepare (`install` ?? `build`) | 10m     |
 | `release`                      | 2m      |
 | `bootstrap`                    | 2m      |
+| health gate (per component)    | 60s     |
 
 An unparseable declared `timeout` is surfaced, never silently replaced: prepare/`release` fail the launch, `bootstrap` reports the failure to the invoker.
+
+A component that declares `health:` and never passes it within the gate budget fails `up` (SPEC.md § Failure semantics), whether or not anything depends on it. Its process is left running and its pid recorded, so `status`, `logs` and `down` still reach it.
 
 ## Commands
 

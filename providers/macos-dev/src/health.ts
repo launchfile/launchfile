@@ -3,6 +3,7 @@
  */
 
 import { parseDurationMs, type NormalizedHealth } from "@launchfile/sdk";
+import { redactSecrets } from "./redact.js";
 import { shellScript } from "./shell.js";
 
 /**
@@ -14,6 +15,24 @@ import { shellScript } from "./shell.js";
  */
 export function parseDuration(duration: string): number {
 	return parseDurationMs(duration);
+}
+
+/**
+ * Whether a check can run without a port: only a `command` check can. A
+ * `path` check and the no-check fallback both poll `http://localhost:<port>`.
+ */
+export function healthCheckNeedsPort(health: NormalizedHealth): boolean {
+	return !health.command;
+}
+
+/**
+ * What a check polls, for the failure message: the operator reading
+ * "did not become healthy" needs to know which probe was asked.
+ */
+export function describeHealthCheck(health: NormalizedHealth, port: number | undefined): string {
+	if (health.command) return `command \`${redactSecrets(health.command)}\``;
+	const host = port === undefined ? "localhost:<unallocated>" : `localhost:${port}`;
+	return `GET http://${host}${health.path ?? "/"}`;
 }
 
 /**
