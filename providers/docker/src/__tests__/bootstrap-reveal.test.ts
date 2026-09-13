@@ -87,8 +87,39 @@ afterAll(async () => {
 	await rm(logDir, { recursive: true, force: true });
 });
 
-async function ndjson(): Promise<string> {
-	return readFile(LOG_FILE, "utf8").catch(() => "");
+/**
+ * Read the NDJSON file once it satisfies `ready`, polling up to `timeoutMs`.
+ *
+ * The file sink is asynchronous (`pino.destination` → sonic-boom with its
+ * default `sync: false`): `getLogger().debug()` queues the line and a later
+ * `fs.write` completion lands it on disk, so a read straight after the call
+ * can see an earlier chunk only. The poll is bounded: a line the provider
+ * never wrote still fails, it just fails after the deadline.
+ */
+async function ndjson(
+	ready: (log: string) => boolean = () => true,
+	timeoutMs = 3000,
+): Promise<string> {
+	const read = () => readFile(LOG_FILE, "utf8").catch(() => "");
+	const deadline = Date.now() + timeoutMs;
+	let log = await read();
+	while (!ready(log) && Date.now() < deadline) {
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		log = await read();
+	}
+	return log;
+}
+
+/** The `bootstrap command finished` records for one compose service, parsed. */
+function finishedRecords(
+	log: string,
+	composeService: string,
+): Array<Record<string, unknown>> {
+	return log
+		.split("\n")
+		.filter((l) => l.includes("bootstrap command finished"))
+		.map((l) => JSON.parse(l) as Record<string, unknown>)
+		.filter((l) => l.composeService === composeService);
 }
 
 describe("masked by default (SPEC.md § Command Capture, D-62)", () => {
@@ -183,26 +214,30 @@ describe.each([
 		});
 
 		it("keeps the value out of the NDJSON log on success and on failure", async () => {
-			await bootstrap.runBootstraps(plan(), {
+			// An app name unique to this test (it becomes the record's
+			// `composeService`), so the records asserted on are the two runs
+			// below and not an earlier test's.
+			const service = `acme-ndjson-${reveal ? "revealed" : "masked"}`;
+			const item = bootstrap.planBootstraps(
+				readLaunch(LAUNCHFILE.replace("name: acme", `name: ${service}`)),
+				{ hostPorts: {}, secrets: {} },
+			);
+			await bootstrap.runBootstraps(item, {
 				project: "lf-acme",
 				exec: fakeExec(0),
 				reveal,
 			});
-			await bootstrap.runBootstraps(plan(), {
+			await bootstrap.runBootstraps(item, {
 				project: "lf-acme",
 				exec: fakeExec(1),
 				reveal,
 			});
-			const log = await ndjson();
-			const lines = log
-				.split("\n")
-				.filter((l) => l.includes("bootstrap command finished"));
-			expect(lines.length).toBeGreaterThanOrEqual(2);
+			const log = await ndjson((l) => finishedRecords(l, service).length >= 2);
+			const records = finishedRecords(log, service);
+			expect(records.map((r) => r.exitCode)).toEqual([0, 1]);
 			expect(log).not.toContain(INVITE);
 			// The failing run's stderr echoed the link; it landed scrubbed.
-			const failed = lines
-				.map((l) => JSON.parse(l) as Record<string, unknown>)
-				.find((l) => l.exitCode === 1)!;
+			const failed = records[1]!;
 			expect(failed.stderr).toContain(redact.REDACTED);
 			expect(failed.captured).toEqual(["invite_link", "admin_user"]);
 		});
