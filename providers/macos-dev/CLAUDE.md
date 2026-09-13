@@ -10,6 +10,7 @@ A Launchfile provider that runs apps natively on macOS for local development. Us
 
 - **Source-first** — ignores `image:`, uses `runtime:` + native package managers
 - **Source-mode commands** — runs from source: `install ?? build` for prepare, `dev` over `start` for run (D-38); `release`/`bootstrap`/`seed`/`test` are mode-invariant. Commands run natively with user privileges, so this provider is for local, trusted sources
+- **Prepare on demand** — the prepare command runs on first launch and whenever its inputs change (the command itself, or a dependency manifest/lockfile in its working directory), never on every `up` (D-38). `prepare-fingerprint.ts` computes the signal; `state.prepared` records it
 - **Brew-first** — shared database services, app-specific databases namespaced by app name
 - **Supports skip by default** — use `--with-optional` for optional resources
 
@@ -42,7 +43,8 @@ This package is a library consumed by the unified `launchfile` CLI (`packages/la
 - `resources/` — Brew-based provisioners (postgres, redis, mysql, sqlite)
 - `runtimes/` — Version manager integrations (fnm, pyenv, rbenv)
 - `process-manager.ts` — Multi-component startup with topological sort and health waits
-- `state.ts` — Persists secrets, ports, and credentials in project-local `.launchfile/state.json`
+- `state.ts` — Persists secrets, ports, credentials, and prepare fingerprints in project-local `.launchfile/state.json`
+- `prepare-fingerprint.ts` — Digests the prepare inputs so `install ?? build` runs on demand (D-38)
 
 ## Dependencies
 
