@@ -130,6 +130,28 @@ describe("dockerUp --dry-run appUrl (#290)", () => {
 		expect(output.join("\n")).toMatch(/PUBLIC_URL: http:\/\/localhost:\d+/);
 	});
 
+	it("prints the supplied URL in the up summary — the same value $app.url resolved to (#386)", async () => {
+		await dockerUp(projectDir, {
+			dryRun: true,
+			appUrl: "https://notes.example.com",
+		});
+		const text = output.join("\n");
+		expect(text).toContain("PUBLIC_URL: https://notes.example.com");
+		expect(text).toContain("  web is running at https://notes.example.com");
+		expect(text).not.toMatch(/web is running at http:\/\/localhost/);
+	});
+
+	it("prints the recorded URL on a later run that omits the option (#386)", async () => {
+		await seedState("https://notes.example.com");
+		await dockerUp(projectDir, { dryRun: true });
+		expect(output.join("\n")).toContain("  web is running at https://notes.example.com");
+	});
+
+	it("prints localhost in the up summary when no URL is recorded or supplied", async () => {
+		await dockerUp(projectDir, { dryRun: true });
+		expect(output.join("\n")).toMatch(/  web is running at http:\/\/localhost:\d+/);
+	});
+
 	it("refuses a malformed appUrl before anything exists — never a localhost fallback", async () => {
 		await expect(
 			dockerUp(projectDir, { dryRun: true, appUrl: "notes.example.com" }),

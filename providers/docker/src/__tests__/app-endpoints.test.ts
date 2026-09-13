@@ -15,7 +15,7 @@ import { parse } from "yaml";
 import { computeAppContext, computeAppProperties } from "../app-url.js";
 import { planBootstraps } from "../bootstrap.js";
 import { type ComposeOpts, launchToCompose } from "../compose-generator.js";
-import { endpointAddress } from "../provider.js";
+import { endpointAddress, statusLines, summaryLines } from "../provider.js";
 import { planReleases } from "../release.js";
 
 /** gitea's shape: an http primary with a certificate binding, then a tcp `ssh`. */
@@ -237,6 +237,52 @@ describe("the primary's entry is $app.* byte for byte (rule 2)", () => {
 				result.endpoints.default?.protocol,
 			),
 		).toBe(envOf(result.yaml, "gitea").WEB_URL);
+	});
+
+	it("names the primary's ports key, so the printout can place a supplied URL on it (#386)", () => {
+		expect(computeAppContext(readLaunch(GITEA), GITEA_PORTS).primaryEndpoint).toBe("default");
+		expect(
+			computeAppContext(readLaunch(NAMED_PRIMARY), {
+				default: 18789,
+				"default:bridge": 18790,
+			}).primaryEndpoint,
+		).toBe("default:bridge");
+		expect(launchToCompose(readLaunch(GITEA), { hostPorts: GITEA_PORTS }).primaryEndpoint).toBe(
+			"default",
+		);
+	});
+
+	it("is the address the printout shows under a supplied URL too — and only for the primary (#386)", () => {
+		const appUrl = "https://git.example.com";
+		const result = launchToCompose(readLaunch(GITEA), {
+			hostPorts: GITEA_PORTS,
+			appUrl,
+		});
+		const env = envOf(result.yaml, "gitea");
+		const publication = { appUrl, primaryEndpoint: result.primaryEndpoint };
+		expect(summaryLines("gitea", result.ports, undefined, result.endpoints, publication)).toEqual([
+			`  gitea is running at ${env.ROOT_URL}`,
+			"  gitea (ssh) is running at localhost:49222 (tcp)",
+		]);
+		expect(statusLines(result.ports, result.endpoints, publication)).toEqual([
+			`  default: ${env.ROOT_URL}`,
+			"  default:ssh: localhost:49222 (tcp)",
+		]);
+		expect(env.ROOT_URL).toBe(appUrl);
+	});
+
+	it("places a supplied URL on a named primary, not on the first endpoint (#386)", () => {
+		const appUrl = "https://claw.example.com";
+		const result = launchToCompose(readLaunch(NAMED_PRIMARY), {
+			hostPorts: { default: 18789, "default:bridge": 18790 },
+			appUrl,
+		});
+		const publication = { appUrl, primaryEndpoint: result.primaryEndpoint };
+		expect(statusLines(result.ports, result.endpoints, publication)).toEqual([
+			"  default: http://localhost:18789",
+			`  default:bridge: ${appUrl}`,
+		]);
+		expect(envOf(result.yaml, "openclaw").APP_URL).toBe(appUrl);
 	});
 });
 
