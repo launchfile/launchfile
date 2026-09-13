@@ -137,6 +137,15 @@ export interface LaunchState {
 	 * answers.
 	 */
 	appUrl?: string;
+	/**
+	 * The `ports` key — this provider allocates one port per component, so a
+	 * component name — of the app's primary endpoint, the one `$app.*` reads.
+	 * Recorded at `up` beside `appUrl` so `status`, which never reads the
+	 * Launchfile, prints the supplied URL on that one key and no other (D-58
+	 * rule 4). Optional for backward compatibility: a state file without it
+	 * prints this provider's own address on every key.
+	 */
+	primaryEndpoint?: string;
 }
 
 const STATE_DIR = ".launchfile";

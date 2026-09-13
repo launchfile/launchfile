@@ -296,6 +296,12 @@ export interface AppContext {
 	 * the primary endpoint's address only (D-58 rule 4, D-63 rule 5).
 	 */
 	fenced: string[];
+	/**
+	 * The `ports` key of the primary endpoint `app` describes — what a
+	 * printout needs to put the supplied URL on that key and no other (D-58
+	 * rule 4). `undefined` when the app publishes nothing.
+	 */
+	primaryEndpoint: string | undefined;
 }
 
 /**
@@ -357,5 +363,5 @@ export function computeAppContext(
 			appEndpoints[endpoint.name] = endpointPublicAddress(endpoint);
 		}
 	}
-	return { app, appEndpoints, fenced };
+	return { app, appEndpoints, fenced, primaryEndpoint: primary?.key };
 }
