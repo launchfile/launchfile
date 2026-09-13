@@ -54,8 +54,8 @@ jobs:
       # catalog/apps/**/Launchfile, so a PR touching either corpus makes it
       # stale. `--check` regenerates in memory and exits 1 on any difference.
       # It rides the aws leg of this matrix rather than a job of its own: a new
-      # job name has to be added to the branch ruleset's required-checks list by
-      # hand (#309).
+      # job name would also have to join ci-required's `needs:` list below (the
+      # workflow-lint job fails when one is missing).
       - name: AWS CONFORMANCE.md is up to date
         if: matrix.provider == 'aws'
         run: cd providers/aws && bun run conformance --check
