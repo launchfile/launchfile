@@ -96,6 +96,25 @@ describe("docker state — publication context (#290)", () => {
 		expect(loaded).not.toBeNull();
 		expect(loaded!.appUrl).toBeUndefined();
 	});
+
+	it("round-trips the primary endpoint's ports key beside appUrl (#386)", async () => {
+		const state = initState("proxied", "proxied", "name: proxied\n");
+		state.appUrl = "https://notes.example.com";
+		state.primaryEndpoint = "default:web";
+		await saveState("proxied", state);
+
+		const loaded = await loadState("proxied");
+		expect(loaded!.primaryEndpoint).toBe("default:web");
+	});
+
+	it("loads a state file without a primaryEndpoint key (every key prints localhost)", async () => {
+		const state = initState("plain", "plain", "name: plain\n");
+		expect("primaryEndpoint" in state).toBe(false);
+		await saveState("plain", state);
+
+		const loaded = await loadState("plain");
+		expect(loaded!.primaryEndpoint).toBeUndefined();
+	});
 });
 
 describe("docker state — backward compatibility", () => {

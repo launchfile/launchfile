@@ -25,6 +25,7 @@ import {
 	composeProject,
 	stateDir,
 	stateBaseDir,
+	type DockerState,
 	type StateEndpoint,
 } from "./state.js";
 import { allocatePorts } from "./port-allocator.js";
@@ -614,6 +615,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		state.generatedEnv = result.generatedEnv;
 		state.ports = result.ports;
 		state.endpoints = result.endpoints;
+		state.primaryEndpoint = result.primaryEndpoint;
 
 		const upResult: DockerUpResult = {
 			slug,
@@ -626,7 +628,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		if (opts.dryRun) {
 			console.log("\n--- docker-compose.yml ---\n");
 			console.log(result.yaml);
-			printSummary(launch.name, result.ports, summaryOnly, result.endpoints);
+			printSummary(launch.name, result.ports, summaryOnly, result.endpoints, state);
 			return upResult;
 		}
 
@@ -776,7 +778,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		);
 
 		// Print summary
-		printSummary(launch.name, result.ports, summaryOnly, result.endpoints);
+		printSummary(launch.name, result.ports, summaryOnly, result.endpoints, state);
 
 		return upResult;
 	}),
@@ -845,8 +847,8 @@ export async function dockerStatus(slug?: string): Promise<void> {
 
 		if (Object.keys(state.ports).length > 0) {
 			console.log("\nAccess URLs:");
-			for (const [key, port] of Object.entries(state.ports)) {
-				console.log(`  ${key}: ${endpointAddress(port, state.endpoints?.[key]?.protocol)}`);
+			for (const line of statusLines(state.ports, state.endpoints, state)) {
+				console.log(line);
 			}
 		}
 	});
@@ -1091,6 +1093,14 @@ export function componentOfPortKey(
 }
 
 /**
+ * What a printout reads to place the orchestrator-supplied publication URL
+ * (D-58): the URL, and the `ports` key it asserts. One URL asserts the
+ * primary endpoint only (D-58 rule 4), so every other key keeps this
+ * provider's own address; with no URL every key does.
+ */
+export type PrintedPublication = Pick<DockerState, "appUrl" | "primaryEndpoint">;
+
+/**
  * Human-readable address for a published endpoint. HTTP-family protocols get
  * a browsable URL; raw tcp/udp/grpc endpoints get `localhost:<port> (<proto>)`
  * because an `http://` link to an SMTP or DNS port would be wrong. Keys with
@@ -1103,8 +1113,15 @@ export function componentOfPortKey(
  * (#473). `protocol` is the endpoint's EFFECTIVE protocol as persisted in
  * state (D-61 rule 2), which is why an active certificate needs no second
  * branch here.
+ *
+ * `appUrl` is the supplied publication URL, passed only for the primary
+ * endpoint (the caller applies D-58 rule 4's fence by key). An HTTP listener
+ * prints it as stored: `normalizeAppUrl` ran once, when `up` recorded it, and
+ * `$app.url` is that same string, so nothing re-derives here. A `ws`, `tcp`,
+ * `udp` or `grpc` listener keeps its own form even on the primary key: an
+ * `http`/`https` URL asserts nothing about what those listeners speak.
  */
-export function endpointAddress(port: number, protocol?: string): string {
+export function endpointAddress(port: number, protocol?: string, appUrl?: string): string {
 	switch (protocol) {
 		case "ws":
 			return `ws://localhost:${port}`;
@@ -1113,8 +1130,42 @@ export function endpointAddress(port: number, protocol?: string): string {
 		case "grpc":
 			return `localhost:${port} (${protocol})`;
 		default:
-			return publishedAddress(protocol, port).url;
+			return appUrl ?? publishedAddress(protocol, port).url;
 	}
+}
+
+/**
+ * The address to print for one `ports` key: the supplied publication URL on
+ * the primary endpoint's key, this provider's own address on every other
+ * (D-58 rule 4). With no publication context, the provider's own address
+ * throughout — byte-identical to a run with no URL supplied.
+ */
+function printedAddress(
+	key: string,
+	port: number,
+	endpoints: Record<string, StateEndpoint> | undefined,
+	publication: PrintedPublication | undefined,
+): string {
+	const appUrl =
+		publication?.primaryEndpoint !== undefined && key === publication.primaryEndpoint
+			? publication.appUrl
+			: undefined;
+	return endpointAddress(port, endpoints?.[key]?.protocol, appUrl);
+}
+
+/**
+ * The "Access URLs" lines `status` prints, one per `ports` key. Pure, so the
+ * placement of the supplied URL can be tested without state on disk or a
+ * compose project.
+ */
+export function statusLines(
+	ports: Record<string, number>,
+	endpoints?: Record<string, StateEndpoint>,
+	publication?: PrintedPublication,
+): string[] {
+	return Object.entries(ports).map(
+		([key, port]) => `  ${key}: ${printedAddress(key, port, endpoints, publication)}`,
+	);
 }
 
 /**
@@ -1134,6 +1185,7 @@ export function summaryLines(
 	ports: Record<string, number>,
 	only?: ReadonlySet<string>,
 	endpoints?: Record<string, StateEndpoint>,
+	publication?: PrintedPublication,
 ): string[] {
 	const lines: string[] = [];
 	for (const [key, port] of Object.entries(ports)) {
@@ -1143,7 +1195,9 @@ export function summaryLines(
 		// Secondary endpoints carry their endpoint name (D-6) or container
 		// port as a qualifier so multi-endpoint components stay tellable apart.
 		const qualifier = key === component ? "" : ` (${endpoints?.[key]?.name ?? key.slice(component.length + 1)})`;
-		lines.push(`  ${base}${qualifier} is running at ${endpointAddress(port, endpoints?.[key]?.protocol)}`);
+		lines.push(
+			`  ${base}${qualifier} is running at ${printedAddress(key, port, endpoints, publication)}`,
+		);
 	}
 	return lines;
 }
@@ -1153,9 +1207,10 @@ function printSummary(
 	ports: Record<string, number>,
 	only?: ReadonlySet<string>,
 	endpoints?: Record<string, StateEndpoint>,
+	publication?: PrintedPublication,
 ): void {
 	console.log("");
-	for (const line of summaryLines(appName, ports, only, endpoints)) {
+	for (const line of summaryLines(appName, ports, only, endpoints, publication)) {
 		console.log(line);
 	}
 }
