@@ -48,6 +48,7 @@ import {
 } from "./env-writer.js";
 import { getProvisioner,
 	uncoveredUses,
+	coveredUses,
 	withCoveredUses, type ResourceProperties } from "./resources/index.js";
 import { allocatePorts } from "./port-allocator.js";
 import { getRuntimeInstaller } from "./runtimes/index.js";
@@ -736,7 +737,11 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	// 6. Provision required resources. Each declared use's `<use>.<property>`
 	// keys join the provisioner's instance vocabulary in the map; a redis `db`
 	// use gets one numbered database per entry, allocated in declaration order
-	// across the app so it is stable between runs.
+	// across the app so it is stable between runs. A resource is provisioned
+	// once per name and registered from the pooled uses of every same-name
+	// entry (D-24: they describe one resource) — the set the resolver context
+	// below treats strictly — so the first entry seen cannot hide keys a later
+	// one declares.
 	const resourceMap: Record<string, ResourceProperties> = {};
 	const uses = declaredUses(launch);
 	const dbIndexes = new Map<string, number>();
@@ -767,13 +772,14 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 				);
 			}
 
-			const dbIndex = req.uses?.includes("db") ? dbIndexOf(resourceName) : 0;
+			const pooledUses = coveredUses(req.type, uses[resourceName] ?? []);
+			const dbIndex = pooledUses.includes("db") ? dbIndexOf(resourceName) : 0;
 
 			if (opts.dryRun) {
 				console.log(`  [dry-run] Would provision ${req.type} as "${resourceName}"`);
 				resourceMap[resourceName] = withCoveredUses(
 					req.type,
-					req.uses,
+					pooledUses,
 					{ url: "", host: "localhost", port: 0 }, // placeholder for dedup
 					dbIndex,
 				);
@@ -783,7 +789,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 			process.stdout.write(`  \u2193 Provisioning ${req.type}...`);
 			const existing = state.resources[resourceName];
 			const result = await provisioner.provision(req, { appName: launch.name, projectDir }, existing);
-			resourceMap[resourceName] = withCoveredUses(req.type, req.uses, result.properties, dbIndex);
+			resourceMap[resourceName] = withCoveredUses(req.type, pooledUses, result.properties, dbIndex);
 			state.resources[resourceName] = result.state;
 			console.log(" done");
 		}
@@ -812,13 +818,14 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 					);
 					continue;
 				}
-				const dbIndex = sup.uses?.includes("db") ? dbIndexOf(resourceName) : 0;
+				const pooledUses = coveredUses(sup.type, uses[resourceName] ?? []);
+				const dbIndex = pooledUses.includes("db") ? dbIndexOf(resourceName) : 0;
 
 				if (opts.dryRun) {
 					console.log(`  [dry-run] Would provision optional ${sup.type} as "${resourceName}"`);
 					resourceMap[resourceName] = withCoveredUses(
 						sup.type,
-						sup.uses,
+						pooledUses,
 						{ url: "", host: "localhost", port: 0 },
 						dbIndex,
 					);
@@ -829,7 +836,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 					process.stdout.write(`  \u2193 Provisioning ${sup.type} (optional)...`);
 					const existing = state.resources[resourceName];
 					const result = await provisioner.provision(sup, { appName: launch.name, projectDir }, existing);
-					resourceMap[resourceName] = withCoveredUses(sup.type, sup.uses, result.properties, dbIndex);
+					resourceMap[resourceName] = withCoveredUses(sup.type, pooledUses, result.properties, dbIndex);
 					state.resources[resourceName] = result.state;
 					console.log(" done");
 				} catch {

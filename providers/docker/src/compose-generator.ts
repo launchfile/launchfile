@@ -26,6 +26,7 @@ import {
 } from "@launchfile/sdk";
 import { intersects, subset, validRange } from "semver";
 import {
+	coverUse,
 	uncoveredProvisionedUses,
 	uncoveredSuppliedUses,
 	usePropertyKeys,
@@ -1544,11 +1545,18 @@ export function launchToCompose(
 				if (backingResult) {
 					// Register this resource's properties for cross-resource
 					// resolution — with each declared use's `<use>.<property>`
-					// keys on top of the factory's instance vocabulary. An entry
-					// with no `uses` gets the factory map untouched.
+					// keys on top of the factory's instance vocabulary. The uses
+					// are the pooled set every same-name entry declares (D-24:
+					// they describe one resource), so a later entry declaring
+					// fewer cannot drop keys an earlier one registered; a pooled
+					// token this provider does not cover belongs to an
+					// unfulfilled `supports` entry and registers nothing. An
+					// entry with no `uses` gets the factory map untouched.
 					const properties = withCoveredUses(
 						req.type,
-						req.uses,
+						(declaredUses[resourceName] ?? []).filter(
+							(use) => coverUse(req.type, use, {}, 0) !== undefined,
+						),
 						backingResult.properties,
 						dbIndexOf(resourceName),
 					);

@@ -76,6 +76,19 @@ export function uncoveredUses(type: string, uses: readonly string[]): string[] {
 }
 
 /**
+ * The declared uses this provider covers for `type`, in order. Used to
+ * register a resource from the pooled uses of every same-name entry: a
+ * pooled token this provider does not cover belongs to an unfulfilled
+ * `supports` entry (a `requires` one refused its component already) and
+ * registers nothing.
+ */
+export function coveredUses(type: string, uses: readonly string[]): string[] {
+	return uses.filter(
+		(use) => coverUse(type, use, { url: "" }, 0) !== undefined,
+	);
+}
+
+/**
  * The entry's property map with every declared use's properties registered
  * under `<use>.<property>`. Callers refuse before reaching here, so an
  * uncovered use is a caller bug and throws.

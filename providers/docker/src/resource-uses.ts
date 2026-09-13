@@ -9,6 +9,15 @@
  * recognise, refuses the component (PROVIDERS.md §10 item 5, D-64): no
  * provider can claim to cover a use it does not know.
  *
+ * `COVERAGE` is the one table every path reads — what a provisioned entry
+ * registers, what a supplied map must carry, and which supplied keys the
+ * redactor treats as structural — so the provisioned and supplied paths
+ * cannot disagree about a use. For every type the standard vocabulary
+ * registers (`RESOURCE_USE_VOCABULARY`), the table registers exactly the
+ * registry's keys; `__tests__/resource-uses.test.ts` pins that. `mariadb`
+ * has no entry in the registry — it is a provider-defined type under L-4 —
+ * and is covered here the way `mysql` is.
+ *
  * What each backing service gives:
  *
  * - **redis** — one instance per app, shared by every redis entry. `db` is one
@@ -20,27 +29,41 @@
  *   named after the app. `database` is that database; `server` the instance.
  */
 
-import { RESOURCE_USE_VOCABULARY } from "@launchfile/sdk";
-
 /** Property map a factory produced, or the orchestrator supplied. */
 export type Properties = Readonly<Record<string, string>>;
 
-/**
- * The `<use>.<property>` keys the standard vocabulary registers for `uses`
- * on `type`, in declaration order. A token outside the vocabulary registers
- * nothing here — it is unknown, not empty.
- */
-export function usePropertyKeys(type: string, uses: readonly string[]): string[] {
-	const vocabulary = Object.hasOwn(RESOURCE_USE_VOCABULARY, type)
-		? RESOURCE_USE_VOCABULARY[type]
-		: undefined;
-	if (!vocabulary) return [];
-	const keys: string[] = [];
-	for (const use of uses) {
-		const registered = Object.hasOwn(vocabulary, use) ? vocabulary[use] : undefined;
-		for (const prop of registered ?? []) keys.push(`${use}.${prop}`);
-	}
-	return keys;
+/** What one covered use registers, given the instance map and the allocated redis index. */
+type Cover = (base: Properties, dbIndex: number) => Record<string, string>;
+
+const SQL_SERVER_USES: Readonly<Record<string, Cover>> = {
+	database: (base) => ({
+		"database.url": base.url ?? "",
+		"database.name": base.name ?? "",
+	}),
+	server: () => ({}),
+};
+
+const COVERAGE: Readonly<Record<string, Readonly<Record<string, Cover>>>> = {
+	redis: {
+		db: (base, dbIndex) => ({
+			"db.url": `${base.url}/${dbIndex}`,
+			"db.index": String(dbIndex),
+		}),
+		pubsub: () => ({}),
+		server: () => ({}),
+	},
+	postgres: SQL_SERVER_USES,
+	mysql: SQL_SERVER_USES,
+	mariadb: SQL_SERVER_USES,
+};
+
+/** The resource types this provider covers uses on. */
+export const COVERED_TYPES: readonly string[] = Object.keys(COVERAGE);
+
+/** The use tokens this provider covers on `type`; empty for a type it covers none on. */
+export function coveredUses(type: string): readonly string[] {
+	const uses = Object.hasOwn(COVERAGE, type) ? COVERAGE[type] : undefined;
+	return uses ? Object.keys(uses) : [];
 }
 
 /**
@@ -54,37 +77,26 @@ export function coverUse(
 	base: Properties,
 	dbIndex: number,
 ): Record<string, string> | undefined {
-	switch (type) {
-		case "redis":
-			switch (use) {
-				case "db":
-					return {
-						"db.url": `${base.url}/${dbIndex}`,
-						"db.index": String(dbIndex),
-					};
-				case "pubsub":
-				case "server":
-					return {};
-				default:
-					return undefined;
-			}
-		case "postgres":
-		case "mysql":
-		case "mariadb":
-			switch (use) {
-				case "database":
-					return {
-						"database.url": base.url ?? "",
-						"database.name": base.name ?? "",
-					};
-				case "server":
-					return {};
-				default:
-					return undefined;
-			}
-		default:
-			return undefined;
+	const uses = Object.hasOwn(COVERAGE, type) ? COVERAGE[type] : undefined;
+	const cover = uses && Object.hasOwn(uses, use) ? uses[use] : undefined;
+	return cover ? cover(base, dbIndex) : undefined;
+}
+
+/**
+ * The `<use>.<property>` keys this provider registers for `uses` on `type`,
+ * in declaration order. A use it does not cover registers nothing here — it
+ * is unknown, not empty.
+ */
+export function usePropertyKeys(
+	type: string,
+	uses: readonly string[],
+): string[] {
+	const keys: string[] = [];
+	for (const use of uses) {
+		for (const key of Object.keys(coverUse(type, use, {}, 0) ?? {}))
+			keys.push(key);
 	}
+	return keys;
 }
 
 /**
@@ -99,9 +111,9 @@ export function uncoveredProvisionedUses(
 }
 
 /**
- * The declared uses a supplied property map does not cover — a token the
- * vocabulary does not know, or a registered `<use>.<property>` key the map
- * lacks (D-56 rule 1: the provider refuses on what it can observe). Each
+ * The declared uses a supplied property map does not cover — a token this
+ * provider does not recognise, or a registered `<use>.<property>` key the
+ * map lacks (D-56 rule 1: the provider refuses on what it can observe). Each
  * entry names the use and, where it applies, the missing key.
  */
 export function uncoveredSuppliedUses(
@@ -109,22 +121,19 @@ export function uncoveredSuppliedUses(
 	uses: readonly string[],
 	supplied: Properties,
 ): string[] {
-	const vocabulary = Object.hasOwn(RESOURCE_USE_VOCABULARY, type)
-		? RESOURCE_USE_VOCABULARY[type]
-		: undefined;
 	const uncovered: string[] = [];
 	for (const use of uses) {
-		const registered =
-			vocabulary && Object.hasOwn(vocabulary, use) ? vocabulary[use] : undefined;
-		if (!registered) {
+		if (coverUse(type, use, {}, 0) === undefined) {
 			uncovered.push(`${use} (not a use this provider recognises)`);
 			continue;
 		}
-		const missing = registered
-			.map((prop) => `${use}.${prop}`)
-			.filter((key) => !Object.hasOwn(supplied, key));
+		const missing = usePropertyKeys(type, [use]).filter(
+			(key) => !Object.hasOwn(supplied, key),
+		);
 		if (missing.length > 0) {
-			uncovered.push(`${use} (the supplied resource lacks ${missing.join(", ")})`);
+			uncovered.push(
+				`${use} (the supplied resource lacks ${missing.join(", ")})`,
+			);
 		}
 	}
 	return uncovered;

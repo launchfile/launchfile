@@ -15,7 +15,8 @@ import {
 	resolveComponentEnv,
 } from "../env-writer.js";
 import { applyResourceUseRefusals, refusedResourceUses } from "../provider.js";
-import { coverUse, uncoveredUses, withCoveredUses } from "../resources/index.js";
+import { clearRegisteredSecrets, REDACTED, redactSecrets } from "../redact.js";
+import { coverUse, coveredUses, uncoveredUses, withCoveredUses } from "../resources/index.js";
 import type { ResourceProperties } from "../resources/types.js";
 
 const mk = (body: string) => readLaunch(`version: launch/v1\nname: app\n${body}`);
@@ -109,6 +110,30 @@ describe("coverage", () => {
 
 	it("lists the uncovered tokens only", () => {
 		expect(uncoveredUses("redis", ["db", "x", "pubsub", "y"])).toEqual(["x", "y"]);
+	});
+
+	it("lists the covered tokens only, in order — the pooled set a resource registers from", () => {
+		expect(coveredUses("redis", ["pubsub", "x", "db"])).toEqual(["pubsub", "db"]);
+		expect(coveredUses("kafka", ["topics"])).toEqual([]);
+	});
+
+	it("covers mariadb's database and server the way it covers mysql's", () => {
+		const base: ResourceProperties = { url: "mysql://u:p@localhost:3306/launchfile_app", name: "launchfile_app" };
+		expect(coverUse("mariadb", "database", base, 0)).toEqual(coverUse("mysql", "database", base, 0));
+		expect(uncoveredUses("mariadb", ["database", "server", "nosuchuse"])).toEqual(["nosuchuse"]);
+	});
+
+	it("registers no use key with the redactor; a credential inside db.url is scrubbed by pattern (D-56 rule 5)", () => {
+		clearRegisteredSecrets();
+		const map = withCoveredUses(
+			"redis",
+			["db"],
+			{ url: "redis://app:pw-only-in-the-url@localhost:6379/0", host: "localhost", port: 6379 },
+			7,
+		);
+		expect(map["db.index"]).toBe(7);
+		expect(redactSecrets("db 7 on port 6379")).toBe("db 7 on port 6379");
+		expect(redactSecrets(String(map["db.url"]))).toBe(`redis://app:${REDACTED}@localhost:6379/7`);
 	});
 
 	it("leaves a map with no uses untouched — files without uses are byte-identical (P-13)", () => {

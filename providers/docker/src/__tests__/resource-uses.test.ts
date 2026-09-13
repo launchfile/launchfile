@@ -7,7 +7,7 @@
  * byte-identical output (P-13), pinned at the end.
  */
 
-import { readLaunch, UnresolvedUseError } from "@launchfile/sdk";
+import { RESOURCE_USE_VOCABULARY, readLaunch, UnresolvedUseError } from "@launchfile/sdk";
 import { beforeEach, describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import {
@@ -15,8 +15,15 @@ import {
 	launchToCompose,
 	resourcePropertyKeys,
 } from "../compose-generator.js";
-import { clearRegisteredSecrets, redactSecrets } from "../redact.js";
-import { coverUse, uncoveredSuppliedUses, usePropertyKeys } from "../resource-uses.js";
+import { clearRegisteredSecrets, REDACTED, redactSecrets } from "../redact.js";
+import {
+	COVERED_TYPES,
+	coverUse,
+	coveredUses,
+	uncoveredProvisionedUses,
+	uncoveredSuppliedUses,
+	usePropertyKeys,
+} from "../resource-uses.js";
 
 interface ComposeDoc {
 	services: Record<
@@ -326,6 +333,132 @@ requires:
 		// The password still registers, as always.
 		expect(redactSecrets("password s3cret")).not.toContain("s3cret");
 	});
+
+	it("scrubs the credential inside a supplied db.url by pattern, as it does the instance url (D-56 rule 5)", () => {
+		clearRegisteredSecrets();
+		compose(APP, {
+			resources: {
+				redis: {
+					properties: {
+						url: "redis://app:pw-only-in-the-url@cache.internal:6379",
+						"db.url": "redis://app:pw-only-in-the-url@cache.internal:6379/7",
+						"db.index": "7",
+					},
+				},
+			},
+		});
+		// Nothing registered the URL's password as a literal: only the pattern covers it.
+		expect(redactSecrets("db 7")).toBe("db 7");
+		expect(redactSecrets("redis://app:pw-only-in-the-url@cache.internal:6379/7")).toBe(
+			`redis://app:${REDACTED}@cache.internal:6379/7`,
+		);
+	});
+});
+
+describe("mariadb: the provisioned and supplied paths agree", () => {
+	const APP = `
+name: mdb
+image: acme/app:1
+requires:
+  - type: mariadb
+    uses: [database]
+    set_env:
+      DB_URL: $mariadb.database.url
+      DB_NAME: $mariadb.database.name
+`;
+
+	it("provisions mariadb and registers database.url and database.name", () => {
+		const { doc, warnings } = compose(APP);
+		expect(refusals(warnings)).toEqual([]);
+		expect(doc.services["mdb-mariadb"]?.image).toBe("mariadb:11");
+		expect(doc.services.mdb!.environment!.DB_NAME).toBe("mdb");
+		expect(doc.services.mdb!.environment!.DB_URL).toMatch(/^mysql:\/\/launchfile:.+@mdb-mariadb:3306\/mdb$/);
+	});
+
+	it("accepts a supplied mariadb map that carries database.url and database.name", () => {
+		const { doc, warnings } = compose(APP, {
+			resources: {
+				mariadb: {
+					properties: {
+						url: "mysql://app:pw@db.internal:3306/managed",
+						name: "managed",
+						"database.url": "mysql://app:pw@db.internal:3306/managed",
+						"database.name": "managed",
+					},
+				},
+			},
+		});
+		expect(refusals(warnings)).toEqual([]);
+		expect(doc.services["mdb-mariadb"]).toBeUndefined();
+		expect(doc.services.mdb!.environment).toEqual({
+			DB_URL: "mysql://app:pw@db.internal:3306/managed",
+			DB_NAME: "managed",
+		});
+	});
+
+	it("still refuses a supplied mariadb map that lacks a registered key", () => {
+		const { doc, warnings } = compose(APP, {
+			resources: { mariadb: { properties: { url: "mysql://app:pw@db.internal:3306/managed" } } },
+		});
+		expect(doc.services.mdb).toBeUndefined();
+		expect(refusals(warnings)[0]).toContain(
+			"mariadb: database (the supplied resource lacks database.url, database.name)",
+		);
+	});
+});
+
+describe("same-name entries pool their uses (D-24)", () => {
+	it("keeps every entry's registered keys when a later entry declares fewer", () => {
+		const { doc } = compose(`
+name: app
+components:
+  web:
+    image: acme/web:1
+    requires:
+      - type: redis
+        uses: [db]
+        set_env:
+          CACHE_URL: $redis.db.url
+  worker:
+    image: acme/worker:1
+    requires:
+      - type: redis
+        uses: [pubsub]
+        set_env:
+          PUBSUB_URL: $url
+  api:
+    image: acme/api:1
+    env:
+      CACHE_URL: $redis.db.url
+`);
+		expect(doc.services["app-web"]!.environment!.CACHE_URL).toBe("redis://app-redis:6379/0");
+		expect(doc.services["app-worker"]!.environment!.PUBSUB_URL).toBe("redis://app-redis:6379");
+		expect(doc.services["app-api"]!.environment!.CACHE_URL).toBe("redis://app-redis:6379/0");
+	});
+
+	it("registers nothing for a pooled token only an unfulfilled supports entry declares", () => {
+		const { doc, warnings } = compose(`
+name: app
+components:
+  web:
+    image: acme/web:1
+    requires:
+      - type: redis
+        uses: [db]
+        set_env:
+          CACHE_URL: $redis.db.url
+  worker:
+    image: acme/worker:1
+    supports:
+      - type: redis
+        uses: [nosuchuse]
+        set_env:
+          X: $redis.nosuchuse.thing
+`);
+		expect(refusals(warnings)).toEqual([]);
+		expect(doc.services["app-web"]!.environment!.CACHE_URL).toBe("redis://app-redis:6379/0");
+		expect(doc.services["app-worker"]!.environment?.X).toBeUndefined();
+	});
 });
 
 describe("supports: an uncovered use leaves the entry unfulfilled, never refused (D-8)", () => {
@@ -423,9 +556,33 @@ describe("coverage helpers", () => {
 		});
 	});
 
-	it("lists the registered keys of the standard vocabulary only", () => {
+	it("lists the keys of the uses this provider covers only", () => {
 		expect(usePropertyKeys("redis", ["db", "pubsub", "nosuch"])).toEqual(["db.url", "db.index"]);
 		expect(usePropertyKeys("kafka", ["topics"])).toEqual([]);
+	});
+
+	it("covers every use the standard vocabulary registers, with exactly the registry's keys", () => {
+		for (const [type, uses] of Object.entries(RESOURCE_USE_VOCABULARY)) {
+			expect([...coveredUses(type)].sort()).toEqual(Object.keys(uses).sort());
+			for (const [use, properties] of Object.entries(uses)) {
+				expect(usePropertyKeys(type, [use])).toEqual(properties.map((prop) => `${use}.${prop}`));
+			}
+		}
+	});
+
+	it("reaches the same verdict on the provisioned and supplied paths for every type it covers", () => {
+		expect(COVERED_TYPES).toContain("mariadb");
+		for (const type of COVERED_TYPES) {
+			const uses = coveredUses(type);
+			expect(uses.length).toBeGreaterThan(0);
+			const supplied = Object.fromEntries(usePropertyKeys(type, uses).map((key) => [key, "v"]));
+			expect(uncoveredProvisionedUses(type, uses)).toEqual([]);
+			expect(uncoveredSuppliedUses(type, uses, supplied)).toEqual([]);
+			expect(uncoveredProvisionedUses(type, ["nosuchuse"])).toEqual(["nosuchuse"]);
+			expect(uncoveredSuppliedUses(type, ["nosuchuse"], supplied)).toEqual([
+				"nosuchuse (not a use this provider recognises)",
+			]);
+		}
 	});
 
 	it("reports each shortfall of a supplied map", () => {
