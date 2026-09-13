@@ -931,11 +931,15 @@ export interface ComposeResult {
 	 * Deliberately NOT folded into `warnings`: `dockerUp` prints warnings and
 	 * proceeds, which is precisely the warn-then-fail-anyway behavior D-52's
 	 * *Rejected* block forbids. A deploying verb reads this field and fails.
-	 * `launchToCompose` itself never throws for Launchfile content — it is
-	 * exported public API and a pure generator. The one exception is a
-	 * malformed `opts.appUrl`, an orchestrator input no `$app.*` can be
-	 * correctly derived from: it throws `InvalidAppUrlError` before any
-	 * generation (#290) — refuse, never degrade.
+	 * `launchToCompose` itself never degrades Launchfile content into a wrong
+	 * value — it is exported public API and a pure generator, and it throws in
+	 * exactly two cases, both "refuse, never degrade". A malformed
+	 * `opts.appUrl`, an orchestrator input no `$app.*` can be correctly
+	 * derived from, throws `InvalidAppUrlError` before any generation (#290).
+	 * A `$<resource>.<use>.<property>` reference on an entry that declares
+	 * `uses` but resolves to nothing throws `UnresolvedUseError` (D-65): the
+	 * alternative is the instance URL under a per-use name, which is the
+	 * silent cross-tenant failure `uses` exists to prevent.
 	 */
 	unsuppliedRequired: UnsuppliedRequiredVar[];
 	/**
