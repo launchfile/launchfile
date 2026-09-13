@@ -1,6 +1,7 @@
 import { readLaunch } from "@launchfile/sdk";
 import { describe, expect, it } from "vitest";
-import { translate } from "../translate.js";
+import type { PriorStack } from "../prior-stack.js";
+import { SecretRotationError, translate } from "../translate.js";
 
 function tf(yaml: string) {
 	return translate(readLaunch(yaml));
@@ -313,8 +314,12 @@ commands:
 
 	it("still emits vars the file supplies via default or generator", () => {
 		const { hcl, conformance } = tf(required);
-		expect(hcl).toContain('resource "aws_ssm_parameter" "app_default_HAS_DEFAULT"');
-		expect(hcl).toContain('resource "aws_ssm_parameter" "app_default_GENERATED"');
+		expect(hcl).toContain(
+			'resource "aws_ssm_parameter" "app_default_HAS_DEFAULT"',
+		);
+		expect(hcl).toContain(
+			'resource "aws_ssm_parameter" "app_default_GENERATED"',
+		);
 		expect(
 			conformance.gaps.some((g) => g.field.startsWith("env.HAS_DEFAULT")),
 		).toBe(false);
@@ -338,10 +343,12 @@ env:
 commands:
   start: "node server.js"
 `);
-		expect(hcl).toContain('resource "aws_ssm_parameter" "app_default_DATABASE_URL"');
-		expect(
-			conformance.gaps.some((g) => g.field === "env.DATABASE_URL"),
-		).toBe(false);
+		expect(hcl).toContain(
+			'resource "aws_ssm_parameter" "app_default_DATABASE_URL"',
+		);
+		expect(conformance.gaps.some((g) => g.field === "env.DATABASE_URL")).toBe(
+			false,
+		);
 	});
 
 	it("does NOT treat a binding on an unmappable resource as supplying the value", () => {
@@ -385,7 +392,9 @@ commands:
   start: "node server.js"
 `);
 		expect(hcl).not.toContain("app_default_CACHE_URL");
-		expect(conformance.gaps.some((g) => g.field === "env.CACHE_URL")).toBe(true);
+		expect(conformance.gaps.some((g) => g.field === "env.CACHE_URL")).toBe(
+			true,
+		);
 	});
 
 	it("still reports it when the component gaps for an unrelated reason", () => {
@@ -518,26 +527,33 @@ describe("host capabilities — grant/refuse (D-44, PROVIDERS.md §11)", () => {
 		translate(launch).conformance.gaps.map((g) => `${g.severity}:${g.field}`);
 
 	it("grades a required capability as a blocker", () => {
-		expect(gapsOf(mk("requires:\n  - host: { container_runtime: docker }\n"))).toContain(
-			"blocker:requires:host.container_runtime",
-		);
+		expect(
+			gapsOf(mk("requires:\n  - host: { container_runtime: docker }\n")),
+		).toContain("blocker:requires:host.container_runtime");
 	});
 
 	it("grades the entry form and the legacy block at the same severity", () => {
-		const entry = gapsOf(mk("requires:\n  - host: { container_runtime: docker }\n"));
+		const entry = gapsOf(
+			mk("requires:\n  - host: { container_runtime: docker }\n"),
+		);
 		const legacy = gapsOf(mk("host:\n  docker: required\n"));
-		const sev = (g: string[]) => g.filter((x) => x.startsWith("blocker:")).length;
+		const sev = (g: string[]) =>
+			g.filter((x) => x.startsWith("blocker:")).length;
 		expect(sev(entry)).toBe(sev(legacy));
 	});
 
 	it("grades an optional capability as nice-to-have, not a blocker", () => {
-		const gaps = gapsOf(mk("supports:\n  - host: { container_runtime: any }\n"));
+		const gaps = gapsOf(
+			mk("supports:\n  - host: { container_runtime: any }\n"),
+		);
 		expect(gaps).toContain("nice-to-have:supports:host.container_runtime");
 		expect(gaps.some((g) => g.startsWith("blocker:"))).toBe(false);
 	});
 
 	it("does not report a capability as a missing managed-service mapping", () => {
-		const gaps = gapsOf(mk("requires:\n  - host: { container_runtime: docker }\n"));
+		const gaps = gapsOf(
+			mk("requires:\n  - host: { container_runtime: docker }\n"),
+		);
 		expect(gaps).not.toContain("workaround:requires:host");
 	});
 
@@ -720,5 +736,226 @@ env:
 	it("stays silent for a file that references no per-endpoint property", () => {
 		const { conformance } = tf(GITEA.replace(/\$app\.endpoints\.\w+\.\w+/g, "$app.url"));
 		expect(conformance.gaps.some((g) => g.field.startsWith("$app.endpoints."))).toBe(false);
+	});
+});
+
+// D-49 requires a minted value to survive; Terraform cannot migrate state across
+// a resource-type change, so re-minting a pre-D-47 `random_password` secret as
+// `random_bytes` would destroy it. Preserve it, or refuse — never rotate silently.
+describe("translate — minted secrets survive a provider upgrade (D-49)", () => {
+	const appSecret = `
+version: launch/v1
+name: app
+runtime: node
+secrets:
+  session:
+    generator: secret
+env:
+  SESSION_SECRET:
+    default: $secrets.session
+commands:
+  start: "node server.js"
+`;
+
+	const envSecret = `
+version: launch/v1
+name: app
+runtime: node
+env:
+  SESSION_SECRET:
+    generator: secret
+    sensitive: true
+commands:
+  start: "node server.js"
+`;
+
+	function withPrior(yaml: string, generators: Record<string, string>) {
+		return translate(readLaunch(yaml), {
+			priorStack: {
+				generators: generators as PriorStack["generators"],
+				source: "terraform.tfstate",
+			},
+		});
+	}
+
+	it("keeps an app-wide secret already minted as random_password", () => {
+		const { hcl, preservedSecrets } = withPrior(appSecret, {
+			lf_secret_session: "random_password",
+		});
+		expect(hcl).toContain('resource "random_password" "lf_secret_session"');
+		expect(hcl).not.toContain('resource "random_bytes" "lf_secret_session"');
+		expect(hcl).toContain("${random_password.lf_secret_session.result}");
+		expect(preservedSecrets).toEqual(["random_password.lf_secret_session"]);
+	});
+
+	it("emits the preserved resource byte-for-byte as the pre-D-47 block", () => {
+		const { hcl } = withPrior(appSecret, {
+			lf_secret_session: "random_password",
+		});
+		expect(hcl).toContain(
+			'resource "random_password" "lf_secret_session" {\n  length = 32\n  special = false\n}',
+		);
+	});
+
+	it("never writes a preserved value as a literal into the HCL", () => {
+		// The resource stays and Terraform keeps the value in its own state; the
+		// generated .tf is committed to a repo and is not a secret store.
+		const { hcl } = withPrior(appSecret, {
+			lf_secret_session: "random_password",
+		});
+		const blockBody = hcl.slice(
+			hcl.indexOf('resource "random_password" "lf_secret_session"'),
+		);
+		expect(blockBody.slice(0, blockBody.indexOf("}"))).not.toMatch(
+			/result|value|override/,
+		);
+	});
+
+	it("keeps a component env secret already minted as random_password", () => {
+		const { hcl, preservedSecrets } = withPrior(envSecret, {
+			app_default_SESSION_SECRET_gen: "random_password",
+		});
+		expect(hcl).toContain(
+			'resource "random_password" "app_default_SESSION_SECRET_gen"',
+		);
+		expect(hcl).toContain(".result}");
+		expect(preservedSecrets).toEqual([
+			"random_password.app_default_SESSION_SECRET_gen",
+		]);
+	});
+
+	it("records the preserved secret as a gap — it is not the D-47 output", () => {
+		const { conformance } = withPrior(appSecret, {
+			lf_secret_session: "random_password",
+		});
+		const gap = conformance.gaps.find((g) => g.field === "secrets.session");
+		expect(gap?.severity).toBe("workaround");
+		expect(gap?.reason).toContain("D-49");
+		expect(gap?.suggestion).toContain("terraform state rm");
+	});
+
+	it("maps the secret to the resource it actually emitted", () => {
+		const preserved = withPrior(appSecret, {
+			lf_secret_session: "random_password",
+		});
+		expect(
+			preserved.conformance.mapped.find((m) => m.field === "secrets.session")
+				?.target,
+		).toBe("random_password");
+		const fresh = translate(readLaunch(appSecret));
+		expect(
+			fresh.conformance.mapped.find((m) => m.field === "secrets.session")
+				?.target,
+		).toBe("random_bytes");
+	});
+
+	it("mints a new secret under D-47 — the fix is not retroactive to the shape", () => {
+		// A stack that exists but has never held this secret.
+		const { hcl, preservedSecrets } = withPrior(appSecret, {
+			lf_secret_other: "random_password",
+		});
+		expect(hcl).toMatch(
+			/resource "random_bytes" "lf_secret_session" \{\s*\n\s*length = 32/,
+		);
+		expect(preservedSecrets).toEqual([]);
+	});
+
+	it("leaves an already-conforming secret alone", () => {
+		const { hcl, preservedSecrets } = withPrior(appSecret, {
+			lf_secret_session: "random_bytes",
+		});
+		expect(hcl).toContain('resource "random_bytes" "lf_secret_session"');
+		expect(preservedSecrets).toEqual([]);
+	});
+
+	it("refuses when the minted value cannot be preserved, naming the variable", () => {
+		const uuidNow = `
+version: launch/v1
+name: app
+runtime: node
+secrets:
+  session:
+    generator: uuid
+commands:
+  start: "node server.js"
+`;
+		expect(() =>
+			withPrior(uuidNow, { lf_secret_session: "random_password" }),
+		).toThrow(SecretRotationError);
+
+		try {
+			withPrior(uuidNow, { lf_secret_session: "random_password" });
+			expect.unreachable("translate must refuse");
+		} catch (err) {
+			const e = err as SecretRotationError;
+			expect(e.site).toEqual({ app: "app", variable: "session" });
+			expect(e.address).toBe("random_password.lf_secret_session");
+			expect(e.message).toContain("Refusing to translate app");
+			expect(e.message).toContain("session");
+			expect(e.message).toContain(
+				"terraform state rm 'random_password.lf_secret_session'",
+			);
+			expect(e.message).toContain("Nothing was written.");
+		}
+	});
+
+	it("names the component when the refusal is a component env var", () => {
+		const uuidEnv = `
+version: launch/v1
+name: app
+runtime: node
+components:
+  web:
+    runtime: node
+    env:
+      NODE_ID:
+        generator: uuid
+    commands:
+      start: "node server.js"
+`;
+		try {
+			withPrior(uuidEnv, { app_web_NODE_ID_gen: "random_bytes" });
+			expect.unreachable("translate must refuse");
+		} catch (err) {
+			const e = err as SecretRotationError;
+			expect(e.site).toEqual({
+				app: "app",
+				component: "web",
+				variable: "NODE_ID",
+			});
+			expect(e.message).toContain("component web");
+			expect(e.message).toContain("NODE_ID");
+		}
+	});
+
+	it("lets a port change type — D-49 exempts an allocation", () => {
+		const { hcl } = withPrior(appSecret, {
+			lf_secret_session: "random_integer",
+		});
+		expect(hcl).toContain('resource "random_bytes" "lf_secret_session"');
+	});
+
+	it("leaves the RDS master password alone — a resource credential, not D-47 output", () => {
+		const withDb = `
+version: launch/v1
+name: app
+runtime: node
+requires:
+  - type: postgres
+env:
+  SESSION_SECRET:
+    generator: secret
+commands:
+  start: "node server.js"
+`;
+		// The RDS password is itself a random_password in the prior stack; it is not
+		// a generator: value, so the preserve/refuse rule must not touch it.
+		const { hcl, preservedSecrets } = withPrior(withDb, {
+			app_postgres_pw: "random_password",
+			app_default_SESSION_SECRET_gen: "random_bytes",
+		});
+		expect(hcl).toContain('resource "random_password" "app_postgres_pw"');
+		expect(hcl).toContain("length = 24");
+		expect(preservedSecrets).toEqual([]);
 	});
 });

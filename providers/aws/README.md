@@ -55,6 +55,34 @@ same `$`-expression resolves to a live AWS address:
 - `$components.<name>.url` → `http://${aws_instance.<name>.private_ip}:<port>`
 - `$storage.<name>.path` → the declared mount path
 
+## Minted secrets survive a re-translate
+
+A `generator:` value is minted **once** and then preserved (D-49). In Terraform
+the value lives in state under a resource's *type and name*, and no `moved` block
+bridges a type change — so re-emitting the same secret as a different `random_*`
+resource destroys it on the next `apply`. Anything encrypted under the old value
+becomes unreadable.
+
+So `translate` reads the output directory before it emits. It looks at
+`terraform.tfstate`, then at the `main.tf` it wrote last time, and takes **only
+resource types and names** — never a value, which is why no secret is ever
+written into the generated HCL.
+
+| What it finds | What it does |
+|---|---|
+| nothing — a fresh stack | mints under D-47: `random_bytes`, 32 bytes as 64 hex characters |
+| the same resource type | emits it unchanged |
+| a pre-D-47 `random_password` under a `generator: secret` | **preserves** it — keeps emitting `random_password`, so `plan` shows no diff and the deployed value survives. Reported as a gap in `CONFORMANCE.md`: the value is the old 32 alphanumeric characters, not the D-47 output |
+| any other type change over a minted value | **refuses** — prints the app, the scope, the variable and the re-key steps, writes nothing, exits 1 |
+
+`generator: port` is exempt, per D-49: a port is an allocation, not an identity.
+The RDS master password is not `generator:` output either — it is a resource
+credential (D-7) and is untouched by this rule.
+
+To take the D-47 output on an existing stack, re-key deliberately: back up
+anything encrypted under the current value, `terraform state rm` the resource,
+re-translate, `apply`, then re-key the app.
+
 ## Conformance report
 
 ```bash
