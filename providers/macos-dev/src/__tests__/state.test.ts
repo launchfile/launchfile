@@ -86,6 +86,41 @@ describe("state persistence of processes (issue #49)", () => {
 	});
 });
 
+describe("state persistence of the publication context (D-58, #386)", () => {
+	async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
+		const dir = await mkdtemp(join(tmpdir(), "launchfile-state-"));
+		try {
+			return await fn(dir);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	}
+
+	it("round-trips appUrl and the primary endpoint's ports key together", async () => {
+		await withTempDir(async (dir) => {
+			const state = initState("my-app", "name: my-app");
+			state.appUrl = "https://notes.example.com";
+			state.primaryEndpoint = "web";
+			await saveState(dir, state);
+
+			const loaded = await loadState(dir);
+			expect(loaded?.appUrl).toBe("https://notes.example.com");
+			expect(loaded?.primaryEndpoint).toBe("web");
+		});
+	});
+
+	it("loads a state.json without a primaryEndpoint key (every key prints localhost)", async () => {
+		await withTempDir(async (dir) => {
+			const state = initState("my-app", "name: my-app");
+			expect("primaryEndpoint" in state).toBe(false);
+			await saveState(dir, state);
+
+			const loaded = await loadState(dir);
+			expect(loaded?.primaryEndpoint).toBeUndefined();
+		});
+	});
+});
+
 describe("state persistence of env-level generator values (D-49, #186)", () => {
 	async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
 		const dir = await mkdtemp(join(tmpdir(), "launchfile-state-"));
