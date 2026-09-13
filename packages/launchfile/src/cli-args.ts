@@ -19,8 +19,9 @@ export const VALUE_FLAGS: ReadonlySet<string> = new Set([
 
 /**
  * Flags that are bare booleans — present or absent, never `--flag=value`.
- * Every long flag `cli.ts` reads is in exactly one of the two tables; a boolean
- * flag missing from this one silently accepts an ignored value (#485).
+ * Every long flag `cli.ts` reads is in exactly one of the two tables, and
+ * their union is the allowlist `unknownFlags` checks: a flag in neither is
+ * refused before dispatch (#485, #510).
  */
 export const BOOLEAN_FLAGS: ReadonlySet<string> = new Set([
 	"docker",
@@ -54,6 +55,74 @@ export function valuedBooleanFlag(args: readonly string[]): string | undefined {
 		if (BOOLEAN_FLAGS.has(flag)) return flag;
 	}
 	return undefined;
+}
+
+/**
+ * Every long flag in argv that neither table declares, as bare names in
+ * argv order — `--name` and `--name=value` forms both count. The token after
+ * a `VALUE_FLAGS` flag is its value and is skipped, the same rule
+ * `getPositional` applies, so `--name --typo` reports nothing here (and
+ * `--name` then refuses the value). Single-dash tokens are not judged: the
+ * `-x` aliases are their own question (#529). The caller refuses the first
+ * result and never dispatches — after an unknown flag `getPositional` does not
+ * skip, so `up --typo xyz .` would otherwise target `xyz` (#510).
+ */
+export function unknownFlags(args: readonly string[]): string[] {
+	const unknown: string[] = [];
+	for (let i = 0; i < args.length; i++) {
+		const arg = args[i]!;
+		if (!arg.startsWith("--")) continue;
+		const eq = arg.indexOf("=");
+		const name = eq === -1 ? arg.slice(2) : arg.slice(2, eq);
+		if (VALUE_FLAGS.has(name)) {
+			if (eq === -1) i++;
+			continue;
+		}
+		if (BOOLEAN_FLAGS.has(name)) continue;
+		unknown.push(name);
+	}
+	return unknown;
+}
+
+/**
+ * The one declared flag an unknown name most plausibly meant, or undefined
+ * when none fits or several fit equally. A candidate fits when one name is a
+ * prefix of the other (`stor` → `storage`, `storage-dir` → `storage`) or the
+ * edit distance is at most 2 (`storagex`, `components`, `jsonn`). Ties yield
+ * nothing: a guess between `--detach` and `--detached` would be the silent
+ * correction the refusal exists to avoid.
+ */
+export function suggestFlag(name: string): string | undefined {
+	let best: string | undefined;
+	let bestDistance = Number.POSITIVE_INFINITY;
+	let tied = false;
+	for (const candidate of [...VALUE_FLAGS, ...BOOLEAN_FLAGS]) {
+		const distance = editDistance(name, candidate);
+		const prefix = candidate.startsWith(name) || name.startsWith(candidate);
+		if (!prefix && distance > 2) continue;
+		if (distance < bestDistance) {
+			best = candidate;
+			bestDistance = distance;
+			tied = false;
+		} else if (distance === bestDistance) {
+			tied = true;
+		}
+	}
+	return tied ? undefined : best;
+}
+
+/** Levenshtein distance — insertions, deletions and substitutions each cost 1. */
+function editDistance(a: string, b: string): number {
+	let previous = Array.from({ length: b.length + 1 }, (_, j) => j);
+	for (let i = 1; i <= a.length; i++) {
+		const current = [i];
+		for (let j = 1; j <= b.length; j++) {
+			const substitution = previous[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1);
+			current[j] = Math.min(previous[j]! + 1, current[j - 1]! + 1, substitution);
+		}
+		previous = current;
+	}
+	return previous[b.length]!;
 }
 
 export function hasFlag(args: readonly string[], flag: string): boolean {
