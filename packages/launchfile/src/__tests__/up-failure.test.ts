@@ -296,4 +296,42 @@ describe("the macOS branch's try-split", () => {
 		expect(printed).not.toContain("macOS native provider not available.");
 		expect(printed).toContain("Captured.");
 	});
+
+	it("records a health-gate failure as unhealthy — the processes are left running (#376)", async () => {
+		const fake = {
+			launchUp: () =>
+				Promise.reject(launchError("health", "component(s) web did not become healthy within 60s")),
+		} as unknown as typeof import("@launchfile/macos-dev");
+
+		await expect(
+			handleUp(
+				projectDir,
+				{ native: true },
+				{ importMacos: async () => fake, indexDir, recordDir },
+			),
+		).rejects.toThrow("did not become healthy");
+
+		const entries = Object.values((await index()).deployments);
+		expect(entries).toHaveLength(1);
+		expect(entries[0]!.provider).toBe("macos");
+		expect(entries[0]!.status).toBe("unhealthy");
+		expect(entries[0]!.source).toBe(projectDir);
+		expect(output.join("\n")).toContain("recorded as unhealthy");
+	});
+
+	it("records nothing for a failure before any process exists", async () => {
+		const fake = {
+			launchUp: () => Promise.reject(launchError("release", "release [web] failed")),
+		} as unknown as typeof import("@launchfile/macos-dev");
+
+		await expect(
+			handleUp(
+				projectDir,
+				{ native: true },
+				{ importMacos: async () => fake, indexDir, recordDir },
+			),
+		).rejects.toThrow("release [web] failed");
+
+		expect(Object.values((await index()).deployments)).toHaveLength(0);
+	});
 });
