@@ -47,6 +47,8 @@ components:
     image: acme/sidecar:1
     env:
       UPSTREAM: $components.gitea.url
+      UPSTREAM_WEB: $components.gitea.web.url
+      UPSTREAM_WEB_PROTOCOL: $components.gitea.web.protocol
       APP_URL: $app.url
 `;
 
@@ -91,6 +93,10 @@ describe("the binding is inactive unless it is selected (D-61 rule 1)", () => {
 		expect(doc.services["gitea-sidecar"]!.environment!.UPSTREAM).toBe(
 			"http://gitea-gitea:3000",
 		);
+		expect(doc.services["gitea-sidecar"]!.environment!.UPSTREAM_WEB).toBe(
+			"http://gitea-gitea:3000",
+		);
+		expect(doc.services["gitea-sidecar"]!.environment!.UPSTREAM_WEB_PROTOCOL).toBe("http");
 		expect(doc.services["gitea-sidecar"]!.environment!.APP_URL).toMatch(/^http:\/\//);
 	});
 });
@@ -110,6 +116,13 @@ describe("a selected, satisfied binding activates (D-61 rules 2 and 3)", () => {
 		expect(doc.services["gitea-sidecar"]!.environment!.UPSTREAM).toBe(
 			"https://gitea-gitea:3000",
 		);
+	});
+
+	it("gives the named-endpoint form the same effective listener (D-66 rule 3)", () => {
+		const { doc } = compose(GITEA, { resources: SELECTED });
+		const env = doc.services["gitea-sidecar"]!.environment!;
+		expect(env.UPSTREAM_WEB).toBe("https://gitea-gitea:3000");
+		expect(env.UPSTREAM_WEB_PROTOCOL).toBe("https");
 	});
 
 	it("gives `$app.url` the effective protocol when the provider publishes it", () => {
