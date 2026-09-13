@@ -142,6 +142,7 @@ export {
 	formatUseKey,
 	parseUseKey,
 	useKey,
+	useKeyOf,
 	useKeys,
 } from "./uses.js";
 export { writeLaunch } from "./writer.js";

@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { declaredUse, formatUseKey, parseUseKey, useKey, useKeys } from "../uses.js";
+import { declaredUse, formatUseKey, parseUseKey, useKey, useKeyOf, useKeys } from "../uses.js";
 
 describe("declaredUse", () => {
 	it("decodes a bare token as an unnamed use", () => {
@@ -20,8 +20,15 @@ describe("useKey / useKeys", () => {
 	it("keys a bare token by the token and a named use by token.name", () => {
 		expect(useKey("db")).toBe("db");
 		expect(useKey({ db: "cache" })).toBe("db.cache");
-		expect(useKey({ use: "db", name: "sessions" })).toBe("db.sessions");
-		expect(useKey({ use: "pubsub" })).toBe("pubsub");
+	});
+
+	it("keys a decoded use through useKeyOf, and keys a token literally named `use` as an item, never as decoded", () => {
+		expect(useKeyOf({ use: "db", name: "sessions" })).toBe("db.sessions");
+		expect(useKeyOf({ use: "pubsub" })).toBe("pubsub");
+		// A provider-defined token may be spelled `use`; `{ use: a }` is that
+		// token named `a`, not an already-decoded `{ use: "a" }`.
+		expect(useKey({ use: "a" })).toBe("use.a");
+		expect(useKeys([{ use: "a" }, { use: "b" }])).toEqual(["use.a", "use.b"]);
 	});
 
 	it("keys a whole list in declaration order, and an absent list as empty", () => {

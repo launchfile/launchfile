@@ -29,13 +29,20 @@ export function declaredUse(item: UseDeclaration): DeclaredUse {
 	return entry ? { use: entry[0], name: entry[1] } : { use: "" };
 }
 
-/** The use key of one item: `db` for a bare token, `db.cache` for `{ db: cache }`. */
-export function useKey(item: UseDeclaration | DeclaredUse): string {
-	const decoded =
-		typeof item === "string" || !("use" in item) ? declaredUse(item) : item;
-	return decoded.name === undefined
-		? decoded.use
-		: `${decoded.use}.${decoded.name}`;
+/** The use key of a decoded use: `db` when unnamed, `db.cache` when named. */
+export function useKeyOf({ use, name }: DeclaredUse): string {
+	return name === undefined ? use : `${use}.${name}`;
+}
+
+/**
+ * The use key of one `uses` item as written: `db` for a bare token, `db.cache`
+ * for `{ db: cache }`. The item is always the file's spelling — a map keyed
+ * `use` is a provider-defined token named `use`, never a decoded value — so
+ * `{ use: a }` keys as `use.a`. A decoded {@link DeclaredUse} takes
+ * {@link useKeyOf}.
+ */
+export function useKey(item: UseDeclaration): string {
+	return useKeyOf(declaredUse(item));
 }
 
 /** The use keys of a `uses` list, in declaration order; empty for an entry that declares none. */

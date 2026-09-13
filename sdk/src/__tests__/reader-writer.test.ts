@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readLaunch } from "../reader.js";
+import { useKeys } from "../uses.js";
 import { writeLaunch } from "../writer.js";
 
 /*---
@@ -187,6 +188,17 @@ requires:
 			{ topic: "orders" },
 			{ topic: "refunds" },
 		]);
+	});
+
+	it("reads a provider-defined token spelled `use` as that token, named — never as a decoded value", () => {
+		const result = readLaunch(`
+name: app
+requires:
+  - type: kafka
+    uses: [{use: a}, {use: b}]
+`);
+		expect(result.components.default?.requires?.[0]?.uses).toEqual([{ use: "a" }, { use: "b" }]);
+		expect(useKeys(result.components.default?.requires?.[0]?.uses)).toEqual(["use.a", "use.b"]);
 	});
 
 	// UC-30: Build shorthand
