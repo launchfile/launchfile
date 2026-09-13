@@ -132,17 +132,90 @@ isExpression("$$escaped");      // false (literal $)
 
 ## API
 
+Every value export of `src/index.ts` is either a row below or an entry in
+`EXCLUDED_EXPORTS` (`scripts/check-readme-exports.ts`, with a one-line reason —
+mostly CLI-command implementations and the provider error-context vocabulary).
+`bun run check:exports` (wired as a `pretest` hook) fails `bun run test` — and
+CI's `sdk` job — if a value export is undocumented, or if a row/exclusion goes
+stale.
+
+### Parse, validate, serialize
+
 | Function | Description |
 |----------|-------------|
 | `readLaunch(yaml)` | Parse YAML string → validated, normalized `NormalizedLaunch` |
+| `parseLaunchYaml(yaml)` | Parse YAML string → raw, un-normalized, un-validated data. Used internally by `readLaunch`; exposed for callers that need the document before validation strips unrecognized keys |
 | `validateLaunch(data)` | Validate a parsed object → `NormalizedLaunch` |
 | `writeLaunch(launch)` | Serialize `NormalizedLaunch` → compact YAML string |
+| `LaunchSchema` | Zod schema for direct validation |
+| `parseRepository(repository)` | Split a `repository` value at its `#` fragment → `{ url, ref }` |
+
+### Expressions
+
+| Function | Description |
+|----------|-------------|
 | `parseExpression(value)` | Parse a `$`-expression into an AST |
 | `resolveExpression(value, context)` | Resolve expression against a context → string |
 | `isExpression(value)` | Check if a string contains `$` references |
 | `parseDotPath(path)` | Parse `"a.b.c"` → `["a", "b", "c"]` |
-| `parseRepository(repository)` | Split a `repository` value at its `#` fragment → `{ url, ref }` |
-| `LaunchSchema` | Zod schema for direct validation |
+| `deriveAppUrlProperties(url)` | Split a URL into the `{ authority, scheme, tls }` triple `$app.*` expressions resolve against |
+
+### Component selection
+
+| Function | Description |
+|----------|-------------|
+| `selectComponents(launch, requested)` | Resolve a requested component/resource name list against the launch → known, unknown, and resource names |
+| `selectionClosure(launch, requested)` | `selectComponents`, extended with the D-41 dependency-closure start set |
+
+### Linting
+
+`validate` runs these; call them directly to build a custom check.
+
+| Function | Description |
+|----------|-------------|
+| `lintLaunch(launch, opts?)` | Run every structural/portability lint over a normalized launch → warning strings |
+| `lintDeprecations(launch)` | Report deprecated fields present in the file (P-14/D-42), each carrying migration guidance |
+| `lintDurations(launch)` | Check every duration-valued field against the ratified duration grammar (P-9) |
+| `lintUnknownStorageKeys(raw)` | Check the raw (pre-normalization) document for `storage:` keys the schema doesn't recognize |
+| `DURATION_PATTERN` | The duration grammar regex every duration field is checked against (P-9) |
+| `isValidDuration(value)` | True when `value` matches `DURATION_PATTERN` |
+| `parseDurationMs(value)` | Parse a duration string (`"30s"`, `"5m"`, …) → milliseconds |
+
+### Environment, storage, and host capabilities
+
+| Function | Description |
+|----------|-------------|
+| `unsuppliedRequiredEnv(component, suppliedKeys)` | List the component's `required:` variables that no value source in the file actually supplies |
+| `indexOperatorStoragePaths(launch, suppliedPaths)` | Index operator-supplied storage paths against the launch's `content: operator` volumes (D-50), for per-volume lookup |
+| `UnboundOperatorStorageError` | Thrown when a `content: operator` volume has no supplied path (D-50 row 2) |
+| `MissingOperatorStoragePathError` | Thrown when an operator-supplied storage path does not exist or is not readable on the host (D-50 row 3); the directory is never created |
+| `collectHostCapabilities(launch)` | Collect the app's requested host capabilities (D-44) as `"name=value (required\|optional)"` strings |
+| `collectOperatorStorage(launch)` | Collect the volumes marked `content: operator` (D-50) as `"component.volume"` strings |
+| `RESOURCE_PROPERTY_VOCABULARY` | Standard resource property vocabulary by resource type (SPEC.md § Resource Property Vocabulary, D-46) |
+
+### Source mode
+
+| Function | Description |
+|----------|-------------|
+| `resolveSourceRunCommand(component)` | Resolve which command runs a source-mode component: `commands.dev` wins, then `commands.start` — but `image` (no `dev`) returns `undefined` rather than falling back to `start` |
+| `resolveSourcePrepareCommand(component)` | Resolve which command prepares a source-mode component (`commands.install` → `commands.build`) |
+
+### Deployment state
+
+A pure event-sourced state model — fold `LaunchEvent`s into a `DeploymentState`,
+diff two states back into events, and resolve `$`-references against a state.
+
+| Function | Description |
+|----------|-------------|
+| `reduce(state, event, at?)` | Fold one `LaunchEvent` into `DeploymentState` → the next state |
+| `diff(prev, next)` | Compare two `DeploymentState`s → the `LaunchEvent`s that would fold `prev` into `next` |
+| `resolveRef(state, ref, vantage)` | Resolve a `$`-reference against a `DeploymentState` → string (never throws on an unresolved reference) |
+
+### Toolchain detection
+
+| Function | Description |
+|----------|-------------|
+| `extractToolchainVersions(repoDir)` | Discover per-language toolchain versions declared in a repo checkout (`package.json`, `.tool-versions`, …) → `Promise<ToolchainVersions>` |
 
 ## Types
 
