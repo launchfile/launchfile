@@ -32,6 +32,8 @@ import {
 	getPositional as argsGetPositional,
 	flagPresent as argsFlagPresent,
 	valuedBooleanFlag,
+	unknownFlags,
+	suggestFlag,
 	parseStoragePairs,
 } from "./cli-args.js";
 
@@ -158,6 +160,20 @@ async function main(): Promise<void> {
 	const valued = valuedBooleanFlag(args);
 	if (valued !== undefined) {
 		console.error(`--${valued} takes no value, e.g. --${valued}`);
+		process.exit(1);
+	}
+
+	// A long flag neither table declares is refused on every verb, before
+	// --version/--help and before any target resolves: nothing downstream can
+	// tell a typo'd optional flag from an omitted one, and the token after it
+	// would be read as the target (#510).
+	const [unknown] = unknownFlags(args);
+	if (unknown !== undefined) {
+		const nearest = suggestFlag(unknown);
+		console.error(
+			`no such flag --${unknown}${nearest ? ` — did you mean --${nearest}?` : ""}`,
+		);
+		console.error("Run `launchfile --help` for usage.");
 		process.exit(1);
 	}
 

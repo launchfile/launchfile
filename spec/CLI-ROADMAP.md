@@ -13,7 +13,7 @@ launchfile <verb> [target] [flags]
 ```
 VERB          TARGET              FLAGS                         PHASE
 ────────────────────────────────────────────────────────────────────
-up            [slug|path]         --docker/--native/-d/--dry-run/--name/--storage  1 ✓
+up            [slug|path]         --docker/--native/-d/--dry-run/--name/--storage/--url  1 ✓
 down          [id|slug|name]      --destroy                       1 ✓
 status        [id|slug|name]                                      1 ✓
 logs          [id|slug|name]      --follow                        1 ✓
@@ -32,6 +32,27 @@ catalog       [search]                                            2
 scale         <id|name>           --count                         3
 resources     [id|name]                                           3
 ```
+
+## Flag Validation
+
+Every long flag the CLI reads is declared in one of two tables in
+`packages/launchfile/src/cli-args.ts` — `VALUE_FLAGS` (flags that take a
+value) and `BOOLEAN_FLAGS` (bare flags). Their union is the allowlist: a
+`--flag` or `--flag=value` in neither table is refused before dispatch, on
+every verb, with exit 1 and a message on stderr that names the flag and
+suggests the one nearest declared flag when exactly one fits (D-next).
+
+```bash
+$ launchfile up . --storagex vol=/srv/vol
+no such flag --storagex — did you mean --storage?
+Run `launchfile --help` for usage.
+```
+
+The check never auto-corrects and never proceeds: a typo'd optional flag such
+as `--url` is otherwise indistinguishable from an omitted one, and the token
+after an unknown flag would be read as the target. A boolean flag written as
+`--flag=value` is refused the same way (#485). Single-dash aliases (`-d`, `-f`)
+are not covered by the check (#529).
 
 ## Use Cases
 
