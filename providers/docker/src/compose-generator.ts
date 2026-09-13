@@ -1049,9 +1049,13 @@ export function launchToCompose(
 	// they describe one resource. The redis `db` index each key gets comes
 	// from one app-wide allocation that is stable across runs and identical on
 	// both reference providers (`allocateDbIndexes`). The named `database`
-	// uses of every SQL entry are pooled per type, because one server per type
-	// serves every entry of that type and its init script must create them
-	// all.
+	// uses are pooled per type from the entries this provider provisions —
+	// `requires` with nothing supplied for its key — because one server per
+	// type serves every such entry and its init script must create them all.
+	// A `supports` entry is never provisioned here and a supplied entry lives
+	// elsewhere, so neither adds a database to the server. A type with no
+	// factory pools too, harmlessly: nothing reads its pool, and the component
+	// is refused below.
 	const declaredUses: Record<string, string[]> = {};
 	const namedDatabasesByType: Record<string, string[]> = {};
 	for (const comp of Object.values(launch.components)) {
@@ -1062,6 +1066,10 @@ export function launchToCompose(
 			for (const useKey of useKeys(entry.uses)) {
 				if (!pooled.includes(useKey)) pooled.push(useKey);
 			}
+		}
+		for (const entry of comp.requires ?? []) {
+			if (entry.host || !entry.uses) continue;
+			if (opts.resources?.[entry.name ?? entry.type]) continue;
 			const perType = (namedDatabasesByType[entry.type] ??= []);
 			for (const name of namedDatabases(useKeys(entry.uses))) {
 				if (!perType.includes(name)) perType.push(name);

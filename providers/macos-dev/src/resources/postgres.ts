@@ -51,6 +51,25 @@ export class PostgresProvisioner implements ResourceProvisioner {
 		return this.#shellOk("pg_isready", ["-q"]);
 	}
 
+	/**
+	 * Whether `database` exists on the server. psql exits 0 whenever the query
+	 * ran, a zero-row SELECT included, so the exit code says nothing about
+	 * existence — only the `1` the row prints does. The caller validates the
+	 * name before it reaches the SQL here.
+	 */
+	async #databaseExists(port: number, database: string): Promise<boolean> {
+		const result = await this.#shell(
+			"psql",
+			[
+				...psqlArgs(port, "postgres"),
+				"-tAc",
+				`SELECT 1 FROM pg_database WHERE datname='${database}'`,
+			],
+			{ allowFailure: true, silent: true },
+		);
+		return result.exitCode === 0 && result.stdout.trim() === "1";
+	}
+
 	async provision(
 		req: NormalizedRequirement,
 		opts: ProvisionOpts,
@@ -113,12 +132,7 @@ export class PostgresProvisioner implements ResourceProvisioner {
 		);
 
 		// Create database (idempotent)
-		const dbExists = await this.#shellOk("psql", [
-			...psqlArgs(port, "postgres"),
-			"-tAc",
-			`SELECT 1 FROM pg_database WHERE datname='${dbName}'`,
-		]);
-		if (!dbExists) {
+		if (!(await this.#databaseExists(port, dbName))) {
 			await this.#shell(
 				"createdb",
 				["-h", DEFAULT_HOST, "-p", String(port), "-O", user, dbName],
@@ -158,12 +172,7 @@ export class PostgresProvisioner implements ResourceProvisioner {
 		const databases = (opts.databases ?? []).map((name) => namedDatabase(dbName, name));
 		for (const database of databases) {
 			assertSafeIdentifier(database, "database name");
-			const exists = await this.#shellOk("psql", [
-				...psqlArgs(port, "postgres"),
-				"-tAc",
-				`SELECT 1 FROM pg_database WHERE datname='${database}'`,
-			]);
-			if (!exists) {
+			if (!(await this.#databaseExists(port, database))) {
 				await this.#shell(
 					"createdb",
 					["-h", DEFAULT_HOST, "-p", String(port), "-O", user, database],

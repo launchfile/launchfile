@@ -908,6 +908,58 @@ requires:
 		expect(doc.configs).toBeUndefined();
 		expect(initOnlyDatabases).toEqual([]);
 	});
+
+	it("pools only from entries it provisions — a supports entry's named database never reaches the init script", () => {
+		// The supports entry is unfulfilled (nothing supplied), so its database
+		// belongs to no server this provider stands up.
+		const { doc, warnings, initOnlyDatabases } = compose(`
+name: app
+image: acme/app:1
+requires:
+  - type: postgres
+    uses: [{database: reports}]
+supports:
+  - type: postgres
+    name: analytics
+    uses: [{database: events}]
+`);
+		expect(refusals(warnings)).toEqual([]);
+		expect(warnings.some((w) => w.includes("optional resource analytics is not satisfied"))).toBe(true);
+		expect(doc.configs!["app-postgres-databases"]!.content).toBe(
+			'CREATE DATABASE "app_reports" OWNER "launchfile";\n',
+		);
+		expect(initOnlyDatabases[0]!.databases).toEqual(["app_reports"]);
+	});
+
+	it("pools nothing from a supplied requires entry — its databases live on the orchestrator's server", () => {
+		const { doc, warnings } = compose(
+			`
+name: app
+image: acme/app:1
+requires:
+  - type: postgres
+    uses: [{database: reports}]
+  - type: postgres
+    name: analytics
+    uses: [{database: events}]
+`,
+			{
+				resources: {
+					analytics: {
+						properties: {
+							url: "postgres://a:pw@pg.internal:5432/analytics",
+							"database.events.url": "postgres://a:pw@pg.internal:5432/analytics_events",
+							"database.events.name": "analytics_events",
+						},
+					},
+				},
+			},
+		);
+		expect(refusals(warnings)).toEqual([]);
+		expect(doc.configs!["app-postgres-databases"]!.content).toBe(
+			'CREATE DATABASE "app_reports" OWNER "launchfile";\n',
+		);
+	});
 });
 
 describe("supplied resources with named uses (D-56 rule 1)", () => {
@@ -958,6 +1010,29 @@ requires:
 		expect(doc.services.app).toBeUndefined();
 		expect(refusals(warnings)[0]).toContain(
 			"redis: db: sessions (the supplied resource lacks db.sessions.url, db.sessions.index)",
+		);
+	});
+
+	it("keeps a supplied db.<name>.index structural and scrubs the password inside db.<name>.url by pattern (D-56 rule 5, D-65)", () => {
+		clearRegisteredSecrets();
+		compose(APP, {
+			resources: {
+				redis: {
+					properties: {
+						url: "redis://app:pw-only-in-the-url@cache.internal:6379",
+						"db.cache.url": "redis://app:pw-only-in-the-url@cache.internal:6379/4",
+						"db.cache.index": "4",
+						"db.sessions.url": "redis://app:pw-only-in-the-url@cache.internal:6379/5",
+						"db.sessions.index": "5",
+					},
+				},
+			},
+		});
+		// A named index registered as a secret would mask every matching digit.
+		expect(redactSecrets("db 4 on port 6379, db 5 next")).toBe("db 4 on port 6379, db 5 next");
+		// Nothing registered the URL's password as a literal: only the pattern covers it.
+		expect(redactSecrets("redis://app:pw-only-in-the-url@cache.internal:6379/4")).toBe(
+			`redis://app:${REDACTED}@cache.internal:6379/4`,
 		);
 	});
 });
