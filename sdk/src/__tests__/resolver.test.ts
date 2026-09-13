@@ -1108,4 +1108,23 @@ describe("endpointProperties", () => {
 		expect(endpointProperties([{ protocol: "http", port: 3000 }], "web")).toEqual({});
 		expect(endpointProperties(undefined, "web")).toEqual({});
 	});
+
+	it("reads the effective listener under an active certificate binding (D-61 rule 2)", () => {
+		const provides = [
+			{ name: "web", protocol: "http" as const, port: 3000, tls: "server-cert" },
+			{ name: "ssh", protocol: "tcp" as const, port: 22 },
+		];
+		expect(endpointProperties(provides, "gitea", ["server-cert"])).toEqual({
+			"web.host": "gitea",
+			"web.port": 3000,
+			"web.protocol": "https",
+			"web.url": "https://gitea:3000",
+			"ssh.host": "gitea",
+			"ssh.port": 22,
+			"ssh.protocol": "tcp",
+		});
+		// Inactive — or never told about the binding — the declared values stand.
+		expect(endpointProperties(provides, "gitea", [])["web.url"]).toBe("http://gitea:3000");
+		expect(endpointProperties(provides, "gitea")["web.protocol"]).toBe("http");
+	});
 });

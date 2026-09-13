@@ -10,6 +10,7 @@
  *   no $            — literal string
  */
 
+import { effectiveListener } from "./effective-listener.js";
 import type { Provides } from "./types.js";
 import { formatUseKey } from "./uses.js";
 
@@ -195,6 +196,12 @@ const ENDPOINT_URL_SCHEMES: Partial<Record<Provides["protocol"], string>> = {
  * without a `name` contribute nothing — a name is the identity the reference
  * form uses (D-6). `url` appears only for a protocol that names a scheme.
  *
+ * `protocol` and `url` read the entry's *effective* listener (D-61 rule 2):
+ * with a bound certificate in `activeCertificates` they say `https`, exactly
+ * as the primary `$components.<name>.url` does. The port is the declared port
+ * either way. Omit `activeCertificates` on a provider that activates no
+ * binding — declared and effective are then the same values.
+ *
  * Providers share this so the same file answers the same way everywhere (P-5);
  * each supplies its own `host` — a compose service name, a private IP, a host
  * loopback address — and the port each endpoint is actually reachable on.
@@ -202,15 +209,17 @@ const ENDPOINT_URL_SCHEMES: Partial<Record<Provides["protocol"], string>> = {
 export function endpointProperties(
 	provides: Provides[] | undefined,
 	host: string,
+	activeCertificates?: ReadonlySet<string> | readonly string[],
 ): Record<string, string | number> {
 	const props: Record<string, string | number> = {};
 	for (const entry of provides ?? []) {
 		if (!entry.name) continue;
+		const listener = effectiveListener(entry, activeCertificates);
 		props[`${entry.name}.host`] = host;
-		props[`${entry.name}.port`] = entry.port;
-		props[`${entry.name}.protocol`] = entry.protocol;
-		const scheme = ENDPOINT_URL_SCHEMES[entry.protocol];
-		if (scheme) props[`${entry.name}.url`] = `${scheme}://${host}:${entry.port}`;
+		props[`${entry.name}.port`] = listener.port;
+		props[`${entry.name}.protocol`] = listener.protocol;
+		const scheme = ENDPOINT_URL_SCHEMES[listener.protocol];
+		if (scheme) props[`${entry.name}.url`] = `${scheme}://${host}:${listener.port}`;
 	}
 	return props;
 }
