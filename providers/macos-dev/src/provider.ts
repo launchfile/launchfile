@@ -25,6 +25,7 @@ import {
 	appEndpointReferences,
 	type NormalizedLaunch,
 	type NormalizedComponent,
+	useKeys,
 } from "@launchfile/sdk";
 
 import { checkPrereqs } from "./prereqs.js";
@@ -33,7 +34,7 @@ import {
 	httpsOriginSatisfied,
 	httpsOriginShortfall,
 } from "./https-origin.js";
-import { loadState, initState, saveState, ensureDirs } from "./state.js";
+import { loadState, initState, saveState, ensureDirs, withRecordedDbIndexes } from "./state.js";
 import {
 	declaredUses,
 	registerResource,
@@ -42,11 +43,16 @@ import {
 	resourceMapFromState,
 	generateSecrets,
 	resolveGenerators,
-	usesDb,
 	writeEnvFile,
 	type UnsuppliedRequiredEnv,
 } from "./env-writer.js";
-import { getProvisioner, uncoveredUses, type ResourceProperties } from "./resources/index.js";
+import {
+	allocateDbIndexes,
+	getProvisioner,
+	namedDatabases,
+	uncoveredUses,
+	type ResourceProperties,
+} from "./resources/index.js";
 import { allocatePorts } from "./port-allocator.js";
 import { getRuntimeInstaller } from "./runtimes/index.js";
 import { detectPackageManager } from "./lockfile-detect.js";
@@ -395,7 +401,7 @@ export function refusedResourceUses(
 		for (const req of component.requires ?? []) {
 			if (req.host || req.type === HTTPS_ORIGIN || !req.uses || !getProvisioner(req.type)) continue;
 			const resourceName = req.name ?? req.type;
-			for (const use of uncoveredUses(req.type, req.uses)) {
+			for (const use of uncoveredUses(req.type, useKeys(req.uses))) {
 				entries.push(`${resourceName}: ${use}`);
 			}
 		}
@@ -732,24 +738,22 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	state.secrets = await generateSecrets(launch.secrets, state.secrets);
 
 	// 6. Provision required resources. Each declared use's `<use>.<property>`
-	// keys join the provisioner's instance vocabulary in the map; a redis `db`
-	// use gets one numbered database per entry, allocated in declaration order
-	// across the app so it is stable between runs. A resource is provisioned
-	// once per name and registered from the pooled uses of every same-name
-	// entry (D-24: they describe one resource) — the set the resolver context
-	// below treats strictly — so the first entry seen cannot hide keys a later
-	// one declares.
+	// keys join the provisioner's instance vocabulary in the map; each redis
+	// `db` use key gets one numbered database from one app-wide allocation
+	// that is stable between runs and identical on both reference providers
+	// (`allocateDbIndexes`), and each named `database` use is one more
+	// database the SQL provisioner creates. A resource is provisioned once per
+	// name and registered from the pooled uses of every same-name entry (D-24:
+	// they describe one resource) — the set the resolver context below treats
+	// strictly — so the first entry seen cannot hide keys a later one declares.
 	const resourceMap: Record<string, ResourceProperties> = {};
 	const uses = declaredUses(launch);
-	const dbIndexes = new Map<string, number>();
-	const dbIndexOf = (resourceName: string): number => {
-		let index = dbIndexes.get(resourceName);
-		if (index === undefined) {
-			index = dbIndexes.size;
-			dbIndexes.set(resourceName, index);
-		}
-		return index;
-	};
+	const dbIndexes = allocateDbIndexes(launch);
+	const provisionOpts = (resourceName: string) => ({
+		appName: launch.name,
+		projectDir,
+		databases: namedDatabases(uses[resourceName] ?? []),
+	});
 
 	for (const [_compName, component] of Object.entries(launch.components)) {
 		for (const req of component.requires ?? []) {
@@ -769,7 +773,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 				);
 			}
 
-			const dbIndex = usesDb(req.type, resourceName, uses) ? dbIndexOf(resourceName) : undefined;
+			const indexes = dbIndexes[resourceName] ?? {};
 
 			if (opts.dryRun) {
 				console.log(`  [dry-run] Would provision ${req.type} as "${resourceName}"`);
@@ -778,18 +782,18 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 					resourceName,
 					uses,
 					{ url: "", host: "localhost", port: 0 }, // placeholder for dedup
-					dbIndex,
+					indexes,
 				);
 				continue;
 			}
 
 			process.stdout.write(`  \u2193 Provisioning ${req.type}...`);
 			const existing = state.resources[resourceName];
-			const result = await provisioner.provision(req, { appName: launch.name, projectDir }, existing);
-			resourceMap[resourceName] = registerResource(req.type, resourceName, uses, result.properties, dbIndex);
-			// The index rides along in state so `env` answers `db.*` with the
-			// database the running app was given.
-			state.resources[resourceName] = dbIndex === undefined ? result.state : { ...result.state, dbIndex };
+			const result = await provisioner.provision(req, provisionOpts(resourceName), existing);
+			resourceMap[resourceName] = registerResource(req.type, resourceName, uses, result.properties, indexes);
+			// The indexes ride along in state so `env` answers `db.*` with the
+			// databases the running app was given.
+			state.resources[resourceName] = withRecordedDbIndexes(result.state, indexes);
 			console.log(" done");
 		}
 
@@ -808,7 +812,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 				// left unfulfilled — bindings absent, said out loud — never refused
 				// (D-8). The same shortfall on `requires:` refused the component
 				// at step 2a-quinquies.
-				const uncovered = sup.uses ? uncoveredUses(sup.type, sup.uses) : [];
+				const uncovered = sup.uses ? uncoveredUses(sup.type, useKeys(sup.uses)) : [];
 				if (uncovered.length > 0) {
 					console.warn(
 						`  Warning: ${_compName}: optional resource ${resourceName} not satisfied — this provider ` +
@@ -817,7 +821,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 					);
 					continue;
 				}
-				const dbIndex = usesDb(sup.type, resourceName, uses) ? dbIndexOf(resourceName) : undefined;
+				const indexes = dbIndexes[resourceName] ?? {};
 
 				if (opts.dryRun) {
 					console.log(`  [dry-run] Would provision optional ${sup.type} as "${resourceName}"`);
@@ -826,7 +830,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 						resourceName,
 						uses,
 						{ url: "", host: "localhost", port: 0 },
-						dbIndex,
+						indexes,
 					);
 					continue;
 				}
@@ -834,9 +838,9 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 				try {
 					process.stdout.write(`  \u2193 Provisioning ${sup.type} (optional)...`);
 					const existing = state.resources[resourceName];
-					const result = await provisioner.provision(sup, { appName: launch.name, projectDir }, existing);
-					resourceMap[resourceName] = registerResource(sup.type, resourceName, uses, result.properties, dbIndex);
-					state.resources[resourceName] = dbIndex === undefined ? result.state : { ...result.state, dbIndex };
+					const result = await provisioner.provision(sup, provisionOpts(resourceName), existing);
+					resourceMap[resourceName] = registerResource(sup.type, resourceName, uses, result.properties, indexes);
+					state.resources[resourceName] = withRecordedDbIndexes(result.state, indexes);
 					console.log(" done");
 				} catch {
 					console.log(" skipped");

@@ -141,3 +141,53 @@ describe("PostgresProvisioner rejects unsafe values reused from state.json", () 
 		});
 	}
 });
+
+describe("PostgresProvisioner named `database` uses (SPEC.md § Resource uses)", () => {
+	it("creates each named database as <instance>_<name> through the same createdb path, owned by the app user, and records them in state", async () => {
+		const { commands, deps } = recorder(
+			(cmd) => !cmd.includes("datname='launchfile_my_app_"),
+		);
+		const provisioner = new PostgresProvisioner(deps);
+
+		const { state } = await provisioner.provision(REQ, { ...OPTS, databases: ["audit-log", "reports"] });
+
+		// The app's own database already exists here; only the named ones are created.
+		expect(commands.filter((c) => c.startsWith("createdb"))).toEqual([
+			"createdb -h localhost -p 5432 -O launchfile_my_app launchfile_my_app_audit_log",
+			"createdb -h localhost -p 5432 -O launchfile_my_app launchfile_my_app_reports",
+		]);
+		expect(state.databases).toEqual(["launchfile_my_app_audit_log", "launchfile_my_app_reports"]);
+	});
+
+	it("skips a named database that already exists, and records no list when none is named", async () => {
+		const { commands, deps } = recorder();
+		const provisioner = new PostgresProvisioner(deps);
+
+		await provisioner.provision(REQ, { ...OPTS, databases: ["reports"] });
+		expect(commands.filter((c) => c.startsWith("createdb"))).toEqual([]);
+		expect(commands).toContain("psql -h localhost -p 5432 postgres -tAc SELECT 1 FROM pg_database WHERE datname='launchfile_my_app_reports'");
+
+		const plain = await provisioner.provision(REQ, OPTS);
+		expect(plain.state).not.toHaveProperty("databases");
+	});
+
+	it("drops the named databases it created on destroy, skipping an unsafe stored name", async () => {
+		const { commands, deps } = recorder();
+		const provisioner = new PostgresProvisioner(deps);
+		const stored = {
+			type: "postgres",
+			name: "postgres",
+			port: 5432,
+			dbName: "launchfile_my_app",
+			user: "launchfile_my_app",
+			databases: ["launchfile_my_app_reports", "x; DROP DATABASE victim"],
+		} as ResourceState;
+
+		await provisioner.destroy(stored, { projectDir: "/tmp/lf-pg-test" });
+
+		expect(commands.filter((c) => c.startsWith("dropdb"))).toEqual([
+			"dropdb -h localhost --if-exists launchfile_my_app",
+			"dropdb -h localhost --if-exists launchfile_my_app_reports",
+		]);
+	});
+});

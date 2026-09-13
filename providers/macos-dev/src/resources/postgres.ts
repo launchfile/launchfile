@@ -24,6 +24,7 @@ import type {
 	ResourceProvisioner,
 	ShellRunner,
 } from "./types.js";
+import { namedDatabase } from "./uses.js";
 
 export type { ShellRunner };
 
@@ -148,6 +149,29 @@ export class PostgresProvisioner implements ResourceProvisioner {
 			}
 		}
 
+		// Named `database` uses (SPEC.md § Resource uses): one more database per
+		// name, `<instance>_<name>`, created the same way as the app's own.
+		// Security: a use name is schema-validated (^[a-z][a-z0-9-]*$) and the
+		// hyphens become underscores, so the identifier check cannot fail on a
+		// name that reached here through the parser; it guards the SQL below
+		// all the same.
+		const databases = (opts.databases ?? []).map((name) => namedDatabase(dbName, name));
+		for (const database of databases) {
+			assertSafeIdentifier(database, "database name");
+			const exists = await this.#shellOk("psql", [
+				...psqlArgs(port, "postgres"),
+				"-tAc",
+				`SELECT 1 FROM pg_database WHERE datname='${database}'`,
+			]);
+			if (!exists) {
+				await this.#shell(
+					"createdb",
+					["-h", DEFAULT_HOST, "-p", String(port), "-O", user, database],
+					{ allowFailure: true },
+				);
+			}
+		}
+
 		const url = `postgresql://${user}:${password}@${DEFAULT_HOST}:${port}/${dbName}`;
 
 		const properties: ResourceProperties = {
@@ -167,6 +191,7 @@ export class PostgresProvisioner implements ResourceProvisioner {
 			dbName,
 			user,
 			password,
+			...(databases.length > 0 ? { databases } : {}),
 		};
 
 		return { properties, state };
@@ -174,10 +199,11 @@ export class PostgresProvisioner implements ResourceProvisioner {
 
 	async destroy(state: ResourceState, _opts: DestroyOpts): Promise<void> {
 		// Security: state values come from disk (state.json) — validate before SQL interpolation
-		if (state.dbName && SAFE_IDENTIFIER.test(state.dbName)) {
+		for (const database of [state.dbName, ...(state.databases ?? [])]) {
+			if (!database || !SAFE_IDENTIFIER.test(database)) continue;
 			await this.#shell(
 				"dropdb",
-				["-h", DEFAULT_HOST, "--if-exists", state.dbName],
+				["-h", DEFAULT_HOST, "--if-exists", database],
 				{ allowFailure: true },
 			);
 		}

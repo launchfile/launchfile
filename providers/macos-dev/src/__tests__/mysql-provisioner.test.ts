@@ -148,3 +148,33 @@ describe("MysqlProvisioner.destroy", () => {
 		]);
 	});
 });
+
+describe("MysqlProvisioner named `database` uses (SPEC.md § Resource uses)", () => {
+	it("creates and grants each named database as <instance>_<name> the way it does the app's, and records them in state", async () => {
+		const { commands, deps } = recorder();
+		const provisioner = new MysqlProvisioner(deps);
+
+		const { state } = await provisioner.provision(REQ, { ...OPTS, databases: ["event-log"] });
+
+		expect(commands).toContain("mysql -h localhost -u root -e CREATE DATABASE IF NOT EXISTS `launchfile_my_app_event_log`;");
+		expect(commands).toContain(
+			"mysql -h localhost -u root -e GRANT ALL PRIVILEGES ON `launchfile_my_app_event_log`.* TO 'launchfile_my_app'@'localhost';",
+		);
+		expect(state.databases).toEqual(["launchfile_my_app_event_log"]);
+	});
+
+	it("drops the named databases it created on destroy, skipping an unsafe stored name", async () => {
+		const { commands, deps } = recorder();
+		const provisioner = new MysqlProvisioner(deps);
+
+		await provisioner.destroy(
+			state({ databases: ["launchfile_my_app_event_log", "x`; DROP DATABASE victim; -- `"] }),
+			DESTROY_OPTS,
+		);
+
+		expect(commands.filter((c) => c.includes("DROP DATABASE"))).toEqual([
+			"mysql -h localhost -u root -e DROP DATABASE IF EXISTS `launchfile_my_app`;",
+			"mysql -h localhost -u root -e DROP DATABASE IF EXISTS `launchfile_my_app_event_log`;",
+		]);
+	});
+});

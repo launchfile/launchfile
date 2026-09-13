@@ -18,6 +18,7 @@ import type {
 	ResourceProvisioner,
 	ShellRunner,
 } from "./types.js";
+import { namedDatabase } from "./uses.js";
 
 const DEFAULT_PORT = 3306;
 const DEFAULT_HOST = "localhost";
@@ -103,6 +104,31 @@ export class MysqlProvisioner implements ResourceProvisioner {
 			{ allowFailure: true },
 		);
 
+		// Named `database` uses (SPEC.md § Resource uses): one more database per
+		// name, `<instance>_<name>`, created and granted the same way as the
+		// app's own. Security: a use name is schema-validated
+		// (^[a-z][a-z0-9-]*$) and the hyphens become underscores, so the
+		// identifier check cannot fail on a name that reached here through the
+		// parser; it guards the SQL below all the same.
+		const databases = (opts.databases ?? []).map((name) => namedDatabase(dbName, name));
+		for (const database of databases) {
+			assertSafeIdentifier(database, "database name");
+			await this.#shell(
+				"mysql",
+				[...mysqlArgs(), "-e", `CREATE DATABASE IF NOT EXISTS \`${database}\`;`],
+				{ allowFailure: true },
+			);
+			await this.#shell(
+				"mysql",
+				[
+					...mysqlArgs(),
+					"-e",
+					`GRANT ALL PRIVILEGES ON \`${database}\`.* TO '${user}'@'${DEFAULT_HOST}';`,
+				],
+				{ allowFailure: true },
+			);
+		}
+
 		const url = `mysql://${user}:${password}@${DEFAULT_HOST}:${port}/${dbName}`;
 
 		const properties: ResourceProperties = {
@@ -122,6 +148,7 @@ export class MysqlProvisioner implements ResourceProvisioner {
 			dbName,
 			user,
 			password,
+			...(databases.length > 0 ? { databases } : {}),
 		};
 
 		return { properties, state };
@@ -129,10 +156,11 @@ export class MysqlProvisioner implements ResourceProvisioner {
 
 	async destroy(state: ResourceState, _opts: DestroyOpts): Promise<void> {
 		// Security: state values come from disk (state.json) — validate before SQL interpolation
-		if (state.dbName && SAFE_IDENTIFIER.test(state.dbName)) {
+		for (const database of [state.dbName, ...(state.databases ?? [])]) {
+			if (!database || !SAFE_IDENTIFIER.test(database)) continue;
 			await this.#shell(
 				"mysql",
-				[...mysqlArgs(), "-e", `DROP DATABASE IF EXISTS \`${state.dbName}\`;`],
+				[...mysqlArgs(), "-e", `DROP DATABASE IF EXISTS \`${database}\`;`],
 				{ allowFailure: true },
 			);
 		}
