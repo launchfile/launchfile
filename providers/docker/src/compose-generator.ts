@@ -23,10 +23,15 @@ import {
 	type StorageBind,
 	type UnboundOperatorVolume,
 	unsuppliedRequiredEnv,
+	useKeys,
 } from "@launchfile/sdk";
 import { intersects, subset, validRange } from "semver";
 import {
+	allocateDbIndexes,
 	coverUse,
+	type DbIndexes,
+	namedDatabase,
+	namedDatabases,
 	uncoveredProvisionedUses,
 	uncoveredSuppliedUses,
 	usePropertyKeys,
@@ -875,6 +880,23 @@ export interface InitOnlyExtensions {
 	extensions: string[];
 }
 
+/**
+ * A SQL backing service whose named `database` uses (SPEC.md § Resource uses)
+ * are created by an init script that only a first initialization runs — the
+ * same delivery, and the same limit, as `InitOnlyExtensions`. The caller
+ * resolves `volume` and warns when it already exists.
+ */
+export interface InitOnlyDatabases {
+	/** Component whose `requires:` entry created the backing service. */
+	component: string;
+	/** Generated compose service name (`<app>-postgres`). */
+	service: string;
+	/** Volume KEY as written in the compose file — resolve it before querying. */
+	volume: string;
+	/** Database names the init script creates, in the order it creates them. */
+	databases: string[];
+}
+
 /** A `required:` variable neither the Launchfile nor the operator supplied. */
 export interface UnsuppliedRequiredVar {
 	component: string;
@@ -963,6 +985,13 @@ export interface ComposeResult {
 	 * when it already exists — see `InitOnlyExtensions`.
 	 */
 	initOnlyExtensions: InitOnlyExtensions[];
+	/**
+	 * SQL services whose named `database` uses are delivered by an init script
+	 * that only a first initialization runs. Empty unless a postgres, mysql or
+	 * mariadb entry declares a named `database`. Checked and reported by the
+	 * caller exactly like `initOnlyExtensions` — see `InitOnlyDatabases`.
+	 */
+	initOnlyDatabases: InitOnlyDatabases[];
 }
 
 export function launchToCompose(
@@ -987,6 +1016,7 @@ export function launchToCompose(
 	const storageBinds: StorageBind[] = [];
 	const unboundOperatorVolumes: UnboundOperatorVolume[] = [];
 	const initOnlyExtensions: InitOnlyExtensions[] = [];
+	const initOnlyDatabases: InitOnlyDatabases[] = [];
 
 	// D-50 storage-path keys, indexed once. Only components this generator
 	// actually translates ask the index, so a skipped one's marked volume never
@@ -1012,28 +1042,36 @@ export function launchToCompose(
 	// across every component's requires/supports — the resource namespace is
 	// app-global — and an unmatched key has no type, so all of its
 	// non-structural properties register.
-	// The `uses` each entry declares, keyed like the resource namespace
-	// (`name ?? type`, app-global) and read before anything resolves: the
-	// resolver treats every resource listed here strictly (SPEC.md § Resource
-	// uses), and the redis `db` index each such resource gets is allocated in
-	// declaration order so it is stable across runs. Same-name entries pool
-	// their tokens — D-24 says they describe one resource.
+	// The use keys each entry declares (`db`, `db.cache`), keyed like the
+	// resource namespace (`name ?? type`, app-global) and read before anything
+	// resolves: the resolver treats every resource listed here strictly
+	// (SPEC.md § Resource uses). Same-name entries pool their keys — D-24 says
+	// they describe one resource. The redis `db` index each key gets comes
+	// from one app-wide allocation that is stable across runs and identical on
+	// both reference providers (`allocateDbIndexes`). The named `database`
+	// uses of every SQL entry are pooled per type, because one server per type
+	// serves every entry of that type and its init script must create them
+	// all.
 	const declaredUses: Record<string, string[]> = {};
-	const dbIndexes = new Map<string, number>();
+	const namedDatabasesByType: Record<string, string[]> = {};
 	for (const comp of Object.values(launch.components)) {
 		for (const entry of [...(comp.requires ?? []), ...(comp.supports ?? [])]) {
 			if (entry.host || !entry.uses) continue;
 			const key = entry.name ?? entry.type;
 			const pooled = (declaredUses[key] ??= []);
-			for (const use of entry.uses) {
-				if (!pooled.includes(use)) pooled.push(use);
+			for (const useKey of useKeys(entry.uses)) {
+				if (!pooled.includes(useKey)) pooled.push(useKey);
 			}
-			if (entry.type === "redis" && entry.uses.includes("db") && !dbIndexes.has(key)) {
-				dbIndexes.set(key, dbIndexes.size);
+			const perType = (namedDatabasesByType[entry.type] ??= []);
+			for (const name of namedDatabases(useKeys(entry.uses))) {
+				if (!perType.includes(name)) perType.push(name);
 			}
+			perType.sort();
 		}
 	}
-	const dbIndexOf = (key: string): number => dbIndexes.get(key) ?? 0;
+	const dbIndexes = allocateDbIndexes(launch);
+	const dbIndexesOf = (key: string): DbIndexes =>
+		Object.hasOwn(dbIndexes, key) ? dbIndexes[key]! : {};
 
 	if (opts.resources) {
 		const suppliedResourceTypes = new Map<string, string>();
@@ -1288,10 +1326,8 @@ export function launchToCompose(
 			const resourceName = req.name ?? req.type;
 			const supplied = opts.resources?.[resourceName];
 			const uncovered = supplied
-				? uncoveredSuppliedUses(req.type, req.uses, supplied.properties)
-				: uncoveredProvisionedUses(req.type, req.uses).map(
-						(use) => `${use} (not a use this provider covers for ${req.type})`,
-					);
+				? uncoveredSuppliedUses(req.type, useKeys(req.uses), supplied.properties)
+				: uncoveredProvisionedUses(req.type, useKeys(req.uses));
 			for (const detail of uncovered) {
 				uncoveredUses.push(`${resourceName}: ${detail}`);
 			}
@@ -1544,6 +1580,8 @@ export function launchToCompose(
 					images,
 					warnings,
 					initOnlyExtensions,
+					initOnlyDatabases,
+					namedDatabasesByType[req.type] ?? [],
 					backingServices,
 				);
 				if (backingResult) {
@@ -1559,10 +1597,10 @@ export function launchToCompose(
 					const properties = withCoveredUses(
 						req.type,
 						(declaredUses[resourceName] ?? []).filter(
-							(use) => coverUse(req.type, use, {}, 0) !== undefined,
+							(useKey) => coverUse(req.type, useKey, {}, {}) !== undefined,
 						),
 						backingResult.properties,
-						dbIndexOf(resourceName),
+						dbIndexesOf(resourceName),
 					);
 					resourceMap[resourceName] = properties;
 
@@ -1621,7 +1659,7 @@ export function launchToCompose(
 			// out loud. The same shortfall on `requires:` refused the component
 			// above.
 			const uncovered = sup.uses
-				? uncoveredSuppliedUses(sup.type, sup.uses, suppliedResource.properties)
+				? uncoveredSuppliedUses(sup.type, useKeys(sup.uses), suppliedResource.properties)
 				: [];
 			if (uncovered.length > 0) {
 				warnings.push(
@@ -1811,6 +1849,7 @@ export function launchToCompose(
 		storageBinds,
 		unboundOperatorVolumes,
 		initOnlyExtensions,
+		initOnlyDatabases,
 	};
 }
 
@@ -1924,6 +1963,8 @@ function addBackingService(
 	images: string[],
 	warnings: string[],
 	initOnlyExtensions: InitOnlyExtensions[],
+	initOnlyDatabases: InitOnlyDatabases[],
+	namedDatabaseNames: readonly string[],
 	backingServices: Record<string, (name: string) => BackingService>,
 ): { serviceName: string; properties: Record<string, string> } | null {
 	const type = req.type;
@@ -1981,18 +2022,41 @@ function addBackingService(
 			image: backing.image,
 		};
 
+		// Named `database` uses (SPEC.md § Resource uses): one more database
+		// per name on this server, `<instance>_<name>`, created by a second
+		// init script. postgres, mysql and mariadb all read
+		// /docker-entrypoint-initdb.d/ on first initialization only — the
+		// limit `applyPostgresConfig` documents — so the caller is told which
+		// databases ride on it, as for extensions.
+		const instanceDatabase = backing.properties.name ?? appName;
+		const extraDatabases = namedDatabaseNames.map((name) =>
+			namedDatabase(instanceDatabase, name),
+		);
+		const databasesSql =
+			extraDatabases.length > 0
+				? namedDatabasesInitSql(type, extraDatabases, backing)
+				: undefined;
+
+		const serviceConfigs: { source: string; target: string }[] = [];
 		if (initSql) {
 			// Inline compose config (Compose v2.23.0+) — keeps the init script
 			// inside the generated file, no sidecar to write or clean up.
 			const configName = `${serviceName}-init`;
 			configs[configName] = { content: initSql };
-			service.configs = [
-				{
-					source: configName,
-					target: "/docker-entrypoint-initdb.d/90-launchfile-extensions.sql",
-				},
-			];
+			serviceConfigs.push({
+				source: configName,
+				target: "/docker-entrypoint-initdb.d/90-launchfile-extensions.sql",
+			});
 		}
+		if (databasesSql) {
+			const configName = `${serviceName}-databases`;
+			configs[configName] = { content: databasesSql };
+			serviceConfigs.push({
+				source: configName,
+				target: "/docker-entrypoint-initdb.d/91-launchfile-databases.sql",
+			});
+		}
+		if (serviceConfigs.length > 0) service.configs = serviceConfigs;
 
 		if (Object.keys(backing.environment).length > 0) {
 			service.environment = backing.environment;
@@ -2023,6 +2087,14 @@ function addBackingService(
 					extensions: initExtensions,
 				});
 			}
+			if (databasesSql) {
+				initOnlyDatabases.push({
+					component: componentName,
+					service: serviceName,
+					volume: volName,
+					databases: extraDatabases,
+				});
+			}
 		}
 
 		services[serviceName] = service;
@@ -2039,6 +2111,35 @@ function addBackingService(
 		serviceName,
 		properties: factory(appName).properties,
 	};
+}
+
+/**
+ * The init script that creates each named `database` on a SQL server. Names
+ * are quoted identifiers built from a schema-validated app name and use name
+ * ({@link namedDatabase}), so they carry no quote character; the mysql
+ * script also grants the service user, whom the image grants only its
+ * initial database. The postgres script runs as the superuser the image
+ * creates, who owns what it creates.
+ */
+function namedDatabasesInitSql(
+	type: string,
+	databases: readonly string[],
+	backing: BackingService,
+): string {
+	const lines: string[] = [];
+	if (type === "postgres") {
+		const owner = backing.properties.user ?? "launchfile";
+		for (const database of databases) {
+			lines.push(`CREATE DATABASE "${database}" OWNER "${owner}";`);
+		}
+	} else {
+		const user = backing.properties.user ?? "launchfile";
+		for (const database of databases) {
+			lines.push(`CREATE DATABASE IF NOT EXISTS \`${database}\`;`);
+			lines.push(`GRANT ALL PRIVILEGES ON \`${database}\`.* TO '${user}'@'%';`);
+		}
+	}
+	return `${lines.join("\n")}\n`;
 }
 
 function translateHealth(
