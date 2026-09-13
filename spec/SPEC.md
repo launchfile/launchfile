@@ -237,7 +237,7 @@ An object entry is one of two kinds, distinguished by its marker field: a **back
 | `endpoint` | `string` | conditional | The `provides` entry this resource fronts, by its `name`. **Required** on a `type: https-origin` entry; meaningless on any other type — see [Public HTTPS origins](#public-https-origins) |
 | `version` | `string` | no | Version constraint using semver ranges (e.g. `>=15`, `^7.0`, `20.x`) |
 | `config` | `map<string, any>` | no | Resource provisioning hints (platform-interpreted) |
-| `uses` | `array<string>` | no | Which features of the resource the app uses (e.g. `[db, pubsub]` for redis) — see [Resource uses](#resource-uses) |
+| `uses` | `array<string \| object>` | no | Which features of the resource the app uses (e.g. `[db, pubsub]` for redis); a repeatable use may be named more than once (`- db: cache`) — see [Resource uses](#resource-uses) |
 | `set_env` | `map<string, string>` | no | Maps resource properties to app env vars using `$` expressions |
 
 ```yaml
@@ -319,7 +319,27 @@ requires:
 
 **A provider covers every declared use or refuses the component.** A use the provider cannot cover — including a token it does not recognise, since no provider can claim to cover a use it does not know — takes the same refuse branch as a resource type it cannot provision ([PROVIDERS.md](PROVIDERS.md) §10 item 5, [D-64](DESIGN.md#d-64-a-requires-entry-a-provider-cannot-provision-is-refused--provision-accept-supplied-or-refuse-for-every-type)): the component is refused before launch, naming the entry and the uncovered use. The vocabulary is open, so a token outside the standard set is a `validate` warning rather than a validation error — but at deploy time a typo fails the deployment rather than being silently ignored. On a `supports:` entry the same shortfall leaves the entry unfulfilled with a warning, never refused.
 
-Each use is declared once per entry. Declaring the same use more than once — two isolated Redis databases, say — takes a name, which a later revision of this section defines.
+**A repeatable use may be named more than once.** A use the vocabulary marks **repeatable** (`db` on redis, `database` on postgres and mysql) may appear more than once on one entry, each occurrence written as a single-key map naming it. The name is an expression path segment and takes the name grammar (`^[a-z][a-z0-9-]*$`):
+
+```yaml
+requires:
+  - type: redis
+    uses:
+      - db: cache
+      - db: sessions
+      - pubsub
+    set_env:
+      CACHE_URL: $redis.db.cache.url        # redis://host:6379/<index of cache>
+      SESSION_URL: $redis.db.sessions.url   # a different index
+      SESSION_DB: $redis.db.sessions.index
+      REDIS_URL: $url                       # the instance, as before
+```
+
+Each named use registers the token's properties under its name, addressed as `$<resource>.<use>.<name>.<property>` — the same nesting `$app.endpoints.<name>.<property>` uses: `$redis.db.cache.url` is `redis://[user:password@]host:port/<index>` with the index allocated to `cache`, `$redis.db.cache.index` that integer; `$postgres.database.<name>.url` is the standard URL with `/<database>` as its path and `$postgres.database.<name>.name` that database. A platform hands each named occurrence its own unit — one Redis database per named `db`, one database per named `database` — so two names never share one. The entry-level properties keep the instance meaning, and an unnamed single `db` keeps the three-segment `$redis.db.url` form: naming is for the entry that needs more than one.
+
+Within one entry a token is declared **bare or named, never both** — `uses: [db, {db: cache}]` is invalid, because `$redis.db.url` and `$redis.db.cache.url` would then name two different databases under one token; name every occurrence, or declare the token once unnamed. The same name twice on one token is invalid, as a bare token twice is. A name on a use the vocabulary marks non-repeatable (`pubsub`, `server`) is a **validation error**, not a lint warning: the name would promise a second set of channels or a second server the type cannot hand over. A token outside the standard vocabulary may take a name — the vocabulary is open, and whether a provider-defined use repeats is that provider's to say.
+
+The strict resolution rule above extends to the named form. On an entry that names its `db` uses, `$redis.db.url` — the bare form — is an error, not the instance URL and not any one of the named databases; `$redis.db.nosuch.url` names an occurrence the entry does not declare and is an error too. A provider covers each named occurrence or refuses the component, naming the entry, the token and the name; a supplied resource satisfies the entry only when its map carries every registered `<use>.<name>.<property>` key.
 
 ### Expression wiring
 
@@ -1060,6 +1080,7 @@ The `$` reference system is used in `set_env` values and `env` defaults to wire 
 | `$prop` | Property from enclosing resource |
 | `$resource.prop` | Property from a named resource |
 | `$resource.use.prop` | Property a declared use of a named resource registers (see [Resource uses](#resource-uses)) |
+| `$resource.use.name.prop` | Property a named occurrence of a repeatable use registers, like `$redis.db.cache.url` (see [Resource uses](#resource-uses)) |
 | `$components.name.prop` | Property from another component's provides |
 | `$components.name.endpoint.prop` | Property from a named endpoint on another component |
 | `$secrets.name` | App-wide generated secret |
@@ -1090,7 +1111,7 @@ flowchart TD
 3. Starts with `components` -- component endpoint lookup
 4. Starts with `storage` -- provider-resolved storage path (see [Storage Properties](#storage-properties))
 5. Single segment -- enclosing resource property (e.g. `$url` inside a `set_env` block)
-6. On a resource whose entry declares `uses`, a three-or-more-segment path -- `resource.use.property`, resolved only from that use's registered properties; an undeclared use or unregistered property is an error, not an empty string (see [Resource uses](#resource-uses))
+6. On a resource whose entry declares `uses`, a three-or-more-segment path -- `resource.use.property`, or `resource.use.name.property` where the entry names the use, resolved only from that use's registered properties; an undeclared use or name, or an unregistered property, is an error, not an empty string (see [Resource uses](#resource-uses))
 7. Multi-segment -- first segment is the resource name (defaults to `type`, overridden by `name`), rest is property path
 
 The `app` and `storage` namespaces are reserved: each is checked before any user-named resource and cannot be shadowed by one. If a `requires:` entry is named `app`, or a `storage:` volume or resource is named `storage`, expressions like `$app.url` and `$storage.cache.path` still resolve via their reserved tables rather than against that resource — use a different name to avoid the reserved words.
@@ -1259,17 +1280,17 @@ Resource types are extensible -- any string is accepted. Unknown types have no p
 
 A `requires`/`supports` entry may declare which features of the resource the app uses (see [Resource uses](#resource-uses)). Each type that has a use vocabulary lists its tokens here, with the properties each registers under `$<resource>.<use>.<property>`:
 
-| Resource | Use | Registers | Meaning |
-|---|---|---|---|
-| `redis` | `db` | `url`, `index` | One logical database (keyspace) on the instance, selected by index: `url` is `redis://[user:password@]host:port/<index>`, `index` the integer. Repeatable |
-| `redis` | `pubsub` | — | Publish/subscribe channels. Pub/sub ignores database numbers, so isolated channels need an instance the app does not share channels on |
-| `redis` | `server` | — | The whole server: keyspace notifications, `CONFIG`, `SELECT` across databases, `FLUSHALL`, modules — anything that assumes the app owns the instance |
-| `postgres` | `database` | `url`, `name` | One database on the server: `url` is the standard connection URL with `/<name>` as its path, `name` the database name. Repeatable |
-| `postgres` | `server` | — | The whole server: superuser access, `CREATE DATABASE`, server-wide settings |
-| `mysql` | `database` | `url`, `name` | One database on the server: `url` is the standard connection URL with `/<name>` as its path, `name` the database name. Repeatable |
-| `mysql` | `server` | — | The whole server: root access, `CREATE DATABASE`, server-wide settings |
+| Resource | Use | Registers | Repeatable | Meaning |
+|---|---|---|---|---|
+| `redis` | `db` | `url`, `index` | yes | One logical database (keyspace) on the instance, selected by index: `url` is `redis://[user:password@]host:port/<index>`, `index` the integer |
+| `redis` | `pubsub` | — | no | Publish/subscribe channels. Pub/sub ignores database numbers, so isolated channels need an instance the app does not share channels on |
+| `redis` | `server` | — | no | The whole server: keyspace notifications, `CONFIG`, `SELECT` across databases, `FLUSHALL`, modules — anything that assumes the app owns the instance |
+| `postgres` | `database` | `url`, `name` | yes | One database on the server: `url` is the standard connection URL with `/<name>` as its path, `name` the database name |
+| `postgres` | `server` | — | no | The whole server: superuser access, `CREATE DATABASE`, server-wide settings |
+| `mysql` | `database` | `url`, `name` | yes | One database on the server: `url` is the standard connection URL with `/<name>` as its path, `name` the database name |
+| `mysql` | `server` | — | no | The whole server: root access, `CREATE DATABASE`, server-wide settings |
 
-A use marked **repeatable** may occur more than once on one entry once it carries a name; this revision defines unnamed uses only, so each token is declared at most once per entry. A use that registers nothing (`—`) is addressed through the entry's instance properties. The entry-level properties (`$url`, `$host`, `$port`, `$password`, `$name`) are unchanged by any declared use.
+A **repeatable** use may occur more than once on one entry, each occurrence named as a single-key map (`- db: cache`) and addressed as `$<resource>.<use>.<name>.<property>`; a name on a non-repeatable use is a validation error (see [Resource uses](#resource-uses)). A use that registers nothing (`—`) is addressed through the entry's instance properties. The entry-level properties (`$url`, `$host`, `$port`, `$password`, `$name`) are unchanged by any declared use.
 
 This vocabulary is published in machine-readable form under the `uses` key of [`schema/resource-properties.json`](schema/resource-properties.json), a sibling of `types`: these are features an author declares, not properties a provider publishes. It is **open** in the same way the property vocabulary is: a token outside the table is an advisory `validate` warning, never a validation error. It is not open at deploy time — a provider refuses a `requires` entry declaring a token it does not recognise, because no provider can claim to cover a use it does not know. A type absent from the table has no use vocabulary; its tokens are provider-defined and draw no warning.
 

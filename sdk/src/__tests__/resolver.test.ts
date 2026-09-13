@@ -926,3 +926,75 @@ describe("$<resource>.<use>.<property> on an entry that declares uses", () => {
 		expect(resolveExpression("$constructor.db.url", ctx)).toBe("");
 	});
 });
+
+describe("$<resource>.<use>.<name>.<property> on an entry that names a repeatable use", () => {
+	const ctx = {
+		resources: {
+			redis: {
+				url: "redis://app-redis:6379",
+				host: "app-redis",
+				"db.cache.url": "redis://app-redis:6379/0",
+				"db.cache.index": "0",
+				"db.sessions.url": "redis://app-redis:6379/1",
+				"db.sessions.index": "1",
+			},
+			postgres: {
+				url: "postgres://pg:5432/app",
+				name: "app",
+				"database.url": "postgres://pg:5432/app",
+				"database.name": "app",
+			},
+		},
+		uses: { redis: ["db.cache", "db.sessions", "pubsub"], postgres: ["database"] },
+	};
+
+	it("resolves each named use's registered property from the four-segment form", () => {
+		expect(resolveExpression("$redis.db.cache.url", ctx)).toBe("redis://app-redis:6379/0");
+		expect(resolveExpression("$redis.db.sessions.url", ctx)).toBe("redis://app-redis:6379/1");
+		expect(resolveExpression("$redis.db.sessions.index", ctx)).toBe("1");
+	});
+
+	it("throws on the bare three-segment form when every `db` on the entry is named — never the instance url", () => {
+		expect(() => resolveExpression("$redis.db.url", ctx)).toThrow(UnresolvedUseError);
+		expect(() => resolveExpression("$redis.db.url", ctx)).toThrow(
+			'$redis.db.url does not resolve: redis declares no use "db" (declared: db: cache, db: sessions, pubsub)',
+		);
+	});
+
+	it("throws on a name the entry does not declare", () => {
+		expect(() => resolveExpression("$redis.db.nosuch.url", ctx)).toThrow(
+			'$redis.db.nosuch.url does not resolve: redis declares no use "db: nosuch" (declared: db: cache, db: sessions, pubsub)',
+		);
+	});
+
+	it("throws on a property a named use does not register", () => {
+		expect(() => resolveExpression("$redis.db.cache.host", ctx)).toThrow(
+			'$redis.db.cache.host does not resolve: use "db: cache" on redis registers no property "host"',
+		);
+	});
+
+	it("reads a fourth segment as a property path on an entry whose use is bare", () => {
+		// `database` is unnamed on postgres, so `.name` after `.database` is a
+		// property, not a use name; and `.main.url` is an unregistered property.
+		expect(resolveExpression("$postgres.database.name", ctx)).toBe("app");
+		expect(() => resolveExpression("$postgres.database.main.url", ctx)).toThrow(
+			'$postgres.database.main.url does not resolve: use "database" on postgres registers no property "main.url"',
+		);
+	});
+
+	it("carries the use key on the error for the named form", () => {
+		try {
+			resolveExpression("$redis.db.cache.host", ctx);
+		} catch (err) {
+			expect(err).toBeInstanceOf(UnresolvedUseError);
+			const e = err as UnresolvedUseError;
+			expect([e.resource, e.use, e.property]).toEqual(["redis", "db.cache", "host"]);
+			return;
+		}
+		throw new Error("did not throw");
+	});
+
+	it("is not softened by a :-default in the named form either", () => {
+		expect(() => resolveExpression("${redis.db.nosuch.url:-none}", ctx)).toThrow(UnresolvedUseError);
+	});
+});

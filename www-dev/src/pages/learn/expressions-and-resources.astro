@@ -85,6 +85,20 @@ const metabaseYaml = metabaseYamlRaw.replace(/^#.*\n/gm, "").trim();
       PUBSUB_URL: $url`,
     note: "<code>uses</code> says what the app needs <em>of</em> the resource — here one logical database and pub/sub channels. Each declared use registers its own fields under <code>$resource.use.property</code>: <code>$redis.db.url</code> is the Redis URL with the database selected by path (<code>redis://host:6379/3</code>), <code>$redis.db.index</code> that integer. The bare <code>$url</code> is still the instance address. Leave <code>uses</code> off and the entry means exactly what it meant before.",
   },
+  {
+    yaml: `requires:
+  - type: redis
+    uses:
+      - db: queue
+      - db: sessions
+      - pubsub
+    set_env:
+      QUEUE_URL: $redis.db.queue.url
+      SESSION_URL: $redis.db.sessions.url
+      SESSION_DB: $redis.db.sessions.index
+      PUBSUB_URL: $url`,
+    note: "An app that needs <em>two</em> isolated databases names each one. <code>db</code> is <strong>repeatable</strong>, so it may occur more than once as a single-key map — <code>- db: queue</code> — and each name gets its own fields under <code>$resource.use.name.property</code>: <code>$redis.db.queue.url</code> and <code>$redis.db.sessions.url</code> select different database indexes, never the same one. Name every occurrence or declare the token once unnamed; naming <code>pubsub</code> or <code>server</code> is a validation error, because the type cannot hand over a second one.",
+  },
 ]} />
 
 <h2 id="the-grammar">The grammar at a glance</h2>
@@ -97,6 +111,7 @@ const metabaseYaml = metabaseYamlRaw.replace(/^#.*\n/gm, "").trim();
     <tr><td><code>$prop</code></td><td>Property of the enclosing resource</td></tr>
     <tr><td><code>$resource.prop</code></td><td>Property of a named resource (name defaults to <code>type</code>)</td></tr>
     <tr><td><code>$resource.use.prop</code></td><td>Property registered by a declared <code>use</code> of a named resource, like <code>$redis.db.url</code></td></tr>
+    <tr><td><code>$resource.use.name.prop</code></td><td>Property registered by a named occurrence of a repeatable use, like <code>$redis.db.cache.url</code></td></tr>
     <tr><td><code>$components.name.prop</code></td><td>Another component's endpoint (Lesson 6)</td></tr>
     <tr><td><code>$secrets.name</code></td><td>App-wide generated secret (Lesson 3)</td></tr>
     <tr><td><code>$app.prop</code></td><td>Platform-injected app property, like <code>$app.url</code> (Lesson 3)</td></tr>
@@ -125,9 +140,13 @@ const metabaseYaml = metabaseYamlRaw.replace(/^#.*\n/gm, "").trim();
   Each use that hands the app something of its own registers it under <code>$resource.use.property</code>. <code>db</code> registers <code>url</code> — the standard Redis URL with the database selected by path, <code>redis://host:6379/3</code> — and <code>index</code>, that integer; <code>database</code> registers <code>url</code> and <code>name</code>. <code>pubsub</code> and <code>server</code> register nothing: the instance's own <code>$url</code>, <code>$host</code> and <code>$port</code> already address them, and those bare properties keep their meaning whatever you declare.
 </p>
 
+<p>
+  A use marked <strong>repeatable</strong> — <code>db</code> on redis, <code>database</code> on postgres and mysql — may occur more than once on one entry, each occurrence a single-key map naming it: <code>- db: cache</code>, <code>- db: sessions</code>. A named occurrence registers the same fields under its name, <code>$redis.db.cache.url</code> and <code>$redis.db.cache.index</code>, and the platform hands each name its own database — two names never share an index. An entry that needs one database keeps the bare token and the three-segment <code>$redis.db.url</code>. Within one entry a token is bare or named, never both.
+</p>
+
 <Callout type="warning" title="A use you did not declare is an error, not an empty string">
   <p>
-    On an entry that declares <code>uses</code>, a three-segment path either resolves from the declared use's registered fields or fails at wiring time. <code>$redis.db.url</code> beside <code>uses: [pubsub]</code> does not quietly fall back to the instance URL — it stops the deployment and names the path. A token outside the vocabulary is a <code>validate</code> warning (the vocabulary is open), but at deploy time a provider refuses a <code>requires</code> entry declaring a use it does not recognise, because no provider can claim to cover a use it does not know. On a <code>supports</code> entry the same shortfall leaves the entry unfulfilled instead.
+    On an entry that declares <code>uses</code>, a three-segment path either resolves from the declared use's registered fields or fails at wiring time. <code>$redis.db.url</code> beside <code>uses: [pubsub]</code> does not quietly fall back to the instance URL — it stops the deployment and names the path. The same holds for the named form: beside <code>- db: cache</code>, <code>$redis.db.url</code> and <code>$redis.db.nosuch.url</code> are errors, not the instance URL and not one of the named databases. A token outside the vocabulary is a <code>validate</code> warning (the vocabulary is open), but at deploy time a provider refuses a <code>requires</code> entry declaring a use it does not recognise, because no provider can claim to cover a use it does not know. On a <code>supports</code> entry the same shortfall leaves the entry unfulfilled instead.
   </p>
 </Callout>
 
@@ -249,7 +268,7 @@ supports:
     <li>Dotted paths resolve namespaces in a fixed order — <code>app</code>, <code>secrets</code>, <code>components</code>, <code>storage</code>, then resource names. <code>app</code> and <code>storage</code> are reserved.</li>
     <li>Use <code>name:</code> when you require two resources of the same type — references become <code>$primary-db.host</code> instead of an ambiguous <code>$postgres.host</code>.</li>
     <li><code>version:</code> constrains provisioning with semver ranges; <code>config:</code> passes type-specific hints that unsupporting platforms ignore.</li>
-    <li><code>uses:</code> declares what the app needs <em>of</em> a resource — <code>[db, pubsub]</code> on redis — and unlocks <code>$resource.use.property</code> fields like <code>$redis.db.url</code>. Undeclared means what the entry always meant; a provider covers every declared use or refuses.</li>
+    <li><code>uses:</code> declares what the app needs <em>of</em> a resource — <code>[db, pubsub]</code> on redis — and unlocks <code>$resource.use.property</code> fields like <code>$redis.db.url</code>. A repeatable use is named to occur more than once — <code>- db: cache</code> → <code>$redis.db.cache.url</code>. Undeclared means what the entry always meant; a provider covers every declared use or refuses.</li>
     <li>Each resource type has a standard property vocabulary. An unknown property resolves to empty string — <code>launchfile validate</code> warns about it before your app fails at first connection.</li>
   </ul>
 </div>

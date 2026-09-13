@@ -23,7 +23,9 @@ import type {
 	NormalizedComponent,
 	NormalizedLaunch,
 	NormalizedRequirement,
+	UseDeclaration,
 } from "./types.js";
+import { declaredUse, useKeys } from "./uses.js";
 
 export type { Deprecation, DeprecationRecord } from "./deprecations.js";
 // Deprecation reporting is a lint check, but its findings are structured
@@ -76,9 +78,9 @@ function configKey(config: Record<string, unknown> | undefined): string {
 	return JSON.stringify(sorted);
 }
 
-/** Stable string form of a `uses` list for divergence comparison — order is not a divergence. */
-function usesKey(uses: readonly string[] | undefined): string {
-	return uses ? [...uses].sort().join(",") : "";
+/** Stable string form of a `uses` list for divergence comparison — order is not a divergence; `db` and `db: cache` are. */
+function usesKey(uses: readonly UseDeclaration[] | undefined): string {
+	return uses ? useKeys(uses).sort().join(",") : "";
 }
 
 /**
@@ -207,7 +209,8 @@ function checkResourceUses(launch: NormalizedLaunch, warnings: string[]): void {
 					: undefined;
 				if (!vocabulary) continue;
 				const known = Object.keys(vocabulary);
-				for (const token of req.uses) {
+				for (const item of req.uses) {
+					const token = declaredUse(item).use;
 					if (Object.hasOwn(vocabulary, token)) continue;
 					const outcome =
 						field === "requires"

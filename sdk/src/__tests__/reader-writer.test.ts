@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readLaunch } from "../reader.js";
+import { useKeys } from "../uses.js";
 import { writeLaunch } from "../writer.js";
 
 /*---
@@ -121,6 +122,83 @@ supports:
 	it("accepts a use token outside the standard vocabulary — the vocabulary is open", () => {
 		const result = readLaunch(`name: app\nrequires:\n  - type: redis\n    uses: [streams]`);
 		expect(result.components.default?.requires?.[0]?.uses).toEqual(["streams"]);
+	});
+
+	it("reads a repeatable use named more than once, as single-key maps beside bare tokens", () => {
+		const result = readLaunch(`
+name: app
+requires:
+  - type: redis
+    uses:
+      - db: cache
+      - db: sessions
+      - pubsub
+`);
+		expect(result.components.default?.requires?.[0]?.uses).toEqual([
+			{ db: "cache" },
+			{ db: "sessions" },
+			"pubsub",
+		]);
+	});
+
+	it("rejects the same named use declared twice on one entry", () => {
+		expect(() =>
+			readLaunch(`name: app\nrequires:\n  - type: redis\n    uses: [{db: cache}, {db: cache}]`),
+		).toThrow(/declared once/);
+	});
+
+	it("rejects a token declared both bare and named on one entry", () => {
+		expect(() =>
+			readLaunch(`name: app\nrequires:\n  - type: redis\n    uses: [db, {db: cache}]`),
+		).toThrow(/both bare and named/);
+	});
+
+	it("rejects a name on a use the standard vocabulary marks non-repeatable", () => {
+		expect(() =>
+			readLaunch(`name: app\nrequires:\n  - type: redis\n    uses: [{pubsub: events}]`),
+		).toThrow(/pubsub.* on redis is not repeatable/);
+		expect(() =>
+			readLaunch(`name: app\nrequires:\n  - type: postgres\n    uses: [{server: main}]`),
+		).toThrow(/server.* on postgres is not repeatable/);
+	});
+
+	it("rejects a map naming two uses in one item", () => {
+		expect(() =>
+			readLaunch(`name: app\nrequires:\n  - type: redis\n    uses: [{db: cache, pubsub: events}]`),
+		).toThrow(/single-key map/);
+	});
+
+	it("rejects a use name outside the name grammar — it is an expression path segment", () => {
+		expect(() =>
+			readLaunch(`name: app\nrequires:\n  - type: redis\n    uses: [{db: "Cache DB"}]`),
+		).toThrow(/Names must match/);
+	});
+
+	it("accepts a named use on a token or type outside the registry — no standard says it cannot repeat", () => {
+		const result = readLaunch(`
+name: app
+requires:
+  - type: redis
+    uses: [{streams: orders}]
+  - type: kafka
+    uses: [{topic: orders}, {topic: refunds}]
+`);
+		expect(result.components.default?.requires?.[0]?.uses).toEqual([{ streams: "orders" }]);
+		expect(result.components.default?.requires?.[1]?.uses).toEqual([
+			{ topic: "orders" },
+			{ topic: "refunds" },
+		]);
+	});
+
+	it("reads a provider-defined token spelled `use` as that token, named — never as a decoded value", () => {
+		const result = readLaunch(`
+name: app
+requires:
+  - type: kafka
+    uses: [{use: a}, {use: b}]
+`);
+		expect(result.components.default?.requires?.[0]?.uses).toEqual([{ use: "a" }, { use: "b" }]);
+		expect(useKeys(result.components.default?.requires?.[0]?.uses)).toEqual(["use.a", "use.b"]);
 	});
 
 	// UC-30: Build shorthand
@@ -683,6 +761,28 @@ requires:
 			readLaunch(yaml).components.default?.requires?.[0],
 		);
 		expect(round).toContain("- pubsub");
+	});
+
+	it("round-trips the named map form — `- db: cache` survives parse → serialize → parse", () => {
+		const yaml = `version: launch/v1
+name: my-app
+requires:
+  - type: redis
+    uses:
+      - db: cache
+      - db: sessions
+      - pubsub
+    set_env:
+      CACHE_URL: $redis.db.cache.url
+      SESSIONS_DB: $redis.db.sessions.index
+`;
+		const round = writeLaunch(readLaunch(yaml));
+		expect(round).toMatch(/uses:\n\s+- db: cache\n\s+- db: sessions\n\s+- pubsub/);
+		expect(readLaunch(round).components.default?.requires?.[0]?.uses).toEqual([
+			{ db: "cache" },
+			{ db: "sessions" },
+			"pubsub",
+		]);
 	});
 
 	it("collapses command to string when no timeout", () => {

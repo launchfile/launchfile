@@ -30,6 +30,7 @@ import {
 import { allocatePorts } from "./port-allocator.js";
 import {
 	launchToCompose,
+	type InitOnlyDatabases,
 	type InitOnlyExtensions,
 	type StorageBind,
 	type UnsuppliedRequiredVar,
@@ -110,6 +111,25 @@ export function initOnlyExtensionsWarning(
 		"To have this provider create them, run `launchfile down --destroy` then `launchfile up` — " +
 		`that deletes ${entry.service}'s data. To keep the data, run the CREATE EXTENSION ` +
 		"statements against the running database yourself."
+	);
+}
+
+/**
+ * The advisory for a SQL service whose named `database` uses ride on an init
+ * script the image has already run past — the same shape and remedies as
+ * {@link initOnlyExtensionsWarning}, for the same reason.
+ */
+export function initOnlyDatabasesWarning(
+	entry: InitOnlyDatabases,
+	volumeName: string,
+): string {
+	return (
+		`${entry.service}: the named database uses (${entry.databases.join(", ")}) reach the server ` +
+		"through an init script it reads only while it initializes an empty data directory. " +
+		`Volume ${volumeName} already exists, so this run creates none of them. ` +
+		"To have this provider create them, run `launchfile down --destroy` then `launchfile up` — " +
+		`that deletes ${entry.service}'s data. To keep the data, create the databases against ` +
+		"the running server yourself."
 	);
 }
 
@@ -563,6 +583,13 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 				const volumeName = await composeVolumeName(composeProjectName, entry.volume);
 				if (volumeName !== null) {
 					result.warnings.push(initOnlyExtensionsWarning(entry, volumeName));
+				}
+			}
+			for (const entry of result.initOnlyDatabases) {
+				if (!launching.has(entry.component)) continue;
+				const volumeName = await composeVolumeName(composeProjectName, entry.volume);
+				if (volumeName !== null) {
+					result.warnings.push(initOnlyDatabasesWarning(entry, volumeName));
 				}
 			}
 		}

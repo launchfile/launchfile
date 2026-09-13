@@ -10,6 +10,8 @@
  *   no $            — literal string
  */
 
+import { formatUseKey } from "./uses.js";
+
 /** Context for resolving expressions */
 export interface ResolverContext {
 	/** Properties of the enclosing resource (e.g., postgres: { url, host, port }) */
@@ -53,24 +55,28 @@ export interface ResolverContext {
 	 */
 	appEndpoints?: Record<string, AppEndpointProperties>;
 	/**
-	 * The `uses` each resource entry declares, keyed by the entry's
-	 * `name ?? type` — the same key as {@link ResolverContext.resources}. A
-	 * resource listed here resolves `$<resource>.<use>.<property>` strictly:
-	 * the use must be declared and the property registered under the dotted
-	 * key `<use>.<property>` in the resource's map, or resolution throws
+	 * The use keys each resource entry declares — `db` for a bare use,
+	 * `db.cache` for the named form `- db: cache` — keyed by the entry's
+	 * `name ?? type`, the same key as {@link ResolverContext.resources}. A
+	 * resource listed here resolves `$<resource>.<use>.<property>` and
+	 * `$<resource>.<use>.<name>.<property>` strictly: the use key must be
+	 * declared and the property registered under the dotted key
+	 * `<use key>.<property>` in the resource's map, or resolution throws
 	 * {@link UnresolvedUseError}. The last-segment fallback the multi-segment
-	 * branch keeps for every other resource does not apply, so a mistyped use
-	 * or property never resolves to the instance value behind it. A resource
-	 * absent from this map keeps the general rules.
+	 * branch keeps for every other resource does not apply, so a mistyped use,
+	 * name or property never resolves to the instance value behind it. A
+	 * resource absent from this map keeps the general rules.
 	 */
 	uses?: Record<string, readonly string[]>;
 }
 
 /**
- * A `$<resource>.<use>.<property>` reference that the resource's declared
- * uses cannot answer: the use is not declared on the entry, or the property is
- * not one the use registers. Thrown rather than resolved `""`, and not
- * softened by a `:-default` — the path is wrong, not empty.
+ * A `$<resource>.<use>.<property>` or `$<resource>.<use>.<name>.<property>`
+ * reference that the resource's declared uses cannot answer: the use (or the
+ * named use) is not declared on the entry, or the property is not one the use
+ * registers. Thrown rather than resolved `""`, and not softened by a
+ * `:-default` — the path is wrong, not empty. `use` is the use key the path
+ * addressed: `db`, or `db.cache` for the named form.
  */
 export class UnresolvedUseError extends Error {
 	readonly resource: string;
@@ -81,8 +87,8 @@ export class UnresolvedUseError extends Error {
 		const path = `$${resource}.${use}.${property}`;
 		super(
 			declared.includes(use)
-				? `${path} does not resolve: use "${use}" on ${resource} registers no property "${property}"`
-				: `${path} does not resolve: ${resource} declares no use "${use}" (declared: ${declared.join(", ")})`,
+				? `${path} does not resolve: use "${formatUseKey(use)}" on ${resource} registers no property "${property}"`
+				: `${path} does not resolve: ${resource} declares no use "${formatUseKey(use)}" (declared: ${declared.map(formatUseKey).join(", ")})`,
 		);
 		this.name = "UnresolvedUseError";
 		this.resource = resource;
@@ -383,7 +389,8 @@ export function parseDotPath(path: string): string[] {
  * 5. Single segment → enclosing resource property
  * 6. Multi-segment → first segment is resource name, rest is property. For a
  *    resource whose entry declares `uses`, a three-or-more-segment path is
- *    `<resource>.<use>.<property>` and resolves from the use's registered
+ *    `<resource>.<use>.<property>` — or `<resource>.<use>.<name>.<property>`
+ *    where the entry names the use — and resolves from the use's registered
  *    properties or throws — no fallback (see {@link ResolverContext.uses}).
  */
 export function resolveExpression(
@@ -503,14 +510,24 @@ function resolvePath(
 
 	// <resource>.<use>.<property> on an entry that declares `uses`: strict.
 	// Each covered use registers its properties under the dotted key
-	// `<use>.<property>`; nothing else answers, and a miss throws rather than
-	// falling through to the last-segment probe below, which would hand back
-	// the instance value for a use the entry never declared.
+	// `<use key>.<property>` — `db.url`, or `db.cache.url` for a named use —
+	// nothing else answers, and a miss throws rather than falling through to
+	// the last-segment probe below, which would hand back the instance value
+	// for a use the entry never declared. The named form is recognised by its
+	// declared key (`db.cache`), so on an entry that names its `db` uses the
+	// bare `$redis.db.url` is a miss — there is no unnamed database to mean —
+	// and on an entry with a bare `db` the fourth segment is a property path.
 	if (path.length >= 3 && context.uses) {
 		const declared = own(context.uses, first);
 		if (declared) {
-			const use = path[1]!;
-			const property = path.slice(2).join(".");
+			const token = path[1]!;
+			const namedKey = path.length >= 4 ? `${token}.${path[2]!}` : undefined;
+			const tokenIsNamed = declared.some((key) => key.startsWith(`${token}.`));
+			const use =
+				namedKey !== undefined && (declared.includes(namedKey) || tokenIsNamed)
+					? namedKey
+					: token;
+			const property = path.slice(use === namedKey ? 3 : 2).join(".");
 			const resource = context.resources
 				? own(context.resources, first)
 				: undefined;

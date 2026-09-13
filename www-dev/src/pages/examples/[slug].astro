@@ -255,12 +255,13 @@ export function getStaticPaths() {
     {
       slug: "resource-uses",
       title: "Resource Uses",
-      description: "Declare what the app uses of a required resource with uses: [db, pubsub] — the platform satisfies exactly that, and each use registers its own $resource.use.property fields.",
+      description: "Declare what the app uses of a required resource — two named databases and pub/sub — the platform satisfies exactly that, and each use registers its own $resource.use.property fields.",
       catalogLink: 'Redis-backed apps like <a href="https://launchfile.io/apps/outline/">Outline</a>, <a href="https://launchfile.io/apps/docmost/">Docmost</a>, and <a href="https://launchfile.io/apps/paperless/">Paperless</a> use one keyspace for their queues and pub/sub for their websockets — the shape this example declares.',
       concepts: [
-        "`requires: redis` says the app needs Redis; `uses: [db, pubsub]` says what it needs *of* it — one logical database and pub/sub channels",
+        "`requires: redis` says the app needs Redis; `uses:` says what it needs *of* it — here two logical databases and pub/sub channels",
         "Undeclared means what the entry always meant: an instance address for redis, one database for postgres. Nothing existing changes",
         "Each use registers its own fields: `$redis.db.url` is the Redis URL with the database selected by path (`redis://host:6379/3`), `$redis.db.index` that integer; `pubsub` and `server` are addressed through the instance's own `$url`",
+        "A repeatable use is named to occur more than once: `- db: queue` and `- db: sessions` each get their own database, addressed as `$redis.db.queue.url` and `$redis.db.sessions.url` — never the same index. One database keeps the bare `db` and `$redis.db.url`; naming `pubsub` or `server` is a validation error",
         "A platform may satisfy the entry from a shared instance only when every declared use fits — pub/sub ignores database numbers, so isolated channels need an instance the app does not share",
         "A provider covers every declared use or refuses the component before launch, naming the entry and the use; a token it does not recognise is refused too — a typo fails the deployment rather than being ignored",
         "`$redis.db.url` beside an entry that does not declare `db` is an error at wiring time, never a quiet fallback to the instance URL",
@@ -272,8 +273,9 @@ export function getStaticPaths() {
         { label: "Expressions", href: "https://launchfile.org/spec/expression-syntax/" },
       ],
       annotations: [
-        { line: "uses: [db, pubsub]", text: "The app's fact, not the platform's strategy: one keyspace plus pub/sub. Leave it off and the entry means what it always did." },
-        { line: "QUEUE_URL: $redis.db.url", text: "Registered by the db use — the standard Redis URL with the allocated database selected by path." },
+        { line: "- db: queue", text: "The app's fact, not the platform's strategy: a named keyspace of its own. db is repeatable, so each occurrence carries a name. Leave uses off and the entry means what it always did." },
+        { line: "QUEUE_URL: $redis.db.queue.url", text: "Registered by the named db use — the standard Redis URL with the database allocated to queue selected by path." },
+        { line: "SESSION_URL: $redis.db.sessions.url", text: "A different database: two names never share an index." },
         { line: "PUBSUB_URL: $url", text: "The instance address, unchanged by uses. pubsub registers nothing of its own." },
       ],
     },

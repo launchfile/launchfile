@@ -220,10 +220,22 @@
         },
         "uses": {
           "type": "array",
-          "description": "Which features of the resource the app uses, from the type's use vocabulary (schema/resource-properties.json `uses`; e.g. redis: db, pubsub, server). Undeclared means what the type's property vocabulary already promises. Each declared use registers its own $<resource>.<use>.<property> fields; a provider covers every declared use or refuses the component. The vocabulary is open: an unknown token is a lint warning, and a deployment-time refusal. Each use is declared once per entry.",
+          "description": "Which features of the resource the app uses, from the type's use vocabulary (schema/resource-properties.json `uses`; e.g. redis: db, pubsub, server). Undeclared means what the type's property vocabulary already promises. Each declared use registers its own $<resource>.<use>.<property> fields; a provider covers every declared use or refuses the component. The vocabulary is open: an unknown token is a lint warning, and a deployment-time refusal. An item is a bare token (`db`), or — for a repeatable use — a single-key map naming one occurrence (`- db: cache`, addressed as $<resource>.<use>.<name>.<property>). Each use key is declared once per entry; a token is bare or named on one entry, never both; a name on a non-repeatable use (pubsub, server) is a validation error.",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }
+          "items": {
+            "oneOf": [
+              { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+              {
+                "type": "object",
+                "description": "One named occurrence of a repeatable use: { <token>: <name> }",
+                "minProperties": 1,
+                "maxProperties": 1,
+                "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 63 },
+                "additionalProperties": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "maxLength": 63 }
+              }
+            ]
+          }
         },
         "set_env": {
           "type": "object",

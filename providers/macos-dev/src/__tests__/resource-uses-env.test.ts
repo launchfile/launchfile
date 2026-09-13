@@ -168,3 +168,103 @@ describe("macos-dev env — a `db` use resolves to the database `up` handed the 
 		}
 	});
 });
+
+// Named occurrences of a repeatable use (D-65 rule 6): `cache` and `sessions`
+// each get their own index — cache 0, sessions 1, in name order whichever is
+// written first — and `env` / `bootstrap` answer with the same ones `up` did.
+const NAMED_LAUNCHFILE = `version: launch/v1
+name: usesenvnamed
+components:
+  web:
+    runtime: node
+    commands:
+      start: node web.js
+      bootstrap: echo $redis.db.sessions.url
+    requires:
+      - type: redis
+        uses:
+          - db: sessions
+          - db: cache
+          - pubsub
+        set_env:
+          CACHE_URL: $redis.db.cache.url
+          CACHE_DB: $redis.db.cache.index
+          SESSIONS_URL: $redis.db.sessions.url
+          SESSIONS_DB: $redis.db.sessions.index
+          PUBSUB_URL: $url
+`;
+
+const NAMED_KEYS = ["CACHE_URL", "CACHE_DB", "SESSIONS_URL", "SESSIONS_DB", "PUBSUB_URL"] as const;
+
+describe("macos-dev env — a named `db` use resolves to the database `up` handed the component", () => {
+	let projectDir: string;
+
+	beforeEach(() => {
+		startRegistrations.length = 0;
+		consoleLogs.length = 0;
+		projectDir = mkdtempSync(join(tmpdir(), "lf-macos-uses-env-named-"));
+		writeFileSync(join(projectDir, "Launchfile"), NAMED_LAUNCHFILE);
+		vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+			consoleLogs.push(args.map(String).join(" "));
+		});
+		vi.spyOn(console, "warn").mockImplementation(() => {});
+		vi.spyOn(console, "error").mockImplementation(() => {});
+		vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+	});
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+		rmSync(projectDir, { recursive: true, force: true });
+	});
+
+	it("`up` hands each name its own database and `env` prints the same values", async () => {
+		await launchUp({ projectDir });
+		const started = startRegistrations.find((r) => r.name === "web")?.env;
+		expect(started).toBeDefined();
+		expect(started).toMatchObject({
+			CACHE_URL: "redis://localhost:6379/0",
+			CACHE_DB: "0",
+			SESSIONS_URL: "redis://localhost:6379/1",
+			SESSIONS_DB: "1",
+			PUBSUB_URL: "redis://localhost:6379/0",
+		});
+
+		consoleLogs.length = 0;
+		await launchEnv({ projectDir });
+		const printed = printedEnv();
+		for (const key of NAMED_KEYS) {
+			expect(printed[key]).toBe(started![key]);
+		}
+	});
+
+	it("`up` records the allocated indexes in state, per name", async () => {
+		await launchUp({ projectDir });
+		const state = JSON.parse(readFileSync(statePath(projectDir), "utf8")) as LaunchState;
+		expect(state.resources.redis?.dbIndex).toBeUndefined();
+		expect(state.resources.redis?.namedDbIndexes).toEqual({ cache: 0, sessions: 1 });
+	});
+
+	it("`bootstrap` resolves the named use to the same database", async () => {
+		await launchUp({ projectDir });
+		const commands: string[] = [];
+		await launchBootstrap({
+			projectDir,
+			exec: async (_cmd: string, args: string[]) => {
+				commands.push(args.at(-1) ?? "");
+				return { exitCode: 0, stdout: "", stderr: "" };
+			},
+		});
+		expect(commands).toEqual(["echo redis://localhost:6379/1"]);
+	});
+
+	it("`env` throws rather than answering the instance url when state records no index for a name", async () => {
+		await launchUp({ projectDir });
+		const state = JSON.parse(readFileSync(statePath(projectDir), "utf8")) as LaunchState;
+		for (const res of Object.values(state.resources)) delete res.namedDbIndexes;
+		writeFileSync(statePath(projectDir), JSON.stringify(state, null, 2));
+
+		consoleLogs.length = 0;
+		await expect(launchEnv({ projectDir })).rejects.toThrow(UnresolvedUseError);
+		expect(printedEnv().CACHE_URL).toBeUndefined();
+	});
+});

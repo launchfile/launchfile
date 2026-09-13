@@ -103,6 +103,7 @@ export {
 	UnresolvedUseError,
 } from "./resolver.js";
 export {
+	isRepeatableUse,
 	RESOURCE_PROPERTY_VOCABULARY,
 	RESOURCE_USE_VOCABULARY,
 } from "./resource-properties.js";
@@ -135,4 +136,13 @@ export type {
 } from "./toolchain.js";
 export { extractToolchainVersions } from "./toolchain.js";
 export type * from "./types.js";
+export {
+	type DeclaredUse,
+	declaredUse,
+	formatUseKey,
+	parseUseKey,
+	useKey,
+	useKeyOf,
+	useKeys,
+} from "./uses.js";
 export { writeLaunch } from "./writer.js";

@@ -9,10 +9,14 @@ const OPTS = { appName: "my-app" } as ProvisionOpts;
 
 /**
  * Records every command issued. `okFor` decides the exit status of shellOk
- * calls; anything not matched succeeds, so each test states only the failure
- * it cares about.
+ * calls; `stdoutFor` decides what a shell call prints (every shell call exits
+ * 0, as psql does for a zero-row SELECT). Anything not matched succeeds with
+ * empty output, so each test states only the outcome it cares about.
  */
-function recorder(okFor: (cmd: string) => boolean = () => true) {
+function recorder(
+	okFor: (cmd: string) => boolean = () => true,
+	stdoutFor: (cmd: string) => string = () => "",
+) {
 	const commands: string[] = [];
 	// Flattened to `cmd arg arg` so the assertions below stay readable; the
 	// provisioner passes argv arrays.
@@ -20,7 +24,7 @@ function recorder(okFor: (cmd: string) => boolean = () => true) {
 	const deps: ShellRunner = {
 		shell: async (cmd: string, args: string[]) => {
 			commands.push(flatten(cmd, args));
-			return { exitCode: 0, stdout: "", stderr: "" };
+			return { exitCode: 0, stdout: stdoutFor(flatten(cmd, args)), stderr: "" };
 		},
 		shellOk: async (cmd: string, args: string[]) => {
 			commands.push(flatten(cmd, args));
@@ -95,6 +99,39 @@ describe("PostgresProvisioner readiness gate", () => {
 });
 
 /**
+ * psql exits 0 whenever a query ran, rows or not, so the existence check must
+ * read the row it prints. An exit-code test would report every database as
+ * present and never create one.
+ */
+describe("PostgresProvisioner database existence check reads psql's output", () => {
+	const EXISTS_QUERY =
+		"psql -h localhost -p 5432 postgres -tAc SELECT 1 FROM pg_database WHERE datname='launchfile_my_app'";
+
+	it("creates the app database when the query exits 0 with no row", async () => {
+		const { commands, deps } = recorder();
+		const provisioner = new PostgresProvisioner(deps);
+
+		await provisioner.provision(REQ, OPTS);
+
+		expect(commands).toContain(EXISTS_QUERY);
+		expect(commands.filter((c) => c.startsWith("createdb"))).toEqual([
+			"createdb -h localhost -p 5432 -O launchfile_my_app launchfile_my_app",
+		]);
+	});
+
+	it("skips createdb when the query prints a row", async () => {
+		const { commands, deps } = recorder(undefined, (cmd) =>
+			cmd === EXISTS_QUERY ? "1\n" : "",
+		);
+		const provisioner = new PostgresProvisioner(deps);
+
+		await provisioner.provision(REQ, OPTS);
+
+		expect(commands.filter((c) => c.startsWith("createdb"))).toEqual([]);
+	});
+});
+
+/**
  * Same trust boundary as the mysql provisioner: `.launchfile/state.json` is
  * JSON.parsed without validation, so the database name, user and password
  * provision() reuses from it are attacker-controlled.
@@ -140,4 +177,72 @@ describe("PostgresProvisioner rejects unsafe values reused from state.json", () 
 			expect(commands.filter((c) => c.startsWith("psql"))).toEqual([]);
 		});
 	}
+});
+
+describe("PostgresProvisioner named `database` uses (SPEC.md § Resource uses)", () => {
+	// The app's own database prints a row; a named one prints nothing (exit 0
+	// either way, as psql does).
+	const onlyAppDatabaseExists = (cmd: string) =>
+		cmd.includes("datname='launchfile_my_app'") ? "1\n" : "";
+
+	it("creates each named database as <instance>_<name> through the same createdb path, owned by the app user, and records them in state", async () => {
+		const { commands, deps } = recorder(undefined, onlyAppDatabaseExists);
+		const provisioner = new PostgresProvisioner(deps);
+
+		const { state } = await provisioner.provision(REQ, { ...OPTS, databases: ["audit-log", "reports"] });
+
+		// The app's own database already exists here; only the named ones are created.
+		expect(commands.filter((c) => c.startsWith("createdb"))).toEqual([
+			"createdb -h localhost -p 5432 -O launchfile_my_app launchfile_my_app_audit_log",
+			"createdb -h localhost -p 5432 -O launchfile_my_app launchfile_my_app_reports",
+		]);
+		expect(state.databases).toEqual(["launchfile_my_app_audit_log", "launchfile_my_app_reports"]);
+	});
+
+	it("creates a named database when its existence query exits 0 with no row", async () => {
+		// The zero-row case is the one an exit-code test gets wrong.
+		const { commands, deps } = recorder();
+		const provisioner = new PostgresProvisioner(deps);
+
+		await provisioner.provision(REQ, { ...OPTS, databases: ["reports"] });
+
+		expect(commands).toContain(
+			"psql -h localhost -p 5432 postgres -tAc SELECT 1 FROM pg_database WHERE datname='launchfile_my_app_reports'",
+		);
+		expect(commands.filter((c) => c.startsWith("createdb"))).toContain(
+			"createdb -h localhost -p 5432 -O launchfile_my_app launchfile_my_app_reports",
+		);
+	});
+
+	it("skips a named database whose existence query prints a row, and records no list when none is named", async () => {
+		const { commands, deps } = recorder(undefined, () => "1\n");
+		const provisioner = new PostgresProvisioner(deps);
+
+		await provisioner.provision(REQ, { ...OPTS, databases: ["reports"] });
+		expect(commands.filter((c) => c.startsWith("createdb"))).toEqual([]);
+		expect(commands).toContain("psql -h localhost -p 5432 postgres -tAc SELECT 1 FROM pg_database WHERE datname='launchfile_my_app_reports'");
+
+		const plain = await provisioner.provision(REQ, OPTS);
+		expect(plain.state).not.toHaveProperty("databases");
+	});
+
+	it("drops the named databases it created on destroy, skipping an unsafe stored name", async () => {
+		const { commands, deps } = recorder();
+		const provisioner = new PostgresProvisioner(deps);
+		const stored = {
+			type: "postgres",
+			name: "postgres",
+			port: 5432,
+			dbName: "launchfile_my_app",
+			user: "launchfile_my_app",
+			databases: ["launchfile_my_app_reports", "x; DROP DATABASE victim"],
+		} as ResourceState;
+
+		await provisioner.destroy(stored, { projectDir: "/tmp/lf-pg-test" });
+
+		expect(commands.filter((c) => c.startsWith("dropdb"))).toEqual([
+			"dropdb -h localhost --if-exists launchfile_my_app",
+			"dropdb -h localhost --if-exists launchfile_my_app_reports",
+		]);
+	});
 });

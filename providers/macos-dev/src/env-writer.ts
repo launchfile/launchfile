@@ -14,19 +14,21 @@ import {
 	isExpression,
 	type NormalizedComponent,
 	type NormalizedLaunch,
+	parseUseKey,
 	type ResolverContext,
 	type Secret,
 	suppliedAppProperties,
 	UNPUBLISHED_APP_ENDPOINT,
 	type UnsuppliedRequiredEnv,
 	unsuppliedRequiredEnv,
+	useKeys,
 } from "@launchfile/sdk";
 import { declaredPrimaryComponent, wireHttpsOrigins } from "./https-origin.js";
 import { getProvisioner } from "./resources/index.js";
 import type { ResourceProperties } from "./resources/types.js";
-import { coveredUses, withCoveredUses } from "./resources/uses.js";
+import { coveredUses, type DbIndexes, namedDatabases, withCoveredUses } from "./resources/uses.js";
 import { generateValue } from "./secret-generator.js";
-import type { LaunchState } from "./state.js";
+import { type LaunchState, recordedDbIndexes } from "./state.js";
 
 // Re-export so existing callers in the macos-dev provider keep their import path.
 export type { ResolverContext, UnsuppliedRequiredEnv };
@@ -163,9 +165,10 @@ export function buildResolverContext(
 }
 
 /**
- * The `uses` each resource entry declares, keyed like the resource namespace
- * (`name ?? type`, app-global). Same-name entries pool their tokens — D-24
- * says they describe one resource. Host-capability entries have none.
+ * The use keys each resource entry declares (`db`, `db.cache`), keyed like
+ * the resource namespace (`name ?? type`, app-global). Same-name entries pool
+ * their keys — D-24 says they describe one resource. Host-capability entries
+ * have none.
  */
 export function declaredUses(
 	launch: NormalizedLaunch,
@@ -175,8 +178,8 @@ export function declaredUses(
 		for (const entry of [...(component.requires ?? []), ...(component.supports ?? [])]) {
 			if (entry.host || !entry.uses) continue;
 			const pooled = (uses[entry.name ?? entry.type] ??= []);
-			for (const use of entry.uses) {
-				if (!pooled.includes(use)) pooled.push(use);
+			for (const key of useKeys(entry.uses)) {
+				if (!pooled.includes(key)) pooled.push(key);
 			}
 		}
 	}
@@ -184,38 +187,27 @@ export function declaredUses(
 }
 
 /**
- * Whether the pooled uses of `resourceName` include a redis `db` this provider
- * covers — the one use that needs an allocated database index.
- */
-export function usesDb(
-	type: string,
-	resourceName: string,
-	uses: Record<string, readonly string[]>,
-): boolean {
-	return coveredUses(type, uses[resourceName] ?? []).includes("db");
-}
-
-/**
  * A resource's property map as `up`, `env` and `bootstrap` all register it:
  * the provisioner's instance vocabulary plus every pooled use this provider
- * covers under `<use>.<property>` (D-24: same-name entries describe one
- * resource). `dbIndex` is the numbered database the redis `db` use selects.
- * `undefined` on a resource that pools `db` leaves `db.*` unregistered, so a
- * `$<resource>.db.<property>` reference throws `UnresolvedUseError` instead
- * of falling through to the instance url.
+ * covers under `<use>.<property>` / `<use>.<name>.<property>` (D-24:
+ * same-name entries describe one resource). `dbIndexes` carries the numbered
+ * database each redis `db` use key selects. A pooled `db` key with no index
+ * in it stays unregistered, so a `$<resource>.db.<property>` (or
+ * `$<resource>.db.<name>.<property>`) reference throws `UnresolvedUseError`
+ * instead of falling through to the instance url.
  */
 export function registerResource(
 	type: string,
 	resourceName: string,
 	uses: Record<string, readonly string[]>,
 	base: ResourceProperties,
-	dbIndex: number | undefined,
+	dbIndexes: DbIndexes,
 ): ResourceProperties {
 	const pooled = coveredUses(type, uses[resourceName] ?? []);
-	if (dbIndex === undefined) {
-		return withCoveredUses(type, pooled.filter((use) => use !== "db"), base, 0);
-	}
-	return withCoveredUses(type, pooled, base, dbIndex);
+	const registered = pooled.filter(
+		(key) => parseUseKey(key).use !== "db" || Object.hasOwn(dbIndexes, key),
+	);
+	return withCoveredUses(type, registered, base, dbIndexes);
 }
 
 /**
@@ -241,10 +233,10 @@ export async function resourceMapFromState(
 		if (!provisioner) continue;
 		const result = await provisioner.provision(
 			{ type: res.type, name: res.name },
-			{ appName: state.appName, projectDir },
+			{ appName: state.appName, projectDir, databases: namedDatabases(uses[name] ?? []) },
 			res,
 		);
-		resourceMap[name] = registerResource(res.type, name, uses, result.properties, res.dbIndex);
+		resourceMap[name] = registerResource(res.type, name, uses, result.properties, recordedDbIndexes(res));
 	}
 	return resourceMap;
 }
