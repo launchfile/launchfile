@@ -40,6 +40,7 @@ components:
       PENPOT_FLAGS:
         default: "enable-registration enable-login-with-password disable-email-verification"
       PENPOT_PUBLIC_URI:
+        default: $app.url
         required: true
         description: "Public URL where Penpot is accessible"
     storage:
@@ -58,6 +59,7 @@ components:
         port: 6061
     env:
       PENPOT_PUBLIC_URI:
+        default: $app.url
         required: true
         description: "Public URL where Penpot is accessible"
     restart: always

@@ -94,6 +94,21 @@ entry **fails the app's test run by name**, before any image is pulled. If a
 value belongs in the Launchfile rather than in a fixture, give it a `default:`
 or a `generator:` instead.
 
+### `known_issues:` — why an app still does not come up
+
+A draft can be declaration-correct and still fail to deploy, for a reason the
+Launchfile cannot express. Record that in a top-level `known_issues:` list:
+
+```yaml
+known_issues:
+  - "Does not deploy. The three Postgres DSNs point at a hand-authored sibling
+    component, which `requires:` cannot bind to. Tracked by #236."
+```
+
+It is top level on purpose. `test_results:` and `images:` are rebuilt from
+scratch on every run, so a note written inside `test_results.notes` does not
+survive the next `bun run src/test-app.ts <app>`.
+
 ## Known Limitations
 
 - `build:` components are skipped (no source code to build)

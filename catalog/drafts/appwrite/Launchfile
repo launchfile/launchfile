@@ -33,6 +33,7 @@ components:
         generator: secret
         sensitive: true
       _APP_DOMAIN:
+        default: $app.host
         required: true
         description: "Public domain for the Appwrite instance"
     health: /v1/health
