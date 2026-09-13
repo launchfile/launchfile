@@ -32,24 +32,21 @@ import {
 	HTTPS_ORIGIN,
 	httpsOriginSatisfied,
 	httpsOriginShortfall,
-	wireHttpsOrigins,
 } from "./https-origin.js";
 import { loadState, initState, saveState, ensureDirs } from "./state.js";
 import {
-	buildResolverContext,
 	declaredUses,
-	computeAppEndpoints,
-	computeAppProperties,
+	registerResource,
 	resolveComponentEnv,
+	resolverContextFor,
+	resourceMapFromState,
 	generateSecrets,
 	resolveGenerators,
+	usesDb,
 	writeEnvFile,
 	type UnsuppliedRequiredEnv,
 } from "./env-writer.js";
-import { getProvisioner,
-	uncoveredUses,
-	coveredUses,
-	withCoveredUses, type ResourceProperties } from "./resources/index.js";
+import { getProvisioner, uncoveredUses, type ResourceProperties } from "./resources/index.js";
 import { allocatePorts } from "./port-allocator.js";
 import { getRuntimeInstaller } from "./runtimes/index.js";
 import { detectPackageManager } from "./lockfile-detect.js";
@@ -772,14 +769,14 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 				);
 			}
 
-			const pooledUses = coveredUses(req.type, uses[resourceName] ?? []);
-			const dbIndex = pooledUses.includes("db") ? dbIndexOf(resourceName) : 0;
+			const dbIndex = usesDb(req.type, resourceName, uses) ? dbIndexOf(resourceName) : undefined;
 
 			if (opts.dryRun) {
 				console.log(`  [dry-run] Would provision ${req.type} as "${resourceName}"`);
-				resourceMap[resourceName] = withCoveredUses(
+				resourceMap[resourceName] = registerResource(
 					req.type,
-					pooledUses,
+					resourceName,
+					uses,
 					{ url: "", host: "localhost", port: 0 }, // placeholder for dedup
 					dbIndex,
 				);
@@ -789,8 +786,10 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 			process.stdout.write(`  \u2193 Provisioning ${req.type}...`);
 			const existing = state.resources[resourceName];
 			const result = await provisioner.provision(req, { appName: launch.name, projectDir }, existing);
-			resourceMap[resourceName] = withCoveredUses(req.type, pooledUses, result.properties, dbIndex);
-			state.resources[resourceName] = result.state;
+			resourceMap[resourceName] = registerResource(req.type, resourceName, uses, result.properties, dbIndex);
+			// The index rides along in state so `env` answers `db.*` with the
+			// database the running app was given.
+			state.resources[resourceName] = dbIndex === undefined ? result.state : { ...result.state, dbIndex };
 			console.log(" done");
 		}
 
@@ -818,14 +817,14 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 					);
 					continue;
 				}
-				const pooledUses = coveredUses(sup.type, uses[resourceName] ?? []);
-				const dbIndex = pooledUses.includes("db") ? dbIndexOf(resourceName) : 0;
+				const dbIndex = usesDb(sup.type, resourceName, uses) ? dbIndexOf(resourceName) : undefined;
 
 				if (opts.dryRun) {
 					console.log(`  [dry-run] Would provision optional ${sup.type} as "${resourceName}"`);
-					resourceMap[resourceName] = withCoveredUses(
+					resourceMap[resourceName] = registerResource(
 						sup.type,
-						pooledUses,
+						resourceName,
+						uses,
 						{ url: "", host: "localhost", port: 0 },
 						dbIndex,
 					);
@@ -836,8 +835,8 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 					process.stdout.write(`  \u2193 Provisioning ${sup.type} (optional)...`);
 					const existing = state.resources[resourceName];
 					const result = await provisioner.provision(sup, { appName: launch.name, projectDir }, existing);
-					resourceMap[resourceName] = withCoveredUses(sup.type, pooledUses, result.properties, dbIndex);
-					state.resources[resourceName] = result.state;
+					resourceMap[resourceName] = registerResource(sup.type, resourceName, uses, result.properties, dbIndex);
+					state.resources[resourceName] = dbIndex === undefined ? result.state : { ...result.state, dbIndex };
 					console.log(" done");
 				} catch {
 					console.log(" skipped");
@@ -853,16 +852,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	// 8. Build resolver context (including $app.* properties from D-33). A
 	// satisfied `https-origin` registers `url` — the same string as `$app.url`
 	// (D-60 rule 4) — so its set_env resolves like any provisioned resource's.
-	const appProperties = computeAppProperties(launch, componentPorts, state.appUrl);
-	wireHttpsOrigins(launch, resourceMap, state.appUrl);
-	const context = buildResolverContext(
-		resourceMap,
-		componentPorts,
-		state.secrets,
-		appProperties,
-		computeAppEndpoints(launch),
-		uses,
-	);
+	const context = resolverContextFor(launch, resourceMap, state);
 	// `$app.endpoints.<name>.*` resolves "" here (D-63 rule 4, #294). Said
 	// once per `up`, and only when the file asks, so the empty value is not a
 	// silent one (PROVIDERS.md §10 item 8).
@@ -1172,32 +1162,12 @@ export async function launchEnv(opts: { component?: string; projectDir?: string 
 		return;
 	}
 
-	// Rebuild resource map from state
-	const resourceMap: Record<string, ResourceProperties> = {};
-	for (const [name, res] of Object.entries(state.resources)) {
-		const provisioner = getProvisioner(res.type);
-		if (provisioner) {
-			const result = await provisioner.provision(
-				{ type: res.type, name: res.name },
-				{ appName: state.appName, projectDir },
-				res,
-			);
-			resourceMap[name] = result.properties;
-		}
-	}
-
-	// `env` reports what the running app has, so `$app.*` comes from the same
-	// publication context the last `up` recorded (D-58), not from this
-	// provider's localhost answer.
-	const appProperties = computeAppProperties(launch, state.ports, state.appUrl);
-	wireHttpsOrigins(launch, resourceMap, state.appUrl);
-	const context = buildResolverContext(
-		resourceMap,
-		state.ports,
-		state.secrets,
-		appProperties,
-		computeAppEndpoints(launch),
-	);
+	// `env` reports what the running app has: the resources registered as `up`
+	// registered them — declared uses included, a redis `db` use reading back
+	// the index `up` recorded — and `$app.*` from the publication context the
+	// last `up` recorded (D-58), not this provider's localhost answer.
+	const resourceMap = await resourceMapFromState(launch, state, projectDir);
+	const context = resolverContextFor(launch, resourceMap, state);
 
 	// `env` reports what the running app has, so it reads minted generator
 	// values from the same store `up` persists to (D-49). A value can still be

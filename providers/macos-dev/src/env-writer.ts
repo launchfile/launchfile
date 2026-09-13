@@ -21,9 +21,12 @@ import {
 	type UnsuppliedRequiredEnv,
 	unsuppliedRequiredEnv,
 } from "@launchfile/sdk";
-import { declaredPrimaryComponent } from "./https-origin.js";
+import { declaredPrimaryComponent, wireHttpsOrigins } from "./https-origin.js";
+import { getProvisioner } from "./resources/index.js";
 import type { ResourceProperties } from "./resources/types.js";
+import { coveredUses, withCoveredUses } from "./resources/uses.js";
 import { generateValue } from "./secret-generator.js";
+import type { LaunchState } from "./state.js";
 
 // Re-export so existing callers in the macos-dev provider keep their import path.
 export type { ResolverContext, UnsuppliedRequiredEnv };
@@ -178,6 +181,96 @@ export function declaredUses(
 		}
 	}
 	return uses;
+}
+
+/**
+ * Whether the pooled uses of `resourceName` include a redis `db` this provider
+ * covers — the one use that needs an allocated database index.
+ */
+export function usesDb(
+	type: string,
+	resourceName: string,
+	uses: Record<string, readonly string[]>,
+): boolean {
+	return coveredUses(type, uses[resourceName] ?? []).includes("db");
+}
+
+/**
+ * A resource's property map as `up`, `env` and `bootstrap` all register it:
+ * the provisioner's instance vocabulary plus every pooled use this provider
+ * covers under `<use>.<property>` (D-24: same-name entries describe one
+ * resource). `dbIndex` is the numbered database the redis `db` use selects.
+ * `undefined` on a resource that pools `db` leaves `db.*` unregistered, so a
+ * `$<resource>.db.<property>` reference throws `UnresolvedUseError` instead
+ * of falling through to the instance url.
+ */
+export function registerResource(
+	type: string,
+	resourceName: string,
+	uses: Record<string, readonly string[]>,
+	base: ResourceProperties,
+	dbIndex: number | undefined,
+): ResourceProperties {
+	const pooled = coveredUses(type, uses[resourceName] ?? []);
+	if (dbIndex === undefined) {
+		return withCoveredUses(type, pooled.filter((use) => use !== "db"), base, 0);
+	}
+	return withCoveredUses(type, pooled, base, dbIndex);
+}
+
+/**
+ * The resource map a subcommand run after `up` (`env`, `bootstrap`) resolves
+ * against, rebuilt from state and registered exactly as `up` registered it.
+ * Each recorded resource is re-provisioned to read its current properties —
+ * every provisioner is idempotent, so this neither re-creates nor corrupts
+ * the resource — and a redis `db` use reads back the index `up` recorded
+ * rather than one re-derived from the file, which may have changed since. A
+ * state file written before the index was recorded leaves `db.*`
+ * unregistered, so the strict resolver throws for `$<resource>.db.*` — never
+ * the instance url — until the next `up` records it.
+ */
+export async function resourceMapFromState(
+	launch: NormalizedLaunch,
+	state: LaunchState,
+	projectDir: string,
+): Promise<Record<string, ResourceProperties>> {
+	const uses = declaredUses(launch);
+	const resourceMap: Record<string, ResourceProperties> = {};
+	for (const [name, res] of Object.entries(state.resources)) {
+		const provisioner = getProvisioner(res.type);
+		if (!provisioner) continue;
+		const result = await provisioner.provision(
+			{ type: res.type, name: res.name },
+			{ appName: state.appName, projectDir },
+			res,
+		);
+		resourceMap[name] = registerResource(res.type, name, uses, result.properties, res.dbIndex);
+	}
+	return resourceMap;
+}
+
+/**
+ * The resolver context `up`, `env` and `bootstrap` share, built from the same
+ * inputs: the registered resources, the recorded ports and secrets, `$app.*`
+ * from the recorded publication context (D-58) with a satisfied
+ * `https-origin` wired to the same string (D-60 rule 4), and the declared
+ * uses the resolver applies strictly.
+ */
+export function resolverContextFor(
+	launch: NormalizedLaunch,
+	resourceMap: Record<string, ResourceProperties>,
+	state: LaunchState,
+): ResolverContext {
+	const appProperties = computeAppProperties(launch, state.ports, state.appUrl);
+	wireHttpsOrigins(launch, resourceMap, state.appUrl);
+	return buildResolverContext(
+		resourceMap,
+		state.ports,
+		state.secrets,
+		appProperties,
+		computeAppEndpoints(launch),
+		declaredUses(launch),
+	);
 }
 
 /**
