@@ -1,5 +1,54 @@
 # @launchfile/macos-dev
 
+## 0.10.0
+
+### Minor Changes
+
+- [#354](https://github.com/launchfile/launchfile/pull/354) [`1123da3`](https://github.com/launchfile/launchfile/commit/1123da37959a0fbebca27c112ed6e8ebd8dc0bff) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - macos-dev gains the orchestrator-facing publication channel (D-58)
+  
+  `launchUp({ appUrl })` supplies the public URL of the app's primary endpoint
+  when routing is owned upstream, and `$app.*` resolves from it instead of
+  `http://localhost:<port>`. The value is persisted in `.launchfile/state.json`,
+  so `env` and `bootstrap` answer with it and a later run that omits the option
+  keeps it; supplying a different one replaces it.
+  
+  `https-origin` (D-60) rides that channel, as it does under `@launchfile/docker`:
+  an `https` `appUrl` satisfies a required entry and resolves its `url` to
+  `$app.url`; with no URL, or one whose scheme is not `https`, the component is
+  refused with the same two reasons docker gives. A declared `https-origin`
+  entry also names the app's primary endpoint for `$app.*` (D-60 rule 3).
+  
+  The SDK now owns D-58's URL contract — `normalizeAppUrl`, `InvalidAppUrlError`,
+  `suppliedAppAddress`, and `suppliedAppProperties` — so both providers refuse a
+  malformed value with the same message instead of carrying two copies of a spec
+  rule. `@launchfile/docker` re-exports the first two and its `publishedAddress`
+  derives a supplied URL through `suppliedAppAddress`, so its public API is
+  unchanged.
+
+- [#401](https://github.com/launchfile/launchfile/pull/401) [`4d1e4c0`](https://github.com/launchfile/launchfile/commit/4d1e4c0cde984ae29beb1b630508218ba4b2ef70) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Anchor the allocated host port on the component's first `exposed: true` endpoint, falling back to `provides[0]`.
+  
+  `allocatePorts` read `component.provides?.[0]?.port` with no check on `exposed`, while `computeAppProperties` picked the component to publish by `p.exposed === true`. Two rules, one number. For `provides: [{port: 9000}, {port: 8080, exposed: true}]` the docker provider reported `8080` and macos-dev reported `9000` for the same file — the P-5 divergence, and it moved `$app.*`, `$components.<name>.*`, and the `PORT` the spawned process binds together, since this provider keeps one port per component.
+  
+  No shipped catalog app moves: the four apps with more than one `provides` entry mark every entry `exposed: true`. The parameter type widens to `Array<{ port: number; exposed?: boolean }>`.
+
+- [#511](https://github.com/launchfile/launchfile/pull/511) [`a264017`](https://github.com/launchfile/launchfile/commit/a26401714640f779b4131f4e3b8555b25d728459) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Refuse a component whose `requires` entry names a resource type this provider has no provisioner for, instead of warning and starting it without the resource ([#461](https://github.com/launchfile/launchfile/issues/461), PROVIDERS.md §10 item 5). `launch up` previously printed `! No provisioner for resource type: <type> (skipping)` and went on to install, wire and start the component. The component is now removed from the run before anything is provisioned, installed, wired or started — the same shape as this provider's `https-origin` refusal — with a message naming the component and the entry. Sibling components still run. This provider has no supplied-resource channel, so a type it does not provision (`kafka`, `clickhouse`, `mongodb`, among others) can only be refused. `supports:` entries and host-capability entries are unchanged. A single-component app has no siblings, so this refuses it whole: `catalog/apps/posthog` (one component, requiring `clickhouse` and `kafka`) no longer starts on this provider at all, and nor do the `plausible`, `rocketchat`, `checkmate` and `librechat` drafts.
+
+- [#519](https://github.com/launchfile/launchfile/pull/519) [`d2039b2`](https://github.com/launchfile/launchfile/commit/d2039b22ce1ed3fb5fc2fb7f2cb427d3582e4269) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Cover named repeatable uses ([#516](https://github.com/launchfile/launchfile/issues/516), SPEC.md § Resource uses). Each named redis `db` (`- db: cache`) gets its own numbered database on the Homebrew Redis, allocated by the same app-wide rule as `@launchfile/docker` — resources in the order their first `db`-declaring entry appears, the bare `db` first within a resource, named `db` uses after it in name order — and recorded in state per name so `env` and `bootstrap` answer with the databases `up` handed the app. Each named `database` on postgres, mysql or mariadb is one more database on the local server, `launchfile_<app>_<name>`, created through the same createdb / `CREATE DATABASE` + `GRANT` path as the app's own and dropped on `down --destroy`. A name on a use that does not repeat refuses the component naming the entry, the token and the name.
+
+- [#515](https://github.com/launchfile/launchfile/pull/515) [`1796de9`](https://github.com/launchfile/launchfile/commit/1796de9ae8d42f920cca6a4326de9e2ed981fe2f) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Cover a `requires`/`supports` entry's declared `uses` or refuse the component ([#509](https://github.com/launchfile/launchfile/issues/509), SPEC.md § Resource uses, D-56 rule 1). For redis `db` the provider allocates one numbered database per entry on the Homebrew Redis it starts (index 0 first, within the app) and registers `db.url` (`redis://localhost:6379/<index>`) and `db.index`; `pubsub` and `server` are covered by that server; for postgres, mysql and mariadb `database` registers `database.url` and `database.name`, `server` the local instance. A `requires` entry declaring a use this provider cannot cover — a token it does not recognise included — is removed from the run before anything is provisioned, installed, wired or started, the same shape as its other refusals, with a message naming the component, the entry and the use. Under `--with-optional`, a `supports` entry with an uncovered use is left unfulfilled with a warning, never refused. A reference to a use the entry does not declare fails wiring with `UnresolvedUseError` instead of silently resolving the instance URL. Files that declare no `uses` are wired exactly as before.
+
+### Patch Changes
+
+- [#488](https://github.com/launchfile/launchfile/pull/488) [`ab3e359`](https://github.com/launchfile/launchfile/commit/ab3e359e70f00fe9758855b33cc99506e1736dc2) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - `$app.endpoints.<name>.*` resolves `""` for every property on this provider, and `up` says so ([#463](https://github.com/launchfile/launchfile/issues/463), D-63 rule 4, [#294](https://github.com/launchfile/launchfile/issues/294)).
+  
+  The allocator hands out one port per component, not one per endpoint, so there is no per-endpoint address to publish — the primary's included; `$app.*` keeps its own routing answer. `computeAppEndpoints(launch)` registers the empty answer for every named published endpoint on the resolver context (`buildResolverContext` takes it as a fifth argument), and `up` warns once naming the endpoints the file references.
+
+- [#382](https://github.com/launchfile/launchfile/pull/382) [`2f47bdf`](https://github.com/launchfile/launchfile/commit/2f47bdf87d86a8744900ce00387af62c633c770a) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Fix `.launchfile/` state directories (`env`, `storage`, `tmp`, `logs`, `data`) staying world-readable when the directory already existed (CWE-276). `ensureDirs` passed `mode: 0o700` to `mkdir`, but `mkdir`'s mode only applies when it creates the directory — a directory left at a looser mode by an earlier Launchfile version, a permissive umask, or a manual `mkdir` stayed at that mode forever. `ensureDirs` now `chmod`s each directory unconditionally after `mkdir`, mirroring the retrofit already shipped in `packages/launchfile/src/state/errors.ts`. Also adds the mode to the two other `.launchfile/env` `mkdir` call sites for consistency (issue [#252](https://github.com/launchfile/launchfile/issues/252)).
+
+- [#370](https://github.com/launchfile/launchfile/pull/370) [`6afe9b4`](https://github.com/launchfile/launchfile/commit/6afe9b41ccc6b9c20ac89cc18553637f14fe7565) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Confine `launchfile down --destroy` to the project directory when it removes a sqlite database file. `SqliteProvisioner.destroy()` deleted whatever absolute path `.launchfile/state.json` named, and that file lives inside the cloned repo and is parsed without validation — so a repository could ship a state file pointing `dbName` at any file on the machine and have it deleted. The path is now resolved through the filesystem and refused unless it really sits under `<projectDir>/.launchfile/data/sqlite/`, the directory `provision()` writes to. Both ends of the comparison go through `realpath`, anchored on the caller-supplied project directory, so a repo that ships the data directory as a symlink out of the project cannot smuggle a delete past a string-prefix check. A refused path prints a warning and teardown continues to the next resource, so a poisoned state file cannot wedge cleanup. Legitimate cleanup is unaffected.
+- Updated dependencies [[`ab3e359`](https://github.com/launchfile/launchfile/commit/ab3e359e70f00fe9758855b33cc99506e1736dc2), [`f40e7b6`](https://github.com/launchfile/launchfile/commit/f40e7b68d99f61d777455f0f79e4ab94d2cf1519), [`3587317`](https://github.com/launchfile/launchfile/commit/35873173251a6a8e9f97d5fae592fa7fd998bf7d), [`31dbac2`](https://github.com/launchfile/launchfile/commit/31dbac2a4c58dc50c4d4959facf6ff0b3aefa1e3), [`1123da3`](https://github.com/launchfile/launchfile/commit/1123da37959a0fbebca27c112ed6e8ebd8dc0bff), [`d2039b2`](https://github.com/launchfile/launchfile/commit/d2039b22ce1ed3fb5fc2fb7f2cb427d3582e4269), [`1796de9`](https://github.com/launchfile/launchfile/commit/1796de9ae8d42f920cca6a4326de9e2ed981fe2f), [`39df9db`](https://github.com/launchfile/launchfile/commit/39df9db10c64b7fded71e9afd74c08c7a8614285), [`a399ba3`](https://github.com/launchfile/launchfile/commit/a399ba365a2c7a3fe3b349d43810d3ff329e77c2)]:
+  - @launchfile/sdk@0.10.0
+
 ## 0.9.0
 
 ### Minor Changes
