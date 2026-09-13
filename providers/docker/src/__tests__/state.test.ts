@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -7,10 +7,13 @@ import {
 	saveState,
 	loadState,
 	loadDockerSource,
+	hashLaunchfile,
 	stateDir,
 	composeProject,
 	type DockerState,
 } from "../state.js";
+import { dockerUp } from "../provider.js";
+import { logger } from "../logger.js";
 import { clearRegisteredSecrets, redactSecrets, REDACTED } from "../redact.js";
 
 // state.ts keys everything off homedir() → ~/.launchfile/docker/<slug>.
@@ -196,5 +199,289 @@ describe("docker state — composeProject slug guard", () => {
 		]) {
 			expect(() => composeProject(bad)).toThrow(/Invalid slug/);
 		}
+	});
+});
+
+/**
+ * Load-boundary validation (#441). `loadState` parses a file an operator can
+ * hand-edit, so every field is checked at run time. A bad key is dropped and
+ * the rest of the file is kept: the file records a deployment whose containers
+ * are still running, and discarding all of it would orphan them.
+ */
+describe("docker state — load-boundary validation (#441)", () => {
+	/** Write a raw state file for `slug`, bypassing `saveState`'s typing. */
+	function writeRawState(slug: string, body: unknown): string {
+		const dir = stateDir(slug);
+		mkdirSync(dir, { recursive: true });
+		const file = join(dir, "state.json");
+		writeFileSync(file, typeof body === "string" ? body : JSON.stringify(body, null, 2));
+		return file;
+	}
+
+	const wellFormed = {
+		version: 1,
+		slug: "app",
+		appName: "app",
+		composeProject: "launchfile-app",
+		launchfileHash: "deadbeefdeadbeef",
+		createdAt: "2024-01-01T00:00:00.000Z",
+		updatedAt: "2024-01-01T00:00:00.000Z",
+		secrets: { DB_PASSWORD: "s3cret" },
+		ports: { default: 3000 },
+	};
+
+	let warn: ReturnType<typeof vi.fn>;
+
+	beforeEach(() => {
+		warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined) as ReturnType<typeof vi.fn>;
+	});
+
+	afterEach(() => {
+		warn.mockRestore();
+		clearRegisteredSecrets();
+	});
+
+	/** The `key` field of every warning the load emitted. */
+	const warnedKeys = (): unknown[] =>
+		warn.mock.calls.map((call: unknown[]) => (call[0] as { key?: unknown } | undefined)?.key);
+
+	it("defaults a missing ports map to an empty object and warns", async () => {
+		const { ports: _dropped, ...noPorts } = wellFormed;
+		const file = writeRawState("app", noPorts);
+
+		const loaded = await loadState("app");
+		expect(loaded).not.toBeNull();
+		// This is the crash the issue reports: status/list read
+		// Object.keys(state.ports) with no guard.
+		expect(loaded!.ports).toEqual({});
+		expect(() => Object.keys(loaded!.ports)).not.toThrow();
+		expect(warnedKeys()).toContain("ports");
+		expect(warn.mock.calls[0]?.[0]).toMatchObject({ stateFile: file });
+	});
+
+	it("defaults a ports map that is not an object and warns", async () => {
+		writeRawState("app", { ...wellFormed, ports: "3000" });
+
+		const loaded = await loadState("app");
+		expect(loaded!.ports).toEqual({});
+		expect(warnedKeys()).toContain("ports");
+	});
+
+	it("drops a port entry that is not a number and keeps the rest", async () => {
+		writeRawState("app", { ...wellFormed, ports: { default: 3000, admin: "2368" } });
+
+		const loaded = await loadState("app");
+		expect(loaded!.ports).toEqual({ default: 3000 });
+		expect(warnedKeys()).toContain("ports.admin");
+	});
+
+	it("drops a secrets field that is not an object and keeps every other field", async () => {
+		writeRawState("app", { ...wellFormed, secrets: "DB_PASSWORD=s3cret" });
+
+		const loaded = await loadState("app");
+		expect(loaded).not.toBeNull();
+		expect(loaded!.secrets).toBeUndefined();
+		expect(loaded!.appName).toBe("app");
+		expect(loaded!.ports).toEqual({ default: 3000 });
+		expect(warnedKeys()).toContain("secrets");
+	});
+
+	it("drops a single non-string secret and keeps its siblings", async () => {
+		writeRawState("app", {
+			...wellFormed,
+			secrets: { DB_PASSWORD: "s3cret", PORT: 5432 },
+		});
+
+		const loaded = await loadState("app");
+		expect(loaded!.secrets).toEqual({ DB_PASSWORD: "s3cret" });
+		expect(warnedKeys()).toContain("secrets.PORT");
+	});
+
+	it("drops a single non-string resource password and keeps its siblings", async () => {
+		writeRawState("app", {
+			...wellFormed,
+			resourcePasswords: { "db.postgres": "pgpass", "cache.redis": null },
+		});
+
+		const loaded = await loadState("app");
+		expect(loaded!.resourcePasswords).toEqual({ "db.postgres": "pgpass" });
+		expect(loaded!.secrets).toEqual({ DB_PASSWORD: "s3cret" });
+		expect(warnedKeys()).toContain("resourcePasswords.cache.redis");
+	});
+
+	it("loads a file whose required appName is absent, warning about nothing else", async () => {
+		const { appName: _absent, ...noName } = wellFormed;
+		writeRawState("app", noName);
+
+		const loaded = await loadState("app");
+		expect(loaded).not.toBeNull();
+		expect(loaded!.appName).toBeUndefined();
+		// An absent field is not a malformed one — nothing is dropped.
+		expect(warn).not.toHaveBeenCalled();
+		expect(loaded!.slug).toBe("app");
+		expect(loaded!.ports).toEqual({ default: 3000 });
+	});
+
+	it("drops a required field of the wrong type and keeps the rest", async () => {
+		writeRawState("app", { ...wellFormed, appName: 42, version: "1" });
+
+		const loaded = await loadState("app");
+		expect(loaded!.appName).toBeUndefined();
+		expect(loaded!.version).toBeUndefined();
+		expect(loaded!.slug).toBe("app");
+		expect(warnedKeys()).toEqual(expect.arrayContaining(["appName", "version"]));
+	});
+
+	it("drops a malformed endpoint entry and keeps the well-formed one", async () => {
+		writeRawState("app", {
+			...wellFormed,
+			ports: { default: 3000, admin: 2368 },
+			endpoints: {
+				default: { component: "web", containerPort: 80, hostPort: 3000, protocol: "https" },
+				admin: { component: "web", containerPort: "2368", hostPort: 2368 },
+			},
+		});
+
+		const loaded = await loadState("app");
+		expect(Object.keys(loaded!.endpoints ?? {})).toEqual(["default"]);
+		expect(loaded!.endpoints?.default?.protocol).toBe("https");
+		expect(warnedKeys()).toContain("endpoints.admin");
+	});
+
+	it("keeps an unknown key through a load-and-save round trip", async () => {
+		// A field a newer provider version writes must survive an older one,
+		// which cannot know what it means (P-13).
+		writeRawState("app", { ...wellFormed, futureField: { nested: true } });
+
+		const loaded = await loadState("app");
+		expect((loaded as unknown as Record<string, unknown>).futureField).toEqual({
+			nested: true,
+		});
+
+		await saveState("app", loaded!);
+		const onDisk = JSON.parse(
+			readFileSync(join(stateDir("app"), "state.json"), "utf8"),
+		) as Record<string, unknown>;
+		expect(onDisk.futureField).toEqual({ nested: true });
+		expect(onDisk.slug).toBe("app");
+	});
+
+	it("returns null for a JSON document that is not an object", async () => {
+		writeRawState("app", "[1, 2, 3]");
+		expect(await loadState("app")).toBeNull();
+	});
+
+	it("returns null for unparseable bytes and for a missing file", async () => {
+		writeRawState("app", "{not json");
+		expect(await loadState("app")).toBeNull();
+		expect(await loadState("never-deployed")).toBeNull();
+	});
+
+	it("never throws on a malformed file", async () => {
+		for (const body of ["null", '"a string"', "{}", '{"ports": []}', '{"secrets": null}']) {
+			writeRawState("wild", body);
+			await expect(loadState("wild")).resolves.not.toThrow();
+		}
+	});
+
+	it("still registers reloaded secrets with the redactor after validation (D-18)", async () => {
+		const value = "d".repeat(64);
+		writeRawState("app", { ...wellFormed, secrets: { DB_PASSWORD: value, BAD: 7 } });
+
+		clearRegisteredSecrets();
+		await loadState("app");
+		expect(redactSecrets(`pw=${value}`)).toBe(`pw=${REDACTED}`);
+	});
+
+	it("still registers reloaded resource passwords with the redactor after validation (D-18)", async () => {
+		const value = "e".repeat(64);
+		writeRawState("app", {
+			...wellFormed,
+			resourcePasswords: { "db.postgres": value, BAD: 7 },
+		});
+
+		clearRegisteredSecrets();
+		await loadState("app");
+		expect(redactSecrets(`pw=${value}`)).toBe(`pw=${REDACTED}`);
+	});
+});
+
+/**
+ * The recorded `launchfileHash` is read on `up` (#441). It catches what the
+ * D-55 rule 3 source guard cannot see: a Launchfile edited in place at the
+ * same path. It warns and continues — refusing would break the
+ * edit-then-redeploy cycle D-49 relies on.
+ */
+describe("docker state — launchfileHash is read on up (#441)", () => {
+	const LAUNCHFILE = `version: launch/v1
+name: hashtest
+image: alpine:3.20
+commands:
+  start: sleep 300
+`;
+
+	let projectDir: string;
+	let warnings: string[];
+	let restore: (() => void) | null = null;
+
+	beforeEach(() => {
+		projectDir = mkdtempSync(join(tmpdir(), "lf-hash-app-"));
+		writeFileSync(join(projectDir, "Launchfile"), LAUNCHFILE);
+		warnings = [];
+		const log = console.log;
+		const err = console.error;
+		const wrn = console.warn;
+		console.log = () => undefined;
+		console.error = (...args: unknown[]) => warnings.push(args.join(" "));
+		console.warn = (...args: unknown[]) => warnings.push(args.join(" "));
+		restore = () => {
+			console.log = log;
+			console.error = err;
+			console.warn = wrn;
+		};
+	});
+
+	afterEach(() => {
+		restore?.();
+		restore = null;
+		rmSync(projectDir, { recursive: true, force: true });
+	});
+
+	it("hashes the Launchfile text it is given", () => {
+		expect(hashLaunchfile(LAUNCHFILE)).toBe(hashLaunchfile(LAUNCHFILE));
+		expect(hashLaunchfile(LAUNCHFILE)).not.toBe(hashLaunchfile(`${LAUNCHFILE}# edited\n`));
+		expect(hashLaunchfile(LAUNCHFILE)).toMatch(/^[0-9a-f]{16}$/);
+	});
+
+	it("warns and continues when the recorded hash differs from the current file", async () => {
+		const state = initState("hashtest", "hashtest", "name: something-else\n", {
+			sourceType: "local",
+			sourcePath: join(projectDir, "Launchfile"),
+		});
+		await saveState("hashtest", state);
+
+		// A dry run reaches the comparison and writes nothing.
+		const result = await dockerUp(projectDir, { dryRun: true });
+		expect(result.slug).toBe("hashtest");
+		const printed = warnings.join("\n");
+		expect(printed).toContain("differs from the one this deployment was created from");
+		expect(printed).toContain("hashtest");
+		expect(printed).toContain(hashLaunchfile(LAUNCHFILE));
+	});
+
+	it("stays silent when the Launchfile is unchanged", async () => {
+		const state = initState("hashtest", "hashtest", LAUNCHFILE, {
+			sourceType: "local",
+			sourcePath: join(projectDir, "Launchfile"),
+		});
+		await saveState("hashtest", state);
+
+		await dockerUp(projectDir, { dryRun: true });
+		expect(warnings.join("\n")).not.toContain("differs from the one");
+	});
+
+	it("stays silent on a first deployment, which has no recorded hash", async () => {
+		await dockerUp(projectDir, { dryRun: true });
+		expect(warnings.join("\n")).not.toContain("differs from the one");
 	});
 });
