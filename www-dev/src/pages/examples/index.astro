@@ -13,7 +13,7 @@ const examples = [
   { slug: "local-dev", title: "Local Dev (Source Mode)", description: "Run from source with install / dev — launchfile dev, no container.", icon: "terminal" },
   { slug: "storage-paths", title: "Storage Paths", description: "Reference a provisioned volume's path with $storage.<name>.path — portable across providers.", icon: "database" },
   { slug: "operator-content", title: "Operator-Supplied Content", description: "Mark a volume the operator fills with content: operator — the provider binds it or refuses, never creates it empty.", icon: "database" },
-  { slug: "resource-uses", title: "Resource Uses", description: "Declare what the app uses of a resource with uses: [db, pubsub] — and wire the fields each use registers, like $redis.db.url.", icon: "database" },
+  { slug: "resource-uses", title: "Resource Uses", description: "Declare what the app uses of a resource — named databases and pub/sub — and wire the fields each use registers, like $redis.db.queue.url.", icon: "database" },
 ];
 ---
 
