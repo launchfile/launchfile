@@ -43,6 +43,8 @@ export function supportedResourceTypes(): string[] {
 	return Object.keys(factories);
 }
 
+export { coverUse, coveredUses, uncoveredUses, withCoveredUses } from "./uses.js";
+
 export type {
 	ResourceProvisioner,
 	ResourceProperties,

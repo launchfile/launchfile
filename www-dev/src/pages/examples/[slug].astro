@@ -252,6 +252,31 @@ export function getStaticPaths() {
         { line: "ND_MUSICFOLDER: $storage.music.path", text: "Resolves as usual — the container path is still the mount point, whoever supplied the content." },
       ],
     },
+    {
+      slug: "resource-uses",
+      title: "Resource Uses",
+      description: "Declare what the app uses of a required resource with uses: [db, pubsub] — the platform satisfies exactly that, and each use registers its own $resource.use.property fields.",
+      catalogLink: 'Redis-backed apps like <a href="https://launchfile.io/apps/outline/">Outline</a>, <a href="https://launchfile.io/apps/docmost/">Docmost</a>, and <a href="https://launchfile.io/apps/paperless/">Paperless</a> use one keyspace for their queues and pub/sub for their websockets — the shape this example declares.',
+      concepts: [
+        "`requires: redis` says the app needs Redis; `uses: [db, pubsub]` says what it needs *of* it — one logical database and pub/sub channels",
+        "Undeclared means what the entry always meant: an instance address for redis, one database for postgres. Nothing existing changes",
+        "Each use registers its own fields: `$redis.db.url` is the Redis URL with the database selected by path (`redis://host:6379/3`), `$redis.db.index` that integer; `pubsub` and `server` are addressed through the instance's own `$url`",
+        "A platform may satisfy the entry from a shared instance only when every declared use fits — pub/sub ignores database numbers, so isolated channels need an instance the app does not share",
+        "A provider covers every declared use or refuses the component before launch, naming the entry and the use; a token it does not recognise is refused too — a typo fails the deployment rather than being ignored",
+        "`$redis.db.url` beside an entry that does not declare `db` is an error at wiring time, never a quiet fallback to the instance URL",
+      ],
+      guidance: "Apps that run a queue, a cache or sessions in Redis and also fan out over pub/sub — and any app a platform might want to serve from a pooled instance.",
+      specLinks: [
+        { label: "Resource uses", href: "https://launchfile.org/spec/requires/#resource-uses" },
+        { label: "Resource Use Vocabulary", href: "https://launchfile.org/spec/resource-use-vocabulary/" },
+        { label: "Expressions", href: "https://launchfile.org/spec/expression-syntax/" },
+      ],
+      annotations: [
+        { line: "uses: [db, pubsub]", text: "The app's fact, not the platform's strategy: one keyspace plus pub/sub. Leave it off and the entry means what it always did." },
+        { line: "QUEUE_URL: $redis.db.url", text: "Registered by the db use — the standard Redis URL with the allocated database selected by path." },
+        { line: "PUBSUB_URL: $url", text: "The instance address, unchanged by uses. pubsub registers nothing of its own." },
+      ],
+    },
   ];
 
   return examples.map((ex) => ({

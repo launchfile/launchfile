@@ -29,15 +29,12 @@ import {
 } from "@launchfile/sdk";
 import { loadState, saveState } from "./state.js";
 import {
-	buildResolverContext,
-	computeAppEndpoints,
-	computeAppProperties,
 	resolveComponentEnv,
 	resolveGenerators,
+	resolverContextFor,
+	resourceMapFromState,
 } from "./env-writer.js";
 import { redactSecrets, registerDeclaredSecret } from "./redact.js";
-import { wireHttpsOrigins } from "./https-origin.js";
-import { getProvisioner, type ResourceProperties } from "./resources/index.js";
 
 /** Default budget for a bootstrap command when no `timeout` is declared. */
 export const DEFAULT_BOOTSTRAP_TIMEOUT_MS = 120_000;
@@ -291,38 +288,13 @@ export async function launchBootstrap(
 		throw new Error("No active launch state. Run `launch up` first.");
 	}
 
-	// Rebuild resource map from state so the resolver context has real
-	// values at invocation time (same pattern as launchEnv). This calls
-	// provisioner.provision() on already-provisioned resources to retrieve
-	// their current property values — relies on every provisioner being
-	// idempotent: re-running provision() must not corrupt state or
-	// re-create the resource. All current provisioners satisfy this; new
-	// provisioners must as well.
-	const resourceMap: Record<string, ResourceProperties> = {};
-	for (const [name, res] of Object.entries(state.resources)) {
-		const provisioner = getProvisioner(res.type);
-		if (provisioner) {
-			const result = await provisioner.provision(
-				{ type: res.type, name: res.name },
-				{ appName: state.appName, projectDir },
-				res,
-			);
-			resourceMap[name] = result.properties;
-		}
-	}
-
-	// $app.* comes from the publication context the last `up` recorded (D-58),
-	// so a bootstrap command reads the same address the app's env was written
-	// with — not this provider's localhost answer under an upstream proxy.
-	const appProperties = computeAppProperties(launch, state.ports, state.appUrl);
-	wireHttpsOrigins(launch, resourceMap, state.appUrl);
-	const context = buildResolverContext(
-		resourceMap,
-		state.ports,
-		state.secrets,
-		appProperties,
-		computeAppEndpoints(launch),
-	);
+	// A bootstrap command reads the same values the app's env was written
+	// with: the resources registered as `up` registered them — declared uses
+	// included — and `$app.*` from the publication context the last `up`
+	// recorded (D-58), not this provider's localhost answer under an upstream
+	// proxy.
+	const resourceMap = await resourceMapFromState(launch, state, projectDir);
+	const context = resolverContextFor(launch, resourceMap, state);
 
 	const exec = opts.exec ?? defaultExec;
 	const plan = planBootstraps(launch, context, { component: opts.component });

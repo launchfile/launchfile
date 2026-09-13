@@ -1,0 +1,54 @@
+# yaml-language-server: $schema=../schema/launchfile.schema.json
+#
+# Example: declaring what an app uses of a required resource (`uses`).
+#
+# `requires: redis` says the app needs Redis. It does not say what the app
+# needs *of* it — one keyspace, pub/sub channels, or the whole server — and
+# that is the app's fact to state, not the platform's to guess. `uses` states
+# it. Undeclared means what the property vocabulary already promises (an
+# instance address for redis, one database for postgres); declared uses
+# narrow the need and register their own `$<resource>.<use>.<property>`
+# fields.
+#
+# A platform may satisfy the entry from a shared unit only when every declared
+# use fits in it; otherwise it provisions, or refuses. A use a provider cannot
+# cover — including a token it does not recognise — refuses the component
+# before launch, naming the entry and the use; it never hands over less than
+# the file declares.
+#
+# See also: spec/SPEC.md § Resource uses and § Resource Use Vocabulary.
+
+version: launch/v1
+name: board
+
+image: ghcr.io/example/board:latest
+
+provides:
+  - port: 3000
+    protocol: http
+    exposed: true
+
+requires:
+  - type: postgres
+    set_env:
+      DATABASE_URL: $url
+
+  # One logical database for the job queue and cache, plus pub/sub for the
+  # websocket fan-out between replicas. Pub/sub ignores database numbers, so a
+  # platform can only satisfy this from an instance whose channels the app
+  # does not share.
+  - type: redis
+    uses: [db, pubsub]
+    set_env:
+      # The standard Redis URL with the database selected by path,
+      # e.g. redis://redis:6379/3 — the app's own keyspace.
+      QUEUE_URL: $redis.db.url
+      # The same database as an integer, for clients that take it separately.
+      QUEUE_DB: $redis.db.index
+      # The instance address, unchanged by `uses` — pub/sub connects here.
+      PUBSUB_URL: $url
+
+env:
+  PORT: "3000"
+
+health: /healthz

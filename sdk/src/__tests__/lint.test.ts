@@ -143,6 +143,53 @@ components:
 	});
 });
 
+describe("lintLaunch — same-name resources with divergent uses (D-24)", () => {
+	it("warns when two same-name entries declare different uses", () => {
+		const warnings = lintLaunch(
+			readLaunch(`
+name: acme
+components:
+  web:
+    image: acme/web:1
+    requires:
+      - type: redis
+        uses: [db, pubsub]
+  worker:
+    image: acme/worker:1
+    requires:
+      - type: redis
+        uses: [db]
+`),
+			{ suppressPortabilityWarnings: true },
+		);
+		expect(warnings).toEqual([
+			'resource "redis" is declared with divergent uses across web, worker; ' +
+				"entries sharing a name should share their definition (see D-24)",
+		]);
+	});
+
+	it("does not count declaration order as a divergence", () => {
+		const warnings = lintLaunch(
+			readLaunch(`
+name: acme
+components:
+  web:
+    image: acme/web:1
+    requires:
+      - type: redis
+        uses: [db, pubsub]
+  worker:
+    image: acme/worker:1
+    requires:
+      - type: redis
+        uses: [pubsub, db]
+`),
+			{ suppressPortabilityWarnings: true },
+		);
+		expect(warnings).toEqual([]);
+	});
+});
+
 describe("host-capability marker advisory — product spellings (D-44)", () => {
 	const lint = (body: string) =>
 		lintLaunch(readLaunch(`version: launch/v1\nname: p\nimage: x\n${body}`), { suppressPortabilityWarnings: true });
@@ -286,6 +333,85 @@ components:
 		const warnings = lintLaunch(launch, { suppressPortabilityWarnings: true });
 		expect(warnings).toHaveLength(1);
 		expect(warnings[0]).toContain('"$hostt"');
+	});
+});
+
+describe("lintLaunch — uses outside the standard use vocabulary", () => {
+	/** Only this check's lines; the fixtures are minimal and draw the D-40 note too. */
+	const useWarnings = (yaml: string) =>
+		lintLaunch(readLaunch(yaml), { suppressPortabilityWarnings: true }).filter((w) =>
+			w.includes("use vocabulary"),
+		);
+
+	it("warns on a requires token outside the type's use vocabulary and says it will be refused", () => {
+		const warnings = useWarnings(`
+name: app
+image: app:1
+requires:
+  - type: redis
+    uses: [db, streams]
+`);
+		expect(warnings).toEqual([
+			'(top-level): use "streams" is not in the standard use vocabulary for redis ' +
+				"(known: db, pubsub, server) — a provider refuses the component rather than " +
+				"cover a use it does not recognise",
+		]);
+	});
+
+	it("says a supports token leaves the entry unfulfilled instead", () => {
+		const warnings = useWarnings(`
+name: app
+components:
+  web:
+    image: app:1
+    supports:
+      - type: postgres
+        uses: [replica]
+`);
+		expect(warnings).toEqual([
+			'web: use "replica" is not in the standard use vocabulary for postgres ' +
+				"(known: database, server) — a provider leaves the entry unfulfilled rather " +
+				"than cover a use it does not recognise",
+		]);
+	});
+
+	it("is silent for every standard token", () => {
+		const warnings = useWarnings(`
+name: app
+image: app:1
+requires:
+  - type: redis
+    uses: [db, pubsub, server]
+  - type: postgres
+    uses: [database, server]
+  - type: mysql
+    uses: [database]
+`);
+		expect(warnings).toEqual([]);
+	});
+
+	it("is silent for a type with no use vocabulary (L-4)", () => {
+		const warnings = useWarnings(`
+name: app
+image: app:1
+requires:
+  - type: kafka
+    uses: [topics]
+  - type: snowflake
+    uses: [warehouse]
+`);
+		expect(warnings).toEqual([]);
+	});
+
+	it("does not resolve Object.prototype keys as a use vocabulary", () => {
+		const warnings = useWarnings(`
+name: app
+image: app:1
+requires:
+  - type: constructor
+    uses: [db]
+`);
+		expect(warnings).toEqual([]);
 	});
 });
 

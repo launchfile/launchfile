@@ -74,6 +74,55 @@ requires:
 		expect(req?.set_env?.HD_DATABASE_USERNAME).toBe("$user");
 	});
 
+	it("reads uses on a requires entry", () => {
+		const result = readLaunch(`
+name: app
+requires:
+  - type: redis
+    uses: [db, pubsub]
+    set_env:
+      CACHE_URL: $redis.db.url
+`);
+		expect(result.components.default?.requires?.[0]?.uses).toEqual(["db", "pubsub"]);
+	});
+
+	it("reads uses on a supports entry — the alias carries the field", () => {
+		const result = readLaunch(`
+name: app
+supports:
+  - type: redis
+    uses: [pubsub]
+`);
+		expect(result.components.default?.supports?.[0]?.uses).toEqual(["pubsub"]);
+	});
+
+	it("leaves uses undefined on an entry that declares none", () => {
+		const result = readLaunch(`name: app\nrequires: [redis]`);
+		expect(result.components.default?.requires?.[0]).not.toHaveProperty("uses", expect.anything());
+		expect(result.components.default?.requires?.[0]?.uses).toBeUndefined();
+	});
+
+	it("rejects an empty uses list — undeclared is spelled by omission", () => {
+		expect(() => readLaunch(`name: app\nrequires:\n  - type: redis\n    uses: []`)).toThrow();
+	});
+
+	it("rejects a use declared twice on one entry", () => {
+		expect(() =>
+			readLaunch(`name: app\nrequires:\n  - type: redis\n    uses: [db, db]`),
+		).toThrow(/declared once/);
+	});
+
+	it("rejects a use token outside the name grammar", () => {
+		expect(() =>
+			readLaunch(`name: app\nrequires:\n  - type: redis\n    uses: ["Key Space"]`),
+		).toThrow(/Use tokens/);
+	});
+
+	it("accepts a use token outside the standard vocabulary — the vocabulary is open", () => {
+		const result = readLaunch(`name: app\nrequires:\n  - type: redis\n    uses: [streams]`);
+		expect(result.components.default?.requires?.[0]?.uses).toEqual(["streams"]);
+	});
+
 	// UC-30: Build shorthand
 	it("expands build string to object", () => {
 		const result = readLaunch(`
@@ -605,6 +654,35 @@ commands:
 		const launch = readLaunch(`name: my-app\nrequires: [postgres]`);
 		const yaml = writeLaunch(launch);
 		expect(yaml).toContain("postgres");
+	});
+
+	it("keeps a requires entry as an object when only type and uses are set", () => {
+		// Without the guard, `type` + `uses` would collapse to the bare string
+		// `redis` and the declaration would vanish through parse → serialize.
+		const launch = readLaunch(`name: my-app\nrequires:\n  - type: redis\n    uses: [db]`);
+		const yaml = writeLaunch(launch);
+		expect(yaml).toContain("type: redis");
+		expect(yaml).toMatch(/uses:\n\s+- db/);
+		expect(readLaunch(yaml).components.default?.requires?.[0]?.uses).toEqual(["db"]);
+	});
+
+	it("carries uses through parse → serialize beside the other fields", () => {
+		const yaml = `version: launch/v1
+name: my-app
+requires:
+  - type: redis
+    name: cache
+    uses:
+      - db
+      - pubsub
+    set_env:
+      CACHE_URL: $cache.db.url
+`;
+		const round = writeLaunch(readLaunch(yaml));
+		expect(readLaunch(round).components.default?.requires?.[0]).toEqual(
+			readLaunch(yaml).components.default?.requires?.[0],
+		);
+		expect(round).toContain("- pubsub");
 	});
 
 	it("collapses command to string when no timeout", () => {

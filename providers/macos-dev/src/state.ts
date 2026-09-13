@@ -18,6 +18,14 @@ export interface ResourceState {
 	dbName?: string;
 	user?: string;
 	password?: string;
+	/**
+	 * The numbered database `up` allocated to this resource for its redis `db`
+	 * use (SPEC.md § Resource uses). Recorded so `env` registers the same
+	 * `db.url` / `db.index` the running app was given, rather than re-deriving
+	 * an index from a file that may have changed since. Absent on a resource
+	 * with no `db` use and on state written before the index was recorded.
+	 */
+	dbIndex?: number;
 }
 
 /**

@@ -110,6 +110,14 @@ export interface Requirement {
 	version?: string;
 	/** Resource provisioning hints (platform-interpreted) */
 	config?: Record<string, unknown>;
+	/**
+	 * Which features of the resource the app uses (`db`, `pubsub`, `server`
+	 * for redis; `database`, `server` for postgres/mysql). Undeclared means
+	 * what the type's property vocabulary already promises. Declared, each use
+	 * registers its own `$<resource>.<use>.<property>` fields and a provider
+	 * covers every one or refuses the component.
+	 */
+	uses?: string[];
 	/** Maps resource properties to app env vars. Values use $ syntax. */
 	set_env?: Record<string, string>;
 }
@@ -152,6 +160,14 @@ export interface Support {
 	version?: string;
 	/** Resource provisioning hints (platform-interpreted) */
 	config?: Record<string, unknown>;
+	/**
+	 * Which features of the resource the app uses (`db`, `pubsub`, `server`
+	 * for redis; `database`, `server` for postgres/mysql). Undeclared means
+	 * what the type's property vocabulary already promises. Declared, each use
+	 * registers its own `$<resource>.<use>.<property>` fields and a provider
+	 * covers every one or refuses the component.
+	 */
+	uses?: string[];
 	/** Maps resource properties to app env vars (only set when resource is available) */
 	set_env?: Record<string, string>;
 }
@@ -441,6 +457,8 @@ export interface NormalizedRequirement {
 	endpoint?: string;
 	version?: string;
 	config?: Record<string, unknown>;
+	/** Declared uses of the resource, as written; absent on a capability entry. */
+	uses?: string[];
 	set_env?: Record<string, string>;
 	/**
 	 * Present when this entry is a host-capability request (D-44); `type` is

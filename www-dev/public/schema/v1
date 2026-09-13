@@ -218,6 +218,13 @@
           "type": "object",
           "description": "Resource-specific configuration"
         },
+        "uses": {
+          "type": "array",
+          "description": "Which features of the resource the app uses, from the type's use vocabulary (schema/resource-properties.json `uses`; e.g. redis: db, pubsub, server). Undeclared means what the type's property vocabulary already promises. Each declared use registers its own $<resource>.<use>.<property> fields; a provider covers every declared use or refuses the component. The vocabulary is open: an unknown token is a lint warning, and a deployment-time refusal. Each use is declared once per entry.",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }
+        },
         "set_env": {
           "type": "object",
           "description": "Maps resource properties to app env vars. Use $prop for references, plain strings for literals.",

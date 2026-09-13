@@ -38,3 +38,55 @@ const VOCABULARY: Readonly<Record<string, readonly string[]>> = {
 export const RESOURCE_PROPERTY_VOCABULARY: Readonly<
 	Record<string, readonly string[]>
 > = Object.assign(Object.create(null), VOCABULARY);
+
+/** Use vocabulary source literal — see {@link RESOURCE_USE_VOCABULARY}. */
+const USE_VOCABULARY: Readonly<
+	Record<string, Readonly<Record<string, readonly string[]>>>
+> = {
+	redis: {
+		db: ["url", "index"],
+		pubsub: [],
+		server: [],
+	},
+	postgres: {
+		database: ["url", "name"],
+		server: [],
+	},
+	mysql: {
+		database: ["url", "name"],
+		server: [],
+	},
+};
+
+/**
+ * Standard resource use vocabulary (SPEC.md § Resource Use Vocabulary): for
+ * each type that has one, the use tokens a `requires`/`supports` entry may
+ * declare in `uses:`, each mapped to the property keys it registers under
+ * `$<resource>.<use>.<property>`. An empty list means the use registers no
+ * property of its own — the instance vocabulary already addresses it.
+ *
+ * The same three forms exist as for the property vocabulary — the SPEC.md
+ * table (canonical), the `uses` key of `spec/schema/resource-properties.json`,
+ * and this module — and `__tests__/resource-properties.test.ts` asserts all
+ * three agree.
+ *
+ * Open, like the property vocabulary: a token outside this list is
+ * advisory-warned by lint, never rejected by the schema. It is refused at
+ * deploy time by any provider that does not recognise it, because no provider
+ * can claim to cover a use it does not know. A type with no entry here has no
+ * use vocabulary; its tokens are provider-defined and never warned about
+ * (L-4).
+ *
+ * Null-prototype for the same reason as {@link RESOURCE_PROPERTY_VOCABULARY}.
+ */
+export const RESOURCE_USE_VOCABULARY: Readonly<
+	Record<string, Readonly<Record<string, readonly string[]>>>
+> = Object.assign(
+	Object.create(null),
+	Object.fromEntries(
+		Object.entries(USE_VOCABULARY).map(([type, uses]) => [
+			type,
+			Object.assign(Object.create(null), uses),
+		]),
+	),
+);

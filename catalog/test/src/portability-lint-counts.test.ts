@@ -32,10 +32,10 @@ describe("D-40/D-43 catalog counts (issue #155 verdict, T6)", () => {
 		expect(counts.d43WarningsDetached).toBe(0);
 	});
 
-	it("spec/examples/: D-40 fires on 5/13 files (prebuilt-image, storage-paths, host-container-runtime, post-start-capture, operator-content)", () => {
+	it("spec/examples/: D-40 fires on 6/14 files (prebuilt-image, storage-paths, host-container-runtime, post-start-capture, operator-content, resource-uses)", () => {
 		const counts = countCorpus(specExamplesPaths(specExamplesRoot));
-		expect(counts.files).toBe(13);
-		expect(counts.d40Files).toBe(5);
+		expect(counts.files).toBe(14);
+		expect(counts.d40Files).toBe(6);
 	});
 
 	it("spec/examples/: D-43 stays silent attached (every file is an in-tree read)", () => {

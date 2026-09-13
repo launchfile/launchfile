@@ -23,6 +23,7 @@ const metabaseYaml = metabaseYamlRaw.replace(/^#.*\n/gm, "").trim();
     "How a reference is resolved — the namespace order",
     "Naming resources to tell two instances of the same type apart",
     "Version constraints and config hints on required resources",
+    "Declaring what the app uses of a resource — and the $resource.use.property fields it unlocks",
     "The property vocabulary — and how validate catches typos",
   ]}
 >
@@ -74,6 +75,16 @@ const metabaseYaml = metabaseYamlRaw.replace(/^#.*\n/gm, "").trim();
       PRIMARY_DB_URL: $url`,
     note: "Two more resource fields. <code>version</code> constrains what the platform may provision, using semver range syntax — <code>\">=15\"</code>, <code>\"^7.0\"</code>, <code>\"20.x\"</code>. <code>config</code> passes <strong>provisioning hints</strong> whose keys are resource-type-specific; a platform that doesn't understand a key ignores it.",
   },
+  {
+    yaml: `requires:
+  - type: redis
+    uses: [db, pubsub]
+    set_env:
+      QUEUE_URL: $redis.db.url
+      QUEUE_DB: $redis.db.index
+      PUBSUB_URL: $url`,
+    note: "<code>uses</code> says what the app needs <em>of</em> the resource — here one logical database and pub/sub channels. Each declared use registers its own fields under <code>$resource.use.property</code>: <code>$redis.db.url</code> is the Redis URL with the database selected by path (<code>redis://host:6379/3</code>), <code>$redis.db.index</code> that integer. The bare <code>$url</code> is still the instance address. Leave <code>uses</code> off and the entry means exactly what it meant before.",
+  },
 ]} />
 
 <h2 id="the-grammar">The grammar at a glance</h2>
@@ -85,6 +96,7 @@ const metabaseYaml = metabaseYamlRaw.replace(/^#.*\n/gm, "").trim();
   <tbody>
     <tr><td><code>$prop</code></td><td>Property of the enclosing resource</td></tr>
     <tr><td><code>$resource.prop</code></td><td>Property of a named resource (name defaults to <code>type</code>)</td></tr>
+    <tr><td><code>$resource.use.prop</code></td><td>Property registered by a declared <code>use</code> of a named resource, like <code>$redis.db.url</code></td></tr>
     <tr><td><code>$components.name.prop</code></td><td>Another component's endpoint (Lesson 6)</td></tr>
     <tr><td><code>$secrets.name</code></td><td>App-wide generated secret (Lesson 3)</td></tr>
     <tr><td><code>$app.prop</code></td><td>Platform-injected app property, like <code>$app.url</code> (Lesson 3)</td></tr>
@@ -102,6 +114,22 @@ const metabaseYaml = metabaseYamlRaw.replace(/^#.*\n/gm, "").trim();
 <p>
   When the provider meets a dotted path, it checks the namespaces in a fixed order: <code>app.*</code> first, then <code>secrets.*</code>, then <code>components.*</code>, then <code>storage.*</code>. Only then does it treat the first segment as a resource name. A single bare segment — <code>$host</code>, <code>$port</code> — never goes through that lookup: it always means the enclosing resource.
 </p>
+
+<h2 id="uses">What the app uses of a resource</h2>
+
+<p>
+  <code>requires: redis</code> says the app needs Redis. It does not say what the app needs <em>of</em> it — one keyspace, pub/sub channels, or the whole server — and a platform that pools a Redis instance between apps has to guess. <code>uses</code> takes the guess away. It is a short list from a per-type vocabulary: for <code>redis</code>, <code>db</code>, <code>pubsub</code> and <code>server</code>; for <code>postgres</code> and <code>mysql</code>, <code>database</code> and <code>server</code>. A platform may satisfy the entry from a shared unit only when every declared use fits in it; otherwise it provisions its own, or refuses.
+</p>
+
+<p>
+  Each use that hands the app something of its own registers it under <code>$resource.use.property</code>. <code>db</code> registers <code>url</code> — the standard Redis URL with the database selected by path, <code>redis://host:6379/3</code> — and <code>index</code>, that integer; <code>database</code> registers <code>url</code> and <code>name</code>. <code>pubsub</code> and <code>server</code> register nothing: the instance's own <code>$url</code>, <code>$host</code> and <code>$port</code> already address them, and those bare properties keep their meaning whatever you declare.
+</p>
+
+<Callout type="warning" title="A use you did not declare is an error, not an empty string">
+  <p>
+    On an entry that declares <code>uses</code>, a three-segment path either resolves from the declared use's registered fields or fails at wiring time. <code>$redis.db.url</code> beside <code>uses: [pubsub]</code> does not quietly fall back to the instance URL — it stops the deployment and names the path. A token outside the vocabulary is a <code>validate</code> warning (the vocabulary is open), but at deploy time a provider refuses a <code>requires</code> entry declaring a use it does not recognise, because no provider can claim to cover a use it does not know. On a <code>supports</code> entry the same shortfall leaves the entry unfulfilled instead.
+  </p>
+</Callout>
 
 <Callout type="warning" title="app and storage are reserved">
   <p>
@@ -221,6 +249,7 @@ supports:
     <li>Dotted paths resolve namespaces in a fixed order — <code>app</code>, <code>secrets</code>, <code>components</code>, <code>storage</code>, then resource names. <code>app</code> and <code>storage</code> are reserved.</li>
     <li>Use <code>name:</code> when you require two resources of the same type — references become <code>$primary-db.host</code> instead of an ambiguous <code>$postgres.host</code>.</li>
     <li><code>version:</code> constrains provisioning with semver ranges; <code>config:</code> passes type-specific hints that unsupporting platforms ignore.</li>
+    <li><code>uses:</code> declares what the app needs <em>of</em> a resource — <code>[db, pubsub]</code> on redis — and unlocks <code>$resource.use.property</code> fields like <code>$redis.db.url</code>. Undeclared means what the entry always meant; a provider covers every declared use or refuses.</li>
     <li>Each resource type has a standard property vocabulary. An unknown property resolves to empty string — <code>launchfile validate</code> warns about it before your app fails at first connection.</li>
   </ul>
 </div>

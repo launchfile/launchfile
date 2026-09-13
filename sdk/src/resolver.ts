@@ -52,6 +52,43 @@ export interface ResolverContext {
 	 * either way the form resolves `""` (L-4).
 	 */
 	appEndpoints?: Record<string, AppEndpointProperties>;
+	/**
+	 * The `uses` each resource entry declares, keyed by the entry's
+	 * `name ?? type` — the same key as {@link ResolverContext.resources}. A
+	 * resource listed here resolves `$<resource>.<use>.<property>` strictly:
+	 * the use must be declared and the property registered under the dotted
+	 * key `<use>.<property>` in the resource's map, or resolution throws
+	 * {@link UnresolvedUseError}. The last-segment fallback the multi-segment
+	 * branch keeps for every other resource does not apply, so a mistyped use
+	 * or property never resolves to the instance value behind it. A resource
+	 * absent from this map keeps the general rules.
+	 */
+	uses?: Record<string, readonly string[]>;
+}
+
+/**
+ * A `$<resource>.<use>.<property>` reference that the resource's declared
+ * uses cannot answer: the use is not declared on the entry, or the property is
+ * not one the use registers. Thrown rather than resolved `""`, and not
+ * softened by a `:-default` — the path is wrong, not empty.
+ */
+export class UnresolvedUseError extends Error {
+	readonly resource: string;
+	readonly use: string;
+	readonly property: string;
+
+	constructor(resource: string, use: string, property: string, declared: readonly string[]) {
+		const path = `$${resource}.${use}.${property}`;
+		super(
+			declared.includes(use)
+				? `${path} does not resolve: use "${use}" on ${resource} registers no property "${property}"`
+				: `${path} does not resolve: ${resource} declares no use "${use}" (declared: ${declared.join(", ")})`,
+		);
+		this.name = "UnresolvedUseError";
+		this.resource = resource;
+		this.use = use;
+		this.property = property;
+	}
 }
 
 /**
@@ -344,7 +381,10 @@ export function parseDotPath(path: string): string[] {
  * 3. Starts with "components" → component lookup
  * 4. Starts with "storage" → provider-resolved storage property (reserved namespace, D-39)
  * 5. Single segment → enclosing resource property
- * 6. Multi-segment → first segment is resource name, rest is property
+ * 6. Multi-segment → first segment is resource name, rest is property. For a
+ *    resource whose entry declares `uses`, a three-or-more-segment path is
+ *    `<resource>.<use>.<property>` and resolves from the use's registered
+ *    properties or throws — no fallback (see {@link ResolverContext.uses}).
  */
 export function resolveExpression(
 	value: string,
@@ -459,6 +499,30 @@ function resolvePath(
 	if (path.length === 1 && context.resource) {
 		const val = own(context.resource, first);
 		if (val !== undefined) return String(val);
+	}
+
+	// <resource>.<use>.<property> on an entry that declares `uses`: strict.
+	// Each covered use registers its properties under the dotted key
+	// `<use>.<property>`; nothing else answers, and a miss throws rather than
+	// falling through to the last-segment probe below, which would hand back
+	// the instance value for a use the entry never declared.
+	if (path.length >= 3 && context.uses) {
+		const declared = own(context.uses, first);
+		if (declared) {
+			const use = path[1]!;
+			const property = path.slice(2).join(".");
+			const resource = context.resources
+				? own(context.resources, first)
+				: undefined;
+			const val =
+				declared.includes(use) && resource
+					? own(resource, `${use}.${property}`)
+					: undefined;
+			if (val === undefined) {
+				throw new UnresolvedUseError(first, use, property, declared);
+			}
+			return String(val);
+		}
 	}
 
 	// Multi-segment → named resource
