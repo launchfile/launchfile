@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+	isRepeatableUse,
 	RESOURCE_PROPERTY_VOCABULARY,
 	RESOURCE_USE_VOCABULARY,
 } from "../resource-properties.js";
@@ -56,7 +57,13 @@ function parseSpecVocabulary(): Record<string, string[]> {
  * registers column; a `—` in the registers cell means the use registers
  * nothing.
  */
-function parseSpecUseVocabulary(): Record<string, Record<string, string[]>> {
+/** One row of the SPEC.md use table: the keys the use registers and its Repeatable column. */
+interface SpecUseRow {
+	registers: string[];
+	repeatable: boolean;
+}
+
+function parseSpecUseTable(): Record<string, Record<string, SpecUseRow>> {
 	const spec = readFileSync(specPath, "utf8");
 	const sectionStart = spec.indexOf("## Resource Use Vocabulary");
 	expect(sectionStart).toBeGreaterThan(-1);
@@ -64,15 +71,24 @@ function parseSpecUseVocabulary(): Record<string, Record<string, string[]>> {
 	const sectionEnd = rest.indexOf("\n## ");
 	const section = sectionEnd === -1 ? rest : rest.slice(0, sectionEnd);
 
-	const vocabulary: Record<string, Record<string, string[]>> = {};
+	const table: Record<string, Record<string, SpecUseRow>> = {};
 	for (const line of section.split("\n")) {
 		const row =
-			/^\|\s*`([a-z0-9_-]+)`\s*\|\s*`([a-z0-9_-]+)`\s*\|([^|]*)\|/.exec(line);
+			/^\|\s*`([a-z0-9_-]+)`\s*\|\s*`([a-z0-9_-]+)`\s*\|([^|]*)\|\s*(yes|no)\s*\|/.exec(line);
 		if (!row) continue;
 		const registers = [...row[3]!.matchAll(/`([a-z0-9_-]+)`/g)].map((m) => m[1]!);
-		(vocabulary[row[1]!] ??= {})[row[2]!] = registers;
+		(table[row[1]!] ??= {})[row[2]!] = { registers, repeatable: row[4] === "yes" };
 	}
-	return vocabulary;
+	return table;
+}
+
+function parseSpecUseVocabulary(): Record<string, Record<string, string[]>> {
+	return Object.fromEntries(
+		Object.entries(parseSpecUseTable()).map(([type, uses]) => [
+			type,
+			Object.fromEntries(Object.entries(uses).map(([use, row]) => [use, row.registers])),
+		]),
+	);
 }
 
 describe("resource property registry consistency (D-46)", () => {
@@ -199,6 +215,23 @@ describe("resource use registry consistency", () => {
 			}
 		}
 		expect(repeatable.sort()).toEqual(["mysql.database", "postgres.database", "redis.db"]);
+	});
+
+	it("the SPEC.md Repeatable column, the registry flag and isRepeatableUse agree on every use", () => {
+		const table = parseSpecUseTable();
+		expect(Object.keys(table).sort()).toEqual(["mysql", "postgres", "redis"]);
+		for (const [type, uses] of Object.entries(table)) {
+			for (const [use, row] of Object.entries(uses)) {
+				expect(registry.uses[type]?.[use]?.repeatable, `${type}.${use}`).toBe(row.repeatable);
+				expect(isRepeatableUse(type, use), `${type}.${use}`).toBe(row.repeatable);
+			}
+		}
+	});
+
+	it("isRepeatableUse has no answer for a type or token outside the registry (L-4)", () => {
+		expect(isRepeatableUse("kafka", "topic")).toBeUndefined();
+		expect(isRepeatableUse("redis", "streams")).toBeUndefined();
+		expect(isRepeatableUse("constructor", "db")).toBeUndefined();
 	});
 
 	it("uses is a sibling of types, never a member", () => {

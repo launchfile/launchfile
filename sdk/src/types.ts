@@ -95,6 +95,14 @@ export interface TlsBinding {
 
 // --- Requires / Supports ---
 
+/**
+ * One item of a `uses` list (SPEC.md § Resource uses): a bare token (`db`)
+ * declaring an unnamed use, or a single-key map (`{ db: "cache" }`) declaring
+ * one named occurrence of a repeatable use. Decode with `declaredUse` /
+ * `useKey` from the `uses` module rather than testing the shape inline.
+ */
+export type UseDeclaration = string | Record<string, string>;
+
 /** A resource dependency with env var wiring */
 export interface Requirement {
 	/** Resource name for expression references (defaults to type) */
@@ -115,9 +123,11 @@ export interface Requirement {
 	 * for redis; `database`, `server` for postgres/mysql). Undeclared means
 	 * what the type's property vocabulary already promises. Declared, each use
 	 * registers its own `$<resource>.<use>.<property>` fields and a provider
-	 * covers every one or refuses the component.
+	 * covers every one or refuses the component. A repeatable use may occur
+	 * more than once as a named map item (`{ db: "cache" }`), addressed as
+	 * `$<resource>.<use>.<name>.<property>`.
 	 */
-	uses?: string[];
+	uses?: UseDeclaration[];
 	/** Maps resource properties to app env vars. Values use $ syntax. */
 	set_env?: Record<string, string>;
 }
@@ -165,9 +175,11 @@ export interface Support {
 	 * for redis; `database`, `server` for postgres/mysql). Undeclared means
 	 * what the type's property vocabulary already promises. Declared, each use
 	 * registers its own `$<resource>.<use>.<property>` fields and a provider
-	 * covers every one or refuses the component.
+	 * covers every one or refuses the component. A repeatable use may occur
+	 * more than once as a named map item (`{ db: "cache" }`), addressed as
+	 * `$<resource>.<use>.<name>.<property>`.
 	 */
-	uses?: string[];
+	uses?: UseDeclaration[];
 	/** Maps resource properties to app env vars (only set when resource is available) */
 	set_env?: Record<string, string>;
 }
@@ -458,7 +470,7 @@ export interface NormalizedRequirement {
 	version?: string;
 	config?: Record<string, unknown>;
 	/** Declared uses of the resource, as written; absent on a capability entry. */
-	uses?: string[];
+	uses?: UseDeclaration[];
 	set_env?: Record<string, string>;
 	/**
 	 * Present when this entry is a host-capability request (D-44); `type` is

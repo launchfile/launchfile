@@ -39,22 +39,26 @@ export const RESOURCE_PROPERTY_VOCABULARY: Readonly<
 	Record<string, readonly string[]>
 > = Object.assign(Object.create(null), VOCABULARY);
 
+/** One use in the source literal: the property keys it registers and whether it may be named more than once. */
+interface UseEntry {
+	readonly properties: readonly string[];
+	readonly repeatable: boolean;
+}
+
 /** Use vocabulary source literal — see {@link RESOURCE_USE_VOCABULARY}. */
-const USE_VOCABULARY: Readonly<
-	Record<string, Readonly<Record<string, readonly string[]>>>
-> = {
+const USE_VOCABULARY: Readonly<Record<string, Readonly<Record<string, UseEntry>>>> = {
 	redis: {
-		db: ["url", "index"],
-		pubsub: [],
-		server: [],
+		db: { properties: ["url", "index"], repeatable: true },
+		pubsub: { properties: [], repeatable: false },
+		server: { properties: [], repeatable: false },
 	},
 	postgres: {
-		database: ["url", "name"],
-		server: [],
+		database: { properties: ["url", "name"], repeatable: true },
+		server: { properties: [], repeatable: false },
 	},
 	mysql: {
-		database: ["url", "name"],
-		server: [],
+		database: { properties: ["url", "name"], repeatable: true },
+		server: { properties: [], repeatable: false },
 	},
 };
 
@@ -86,7 +90,25 @@ export const RESOURCE_USE_VOCABULARY: Readonly<
 	Object.fromEntries(
 		Object.entries(USE_VOCABULARY).map(([type, uses]) => [
 			type,
-			Object.assign(Object.create(null), uses),
+			Object.assign(
+				Object.create(null),
+				Object.fromEntries(
+					Object.entries(uses).map(([use, entry]) => [use, entry.properties]),
+				),
+			),
 		]),
 	),
 );
+
+/**
+ * Whether the standard vocabulary lets `use` on `type` occur more than once
+ * on one entry, each occurrence named (`- db: cache`). `false` for a use the
+ * registry marks non-repeatable; `undefined` for a type or token outside the
+ * registry, which has no standard answer (L-4) — the schema then accepts a
+ * name and the provider decides, as for any provider-defined token.
+ */
+export function isRepeatableUse(type: string, use: string): boolean | undefined {
+	const uses = Object.hasOwn(USE_VOCABULARY, type) ? USE_VOCABULARY[type] : undefined;
+	const entry = uses && Object.hasOwn(uses, use) ? uses[use] : undefined;
+	return entry?.repeatable;
+}

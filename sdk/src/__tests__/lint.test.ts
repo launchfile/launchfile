@@ -413,6 +413,68 @@ requires:
 `);
 		expect(warnings).toEqual([]);
 	});
+
+	it("checks the token of a named use, not its name", () => {
+		const warnings = useWarnings(`
+name: app
+image: app:1
+requires:
+  - type: redis
+    uses: [{db: cache}, {db: sessions}, {streams: orders}]
+`);
+		expect(warnings).toEqual([
+			'(top-level): use "streams" is not in the standard use vocabulary for redis ' +
+				"(known: db, pubsub, server) — a provider refuses the component rather than " +
+				"cover a use it does not recognise",
+		]);
+	});
+});
+
+describe("lintLaunch — same-name resources: a bare and a named use diverge (D-24)", () => {
+	it("warns when one entry declares `db` and another `db: cache` under one name", () => {
+		const warnings = lintLaunch(
+			readLaunch(`
+name: app
+components:
+  web:
+    image: app:1
+    requires:
+      - type: redis
+        uses: [{db: cache}]
+  worker:
+    image: app:1
+    requires:
+      - type: redis
+        uses: [db]
+`),
+			{ suppressPortabilityWarnings: true },
+		).filter((w) => w.includes("divergent"));
+		expect(warnings).toEqual([
+			'resource "redis" is declared with divergent uses across web, worker; ' +
+				"entries sharing a name should share their definition (see D-24)",
+		]);
+	});
+
+	it("is silent when both entries name the same uses in a different order", () => {
+		const warnings = lintLaunch(
+			readLaunch(`
+name: app
+components:
+  web:
+    image: app:1
+    requires:
+      - type: redis
+        uses: [{db: cache}, {db: sessions}]
+  worker:
+    image: app:1
+    requires:
+      - type: redis
+        uses: [{db: sessions}, {db: cache}]
+`),
+			{ suppressPortabilityWarnings: true },
+		).filter((w) => w.includes("divergent"));
+		expect(warnings).toEqual([]);
+	});
 });
 
 describe("lintLaunch — env: values reference no resource (#184)", () => {
