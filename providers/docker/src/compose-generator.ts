@@ -929,6 +929,12 @@ export interface ComposeResult {
 	ports: Record<string, number>;
 	/** Endpoint metadata for each `ports` key (component, name, protocol) */
 	endpoints: Record<string, StateEndpoint>;
+	/**
+	 * The `ports` key of the app's primary published endpoint, from the same
+	 * derivation as `$app.*` (persist to state — `status` reads it back).
+	 * Absent when the app publishes nothing.
+	 */
+	primaryEndpoint?: string;
 	/** Map of component name → generated compose service name (skipped components absent) */
 	services: Record<string, string>;
 	/**
@@ -1154,6 +1160,7 @@ export function launchToCompose(
 		app: appProperties,
 		appEndpoints,
 		fenced,
+		primaryEndpoint,
 	} = computeAppContext(launch, opts.hostPorts, opts.appUrl, certificates.active);
 
 	// `$app.endpoints.<name>.*` (D-63). Under a supplied publication URL the
@@ -1846,6 +1853,7 @@ export function launchToCompose(
 		generatedEnv,
 		ports,
 		endpoints,
+		primaryEndpoint,
 		services: componentServices,
 		healthchecks: Object.fromEntries(
 			Object.entries(services).map(([name, service]) => [

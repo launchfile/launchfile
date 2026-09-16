@@ -100,6 +100,16 @@ export interface DockerState {
 	 * provider's own localhost routing answers.
 	 */
 	appUrl?: string;
+	/**
+	 * The `ports` key of the app's primary published endpoint — the one
+	 * `$app.*` reads (a declared `https-origin` endpoint, D-60 rule 3, else
+	 * the first `exposed: true` entry). Recorded at `up` beside `appUrl` so
+	 * `status`, which never loads `launch.components`, can place the supplied
+	 * URL on that one key and no other (D-58 rule 4). Optional for backward
+	 * compatibility: a state file without it prints this provider's own
+	 * address on every key.
+	 */
+	primaryEndpoint?: string;
 }
 
 export function stateBaseDir(): string {
