@@ -1,5 +1,17 @@
 # @launchfile/aws
 
+## 0.3.2
+
+### Patch Changes
+
+- [#488](https://github.com/launchfile/launchfile/pull/488) [`ab3e359`](https://github.com/launchfile/launchfile/commit/ab3e359e70f00fe9758855b33cc99506e1736dc2) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - `$app.endpoints.<name>.*` resolves `""` for every property on this provider, and `translate` reports it ([#463](https://github.com/launchfile/launchfile/issues/463), D-63 rule 4, [#487](https://github.com/launchfile/launchfile/issues/487)).
+  
+  The probe fronts one load-balancer address and publishes nothing per endpoint, so every per-endpoint property is `""` — the primary's included — while `$app.*` keeps the ALB value. Each endpoint the file references lands on the conformance report as a `workaround` gap naming the component.
+
+- [#491](https://github.com/launchfile/launchfile/pull/491) [`af1ea04`](https://github.com/launchfile/launchfile/commit/af1ea04b61da951a9171b0d34b627e5505015b3b) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Carry an author-declared `restart:` onto the generated systemd unit. `translate` never read `component.restart` and wrote `Restart=always` into every unit, so a component declaring `restart: "no"` or `restart: on-failure` got an artifact that contradicts the file it was translated from — and the conformance ledger, which promises every field is mapped, gapped, or safely ignored, never mentioned the field at all. The three Launchfile values now map through an explicit table onto `Restart=always`, `Restart=on-failure`, and `Restart=no`, and the mapping is recorded on the ledger. A component that declares no `restart:` still gets `Restart=always`, now as a stated default; the cross-provider default for an undeclared `restart:` is decided in [#234](https://github.com/launchfile/launchfile/issues/234).
+- Updated dependencies [[`ab3e359`](https://github.com/launchfile/launchfile/commit/ab3e359e70f00fe9758855b33cc99506e1736dc2), [`f40e7b6`](https://github.com/launchfile/launchfile/commit/f40e7b68d99f61d777455f0f79e4ab94d2cf1519), [`3587317`](https://github.com/launchfile/launchfile/commit/35873173251a6a8e9f97d5fae592fa7fd998bf7d), [`31dbac2`](https://github.com/launchfile/launchfile/commit/31dbac2a4c58dc50c4d4959facf6ff0b3aefa1e3), [`1123da3`](https://github.com/launchfile/launchfile/commit/1123da37959a0fbebca27c112ed6e8ebd8dc0bff), [`d2039b2`](https://github.com/launchfile/launchfile/commit/d2039b22ce1ed3fb5fc2fb7f2cb427d3582e4269), [`1796de9`](https://github.com/launchfile/launchfile/commit/1796de9ae8d42f920cca6a4326de9e2ed981fe2f), [`39df9db`](https://github.com/launchfile/launchfile/commit/39df9db10c64b7fded71e9afd74c08c7a8614285), [`a399ba3`](https://github.com/launchfile/launchfile/commit/a399ba365a2c7a3fe3b349d43810d3ff329e77c2)]:
+  - @launchfile/sdk@0.10.0
+
 ## 0.3.1
 
 ### Patch Changes
