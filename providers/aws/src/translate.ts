@@ -39,6 +39,7 @@ import {
 	ref,
 	tfName,
 } from "./hcl.js";
+import type { GeneratorResource, PriorStack } from "./prior-stack.js";
 
 /** The backing-service type that declares the app's public HTTPS origin (D-60). */
 const HTTPS_ORIGIN = "https-origin";
@@ -71,6 +72,12 @@ const CERTIFICATE = "certificate";
 export interface TranslateOptions {
 	/** AWS region for the provider block. Default: us-east-1. */
 	region?: string;
+	/**
+	 * What an earlier translation or apply already minted, read from the output
+	 * directory by `readPriorStack()`. Absent means a fresh stack: every
+	 * generator is minted for the first time and D-47 governs the output.
+	 */
+	priorStack?: PriorStack;
 }
 
 export interface TranslateResult {
@@ -78,6 +85,74 @@ export interface TranslateResult {
 	hcl: string;
 	/** The conformance ledger: what mapped, gapped, and was ignored. */
 	conformance: Conformance;
+	/**
+	 * Terraform addresses of secrets kept in their pre-D-47 shape because
+	 * re-minting them would destroy the deployed value (D-49).
+	 */
+	preservedSecrets: string[];
+}
+
+/** Where a `generator:` was declared — named in a refusal so the operator can find it. */
+export interface GeneratorSite {
+	/** The app the Launchfile names. */
+	app: string;
+	/** The owning component, or absent for an app-wide `secrets:` entry. */
+	component?: string;
+	/** The secret name or env key. */
+	variable: string;
+}
+
+/**
+ * A minted value already exists under a Terraform resource type this
+ * translation would not emit, and no `moved` block bridges a type change — so
+ * applying would destroy the value. The provider refuses instead (D-49,
+ * PROVIDERS.md §10 rule 8's never-fabricate posture applied to a destructive
+ * change). Carries the coordinates rather than only a rendered string so a
+ * caller can present them its own way.
+ */
+export class SecretRotationError extends Error {
+	readonly site: GeneratorSite;
+	readonly address: string;
+	readonly had: GeneratorResource;
+	readonly wants: GeneratorResource;
+
+	constructor(
+		site: GeneratorSite,
+		tf: string,
+		had: GeneratorResource,
+		wants: GeneratorResource,
+	) {
+		const scope = site.component
+			? `component ${site.component}`
+			: "app-wide `secrets:` entry";
+		super(
+			[
+				`Refusing to translate ${site.app}: this would destroy a secret that already exists.`,
+				"",
+				`  app:       ${site.app}`,
+				`  scope:     ${scope}`,
+				`  variable:  ${site.variable}`,
+				`  minted as: ${had}.${tf}`,
+				`  would be:  ${wants}.${tf}`,
+				"",
+				"Terraform cannot migrate state across a resource-type change — a `moved`",
+				"block only bridges renames of the same type — so the next `terraform apply`",
+				"would destroy the old value and create a new one. Anything encrypted under",
+				"the old value becomes unreadable. A minted value is generated once and then",
+				"preserved (spec/DESIGN.md D-49). Nothing was written.",
+				"",
+				"To re-key deliberately, after backing up anything encrypted under it:",
+				`  1. terraform state rm '${had}.${tf}'`,
+				"  2. re-run `launchfile-aws translate`, then `terraform apply`",
+				"  3. re-key the app with the new value",
+			].join("\n"),
+		);
+		this.name = "SecretRotationError";
+		this.site = site;
+		this.address = `${had}.${tf}`;
+		this.had = had;
+		this.wants = wants;
+	}
 }
 
 // --- AWS sizing defaults (a probe never applies, so these are illustrative) ---
@@ -237,6 +312,13 @@ export function translate(
 	const blocks: string[] = [];
 	const region = opts.region ?? "us-east-1";
 	const appTf = tfName(launch.name);
+	const preservedSecrets: string[] = [];
+	const mint: MintContext = {
+		app: launch.name,
+		c,
+		prior: opts.priorStack,
+		preserved: preservedSecrets,
+	};
 
 	// --- Determine the exposed/primary component for $app.* and the ALB ---
 	const exposedComponents: string[] = [];
@@ -277,11 +359,15 @@ export function translate(
 	if (launch.secrets) {
 		for (const [name, secret] of Object.entries(launch.secrets)) {
 			const tf = `lf_secret_${tfName(name)}`;
-			secretValues[name] = emitGenerator(blocks, tf, secret.generator);
-			c.map(
-				`secrets.${name}`,
-				secret.generator === "uuid" ? "random_uuid" : "random_bytes",
+			const emitted = emitGenerator(
+				blocks,
+				tf,
+				secret.generator,
+				{ app: launch.name, variable: name },
+				mint,
 			);
+			secretValues[name] = emitted.value;
+			c.map(`secrets.${name}`, emitted.resource);
 		}
 	}
 
@@ -463,6 +549,7 @@ export function translate(
 			appTf,
 			baseContext,
 			targetGroupFor,
+			mint,
 		);
 	}
 
@@ -471,7 +558,7 @@ export function translate(
 		emitAlb(blocks, c, appTf, launch, exposedComponents, targetGroupFor);
 	}
 
-	return { hcl: document(blocks), conformance: c };
+	return { hcl: document(blocks), conformance: c, preservedSecrets };
 }
 
 // ---------------------------------------------------------------------------
@@ -479,14 +566,102 @@ export function translate(
 // for expression resolution.
 // ---------------------------------------------------------------------------
 
+/** The resource type this provider mints each generator as today. */
+const GENERATOR_RESOURCE: Record<string, GeneratorResource> = {
+	uuid: "random_uuid",
+	port: "random_integer",
+	secret: "random_bytes",
+};
+
+/**
+ * Minted-class resources (D-49 class 1): generated once, then preserved.
+ * `random_integer` is absent deliberately — D-49 exempts `generator: port`,
+ * because a port is an allocation, not an identity.
+ */
+const MINTED_RESOURCES: readonly GeneratorResource[] = [
+	"random_bytes",
+	"random_password",
+	"random_uuid",
+];
+
+interface GeneratorEmission {
+	/** The Terraform interpolation that carries the value. */
+	value: string;
+	/** The resource type actually emitted. */
+	resource: GeneratorResource;
+	/** True when a pre-D-47 secret was kept rather than re-minted. */
+	preserved: boolean;
+}
+
+/** Everything the generator emitters need beyond the block list. */
+interface MintContext {
+	app: string;
+	c: Conformance;
+	prior: PriorStack | undefined;
+	preserved: string[];
+}
+
+/**
+ * Emit a `generator:` value, preserving anything already minted.
+ *
+ * The value of a minted secret lives in Terraform state under a resource's type
+ * *and* name, so changing the type destroys it. Three outcomes:
+ *
+ *   - nothing minted before, or the same type → emit today's shape (D-47).
+ *   - a pre-D-47 `random_password` under a `generator: secret` → keep emitting
+ *     `random_password`, unchanged, so the deployed value survives.
+ *   - any other type change over a minted value → refuse (`SecretRotationError`).
+ *
+ * The preserved value itself is never read and never written into the HCL — the
+ * resource stays and Terraform keeps its own state.
+ */
 function emitGenerator(
 	blocks: string[],
 	tf: string,
 	generator: string,
-): string {
+	site: GeneratorSite,
+	m: MintContext,
+): GeneratorEmission {
+	const wants = GENERATOR_RESOURCE[generator] ?? "random_bytes";
+	const had = m.prior?.generators[tf];
+
+	if (had !== undefined && had !== wants) {
+		if (generator === "secret" && had === "random_password") {
+			// Byte-for-byte the pre-D-47 block, so `terraform plan` shows no diff
+			// for it. D-47's output governs secrets minted from here on.
+			blocks.push(
+				block(
+					"resource",
+					["random_password", tf],
+					[attr("length", 32), attr("special", false)],
+				),
+			);
+			m.preserved.push(`random_password.${tf}`);
+			m.c.gap(
+				site.component ? `env.${site.variable}` : `secrets.${site.variable}`,
+				"workaround",
+				"already minted before D-47, so the deployed value is 32 alphanumeric characters, not 64 hex — preserved as `random_password` because a minted value must survive (D-49) and Terraform cannot migrate state across a resource-type change",
+				"re-key deliberately when the app can take it: back up anything encrypted under it, `terraform state rm` the resource, re-translate, apply, then re-key the app",
+				site.component,
+			);
+			return {
+				value: `\${random_password.${tf}.result}`,
+				resource: "random_password",
+				preserved: true,
+			};
+		}
+		if (MINTED_RESOURCES.includes(had)) {
+			throw new SecretRotationError(site, tf, had, wants);
+		}
+	}
+
 	if (generator === "uuid") {
 		blocks.push(block("resource", ["random_uuid", tf], []));
-		return `\${random_uuid.${tf}.result}`;
+		return {
+			value: `\${random_uuid.${tf}.result}`,
+			resource: "random_uuid",
+			preserved: false,
+		};
 	}
 	if (generator === "port") {
 		blocks.push(
@@ -496,14 +671,22 @@ function emitGenerator(
 				[attr("min", 1024), attr("max", 65535)],
 			),
 		);
-		return `\${random_integer.${tf}.result}`;
+		return {
+			value: `\${random_integer.${tf}.result}`,
+			resource: "random_integer",
+			preserved: false,
+		};
 	}
 	// "secret" — spec-defined output: 32 bytes of cryptographically random
 	// data, hex-encoded (64 characters). See spec/DESIGN.md D-47.
 	// random_bytes (hashicorp/random >= 3.6) marks its outputs sensitive in
 	// state and plan; random_id's .hex would be stored and shown in plain.
 	blocks.push(block("resource", ["random_bytes", tf], [attr("length", 32)]));
-	return `\${random_bytes.${tf}.hex}`;
+	return {
+		value: `\${random_bytes.${tf}.hex}`,
+		resource: "random_bytes",
+		preserved: false,
+	};
 }
 
 function emitFoundation(
@@ -811,6 +994,7 @@ function emitComponent(
 	appTf: string,
 	baseContext: ResolverContext,
 	targetGroupFor: Record<string, string>,
+	m: MintContext,
 ): void {
 	const compTf = tfName(name);
 	const instanceTf = `${appTf}_${compTf}`;
@@ -1051,6 +1235,8 @@ function emitComponent(
 				key,
 				envVar,
 				storageCtx,
+				name,
+				m,
 			);
 			if (resolved) resolvedEnv[key] = resolved;
 		}
@@ -1146,10 +1332,18 @@ function resolveEnvVar(
 	key: string,
 	envVar: NormalizedEnvVar,
 	context: ResolverContext,
+	component: string,
+	m: MintContext,
 ): { value: string; sensitive: boolean } | undefined {
 	if (envVar.generator) {
 		const tf = `${instanceTf}_${tfName(key)}_gen`;
-		const value = emitGenerator(blocks, tf, envVar.generator);
+		const { value } = emitGenerator(
+			blocks,
+			tf,
+			envVar.generator,
+			{ app: m.app, component, variable: key },
+			m,
+		);
 		return { value, sensitive: true };
 	}
 	if (envVar.default !== undefined) {
