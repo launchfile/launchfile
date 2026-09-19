@@ -66,6 +66,8 @@ const EXCLUDED_EXPORTS: Record<string, string> = {
 		"provider error-context vocabulary (PROVIDERS.md §8), not the parse/validate/serialize surface",
 	stripControl:
 		"provider error-context vocabulary (PROVIDERS.md §8), not the parse/validate/serialize surface",
+	stripControlInline:
+		"provider error-context vocabulary (PROVIDERS.md §8), not the parse/validate/serialize surface",
 	tailLines:
 		"provider error-context vocabulary (PROVIDERS.md §8), not the parse/validate/serialize surface",
 	buildLaunchErrorContext:

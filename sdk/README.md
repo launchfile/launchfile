@@ -160,6 +160,77 @@ stale.
 | `parseDotPath(path)` | Parse `"a.b.c"` → `["a", "b", "c"]` |
 | `deriveAppUrlProperties(url)` | Split a URL into the `{ authority, scheme, tls }` triple `$app.*` expressions resolve against |
 
+### Named endpoints (D-63)
+
+`$app.endpoints.<name>.*` addresses one named published endpoint's public
+address; `$components.<component>.<endpoint>.*` addresses a named listener from
+inside the deployment.
+
+| Function | Description |
+|----------|-------------|
+| `endpointProperties(provides, host, activeCertificates?)` | The `<endpoint>.{host, port, protocol, url}` map a provider registers for a component's named `provides` entries, reading each entry's *effective* listener (D-61 rule 2) |
+| `appEndpointReferences(launch)` | Every `$app.endpoints…` reference in the file's `env:` defaults and `set_env:` values, in declaration order — so a provider can warn only about the endpoints the app actually asks for |
+| `APP_ENDPOINT_PROPERTIES` | The properties `$app.endpoints.<name>.*` addresses: the standard `$app.*` set (D-33, D-35) less `name` |
+| `UNPUBLISHED_APP_ENDPOINT` | The answer for an endpoint the provider publishes no address for (D-63 rule 4) — every property `""`, degrading as an unknown `$app.*` property does (L-4) |
+
+### Publication context (D-58)
+
+The orchestrator-supplied public URL a provider resolves `$app.*` from when
+routing is owned upstream. A malformed value is refused, never degraded.
+
+| Function | Description |
+|----------|-------------|
+| `normalizeAppUrl(value)` | Validate and normalize a supplied publication URL → the WHATWG serialization with a lone root path dropped. Idempotent; throws `InvalidAppUrlError` on anything but an absolute `http`/`https` URL with no userinfo, query, or fragment |
+| `suppliedAppAddress(appUrl)` | The address a supplied URL determines (D-58 rule 2): `{ host, port, url, authority, scheme, tls }` — the `$app.*` set less `name` |
+| `suppliedAppProperties(name, appUrl)` | `name` plus `suppliedAppAddress`, for a provider resolving the whole `$app.*` set in one step |
+| `InvalidAppUrlError` | Thrown for a refused `appUrl` (D-58 rule 3). The constructor masks userinfo in the displayed value, so no refusal path can echo an embedded credential (D-18, CWE-532) |
+
+### Listeners and certificates (D-61)
+
+A `provides` entry's `protocol`/`port` are its **declared** listener; its
+**effective** listener is what that listener speaks in the configuration the
+deployment selected. They differ only when a bound `certificate` is active.
+
+| Function | Description |
+|----------|-------------|
+| `effectiveListener(entry, activeCertificates?)` | Read one `provides` entry's listener in both readings. Omit `activeCertificates` and the entry reads as its baseline |
+| `boundCertificate(entry)` | The certificate name an entry binds, in either spelling (`tls: server-cert` or `tls: { certificate: server-cert }`), else `undefined` |
+| `certificateBindings(component)` | Every certificate binding on one component, as `provides` entry → certificate name |
+| `CERTIFICATE` | The `tls:` map key that names a bound certificate |
+
+### Resource uses
+
+A `uses` item is either a bare token (`db`) or a single-key map (`{ db: cache }`)
+naming one occurrence of a repeatable use. The **use key** — `db`, or `db.cache`
+— is the prefix providers register properties under and `$<resource>.<use>.…`
+addresses.
+
+| Function | Description |
+|----------|-------------|
+| `declaredUse(item)` | Decode one `uses` item → `{ use, name? }` |
+| `useKey(item)` | The use key of one item as written: `db`, or `db.cache` for `{ db: cache }` |
+| `useKeyOf(declared)` | The use key of an already-decoded `DeclaredUse` |
+| `useKeys(uses)` | The use keys of a `uses` list, in declaration order |
+| `parseUseKey(key)` | Split a use key back into `{ use, name? }` |
+| `formatUseKey(key)` | The spelling diagnostics use: `db` for a bare key, `db: cache` for a named one |
+| `isRepeatableUse(type, use)` | Whether the standard vocabulary lets `use` occur more than once on one `type` entry; `undefined` outside the registry, where the provider decides (L-4) |
+| `RESOURCE_USE_VOCABULARY` | Standard use vocabulary by resource type → use → the properties it registers. Advisory: lint warns, the schema never rejects |
+| `UnresolvedUseError` | Thrown when a `$<resource>.<use>.<property>` path names a use the entry does not declare, or a property the use does not register. Not softened by `:-default` — the path is wrong, not empty |
+
+### Command capture
+
+One formatter for every surface a provider prints captures on, so `sensitive`
+means the same thing on each (SPEC.md § Command Capture). Masking is display
+only — keeping a value out of logs and state files is the provider redactor's
+job.
+
+| Function | Description |
+|----------|-------------|
+| `formatCaptures(captures, captureMeta, options?)` | The indented lines a provider prints for one command's captures. `reveal: true` prints every value; otherwise a `sensitive: true` entry prints as `CAPTURE_MASK` and one `REVEAL_HINT` line follows |
+| `sensitiveCaptureValues(captures, captureMeta)` | The values of every capture whose entry declares `sensitive: true` — what a provider registers with its redactor |
+| `CAPTURE_MASK` | The mask a sensitive value displays as |
+| `REVEAL_HINT` | The trailing line naming the command that prints masked values |
+
 ### Component selection
 
 | Function | Description |
