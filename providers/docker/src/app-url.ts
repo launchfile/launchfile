@@ -1,28 +1,40 @@
 /**
  * The `$app.*` property set (D-33, D-35) and the orchestrator-supplied
- * publication context that can replace its localhost default (#290).
+ * publication context that can replace its localhost default (D-58).
  *
  * One implementation, consumed by all three resolution sites — the compose
  * generator (env values), bootstrap, and release — so a single deployment
- * resolves identical `$app.*` everywhere. The `authority`/`scheme`/`tls`
- * trio always comes from the SDK's `deriveAppUrlProperties`; no second copy
- * of that derivation exists here.
+ * resolves identical `$app.*` everywhere. What a *supplied* URL determines
+ * is D-58 rule 2's derivation and belongs to every provider with the channel,
+ * so it comes from the SDK (`suppliedAppAddress`, `normalizeAppUrl`); only
+ * this provider's own routing answer is computed here. The
+ * `authority`/`scheme`/`tls` trio always comes from the SDK's
+ * `deriveAppUrlProperties`; no second copy of that derivation exists here.
  *
  * {@link publishedAddress} is the provider's ONE derivation of a published
- * endpoint's host-side address. `$app.*` (here), the `status`/`up` printout
- * (`endpointAddress` in `provider.ts`) and the endpoint metadata the compose
- * generator persists all read it, so the address a deployment writes into an
- * app's config and the address it prints to the operator cannot disagree
- * (#473).
+ * endpoint's host-side address. `$app.*` (here), `$app.endpoints.<name>.*`
+ * (here, D-63), the `status`/`up` printout (`endpointAddress` in
+ * `provider.ts`) and the endpoint metadata the compose generator persists all
+ * read it, so the address a deployment writes into an app's config and the
+ * address it prints to the operator cannot disagree (#473).
  */
 
 import {
+	type AppEndpointProperties,
 	deriveAppUrlProperties,
 	effectiveListener,
+	InvalidAppUrlError,
 	type NormalizedLaunch,
+	normalizeAppUrl,
 	type Provides,
+	suppliedAppAddress,
+	UNPUBLISHED_APP_ENDPOINT,
 } from "@launchfile/sdk";
 import { type PublishedEndpoint, publishedEndpoints } from "./port-allocator.js";
+
+// Re-exported so callers of this provider keep catching the refusal and
+// normalizing values through `@launchfile/docker` (the SDK owns both).
+export { InvalidAppUrlError, normalizeAppUrl };
 
 /** The backing-service type that declares the app's public HTTPS origin (D-60). */
 export const HTTPS_ORIGIN = "https-origin";
@@ -76,116 +88,6 @@ export function declaredPrimaryEndpoint(
 	return undefined;
 }
 
-/** URL delimiters that a userinfo run cannot cross. */
-function isMaskDelimiter(c: string): boolean {
-	return (
-		c === "/" || c === "?" || c === "#" || c === " " || c === "\t" || c === "\n" || c === "\r"
-	);
-}
-
-/**
- * Mask credential-bearing runs in URL-shaped text: any non-empty run of
- * non-delimiter characters ending in `@` collapses to `***@`. This catches
- * WHATWG userinfo (`https://user:pass@host`), the slash-less special-scheme
- * form the parser accepts (`http:user:pass@host`), and userinfo-shaped text
- * in strings that failed to parse at all. Over-masking a harmless `@`
- * elsewhere in the value is accepted — D-18's fail-closed posture: the
- * display exists so the operator recognizes their input, not to preserve it
- * byte-for-byte.
- *
- * Single pass, no regex — the value is untrusted input and an equivalent
- * `[^/?#\s]+@` replace is a polynomial-backtracking surface
- * (js/polynomial-redos).
- */
-function maskUserinfo(text: string): string {
-	let out = "";
-	let run = ""; // current run of non-delimiter characters, not yet emitted
-	for (const c of text) {
-		if (isMaskDelimiter(c)) {
-			out += run + c;
-			run = "";
-		} else if (c === "@" && run !== "") {
-			out += "***@"; // drop the run — it is (or may contain) the credential
-			run = "";
-		} else if (c === "@") {
-			out += "@";
-		} else {
-			run += c;
-		}
-	}
-	return out + run;
-}
-
-/**
- * A refused `appUrl` (#290). The provider cannot compute any correct `$app.*`
- * from a malformed publication URL, and every degraded alternative — warning
- * and proceeding, falling back to localhost, or the `""` authority/scheme/tls
- * half-resolution — hands the app a wrong public address, which is D-52's
- * fabrication in URL form. So it refuses, naming the option.
- *
- * The constructor masks userinfo in the displayed value itself, so no refusal
- * path — including ones added later — can echo an embedded credential into
- * terminal output or diagnostics (D-18, CWE-532). Call sites pass the raw
- * value; masking is not their job.
- */
-export class InvalidAppUrlError extends Error {
-	/** An operator-fixable precondition, not a crash — see `ExpectedRefusal`. */
-	readonly expectedRefusal = true as const;
-
-	constructor(display: string, reason: string) {
-		super(
-			`Invalid appUrl "${maskUserinfo(display)}": ${reason}.\n` +
-				"The publication URL must be an absolute http:// or https:// URL with no userinfo,\n" +
-				"query, or fragment (e.g. https://notes.example.com). Refusing to derive $app.* from\n" +
-				"it — a degraded or guessed value would configure the app with a wrong public\n" +
-				"address (D-35).",
-		);
-		this.name = "InvalidAppUrlError";
-	}
-}
-
-/**
- * Validate and normalize an orchestrator-supplied publication URL (#290).
- *
- * Accepts only an absolute WHATWG-parseable URL with scheme `http` or `https`
- * and no userinfo, query, or fragment; anything else throws
- * `InvalidAppUrlError` — refuse, never degrade. The result is the WHATWG
- * serialization with a lone root path dropped (`https://x.example.com/` →
- * `https://x.example.com`), matching the no-trailing-slash shape of the
- * provider's own localhost URLs (ghost/gitea URL configs are slash-sensitive).
- * A non-root path is preserved verbatim (subpath deployments are real).
- * Idempotent: normalizing an already-normalized value returns it unchanged.
- */
-export function normalizeAppUrl(value: string): string {
-	let url: URL;
-	try {
-		url = new URL(value);
-	} catch {
-		throw new InvalidAppUrlError(value, "not a parseable absolute URL");
-	}
-	const path = url.pathname === "/" ? "" : url.pathname;
-	if (url.protocol !== "http:" && url.protocol !== "https:") {
-		throw new InvalidAppUrlError(
-			value,
-			`scheme "${url.protocol.replace(/:$/, "")}" is not http or https`,
-		);
-	}
-	if (url.username !== "" || url.password !== "") {
-		throw new InvalidAppUrlError(value, "userinfo is not allowed");
-	}
-	if (url.search !== "") {
-		throw new InvalidAppUrlError(value, "a query string is not allowed");
-	}
-	if (url.hash !== "") {
-		throw new InvalidAppUrlError(value, "a fragment is not allowed");
-	}
-	// Serialize from the parsed components. Userinfo/query/fragment are refused
-	// above when non-empty, so protocol + host + path IS the WHATWG serialization
-	// (empty delimiters like a lone trailing "?" don't survive), with the lone
-	// root "/" dropped.
-	return `${url.protocol}//${url.host}${path}`;
-}
-
 /**
  * The host-side address of one published endpoint, in the parts D-35 names.
  * `scheme`, `authority` and `tls` are derived from `url`, so the six fields
@@ -211,9 +113,11 @@ export interface PublishedAddress {
  *
  * Two inputs, in priority order:
  *
- * 1. `appUrl`, the orchestrator-supplied publication context (#290). The
- *    routing strategy has moved upstream, so the supplied URL answers and the
- *    listener is not consulted at all (D-58 rules 2 and 5).
+ * 1. `appUrl`, the orchestrator-supplied publication context (D-58). The
+ *    routing strategy has moved upstream, so the supplied URL answers — via
+ *    the SDK's `suppliedAppAddress`, the same derivation every provider with
+ *    the channel uses — and the listener is not consulted at all (D-58 rules
+ *    2 and 5).
  * 2. Otherwise the provider publishes the listener itself on `hostPort`, and
  *    the scheme is `https` exactly when the listener's **effective** protocol
  *    is `https` (D-61 rule 2) — either because the entry declares it or
@@ -232,18 +136,7 @@ export function publishedAddress(
 	hostPort: number,
 	appUrl?: string,
 ): PublishedAddress {
-	if (appUrl !== undefined) {
-		const url = normalizeAppUrl(appUrl);
-		const u = new URL(url);
-		return {
-			host: u.hostname,
-			// $app.port is the port of the public address (SPEC.md: the external
-			// port the platform exposes) — explicit, else the scheme default.
-			port: u.port !== "" ? Number(u.port) : u.protocol === "https:" ? 443 : 80,
-			url,
-			...deriveAppUrlProperties(url),
-		};
-	}
+	if (appUrl !== undefined) return suppliedAppAddress(appUrl);
 	const scheme = effectiveProtocol === "https" ? "https" : "http";
 	const url = hostPort > 0 ? `${scheme}://localhost:${hostPort}` : "";
 	return {
@@ -342,14 +235,15 @@ export function primaryPublishedEndpoint(
  * surfaces always agree (#473). Apps with no exposed component get `port: 0`
  * and `url: ""` (and empty authority/scheme/tls).
  *
- * With an `appUrl` — the orchestrator-supplied publication context (#290) —
+ * With an `appUrl` — the orchestrator-supplied publication context (D-58) —
  * the routing strategy has moved upstream and the supplied URL answers
  * instead. Published host ports are orthogonal and still allocated; they just
  * aren't the address anyone reaches the app at.
  *
- * For multi-exposed-component apps that need a specific component's URL, use
- * `$components.<name>.url` instead — `$app.*` always points at the primary
- * endpoint to give a single, predictable answer.
+ * `$app.*` always points at the primary endpoint to give a single,
+ * predictable answer. Any other named published endpoint's public address is
+ * `$app.endpoints.<name>.*` ({@link computeAppContext}, D-63);
+ * `$components.<name>.url` is the component-side address, not a public one.
  */
 export function computeAppProperties(
 	launch: NormalizedLaunch,
@@ -357,9 +251,111 @@ export function computeAppProperties(
 	appUrl?: string,
 	activeCertificates?: ReadonlySet<string>,
 ): Record<string, string | number> {
-	const primary = primaryPublishedEndpoint(launch, hostPorts, activeCertificates);
+	return computeAppContext(launch, hostPorts, appUrl, activeCertificates).app;
+}
+
+/** Listener protocols that have an origin; a `tcp`/`udp` listener has none (D-60 rule 2). */
+const HTTP_FAMILY_PROTOCOLS: ReadonlySet<string> = new Set(["http", "https", "ws", "grpc"]);
+
+/**
+ * One published endpoint's public address as `$app.endpoints.<name>.*`
+ * reads it (D-63 rules 1 and 3): the six fields of {@link publishedAddress}
+ * for an HTTP-family listener; for a `tcp`/`udp` listener — no origin — the
+ * `url` and `scheme` are `""` and `tls` is `"false"`, while `host`,
+ * `authority` (always carrying the port, there being no scheme default to
+ * omit) and `port` still resolve.
+ */
+function endpointPublicAddress(
+	endpoint: PublishedEndpointAddress,
+): AppEndpointProperties {
+	const { host, port, url, authority, scheme, tls } = endpoint.address;
+	if (HTTP_FAMILY_PROTOCOLS.has(endpoint.effectiveProtocol)) {
+		return { url, host, port, scheme, authority, tls };
+	}
 	return {
-		name: launch.name,
-		...publishedAddress(primary?.effectiveProtocol, primary?.hostPort ?? 0, appUrl),
+		url: "",
+		host,
+		port,
+		scheme: "",
+		authority: port > 0 ? `${host}:${port}` : "",
+		tls: "false",
 	};
+}
+
+/** `$app.*` together with `$app.endpoints.<name>.*`, from one derivation. */
+export interface AppContext {
+	/** The standard `$app.*` set (D-33, D-35): the primary endpoint's address. */
+	app: Record<string, string | number>;
+	/**
+	 * Every named published endpoint's address (D-63), keyed by
+	 * `provides[].name`. The primary's entry is `app` less `name`.
+	 */
+	appEndpoints: Record<string, AppEndpointProperties>;
+	/**
+	 * Named endpoints that resolve `""` because a supplied `appUrl` asserts
+	 * the primary endpoint's address only (D-58 rule 4, D-63 rule 5).
+	 */
+	fenced: string[];
+}
+
+/**
+ * Compute `$app.*` and `$app.endpoints.<name>.*` together (D-63 rule 2 —
+ * one derivation). The primary endpoint is found once; its
+ * {@link publishedAddress} is `$app.*`, and the same six fields are its
+ * `$app.endpoints.<name>` entry, so the two can never differ. Every other
+ * named `exposed: true` endpoint resolves through the same function from its
+ * own host port and effective listener.
+ *
+ * Under a supplied `appUrl` the fence holds (D-58 rule 4): the primary's
+ * entry is the supplied address and every other named endpoint is
+ * {@link UNPUBLISHED_APP_ENDPOINT}, listed in `fenced` so the caller can warn
+ * about the ones the file references.
+ *
+ * Unnamed endpoints are not addressable (D-6) and get no entry. A name the
+ * SDK's validation lets through twice keeps its first declaration.
+ */
+export function computeAppContext(
+	launch: NormalizedLaunch,
+	hostPorts: Record<string, number> | undefined,
+	appUrl?: string,
+	activeCertificates?: ReadonlySet<string>,
+): AppContext {
+	const primary = primaryPublishedEndpoint(launch, hostPorts, activeCertificates);
+	const primaryAddress = publishedAddress(
+		primary?.effectiveProtocol,
+		primary?.hostPort ?? 0,
+		appUrl,
+	);
+	const app: Record<string, string | number> = { name: launch.name, ...primaryAddress };
+
+	const appEndpoints: Record<string, AppEndpointProperties> = {};
+	const fenced: string[] = [];
+	for (const [componentName, component] of Object.entries(launch.components)) {
+		const published = publishedEndpointAddresses(
+			componentName,
+			component.provides,
+			hostPorts,
+			activeCertificates,
+		);
+		for (const endpoint of published) {
+			if (endpoint.name === undefined || Object.hasOwn(appEndpoints, endpoint.name)) {
+				continue;
+			}
+			if (primary !== undefined && endpoint.key === primary.key) {
+				// Rule 2: the primary's entry IS `$app.*` — the same object's
+				// fields, not a second call. That holds for a supplied URL and
+				// for a `tcp`/`udp` primary alike: rule 2 outranks rule 3 there,
+				// because `$app.url` keeps the provider's positional answer.
+				appEndpoints[endpoint.name] = { ...primaryAddress };
+				continue;
+			}
+			if (appUrl !== undefined) {
+				appEndpoints[endpoint.name] = UNPUBLISHED_APP_ENDPOINT;
+				fenced.push(endpoint.name);
+				continue;
+			}
+			appEndpoints[endpoint.name] = endpointPublicAddress(endpoint);
+		}
+	}
+	return { app, appEndpoints, fenced };
 }

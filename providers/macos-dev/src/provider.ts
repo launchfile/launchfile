@@ -13,6 +13,7 @@ import {
 	certificateBindings,
 	indexOperatorStoragePaths,
 	MissingOperatorStoragePathError,
+	normalizeAppUrl,
 	readLaunch,
 	resolveSourcePrepareCommand,
 	resolveSourceRunCommand,
@@ -21,22 +22,37 @@ import {
 	UnboundOperatorStorageError,
 	type UnboundOperatorVolume,
 	unsuppliedRequiredEnv,
+	appEndpointReferences,
 	type NormalizedLaunch,
 	type NormalizedComponent,
+	useKeys,
 } from "@launchfile/sdk";
 
 import { checkPrereqs } from "./prereqs.js";
-import { loadState, initState, saveState, ensureDirs } from "./state.js";
 import {
-	buildResolverContext,
-	computeAppProperties,
+	HTTPS_ORIGIN,
+	httpsOriginSatisfied,
+	httpsOriginShortfall,
+} from "./https-origin.js";
+import { loadState, initState, saveState, ensureDirs, withRecordedDbIndexes } from "./state.js";
+import {
+	declaredUses,
+	registerResource,
 	resolveComponentEnv,
+	resolverContextFor,
+	resourceMapFromState,
 	generateSecrets,
 	resolveGenerators,
 	writeEnvFile,
 	type UnsuppliedRequiredEnv,
 } from "./env-writer.js";
-import { getProvisioner, type ResourceProperties } from "./resources/index.js";
+import {
+	allocateDbIndexes,
+	getProvisioner,
+	namedDatabases,
+	uncoveredUses,
+	type ResourceProperties,
+} from "./resources/index.js";
 import { allocatePorts } from "./port-allocator.js";
 import { getRuntimeInstaller } from "./runtimes/index.js";
 import { detectPackageManager } from "./lockfile-detect.js";
@@ -91,6 +107,24 @@ export interface LaunchUpOpts {
 	 * name is ambiguous. Relative paths resolve against the current directory.
 	 */
 	storage?: Record<string, string>;
+	/**
+	 * Orchestrator-supplied publication context (D-58): the public URL of the
+	 * app's PRIMARY endpoint when routing is owned outside this host — a reverse
+	 * proxy, tunnel, or edge in front of the processes this provider starts.
+	 * `$app.*` then resolves from it instead of from `http://localhost:<port>`,
+	 * this provider's own routing answer, which upstream routing has made no
+	 * longer the address anyone reaches the app at.
+	 *
+	 * Absolute `http`/`https` WHATWG URL, no userinfo, query, or fragment; a
+	 * malformed value is refused (`InvalidAppUrlError`), never degraded into a
+	 * guessed or localhost `$app.*` (D-58 rule 3). One URL asserts the primary
+	 * endpoint only (rule 4) — per-component addresses stay `$components.*`.
+	 * Persisted in `.launchfile/state.json` so `env` and `bootstrap` resolve
+	 * what the `up` that set it resolved; a later run that omits it keeps the
+	 * recorded value, and one that supplies a different value replaces it
+	 * (D-49), matching `@launchfile/docker`.
+	 */
+	appUrl?: string;
 }
 
 /** Whether a path exists and this process can read it (D-50 rule 2, row 3). */
@@ -178,26 +212,31 @@ export function applyHostCapabilityRefusals(
 	return Object.keys(launch.components).length === 0 ? "none-left" : "ok";
 }
 
-/** The backing-service type that declares the app's public HTTPS origin (D-60). */
-const HTTPS_ORIGIN = "https-origin";
-
 /**
  * Components this provider must refuse because they require a public HTTPS
- * origin (D-60 rule 5), mapped to the entries it cannot satisfy.
+ * origin it cannot supply (D-60 rule 5), mapped to the entries and the reason.
  *
- * This provider has no orchestrator-facing publication channel ([#294]) and no
- * edge of its own, so it can neither provision the origin nor accept a supplied
- * one — it refuses, which PROVIDERS.md §10 item 5 makes conformant. `supports:`
- * entries are not refused: the component runs, degraded.
+ * This provider has no edge of its own, so it cannot provision the origin. It
+ * can accept one through the publication-context channel (`appUrl`, D-58) —
+ * which for this type IS the supplied-resource channel (PROVIDERS.md §7) —
+ * when the URL's scheme is `https`; then the entry is satisfied and nothing is
+ * refused. With no URL, or one whose scheme is not `https`, the entry cannot
+ * be satisfied and refusing is what PROVIDERS.md §10 item 5 makes conformant.
+ * `supports:` entries are never refused: the component runs, degraded.
+ *
+ * `appUrl` is the effective publication URL — supplied on this run or recorded
+ * by an earlier one — normalized.
  */
 export function refusedHttpsOrigins(
 	launch: NormalizedLaunch,
+	appUrl?: string,
 ): Map<string, string[]> {
 	const refused = new Map<string, string[]>();
+	if (httpsOriginSatisfied(appUrl)) return refused;
 	for (const [name, c] of Object.entries(launch.components)) {
 		const entries = (c.requires ?? [])
 			.filter((r) => r.type === HTTPS_ORIGIN)
-			.map((r) => `${r.name ?? r.type} (endpoint "${r.endpoint ?? "?"}")`);
+			.map((r) => httpsOriginShortfall(r, appUrl));
 		if (entries.length > 0) refused.set(name, entries);
 	}
 	return refused;
@@ -213,12 +252,13 @@ export function refusedHttpsOrigins(
  */
 export function applyHttpsOriginRefusals(
 	launch: NormalizedLaunch,
+	appUrl?: string,
 ): "ok" | "none-left" {
-	const refused = refusedHttpsOrigins(launch);
+	const refused = refusedHttpsOrigins(launch, appUrl);
 	for (const [name, entries] of refused) {
 		console.error(
 			`  Refused: ${name} requires a public HTTPS origin this provider cannot supply ` +
-				`(${entries.join("; ")}) — it has no edge and no publication channel — component not started`,
+				`(${entries.join("; ")}) — component not started`,
 		);
 	}
 	if (refused.size === 0) return "ok";
@@ -291,8 +331,118 @@ export function applyCertificateRefusals(
 	return Object.keys(launch.components).length === 0 ? "none-left" : "ok";
 }
 
+/**
+ * Components this provider must refuse because a `requires` entry names a
+ * resource type it has no provisioner for (PROVIDERS.md §10 item 5, D-64),
+ * mapped to the entries. The ordinary case of {@link refusedHttpsOrigins}: a
+ * `kafka` this provider cannot stand up is exactly a `postgres` it cannot
+ * stand up.
+ *
+ * This provider has no supplied-resource channel, so nothing can satisfy such
+ * an entry from outside — provision or refuse are its only conformant
+ * outcomes. The vocabulary is open (L-4): a type with no provisioner is a
+ * normal, permanent state, and the defect is starting the component without
+ * the resource its file says it needs. Host-capability entries take rule 9's
+ * path and `supports:` entries are optional (D-8); neither is graded here.
+ */
+export function refusedResourceTypes(
+	launch: NormalizedLaunch,
+): Map<string, string[]> {
+	const refused = new Map<string, string[]>();
+	for (const [name, component] of Object.entries(launch.components)) {
+		const entries = (component.requires ?? [])
+			.filter((r) => !r.host && r.type !== HTTPS_ORIGIN && !getProvisioner(r.type))
+			.map((r) => (r.name === undefined ? r.type : `${r.name} (type "${r.type}")`));
+		if (entries.length > 0) refused.set(name, entries);
+	}
+	return refused;
+}
+
+/**
+ * Remove every component with a required resource this provider cannot
+ * provision, and say so on stderr. Same shape and same reason as
+ * {@link applyHostCapabilityRefusals}: the removal IS the refusal.
+ */
+export function applyResourceTypeRefusals(
+	launch: NormalizedLaunch,
+): "ok" | "none-left" {
+	const refused = refusedResourceTypes(launch);
+	for (const [name, entries] of refused) {
+		const noun = entries.length === 1 ? "a resource" : "resources";
+		console.error(
+			`  Refused: ${name} requires ${noun} this provider cannot provision ` +
+				`(${entries.join("; ")}) — it has no provisioner for the type and no channel to ` +
+				"receive one through; use a provider that provisions it — component not started",
+		);
+	}
+	if (refused.size === 0) return "ok";
+	launch.components = Object.fromEntries(
+		Object.entries(launch.components).filter(([n]) => !refused.has(n)),
+	);
+	return Object.keys(launch.components).length === 0 ? "none-left" : "ok";
+}
+
+/**
+ * Components this provider must refuse because a `requires` entry declares a
+ * use its provisioner cannot cover (SPEC.md § Resource uses, D-56 rule 1,
+ * D-64), mapped to `<entry>: <use>` lines. Graded after
+ * {@link refusedResourceTypes}: a type with no provisioner is refused on the
+ * type, so only entries whose type this provider stands up reach here. A
+ * token this provider does not recognise is uncovered — no provider can
+ * claim to cover a use it does not know. `supports:` entries are optional
+ * (D-8) and are not graded here.
+ */
+export function refusedResourceUses(
+	launch: NormalizedLaunch,
+): Map<string, string[]> {
+	const refused = new Map<string, string[]>();
+	for (const [name, component] of Object.entries(launch.components)) {
+		const entries: string[] = [];
+		for (const req of component.requires ?? []) {
+			if (req.host || req.type === HTTPS_ORIGIN || !req.uses || !getProvisioner(req.type)) continue;
+			const resourceName = req.name ?? req.type;
+			for (const use of uncoveredUses(req.type, useKeys(req.uses))) {
+				entries.push(`${resourceName}: ${use}`);
+			}
+		}
+		if (entries.length > 0) refused.set(name, entries);
+	}
+	return refused;
+}
+
+/**
+ * Remove every component with a required use this provider cannot cover, and
+ * say so on stderr. Same shape as {@link applyResourceTypeRefusals}: the
+ * removal IS the refusal.
+ */
+export function applyResourceUseRefusals(
+	launch: NormalizedLaunch,
+): "ok" | "none-left" {
+	const refused = refusedResourceUses(launch);
+	for (const [name, entries] of refused) {
+		const noun = entries.length === 1 ? "a use" : "uses";
+		console.error(
+			`  Refused: ${name} requires ${noun} of a resource this provider cannot cover ` +
+				`(${entries.join("; ")}) — a provider covers every declared use or refuses; declare only ` +
+				"what the app uses, or use a provider that covers it — component not started",
+		);
+	}
+	if (refused.size === 0) return "ok";
+	launch.components = Object.fromEntries(
+		Object.entries(launch.components).filter(([n]) => !refused.has(n)),
+	);
+	return Object.keys(launch.components).length === 0 ? "none-left" : "ok";
+}
+
 export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
+
+	// Publication context (D-58): validated and normalized before anything is
+	// checked, provisioned, or started — a malformed URL is an expected refusal
+	// (InvalidAppUrlError), never a degraded $app.* or a silent fallback to this
+	// provider's own localhost answer.
+	const suppliedAppUrl =
+		opts.appUrl === undefined ? undefined : normalizeAppUrl(opts.appUrl);
 
 	// 1. Check prerequisites
 	const prereqs = await checkPrereqs();
@@ -353,11 +503,24 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		);
 		process.exit(1);
 	}
-	// 2a-bis. A required `https-origin` is refused for the same reason and in
-	// the same way (D-60 rule 5, PROVIDERS.md §10 item 5): this provider has
-	// no edge and no publication channel, so it cannot satisfy the entry, and
-	// starting the component anyway is the silent success the type removes.
-	if (applyHttpsOriginRefusals(launch) === "none-left") {
+	// 2a-bis. A required `https-origin` (D-60 rule 5, PROVIDERS.md §10 item 5)
+	// is satisfied by the publication context when its scheme is https —
+	// supplied on this run, or recorded by an earlier one and preserved on
+	// omission, which is why state is loaded here rather than after the
+	// refusals (loading writes nothing; the first write is `ensureDirs`).
+	// Otherwise it is refused in the same way as a host capability: starting
+	// the component anyway is the silent success the type removes.
+	let state = await loadState(projectDir);
+	if (!state) {
+		state = initState(launch.name, launchfileContent);
+	}
+	// Publication context (D-58), the same preservation rule the docker provider
+	// applies: a supplied value replaces the recorded one — the derived $app.*
+	// env recomputes below from it (D-49) — while omission keeps what is
+	// recorded, so a later plain `up` cannot silently flip a proxied deployment
+	// back to localhost.
+	if (suppliedAppUrl !== undefined) state.appUrl = suppliedAppUrl;
+	if (applyHttpsOriginRefusals(launch, state.appUrl) === "none-left") {
 		console.error(
 			"Every selected component requires a public HTTPS origin this provider cannot supply.",
 		);
@@ -373,6 +536,28 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		);
 		process.exit(1);
 	}
+	// 2a-quater. A required resource type this provider has no provisioner for
+	// is refused the same way (D-64, PROVIDERS.md §10 item 5). Decided after
+	// the selector narrowed `launch.components`, so an unsatisfiable entry on a
+	// component outside the start-set blocks nothing (§10 item 5's selector
+	// rule), and before anything is provisioned, installed, wired or started.
+	if (applyResourceTypeRefusals(launch) === "none-left") {
+		console.error(
+			"Every selected component requires a resource this provider cannot provision.",
+		);
+		process.exit(1);
+	}
+	// 2a-quinquies. A required use this provider's provisioner cannot cover is
+	// refused the same way (SPEC.md § Resource uses, D-56 rule 1): a provider
+	// covers every declared use or refuses, and never hands over less than the
+	// entry declares. Graded here, after the type refusal, for the same
+	// selector and before-anything-happens reasons.
+	if (applyResourceUseRefusals(launch) === "none-left") {
+		console.error(
+			"Every selected component requires a use of a resource this provider cannot cover.",
+		);
+		process.exit(1);
+	}
 	// An optional capability is not refused — the component runs, degraded.
 	for (const [name, c] of Object.entries(launch.components)) {
 		for (const sup of c.supports ?? []) {
@@ -383,11 +568,15 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 				);
 			}
 		}
+		// The optional mood of `https-origin` (D-60 rule 6): satisfied, it is
+		// wired like any other resource at step 8; unsatisfied, the component
+		// still runs, its set_env is absent, and the shortfall is named.
+		if (httpsOriginSatisfied(state.appUrl)) continue;
 		for (const sup of c.supports ?? []) {
 			if (sup.type !== HTTPS_ORIGIN) continue;
 			console.warn(
-				`  Warning: ${name}: optional public HTTPS origin ` +
-					`${sup.name ?? sup.type} (endpoint "${sup.endpoint ?? "?"}") not satisfied — running degraded`,
+				`  Warning: ${name}: optional public HTTPS origin not satisfied ` +
+					`(${httpsOriginShortfall(sup, state.appUrl)}) — running degraded`,
 			);
 		}
 	}
@@ -540,11 +729,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		console.warn(`  Warning: --storage ${key} matches no \`content: operator\` volume — ignored`);
 	}
 
-	// 3. Load or init state
-	let state = await loadState(projectDir);
-	if (!state) {
-		state = initState(launch.name, launchfileContent);
-	}
+	// 3. State: loaded at step 2a-bis, where the https-origin refusal reads it.
 
 	// 4. Ensure directories
 	await ensureDirs(projectDir);
@@ -552,32 +737,63 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	// 5. Generate secrets
 	state.secrets = await generateSecrets(launch.secrets, state.secrets);
 
-	// 6. Provision required resources
+	// 6. Provision required resources. Each declared use's `<use>.<property>`
+	// keys join the provisioner's instance vocabulary in the map; each redis
+	// `db` use key gets one numbered database from one app-wide allocation
+	// that is stable between runs and identical on both reference providers
+	// (`allocateDbIndexes`), and each named `database` use is one more
+	// database the SQL provisioner creates. A resource is provisioned once per
+	// name and registered from the pooled uses of every same-name entry (D-24:
+	// they describe one resource) — the set the resolver context below treats
+	// strictly — so the first entry seen cannot hide keys a later one declares.
 	const resourceMap: Record<string, ResourceProperties> = {};
+	const uses = declaredUses(launch);
+	const dbIndexes = allocateDbIndexes(launch);
+	const provisionOpts = (resourceName: string) => ({
+		appName: launch.name,
+		projectDir,
+		databases: namedDatabases(uses[resourceName] ?? []),
+	});
 
 	for (const [_compName, component] of Object.entries(launch.components)) {
 		for (const req of component.requires ?? []) {
 			if (req.host) continue; // capability, not a backing service (D-44)
+			// Satisfied through the publication context, not provisioned; wired
+			// at step 8 once $app.* is known. A refused one is already gone.
+			if (req.type === HTTPS_ORIGIN) continue;
 			const resourceName = req.name ?? req.type;
 			if (resourceMap[resourceName]) continue; // Already provisioned
 
 			const provisioner = getProvisioner(req.type);
 			if (!provisioner) {
-				console.warn(`  ! No provisioner for resource type: ${req.type} (skipping)`);
-				continue;
+				// Step 2a-quater removed every component with such an entry, so
+				// reaching here is a bug in this file, not a launch outcome.
+				throw new Error(
+					`no provisioner for resource type "${req.type}" on ${_compName} — the component must be refused first`,
+				);
 			}
+
+			const indexes = dbIndexes[resourceName] ?? {};
 
 			if (opts.dryRun) {
 				console.log(`  [dry-run] Would provision ${req.type} as "${resourceName}"`);
-				resourceMap[resourceName] = { url: "", host: "localhost", port: 0 }; // placeholder for dedup
+				resourceMap[resourceName] = registerResource(
+					req.type,
+					resourceName,
+					uses,
+					{ url: "", host: "localhost", port: 0 }, // placeholder for dedup
+					indexes,
+				);
 				continue;
 			}
 
 			process.stdout.write(`  \u2193 Provisioning ${req.type}...`);
 			const existing = state.resources[resourceName];
-			const result = await provisioner.provision(req, { appName: launch.name, projectDir }, existing);
-			resourceMap[resourceName] = result.properties;
-			state.resources[resourceName] = result.state;
+			const result = await provisioner.provision(req, provisionOpts(resourceName), existing);
+			resourceMap[resourceName] = registerResource(req.type, resourceName, uses, result.properties, indexes);
+			// The indexes ride along in state so `env` answers `db.*` with the
+			// databases the running app was given.
+			state.resources[resourceName] = withRecordedDbIndexes(result.state, indexes);
 			console.log(" done");
 		}
 
@@ -585,24 +801,46 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		if (opts.withOptional) {
 			for (const sup of component.supports ?? []) {
 				if (sup.host) continue; // capability, not a backing service (D-44)
+				if (sup.type === HTTPS_ORIGIN) continue; // publication context, step 8
 				const resourceName = sup.name ?? sup.type;
 				if (resourceMap[resourceName]) continue;
 
 				const provisioner = getProvisioner(sup.type);
 				if (!provisioner) continue;
 
+				// An optional entry declaring a use this provider cannot cover is
+				// left unfulfilled — bindings absent, said out loud — never refused
+				// (D-8). The same shortfall on `requires:` refused the component
+				// at step 2a-quinquies.
+				const uncovered = sup.uses ? uncoveredUses(sup.type, useKeys(sup.uses)) : [];
+				if (uncovered.length > 0) {
+					console.warn(
+						`  Warning: ${_compName}: optional resource ${resourceName} not satisfied — this provider ` +
+							`does not cover ${uncovered.length === 1 ? "a use" : "uses"} it declares ` +
+							`(${uncovered.join(", ")}); running degraded`,
+					);
+					continue;
+				}
+				const indexes = dbIndexes[resourceName] ?? {};
+
 				if (opts.dryRun) {
 					console.log(`  [dry-run] Would provision optional ${sup.type} as "${resourceName}"`);
-					resourceMap[resourceName] = { url: "", host: "localhost", port: 0 };
+					resourceMap[resourceName] = registerResource(
+						sup.type,
+						resourceName,
+						uses,
+						{ url: "", host: "localhost", port: 0 },
+						indexes,
+					);
 					continue;
 				}
 
 				try {
 					process.stdout.write(`  \u2193 Provisioning ${sup.type} (optional)...`);
 					const existing = state.resources[resourceName];
-					const result = await provisioner.provision(sup, { appName: launch.name, projectDir }, existing);
-					resourceMap[resourceName] = result.properties;
-					state.resources[resourceName] = result.state;
+					const result = await provisioner.provision(sup, provisionOpts(resourceName), existing);
+					resourceMap[resourceName] = registerResource(sup.type, resourceName, uses, result.properties, indexes);
+					state.resources[resourceName] = withRecordedDbIndexes(result.state, indexes);
 					console.log(" done");
 				} catch {
 					console.log(" skipped");
@@ -615,9 +853,21 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const componentPorts = await allocatePorts(launch.components, launch.name, state.ports);
 	state.ports = componentPorts;
 
-	// 8. Build resolver context (including $app.* properties from D-33)
-	const appProperties = computeAppProperties(launch, componentPorts);
-	const context = buildResolverContext(resourceMap, componentPorts, state.secrets, appProperties);
+	// 8. Build resolver context (including $app.* properties from D-33). A
+	// satisfied `https-origin` registers `url` — the same string as `$app.url`
+	// (D-60 rule 4) — so its set_env resolves like any provisioned resource's.
+	const context = resolverContextFor(launch, resourceMap, state);
+	// `$app.endpoints.<name>.*` resolves "" here (D-63 rule 4, #294). Said
+	// once per `up`, and only when the file asks, so the empty value is not a
+	// silent one (PROVIDERS.md §10 item 8).
+	const endpointRefs = appEndpointReferences(launch);
+	if (endpointRefs.length > 0) {
+		const names = [...new Set(endpointRefs.map((ref) => ref.path[2] ?? "<none>"))];
+		console.warn(
+			`  ! $app.endpoints.* resolves "" on this provider (${names.map((n) => `$app.endpoints.${n}.*`).join(", ")}) — ` +
+				"it publishes one port per component, not one per endpoint (#294)",
+		);
+	}
 
 	// 9. Install runtimes
 	for (const [name, component] of Object.entries(launch.components)) {
@@ -836,7 +1086,9 @@ export async function launchDown(opts: { destroy?: boolean; projectDir?: string 
 					console.log(`  ${o.component} was not running`);
 					break;
 				case "identity-mismatch":
-					console.log(`  Skipped ${o.component} (pid recycled — left untouched)`);
+					console.log(
+						`  Skipped ${o.component} (live process start time does not match the recorded one — left untouched)`,
+					);
 					break;
 				case "error":
 					console.log(`  Failed to stop ${o.component}: ${o.error}`);
@@ -916,22 +1168,12 @@ export async function launchEnv(opts: { component?: string; projectDir?: string 
 		return;
 	}
 
-	// Rebuild resource map from state
-	const resourceMap: Record<string, ResourceProperties> = {};
-	for (const [name, res] of Object.entries(state.resources)) {
-		const provisioner = getProvisioner(res.type);
-		if (provisioner) {
-			const result = await provisioner.provision(
-				{ type: res.type, name: res.name },
-				{ appName: state.appName, projectDir },
-				res,
-			);
-			resourceMap[name] = result.properties;
-		}
-	}
-
-	const appProperties = computeAppProperties(launch, state.ports);
-	const context = buildResolverContext(resourceMap, state.ports, state.secrets, appProperties);
+	// `env` reports what the running app has: the resources registered as `up`
+	// registered them — declared uses included, a redis `db` use reading back
+	// the index `up` recorded — and `$app.*` from the publication context the
+	// last `up` recorded (D-58), not this provider's localhost answer.
+	const resourceMap = await resourceMapFromState(launch, state, projectDir);
+	const context = resolverContextFor(launch, resourceMap, state);
 
 	// `env` reports what the running app has, so it reads minted generator
 	// values from the same store `up` persists to (D-49). A value can still be

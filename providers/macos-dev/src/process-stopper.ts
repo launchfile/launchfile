@@ -16,9 +16,12 @@
  *   1. **Liveness** — `process.kill(pid, 0)` throws ESRCH if no such process
  *      exists. If it's dead, we skip (already stopped).
  *   2. **Identity** — we compare the recorded spawn time against the live
- *      process's actual start time via `ps -o lstart= -p <pid>`. If the live
- *      process started meaningfully later than we recorded, the pid was
- *      recycled and we REFUSE to signal it.
+ *      process's actual start time via `ps -o lstart= -p <pid>`. If the two
+ *      are further apart than the tolerance window, in either direction, the
+ *      record does not describe this process and we REFUSE to signal it. A
+ *      later live start means the pid was recycled; an earlier one means the
+ *      record itself is untrustworthy (a backward clock jump between spawn and
+ *      `down`, or a state file carried over from another run).
  *
  * This is a best-effort guarantee, not a cryptographic one. Its honest limits:
  *   - `ps lstart` has ~1s resolution, so we allow a small tolerance window. A
@@ -65,10 +68,12 @@ export interface RecordedProcess {
 }
 
 /**
- * Identity tolerance: how much later than `startedAt` a live process may report
- * having started before we treat it as a recycled pid. `ps lstart` rounds to
- * whole seconds and there's scheduling slop between our `Date.now()` snapshot
- * and the kernel's recorded start, so we allow a few seconds of forward drift.
+ * Identity tolerance: how far a live process's reported start time may sit from
+ * `startedAt`, on either side, before we stop believing the record describes
+ * that process. `spawn()` forks before we timestamp the record and `ps lstart`
+ * rounds down to whole seconds, so a genuine record reads a second or so
+ * *earlier* than `startedAt`; scheduling slop covers the rest. The window is
+ * symmetric because a record can be wrong in either direction.
  */
 const START_TIME_TOLERANCE_MS = 3000;
 
@@ -109,7 +114,8 @@ function queryStartTime(pid: number): Promise<number | null> {
  *   - "alive-verified": process exists AND start time is consistent → safe to signal
  *   - "alive-unverified": process exists but start time couldn't be read → signal group only, cautiously
  *   - "dead": no such process (ESRCH) → already stopped, skip
- *   - "mismatch": process exists but started too late → recycled pid, DO NOT signal
+ *   - "mismatch": process exists but its start time is outside the tolerance
+ *     window on either side → the record does not describe it, DO NOT signal
  */
 export async function checkIdentity(
 	rec: RecordedProcess,
@@ -131,9 +137,12 @@ export async function checkIdentity(
 	const recordedStart = Date.parse(rec.startedAt);
 	if (Number.isNaN(recordedStart)) return "alive-unverified";
 
-	// If the live process started meaningfully *after* we recorded the spawn,
-	// the original exited and the pid was recycled. Refuse to signal it.
-	if (liveStart > recordedStart + START_TIME_TOLERANCE_MS) return "mismatch";
+	// The live start time must sit within tolerance of the record on both sides.
+	// Later than the record: the original exited and the pid was recycled.
+	// Earlier than the record: the record cannot be describing this process.
+	// Either way the pid is not ours to signal.
+	if (Math.abs(liveStart - recordedStart) > START_TIME_TOLERANCE_MS)
+		return "mismatch";
 
 	return "alive-verified";
 }

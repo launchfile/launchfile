@@ -4,9 +4,9 @@
 
 ## Summary
 
-- **84** Launchfile(s) translated
-- **163** field mappings
-- **90** gaps logged (never silently dropped)
+- **85** Launchfile(s) translated
+- **166** field mappings
+- **97** gaps logged (never silently dropped)
 - **8** specializations safely ignored
 
 ### Distinct gaps
@@ -15,8 +15,11 @@
 |---|---|---|---|
 | `image` | 🟡 workaround | prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host | add runtime+commands for a portable build path, or target a container provider |
 | `supports:postgres` | 🟢 nice-to-have | optional resources (supports) are not provisioned by this probe | provision behind a Terraform variable toggle |
+| `supports:certificate` | 🟢 nice-to-have | the app can serve TLS on its own listener 'web' with the certificate 'server-cert', and this probe has no way to place one in the task | mount the certificate into the task and supply cert_file/key_file, or terminate TLS at the ALB instead — a different arrangement, not this entry |
+| `supports:https-origin` | 🟢 nice-to-have | the app would use a public HTTPS origin in front of endpoint 'web', and this probe emits an http-only load balancer | terminate TLS at the ALB (aws_acm_certificate + an HTTPS listener) |
 | `requires:clickhouse` | 🟡 workaround | no managed AWS service mapping for resource type 'clickhouse' | model as a self-hosted component, or extend MANAGED_RESOURCES |
 | `requires:kafka` | 🟡 workaround | no managed AWS service mapping for resource type 'kafka' | model as a self-hosted component, or extend MANAGED_RESOURCES |
+| `requires:https-origin` | 🔴 blocker | the app requires a public HTTPS origin in front of endpoint 'web', and this probe emits an http-only load balancer | terminate TLS at the ALB (aws_acm_certificate + an HTTPS listener) before deploying this app |
 | `runtime` | 🔴 blocker | no runtime and no commands.start — nothing to build or run on EC2 | — |
 | `schedule` | 🟢 nice-to-have | cron schedule not mapped (no EventBridge Scheduler in this probe) | map to aws_scheduler_schedule |
 | `requires:host.container_runtime` | 🔴 blocker | component requires host capability container_runtime=docker; a bare EC2 target cannot grant it | use an ECS/container provider |
@@ -281,7 +284,7 @@
 
 ### gitea
 
-> Source: `catalog/apps/gitea/Launchfile` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/gitea/Launchfile` — 2 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -290,6 +293,7 @@
 
 **Gaps**
 
+- 🟢 `supports:certificate`: the app can serve TLS on its own listener 'web' with the certificate 'server-cert', and this probe has no way to place one in the task — mount the certificate into the task and supply cert_file/key_file, or terminate TLS at the ALB instead — a different arrangement, not this entry
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
 
 ### glance
@@ -330,7 +334,7 @@
 
 ### grafana
 
-> Source: `catalog/apps/grafana/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/grafana/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -338,11 +342,12 @@
 
 **Gaps**
 
+- 🟢 `supports:certificate`: the app can serve TLS on its own listener 'web' with the certificate 'server-cert', and this probe has no way to place one in the task — mount the certificate into the task and supply cert_file/key_file, or terminate TLS at the ALB instead — a different arrangement, not this entry
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
 
 ### grocy
 
-> Source: `catalog/apps/grocy/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/grocy/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -350,6 +355,7 @@
 
 **Gaps**
 
+- 🟢 `supports:https-origin`: the app would use a public HTTPS origin in front of endpoint 'web', and this probe emits an http-only load balancer — terminate TLS at the ALB (aws_acm_certificate + an HTTPS listener)
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
 
 ### hedgedoc
@@ -529,7 +535,7 @@
 
 ### miniflux
 
-> Source: `catalog/apps/miniflux/Launchfile` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/miniflux/Launchfile` — 2 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -538,6 +544,7 @@
 
 **Gaps**
 
+- 🟢 `supports:certificate`: the app can serve TLS on its own listener 'web' with the certificate 'server-cert', and this probe has no way to place one in the task — mount the certificate into the task and supply cert_file/key_file, or terminate TLS at the ALB instead — a different arrangement, not this entry
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
 
 ### monica
@@ -697,7 +704,7 @@
 
 ### privatebin
 
-> Source: `catalog/apps/privatebin/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/privatebin/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -705,6 +712,7 @@
 
 **Gaps**
 
+- 🔴 `requires:https-origin`: the app requires a public HTTPS origin in front of endpoint 'web', and this probe emits an http-only load balancer — terminate TLS at the ALB (aws_acm_certificate + an HTTPS listener) before deploying this app
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
 
 ### rallly
@@ -850,7 +858,7 @@
 
 ### vaultwarden
 
-> Source: `catalog/apps/vaultwarden/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
+> Source: `catalog/apps/vaultwarden/Launchfile` — 1 mapped, 3 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -858,6 +866,7 @@
 
 **Gaps**
 
+- 🔴 `requires:https-origin`: the app requires a public HTTPS origin in front of endpoint 'web', and this probe emits an http-only load balancer — terminate TLS at the ALB (aws_acm_certificate + an HTTPS listener) before deploying this app
 - 🟢 `supports:postgres`: optional resources (supports) are not provisioned by this probe — provision behind a Terraform variable toggle
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
 
@@ -937,13 +946,14 @@
 
 ### daily-sync
 
-> Source: `spec/examples/cron-job.yaml` — 4 mapped, 1 gap(s), 0 ignored
+> Source: `spec/examples/cron-job.yaml` — 5 mapped, 1 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
 | `requires:postgres` | `aws_db_instance` | — |
 | `runtime:node` | `aws_instance (cloud-init)` | default |
 | `commands.start` | `systemd unit (run slot)` | default |
+| `restart` | `systemd Restart=no` | default |
 | `env` | `aws_ssm_parameter` | default |
 
 **Gaps**
@@ -1064,15 +1074,28 @@
 - `build.dockerfile/target/args` _(backend)_: OCI specialization ignored — EC2 builds from the portable runtime+commands contract (D-40 / RFC C)
 - `build.dockerfile/target/args` _(frontend)_: OCI specialization ignored — EC2 builds from the portable runtime+commands contract (D-40 / RFC C)
 
+### media-server
+
+> Source: `spec/examples/operator-content.yaml` — 1 mapped, 1 gap(s), 0 ignored
+
+| Launchfile field | → Terraform | Component |
+|---|---|---|
+| `provides.exposed` | `aws_lb (ALB)` | — |
+
+**Gaps**
+
+- 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+
 ### my-app
 
-> Source: `spec/examples/post-start-capture.yaml` — 7 mapped, 0 gap(s), 1 ignored
+> Source: `spec/examples/post-start-capture.yaml` — 8 mapped, 0 gap(s), 1 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
 | `provides:http:9999` | `aws_security_group ingress` | default |
 | `commands.start` | `aws_instance (cloud-init)` | default |
 | `commands.start` | `systemd unit (run slot)` | default |
+| `restart` | `systemd Restart=always` | default |
 | `env` | `aws_ssm_parameter` | default |
 | `health` | `aws_lb_target_group health_check` | default |
 | `provides.exposed` | `aws_lb (ALB)` | — |

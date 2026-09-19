@@ -10,6 +10,10 @@
  *   no $            — literal string
  */
 
+import { effectiveListener } from "./effective-listener.js";
+import type { Provides } from "./types.js";
+import { formatUseKey } from "./uses.js";
+
 /** Context for resolving expressions */
 export interface ResolverContext {
 	/** Properties of the enclosing resource (e.g., postgres: { url, host, port }) */
@@ -39,7 +43,103 @@ export interface ResolverContext {
 	 * falls back to "" or `:-default`), matching `$app.*` (see {@link ResolverContext.app}).
 	 */
 	storage?: Record<string, Record<string, string>>;
+	/**
+	 * Per-endpoint publication context (D-63): the public address of every
+	 * named published endpoint, keyed by the `provides` entry's `name` (D-6).
+	 * The primary endpoint's entry is the same value as `$app.*`, from the
+	 * same derivation. A sibling of {@link ResolverContext.app}, never nested
+	 * inside it: the two-segment `$app.<prop>` branch stringifies whatever it
+	 * finds, and a map under `app.endpoints` would resolve `$app.endpoints`
+	 * to `"[object Object]"`. Reserved namespace, checked before user-named
+	 * resources. A provider that publishes no per-endpoint address registers
+	 * {@link UNPUBLISHED_APP_ENDPOINT} for each name, or nothing at all —
+	 * either way the form resolves `""` (L-4).
+	 */
+	appEndpoints?: Record<string, AppEndpointProperties>;
+	/**
+	 * The use keys each resource entry declares — `db` for a bare use,
+	 * `db.cache` for the named form `- db: cache` — keyed by the entry's
+	 * `name ?? type`, the same key as {@link ResolverContext.resources}. A
+	 * resource listed here resolves `$<resource>.<use>.<property>` and
+	 * `$<resource>.<use>.<name>.<property>` strictly: the use key must be
+	 * declared and the property registered under the dotted key
+	 * `<use key>.<property>` in the resource's map, or resolution throws
+	 * {@link UnresolvedUseError}. The last-segment fallback the multi-segment
+	 * branch keeps for every other resource does not apply, so a mistyped use,
+	 * name or property never resolves to the instance value behind it. A
+	 * resource absent from this map keeps the general rules.
+	 */
+	uses?: Record<string, readonly string[]>;
 }
+
+/**
+ * A `$<resource>.<use>.<property>` or `$<resource>.<use>.<name>.<property>`
+ * reference that the resource's declared uses cannot answer: the use (or the
+ * named use) is not declared on the entry, or the property is not one the use
+ * registers. Thrown rather than resolved `""`, and not softened by a
+ * `:-default` — the path is wrong, not empty. `use` is the use key the path
+ * addressed: `db`, or `db.cache` for the named form.
+ */
+export class UnresolvedUseError extends Error {
+	readonly resource: string;
+	readonly use: string;
+	readonly property: string;
+
+	constructor(resource: string, use: string, property: string, declared: readonly string[]) {
+		const path = `$${resource}.${use}.${property}`;
+		super(
+			declared.includes(use)
+				? `${path} does not resolve: use "${formatUseKey(use)}" on ${resource} registers no property "${property}"`
+				: `${path} does not resolve: ${resource} declares no use "${formatUseKey(use)}" (declared: ${declared.map(formatUseKey).join(", ")})`,
+		);
+		this.name = "UnresolvedUseError";
+		this.resource = resource;
+		this.use = use;
+		this.property = property;
+	}
+}
+
+/**
+ * The properties `$app.endpoints.<name>.*` addresses (D-63): the standard
+ * `$app.*` set (D-33, D-35) less `name`, which names the app rather than an
+ * endpoint.
+ */
+export const APP_ENDPOINT_PROPERTIES = [
+	"url",
+	"host",
+	"port",
+	"scheme",
+	"authority",
+	"tls",
+] as const;
+
+export type AppEndpointProperty = (typeof APP_ENDPOINT_PROPERTIES)[number];
+
+/**
+ * One named published endpoint's public address (D-63), each field defined
+ * per endpoint exactly as the `$app.*` entry defines it for the primary: the
+ * published host-side port, never the container port; `scheme`, `tls` and
+ * `url` from the effective listener (D-61 rule 2). A `tcp`/`udp` endpoint has
+ * no origin, so its `url` and `scheme` are `""` and its `tls` is `"false"`.
+ * Every field is `""` when the provider publishes no address for it.
+ */
+export interface AppEndpointProperties {
+	url: string;
+	host: string;
+	/** Published host-side port; `""` when the provider publishes no address. */
+	port: number | string;
+	scheme: string;
+	authority: string;
+	tls: string;
+}
+
+/**
+ * The answer for an endpoint the provider publishes no address for (D-63
+ * rule 4): every property `""`, so the form degrades exactly as an unknown
+ * `$app.*` property does (L-4).
+ */
+export const UNPUBLISHED_APP_ENDPOINT: Readonly<AppEndpointProperties> =
+	Object.freeze({ url: "", host: "", port: "", scheme: "", authority: "", tls: "" });
 
 /**
  * Derive the URL-shaped members of the standard `$app.*` set (D-35) from a
@@ -66,6 +166,62 @@ export function deriveAppUrlProperties(
 	} catch {
 		return { authority: "", scheme: "", tls: "" };
 	}
+}
+
+/**
+ * URL schemes for the `protocol` values that name one. `tcp`, `udp`, and `grpc`
+ * describe a wire protocol without fixing a `scheme://host:port` form, so an
+ * endpoint declaring one gets no `url` property rather than a guessed scheme.
+ */
+const ENDPOINT_URL_SCHEMES: Partial<Record<Provides["protocol"], string>> = {
+	http: "http",
+	https: "https",
+	ws: "ws",
+};
+
+/**
+ * Build the flat `<endpoint>.<property>` keys that make the documented
+ * `$components.<component>.<endpoint>.<property>` form (D-6, SPEC.md
+ * § Expression Syntax) resolvable, for one component's `provides` entries at
+ * `host`.
+ *
+ * Keys are dotted, not nested: {@link ResolverContext.components} maps a
+ * component to `Record<string, string | number>`, and the resolver looks the
+ * whole path tail up as one key. Merge the result onto the component's record
+ * alongside its primary `url`/`host`/`port`.
+ *
+ * Every *declared* endpoint is registered, whatever its `exposed` value: D-27
+ * governs reachability from outside the host, not visibility between siblings,
+ * so an internal-only named endpoint still has an in-network address. Entries
+ * without a `name` contribute nothing — a name is the identity the reference
+ * form uses (D-6). `url` appears only for a protocol that names a scheme.
+ *
+ * `protocol` and `url` read the entry's *effective* listener (D-61 rule 2):
+ * with a bound certificate in `activeCertificates` they say `https`, exactly
+ * as the primary `$components.<name>.url` does. The port is the declared port
+ * either way. Omit `activeCertificates` on a provider that activates no
+ * binding — declared and effective are then the same values.
+ *
+ * Providers share this so the same file answers the same way everywhere (P-5);
+ * each supplies its own `host` — a compose service name, a private IP, a host
+ * loopback address — and the port each endpoint is actually reachable on.
+ */
+export function endpointProperties(
+	provides: Provides[] | undefined,
+	host: string,
+	activeCertificates?: ReadonlySet<string> | readonly string[],
+): Record<string, string | number> {
+	const props: Record<string, string | number> = {};
+	for (const entry of provides ?? []) {
+		if (!entry.name) continue;
+		const listener = effectiveListener(entry, activeCertificates);
+		props[`${entry.name}.host`] = host;
+		props[`${entry.name}.port`] = listener.port;
+		props[`${entry.name}.protocol`] = listener.protocol;
+		const scheme = ENDPOINT_URL_SCHEMES[listener.protocol];
+		if (scheme) props[`${entry.name}.url`] = `${scheme}://${host}:${listener.port}`;
+	}
+	return props;
 }
 
 /** Result of parsing a set_env value */
@@ -283,12 +439,17 @@ export function parseDotPath(path: string): string[] {
  * Resolve an expression against a context, returning the final string value.
  *
  * Resolution order for a path:
- * 1. Starts with "app" → platform-injected app property (reserved namespace, D-33)
+ * 1. Starts with "app" → platform-injected app property (reserved namespace, D-33);
+ *    "app.endpoints.<name>.<prop>" → per-endpoint publication context (D-63)
  * 2. Starts with "secrets" → app-wide secret lookup
  * 3. Starts with "components" → component lookup
  * 4. Starts with "storage" → provider-resolved storage property (reserved namespace, D-39)
  * 5. Single segment → enclosing resource property
- * 6. Multi-segment → first segment is resource name, rest is property
+ * 6. Multi-segment → first segment is resource name, rest is property. For a
+ *    resource whose entry declares `uses`, a three-or-more-segment path is
+ *    `<resource>.<use>.<property>` — or `<resource>.<use>.<name>.<property>`
+ *    where the entry names the use — and resolves from the use's registered
+ *    properties or throws — no fallback (see {@link ResolverContext.uses}).
  */
 export function resolveExpression(
 	value: string,
@@ -351,6 +512,24 @@ function resolvePath(
 		return undefined;
 	}
 
+	// app.endpoints.<name>.<prop> → per-endpoint publication context (D-63).
+	// Reserved with the rest of `$app.*`, so it is checked before any
+	// user-named resource. Only the four-segment form addresses a value: the
+	// two-segment `$app.endpoints` falls to the branch above (no `endpoints`
+	// key lives in `context.app`), and every other length, an unknown name,
+	// and an unknown property resolve to undefined — "" or `:-default` at the
+	// caller (L-4). `validate` warns on those forms; the resolver stays silent.
+	if (first === "app" && path[1] === "endpoints") {
+		if (path.length !== 4 || !context.appEndpoints) return undefined;
+		const name = path[2]!;
+		if (!Object.hasOwn(context.appEndpoints, name)) return undefined;
+		const prop = path[3]!;
+		if (!(APP_ENDPOINT_PROPERTIES as readonly string[]).includes(prop)) {
+			return undefined;
+		}
+		return String(context.appEndpoints[name]![prop as AppEndpointProperty]);
+	}
+
 	// secrets.name → app-wide generated secret
 	if (first === "secrets" && path.length === 2 && context.secrets) {
 		const secretName = path[1]!;
@@ -358,15 +537,20 @@ function resolvePath(
 		if (val !== undefined) return String(val);
 	}
 
-	// components.name.prop
+	// components.name.prop and components.name.endpoint.prop (D-6). The provider
+	// registers one flat record per component whose keys are either a bare
+	// property (`url`) or a dotted `<endpoint>.<property>` pair, so the whole
+	// tail of the path is a single key. An unnamed key resolves to undefined —
+	// the caller degrades to "" or a `:-default` (L-4). There is deliberately no
+	// last-segment fallback: it made an unregistered endpoint answer with the
+	// primary endpoint's value, so a sibling wired itself to a live, plausible,
+	// wrong port with nothing reported.
 	if (first === "components" && path.length >= 3 && context.components) {
 		const componentName = path[1]!;
 		const component = own(context.components, componentName);
 		if (!component) return undefined;
-		// Try remaining path as dotted key, then just last segment
 		const propKey = path.slice(2).join(".");
-		const val =
-			own(component, propKey) ?? own(component, path[path.length - 1]!);
+		const val = own(component, propKey);
 		return val !== undefined ? String(val) : undefined;
 	}
 
@@ -385,6 +569,40 @@ function resolvePath(
 	if (path.length === 1 && context.resource) {
 		const val = own(context.resource, first);
 		if (val !== undefined) return String(val);
+	}
+
+	// <resource>.<use>.<property> on an entry that declares `uses`: strict.
+	// Each covered use registers its properties under the dotted key
+	// `<use key>.<property>` — `db.url`, or `db.cache.url` for a named use —
+	// nothing else answers, and a miss throws rather than falling through to
+	// the last-segment probe below, which would hand back the instance value
+	// for a use the entry never declared. The named form is recognised by its
+	// declared key (`db.cache`), so on an entry that names its `db` uses the
+	// bare `$redis.db.url` is a miss — there is no unnamed database to mean —
+	// and on an entry with a bare `db` the fourth segment is a property path.
+	if (path.length >= 3 && context.uses) {
+		const declared = own(context.uses, first);
+		if (declared) {
+			const token = path[1]!;
+			const namedKey = path.length >= 4 ? `${token}.${path[2]!}` : undefined;
+			const tokenIsNamed = declared.some((key) => key.startsWith(`${token}.`));
+			const use =
+				namedKey !== undefined && (declared.includes(namedKey) || tokenIsNamed)
+					? namedKey
+					: token;
+			const property = path.slice(use === namedKey ? 3 : 2).join(".");
+			const resource = context.resources
+				? own(context.resources, first)
+				: undefined;
+			const val =
+				declared.includes(use) && resource
+					? own(resource, `${use}.${property}`)
+					: undefined;
+			if (val === undefined) {
+				throw new UnresolvedUseError(first, use, property, declared);
+			}
+			return String(val);
+		}
 	}
 
 	// Multi-segment → named resource

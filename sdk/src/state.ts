@@ -374,9 +374,12 @@ function endpointProp(
  * published address exists); an in-network consumer gets the internal address.
  * A `<prop>` matching a capture name resolves to that capture's value.
  *
- * Unknown references return "" — mirroring the `$`-expression resolver, which
- * never throws on an unresolved reference (the caller supplies `:-default` or
- * falls back to the empty string).
+ * Unknown references return "" — mirroring the `$`-expression resolver's
+ * general rule that an unresolved reference is the caller's `:-default` or the
+ * empty string. The resolver's one throwing case, a `$<resource>.<use>.<prop>`
+ * reference on an entry that declares `uses` (`UnresolvedUseError`, D-65),
+ * has no counterpart here: deployment state records resolved values, not
+ * declared uses.
  */
 export function resolveRef(
 	state: DeploymentState,

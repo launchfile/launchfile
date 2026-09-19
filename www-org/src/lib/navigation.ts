@@ -42,6 +42,7 @@ export const navigation: NavGroup[] = [
         title: "Resource Properties",
         href: "/spec/resource-property-vocabulary/",
       },
+      { title: "Resource Uses", href: "/spec/resource-use-vocabulary/" },
       { title: "YAML Compatibility", href: "/spec/yaml-compatibility/" },
       { title: "Extensibility", href: "/spec/extensibility/" },
     ],

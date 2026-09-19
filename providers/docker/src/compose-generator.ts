@@ -9,8 +9,10 @@
 import { resolve as resolvePath } from "node:path";
 import {
 	effectiveListener,
+	endpointProperties,
 	indexOperatorStoragePaths,
 	isExpression,
+	appEndpointReferences,
 	type NormalizedEnvVar,
 	type NormalizedHealth,
 	type NormalizedLaunch,
@@ -22,11 +24,23 @@ import {
 	type StorageBind,
 	type UnboundOperatorVolume,
 	unsuppliedRequiredEnv,
+	useKeys,
 } from "@launchfile/sdk";
 import { intersects, subset, validRange } from "semver";
+import {
+	allocateDbIndexes,
+	coverUse,
+	type DbIndexes,
+	namedDatabase,
+	namedDatabases,
+	uncoveredProvisionedUses,
+	uncoveredSuppliedUses,
+	usePropertyKeys,
+	withCoveredUses,
+} from "./resource-uses.js";
 import { stringify } from "yaml";
 import {
-	computeAppProperties,
+	computeAppContext,
 	HTTPS_ORIGIN,
 	publishedEndpointAddresses,
 } from "./app-url.js";
@@ -40,6 +54,11 @@ import {
 	registerSuppliedResourceProperties,
 } from "./env-secrets.js";
 import { registerSecret } from "./redact.js";
+import {
+	declaredSecrets,
+	migrateResourcePasswords,
+	type ResourcePasswordKey,
+} from "./secrets-namespace.js";
 import type { StateEndpoint } from "./state.js";
 
 // --- Backing service definitions ---
@@ -294,20 +313,61 @@ function checkVersionConstraint(
 }
 
 /**
+ * The surfaced refusal for a component with a `requires` entry this provider
+ * has no factory for and nothing supplied (PROVIDERS.md §10 item 5, D-64).
+ * Names the component, each entry, and both ways out. It states what this
+ * provider does and asserts nothing about the app or another provider.
+ */
+function unprovisionableResourceRefusal(
+	componentName: string,
+	entries: readonly string[],
+): string {
+	const noun = entries.length === 1 ? "a resource" : "resources";
+	return (
+		`refused: ${componentName} requires ${noun} this provider cannot provision ` +
+		`(${entries.join("; ")}) — this provider has no provisioner for the type; supply it ` +
+		"through the provider's supplied-resource channel (D-56) or use a provider that " +
+		"provisions it — component skipped"
+	);
+}
+
+/**
+ * The surfaced refusal for a component with a `requires` entry declaring a
+ * use this provider cannot cover (SPEC.md § Resource uses, D-56 rule 1, D-64).
+ * Names the component, each entry and use, and the way out.
+ */
+function uncoveredUseRefusal(
+	componentName: string,
+	entries: readonly string[],
+): string {
+	const noun = entries.length === 1 ? "a use" : "uses";
+	return (
+		`refused: ${componentName} requires ${noun} of a resource this provider cannot cover ` +
+		`(${entries.join("; ")}) — a provider covers every declared use or refuses; declare only ` +
+		"what the app uses, supply a resource that covers it through the provider's " +
+		"supplied-resource channel (D-56), or use a provider that covers it — component skipped"
+	);
+}
+
+/**
  * Create a backing service factory with pre-generated or cached passwords.
- * Passwords are per-app to ensure consistency across restarts.
+ * Passwords are per-app to ensure consistency across restarts, and live in
+ * their own state map (`DockerState.resourcePasswords`) — never in `secrets`,
+ * which is the namespace `$secrets.<name>` resolves from.
  *
  * Each factory's `properties` map is this provider's answer to SPEC.md
  * § Resource Property Vocabulary; `resourcePropertyKeys()` reads it back.
  */
 function createBackingServices(
-	savedSecrets: Record<string, string>,
+	savedPasswords: Record<string, string>,
 ): Record<string, (name: string) => BackingService> {
-	// Use saved password or generate a new one
-	const getPassword = (key: string): string => {
-		if (savedSecrets[key]) return savedSecrets[key]!;
+	// Use saved password or generate a new one. Keyed by `ResourcePasswordKey`,
+	// so a factory can only mint under a key `DockerState.resourcePasswords`
+	// and the migration both know about.
+	const getPassword = (key: ResourcePasswordKey): string => {
+		if (savedPasswords[key]) return savedPasswords[key]!;
 		const pw = randomPassword();
-		savedSecrets[key] = pw;
+		savedPasswords[key] = pw;
 		return pw;
 	};
 
@@ -621,6 +681,56 @@ function createBackingServices(
 				},
 			};
 		},
+
+		kafka: (name) => ({
+			// Redpanda speaks the Kafka wire protocol in one process with no
+			// ZooKeeper, which is what makes it the single-container answer to
+			// `requires: kafka`. The image publishes no major-only tag, so the
+			// pin is a full version.
+			image: "redpandadata/redpanda:v25.1.12",
+			// The image's one VOLUME declaration.
+			dataPath: "/var/lib/redpanda/data",
+			environment: {},
+			properties: {
+				host: `${name}-kafka`,
+				port: "9092",
+				// Kafka clients take a bootstrap list, not a URL with a scheme —
+				// `host:port` is the value a KAFKA_HOSTS-style variable expects.
+				url: `${name}-kafka:9092`,
+			},
+			extra: {
+				command: [
+					"redpanda",
+					"start",
+					"--mode",
+					"dev-container",
+					"--smp",
+					"1",
+					"--memory",
+					"1G",
+					"--kafka-addr",
+					"PLAINTEXT://0.0.0.0:9092",
+					// Clients inside the compose network dial the service name, so
+					// that is the address the broker must hand back on metadata.
+					"--advertise-kafka-addr",
+					`PLAINTEXT://${name}-kafka:9092`,
+					"--set",
+					"redpanda.auto_create_topics_enabled=true",
+				],
+			},
+			healthcheck: {
+				// The admin API's readiness endpoint; `rpk` can report a broker
+				// that is up before it is ready to serve.
+				test: [
+					"CMD-SHELL",
+					"curl -sf http://localhost:9644/v1/status/ready || exit 1",
+				],
+				interval: "5s",
+				timeout: "5s",
+				retries: 10,
+				start_period: "20s",
+			},
+		}),
 	};
 }
 
@@ -632,8 +742,8 @@ function createBackingServices(
  * `spec/schema/resource-properties.json`, and a hand-maintained copy would
  * drift from the factories, which is the drift the check exists to catch.
  *
- * Calling this generates throwaway passwords into a local secrets map. They are
- * never returned and never reach a compose file.
+ * Calling this generates throwaway passwords into a local map. They are never
+ * returned and never reach a compose file.
  */
 export function resourcePropertyKeys(): Record<string, string[]> {
 	const factories = createBackingServices({});
@@ -647,8 +757,19 @@ export function resourcePropertyKeys(): Record<string, string[]> {
 // --- Main generator ---
 
 export interface ComposeOpts {
-	/** Pre-existing secrets to reuse (mutated with new secrets) */
+	/**
+	 * Values already minted for the names the Launchfile's `secrets:` block
+	 * declares (mutated with newly minted ones). A backing-service password
+	 * carried here by a pre-split state file is moved to `resourcePasswords`
+	 * before anything resolves.
+	 */
 	secrets?: Record<string, string>;
+	/**
+	 * Backing-service passwords to reuse, keyed by `ResourcePasswordKey`
+	 * (mutated with newly minted ones). Separate from `secrets` so a database
+	 * password is never reachable as `$secrets.<name>`.
+	 */
+	resourcePasswords?: Record<string, string>;
 	/**
 	 * Persisted `env:`-level generator values to reuse, keyed
 	 * `<component>.<ENV_NAME>` (mutated with newly minted values).
@@ -694,10 +815,12 @@ export interface ComposeOpts {
 	 * answer. Published host ports are still allocated; they just aren't the
 	 * public address.
 	 *
-	 * Asserts the public address of the app's PRIMARY endpoint only (the first
-	 * `exposed: true` component — the existing `$app.*` contract). It MUST NOT
-	 * be used to derive other published endpoints' public addresses;
-	 * per-endpoint publication context is a separate future proposal.
+	 * Asserts the public address of the app's PRIMARY endpoint only (D-60 rule
+	 * 3 — the `https-origin`-named endpoint, else the first `exposed: true`
+	 * one). It MUST NOT be used to derive other published endpoints' public
+	 * addresses (D-58 rule 4): with it set, `$app.endpoints.<name>.*` resolves
+	 * from it for the primary and `""` for every other named endpoint
+	 * (D-63 rule 5); a per-endpoint supplied channel is a separate proposal.
 	 *
 	 * Must be an absolute http(s) URL with no userinfo, query, or fragment; a
 	 * malformed value throws `InvalidAppUrlError` — refuse, never degrade.
@@ -758,6 +881,23 @@ export interface InitOnlyExtensions {
 	extensions: string[];
 }
 
+/**
+ * A SQL backing service whose named `database` uses (SPEC.md § Resource uses)
+ * are created by an init script that only a first initialization runs — the
+ * same delivery, and the same limit, as `InitOnlyExtensions`. The caller
+ * resolves `volume` and warns when it already exists.
+ */
+export interface InitOnlyDatabases {
+	/** Component whose `requires:` entry created the backing service. */
+	component: string;
+	/** Generated compose service name (`<app>-postgres`). */
+	service: string;
+	/** Volume KEY as written in the compose file — resolve it before querying. */
+	volume: string;
+	/** Database names the init script creates, in the order it creates them. */
+	databases: string[];
+}
+
 /** A `required:` variable neither the Launchfile nor the operator supplied. */
 export interface UnsuppliedRequiredVar {
 	component: string;
@@ -772,8 +912,13 @@ export interface ComposeResult {
 	images: string[];
 	/** Service names that must be built from a `build:` config before start */
 	builds: string[];
-	/** Secrets generated during composition (save to state) */
+	/** Declared-secret values minted or reused during composition (save to state) */
 	secrets: Record<string, string>;
+	/**
+	 * Backing-service passwords minted or reused during composition (save to
+	 * state). Includes any moved out of a pre-split state file's `secrets`.
+	 */
+	resourcePasswords: Record<string, string>;
 	/** `env:`-level generator values minted or reused during composition (save to state) */
 	generatedEnv: Record<string, string>;
 	/**
@@ -809,11 +954,15 @@ export interface ComposeResult {
 	 * Deliberately NOT folded into `warnings`: `dockerUp` prints warnings and
 	 * proceeds, which is precisely the warn-then-fail-anyway behavior D-52's
 	 * *Rejected* block forbids. A deploying verb reads this field and fails.
-	 * `launchToCompose` itself never throws for Launchfile content — it is
-	 * exported public API and a pure generator. The one exception is a
-	 * malformed `opts.appUrl`, an orchestrator input no `$app.*` can be
-	 * correctly derived from: it throws `InvalidAppUrlError` before any
-	 * generation (#290) — refuse, never degrade.
+	 * `launchToCompose` itself never degrades Launchfile content into a wrong
+	 * value — it is exported public API and a pure generator, and it throws in
+	 * exactly two cases, both "refuse, never degrade". A malformed
+	 * `opts.appUrl`, an orchestrator input no `$app.*` can be correctly
+	 * derived from, throws `InvalidAppUrlError` before any generation (#290).
+	 * A `$<resource>.<use>.<property>` reference on an entry that declares
+	 * `uses` but resolves to nothing throws `UnresolvedUseError` (D-65): the
+	 * alternative is the instance URL under a per-use name, which is the
+	 * silent cross-tenant failure `uses` exists to prevent.
 	 */
 	unsuppliedRequired: UnsuppliedRequiredVar[];
 	/**
@@ -837,6 +986,13 @@ export interface ComposeResult {
 	 * when it already exists — see `InitOnlyExtensions`.
 	 */
 	initOnlyExtensions: InitOnlyExtensions[];
+	/**
+	 * SQL services whose named `database` uses are delivered by an init script
+	 * that only a first initialization runs. Empty unless a postgres, mysql or
+	 * mariadb entry declares a named `database`. Checked and reported by the
+	 * caller exactly like `initOnlyExtensions` — see `InitOnlyDatabases`.
+	 */
+	initOnlyDatabases: InitOnlyDatabases[];
 }
 
 export function launchToCompose(
@@ -852,6 +1008,7 @@ export function launchToCompose(
 	// serviceName → serialized req.config it was created with (shared-service dedup)
 	const appliedConfigs = new Map<string, string>();
 	const secrets = opts.secrets ?? {};
+	const resourcePasswords = opts.resourcePasswords ?? {};
 	const generatedEnv = opts.generatedEnv ?? {};
 	const ports: Record<string, number> = {};
 	const componentServices: Record<string, string> = {};
@@ -860,6 +1017,7 @@ export function launchToCompose(
 	const storageBinds: StorageBind[] = [];
 	const unboundOperatorVolumes: UnboundOperatorVolume[] = [];
 	const initOnlyExtensions: InitOnlyExtensions[] = [];
+	const initOnlyDatabases: InitOnlyDatabases[] = [];
 
 	// D-50 storage-path keys, indexed once. Only components this generator
 	// actually translates ask the index, so a skipped one's marked volume never
@@ -885,6 +1043,45 @@ export function launchToCompose(
 	// across every component's requires/supports — the resource namespace is
 	// app-global — and an unmatched key has no type, so all of its
 	// non-structural properties register.
+	// The use keys each entry declares (`db`, `db.cache`), keyed like the
+	// resource namespace (`name ?? type`, app-global) and read before anything
+	// resolves: the resolver treats every resource listed here strictly
+	// (SPEC.md § Resource uses). Same-name entries pool their keys — D-24 says
+	// they describe one resource. The redis `db` index each key gets comes
+	// from one app-wide allocation that is stable across runs and identical on
+	// both reference providers (`allocateDbIndexes`). The named `database`
+	// uses are pooled per type from the entries this provider provisions —
+	// `requires` with nothing supplied for its key — because one server per
+	// type serves every such entry and its init script must create them all.
+	// A `supports` entry is never provisioned here and a supplied entry lives
+	// elsewhere, so neither adds a database to the server. A type with no
+	// factory pools too, harmlessly: nothing reads its pool, and the component
+	// is refused below.
+	const declaredUses: Record<string, string[]> = {};
+	const namedDatabasesByType: Record<string, string[]> = {};
+	for (const comp of Object.values(launch.components)) {
+		for (const entry of [...(comp.requires ?? []), ...(comp.supports ?? [])]) {
+			if (entry.host || !entry.uses) continue;
+			const key = entry.name ?? entry.type;
+			const pooled = (declaredUses[key] ??= []);
+			for (const useKey of useKeys(entry.uses)) {
+				if (!pooled.includes(useKey)) pooled.push(useKey);
+			}
+		}
+		for (const entry of comp.requires ?? []) {
+			if (entry.host || !entry.uses) continue;
+			if (opts.resources?.[entry.name ?? entry.type]) continue;
+			const perType = (namedDatabasesByType[entry.type] ??= []);
+			for (const name of namedDatabases(useKeys(entry.uses))) {
+				if (!perType.includes(name)) perType.push(name);
+			}
+			perType.sort();
+		}
+	}
+	const dbIndexes = allocateDbIndexes(launch);
+	const dbIndexesOf = (key: string): DbIndexes =>
+		Object.hasOwn(dbIndexes, key) ? dbIndexes[key]! : {};
+
 	if (opts.resources) {
 		const suppliedResourceTypes = new Map<string, string>();
 		for (const comp of Object.values(launch.components)) {
@@ -898,15 +1095,35 @@ export function launchToCompose(
 		}
 		for (const [key, resource] of Object.entries(opts.resources)) {
 			const type = suppliedResourceTypes.get(key);
-			registerSuppliedResourceProperties(
-				resource.properties,
-				type ? RESOURCE_PROPERTY_VOCABULARY[type] : undefined,
-			);
+			// A use's registered `<use>.<property>` keys are structural like the
+			// instance's `url`: URL-embedded credentials stay covered by pattern
+			// scrubbing, and a bare index registered as a secret would mask every
+			// digit that matches it.
+			const vocabulary = type
+				? [
+						...(RESOURCE_PROPERTY_VOCABULARY[type] ?? []),
+						...usePropertyKeys(type, declaredUses[key] ?? []),
+					]
+				: undefined;
+			registerSuppliedResourceProperties(resource.properties, vocabulary);
 		}
 	}
 	const usedResourceKeys = new Set<string>();
 
-	const backingServices = createBackingServices(secrets);
+	// A state file written before the two namespaces split carries its
+	// backing-service passwords in `secrets`. Move them across before anything
+	// mints or resolves, so a reused password is found where it now belongs and
+	// no undeclared name survives into the resolver context.
+	warnings.push(
+		...migrateResourcePasswords(
+			secrets,
+			resourcePasswords,
+			new Set(Object.keys(launch.secrets ?? {})),
+			launch.name,
+		),
+	);
+
+	const backingServices = createBackingServices(resourcePasswords);
 
 	// Pre-generate app-wide secrets
 	if (launch.secrets) {
@@ -934,12 +1151,31 @@ export function launchToCompose(
 	// know whether the primary endpoint's listener speaks https.
 	const certificates = planCertificates(launch, opts.resources);
 
-	const appProperties = computeAppProperties(
-		launch,
-		opts.hostPorts,
-		opts.appUrl,
-		certificates.active,
-	);
+	const {
+		app: appProperties,
+		appEndpoints,
+		fenced,
+	} = computeAppContext(launch, opts.hostPorts, opts.appUrl, certificates.active);
+
+	// `$app.endpoints.<name>.*` (D-63). Under a supplied publication URL the
+	// D-58 rule 4 fence holds: every non-primary named endpoint resolves ""
+	// and the file is told — but only about the endpoints it references, so
+	// an unreferenced second endpoint does not warn on every embedded run.
+	if (fenced.length > 0) {
+		const referenced = new Set(
+			appEndpointReferences(launch)
+				.map((ref) => ref.path[2])
+				.filter((name): name is string => name !== undefined),
+		);
+		for (const name of fenced) {
+			if (!referenced.has(name)) continue;
+			warnings.push(
+				`$app.endpoints.${name}.* resolves "" — the supplied publication URL asserts the ` +
+					"primary endpoint's address only, and this provider derives no other endpoint's " +
+					"public address from it (D-58 rule 4)",
+			);
+		}
+	}
 
 	// `https-origin` (D-60) — the one backing service that sits in FRONT of
 	// the app. This provider runs no edge of its own, so it cannot provision
@@ -958,8 +1194,13 @@ export function launchToCompose(
 	const resolverContext: ResolverContext = {
 		resources: resourceMap,
 		components: componentMap,
-		secrets,
+		// Declared names only. The resolver looks up whatever map it is given
+		// without checking that the name was declared, so handing it the raw
+		// state map would answer `$secrets.postgres` from a leftover entry.
+		secrets: declaredSecrets(launch.secrets, secrets),
 		app: appProperties,
+		appEndpoints,
+		uses: declaredUses,
 	};
 
 	for (const [componentName, component] of Object.entries(launch.components)) {
@@ -1056,6 +1297,55 @@ export function launchToCompose(
 			continue;
 		}
 
+		// A `requires` entry whose type this provider has no factory for, and
+		// that nothing supplied through the D-56 channel satisfies, REFUSES the
+		// component (D-64, PROVIDERS.md §10 item 5) — the ordinary case of
+		// the refusal the two branches above already perform. The vocabulary
+		// is open (L-4), so a type with no factory is a normal, permanent
+		// state; what is never acceptable is starting the component without
+		// the resource its file says it cannot run without. Decided here, with
+		// the other refusals, so nothing of the component is emitted.
+		const unprovisionable: string[] = [];
+		for (const req of component.requires ?? []) {
+			if (req.host || req.type === HTTPS_ORIGIN) continue;
+			if (opts.resources?.[req.name ?? req.type]) continue;
+			if (backingServices[req.type]) continue;
+			unprovisionable.push(
+				req.name === undefined
+					? req.type
+					: `${req.name} (type "${req.type}")`,
+			);
+		}
+		if (unprovisionable.length > 0) {
+			warnings.push(
+				unprovisionableResourceRefusal(componentName, unprovisionable),
+			);
+			continue;
+		}
+
+		// A `requires` entry declaring a use this provider cannot cover REFUSES
+		// the component the same way (SPEC.md § Resource uses, D-56 rule 1):
+		// a supplied resource whose map lacks a declared use's registered
+		// properties, a use no factory here can hand over, or a token this
+		// provider does not recognise — it cannot claim to cover a use it does
+		// not know. Never a warning that hands the app less than it declared.
+		const uncoveredUses: string[] = [];
+		for (const req of component.requires ?? []) {
+			if (req.host || !req.uses) continue;
+			const resourceName = req.name ?? req.type;
+			const supplied = opts.resources?.[resourceName];
+			const uncovered = supplied
+				? uncoveredSuppliedUses(req.type, useKeys(req.uses), supplied.properties)
+				: uncoveredProvisionedUses(req.type, useKeys(req.uses));
+			for (const detail of uncovered) {
+				uncoveredUses.push(`${resourceName}: ${detail}`);
+			}
+		}
+		if (uncoveredUses.length > 0) {
+			warnings.push(uncoveredUseRefusal(componentName, uncoveredUses));
+			continue;
+		}
+
 		if (component.schedule) {
 			warnings.push(
 				`${componentName}: declares a schedule (\`${component.schedule}\`) — this provider will not run it on a timer; if the component does not schedule itself, the job will not run`,
@@ -1129,6 +1419,14 @@ export function launchToCompose(
 				url: `${primaryListener.active ? "https" : "http"}://${serviceName}:${containerPort}`,
 				host: serviceName,
 				port: containerPort,
+				// Per-endpoint properties for `$components.<name>.<endpoint>.<prop>`
+				// (D-6, D-66). A container binds every port it declares, so each
+				// named endpoint is reachable at the service name and its own
+				// container port — including one marked `exposed: false`, per the
+				// D-27 boundary noted above. `protocol` and `url` read the
+				// effective listener (D-61 rule 2), so an entry whose certificate
+				// binding is active says `https` here as the primary `url` does.
+				...endpointProperties(component.provides, serviceName, certificates.active),
 			};
 
 			// Host publication: every endpoint marked `exposed: true` (D-27)
@@ -1299,17 +1597,35 @@ export function launchToCompose(
 					images,
 					warnings,
 					initOnlyExtensions,
+					initOnlyDatabases,
+					namedDatabasesByType[req.type] ?? [],
 					backingServices,
 				);
 				if (backingResult) {
-					// Register this resource's properties for cross-resource resolution
-					resourceMap[resourceName] = backingResult.properties;
+					// Register this resource's properties for cross-resource
+					// resolution — with each declared use's `<use>.<property>`
+					// keys on top of the factory's instance vocabulary. The uses
+					// are the pooled set every same-name entry declares (D-24:
+					// they describe one resource), so a later entry declaring
+					// fewer cannot drop keys an earlier one registered; a pooled
+					// token this provider does not cover belongs to an
+					// unfulfilled `supports` entry and registers nothing. An
+					// entry with no `uses` gets the factory map untouched.
+					const properties = withCoveredUses(
+						req.type,
+						(declaredUses[resourceName] ?? []).filter(
+							(useKey) => coverUse(req.type, useKey, {}, {}) !== undefined,
+						),
+						backingResult.properties,
+						dbIndexesOf(resourceName),
+					);
+					resourceMap[resourceName] = properties;
 
 					if (req.set_env) {
 						// Build scoped context with enclosing resource for $prop resolution
 						const scopedContext: ResolverContext = {
 							...componentContext,
-							resource: backingResult.properties,
+							resource: properties,
 						};
 						for (const [envKey, expr] of Object.entries(req.set_env)) {
 							env[envKey] = resolveExpression(expr, scopedContext);
@@ -1352,6 +1668,19 @@ export function launchToCompose(
 			if (!suppliedResource) {
 				warnings.push(
 					`${componentName}: optional resource ${resourceName} is not satisfied — this provider does not provision \`supports:\` resources and none was supplied; its set_env bindings are omitted and the app runs degraded`,
+				);
+				continue;
+			}
+			// An optional entry whose declared uses the supplied resource does
+			// not cover is unfulfilled, not refused (D-8): bindings absent, said
+			// out loud. The same shortfall on `requires:` refused the component
+			// above.
+			const uncovered = sup.uses
+				? uncoveredSuppliedUses(sup.type, useKeys(sup.uses), suppliedResource.properties)
+				: [];
+			if (uncovered.length > 0) {
+				warnings.push(
+					`${componentName}: optional resource ${resourceName} is not satisfied — the supplied resource does not cover every declared use (${uncovered.join("; ")}); its set_env bindings are omitted and the app runs degraded`,
 				);
 				continue;
 			}
@@ -1522,6 +1851,7 @@ export function launchToCompose(
 		images: [...new Set(images)],
 		builds,
 		secrets,
+		resourcePasswords,
 		generatedEnv,
 		ports,
 		endpoints,
@@ -1536,6 +1866,7 @@ export function launchToCompose(
 		storageBinds,
 		unboundOperatorVolumes,
 		initOnlyExtensions,
+		initOnlyDatabases,
 	};
 }
 
@@ -1649,14 +1980,20 @@ function addBackingService(
 	images: string[],
 	warnings: string[],
 	initOnlyExtensions: InitOnlyExtensions[],
+	initOnlyDatabases: InitOnlyDatabases[],
+	namedDatabaseNames: readonly string[],
 	backingServices: Record<string, (name: string) => BackingService>,
 ): { serviceName: string; properties: Record<string, string> } | null {
 	const type = req.type;
 	const factory = backingServices[type];
 
 	if (!factory) {
-		warnings.push(`Unknown backing service type: ${type} — skipped`);
-		return null;
+		// The component loop refuses a component with an unprovisionable
+		// entry before it reaches here, so this is a caller bug, not a
+		// launch outcome — never a warning that lets the component start.
+		throw new Error(
+			`addBackingService: no factory for type "${type}" on ${componentName} — the caller must refuse first`,
+		);
 	}
 
 	const serviceName = `${appName}-${type}`;
@@ -1702,18 +2039,41 @@ function addBackingService(
 			image: backing.image,
 		};
 
+		// Named `database` uses (SPEC.md § Resource uses): one more database
+		// per name on this server, `<instance>_<name>`, created by a second
+		// init script. postgres, mysql and mariadb all read
+		// /docker-entrypoint-initdb.d/ on first initialization only — the
+		// limit `applyPostgresConfig` documents — so the caller is told which
+		// databases ride on it, as for extensions.
+		const instanceDatabase = backing.properties.name ?? appName;
+		const extraDatabases = namedDatabaseNames.map((name) =>
+			namedDatabase(instanceDatabase, name),
+		);
+		const databasesSql =
+			extraDatabases.length > 0
+				? namedDatabasesInitSql(type, extraDatabases, backing)
+				: undefined;
+
+		const serviceConfigs: { source: string; target: string }[] = [];
 		if (initSql) {
 			// Inline compose config (Compose v2.23.0+) — keeps the init script
 			// inside the generated file, no sidecar to write or clean up.
 			const configName = `${serviceName}-init`;
 			configs[configName] = { content: initSql };
-			service.configs = [
-				{
-					source: configName,
-					target: "/docker-entrypoint-initdb.d/90-launchfile-extensions.sql",
-				},
-			];
+			serviceConfigs.push({
+				source: configName,
+				target: "/docker-entrypoint-initdb.d/90-launchfile-extensions.sql",
+			});
 		}
+		if (databasesSql) {
+			const configName = `${serviceName}-databases`;
+			configs[configName] = { content: databasesSql };
+			serviceConfigs.push({
+				source: configName,
+				target: "/docker-entrypoint-initdb.d/91-launchfile-databases.sql",
+			});
+		}
+		if (serviceConfigs.length > 0) service.configs = serviceConfigs;
 
 		if (Object.keys(backing.environment).length > 0) {
 			service.environment = backing.environment;
@@ -1744,6 +2104,14 @@ function addBackingService(
 					extensions: initExtensions,
 				});
 			}
+			if (databasesSql) {
+				initOnlyDatabases.push({
+					component: componentName,
+					service: serviceName,
+					volume: volName,
+					databases: extraDatabases,
+				});
+			}
 		}
 
 		services[serviceName] = service;
@@ -1760,6 +2128,35 @@ function addBackingService(
 		serviceName,
 		properties: factory(appName).properties,
 	};
+}
+
+/**
+ * The init script that creates each named `database` on a SQL server. Names
+ * are quoted identifiers built from a schema-validated app name and use name
+ * ({@link namedDatabase}), so they carry no quote character; the mysql
+ * script also grants the service user, whom the image grants only its
+ * initial database. The postgres script runs as the superuser the image
+ * creates, who owns what it creates.
+ */
+function namedDatabasesInitSql(
+	type: string,
+	databases: readonly string[],
+	backing: BackingService,
+): string {
+	const lines: string[] = [];
+	if (type === "postgres") {
+		const owner = backing.properties.user ?? "launchfile";
+		for (const database of databases) {
+			lines.push(`CREATE DATABASE "${database}" OWNER "${owner}";`);
+		}
+	} else {
+		const user = backing.properties.user ?? "launchfile";
+		for (const database of databases) {
+			lines.push(`CREATE DATABASE IF NOT EXISTS \`${database}\`;`);
+			lines.push(`GRANT ALL PRIVILEGES ON \`${database}\`.* TO '${user}'@'%';`);
+		}
+	}
+	return `${lines.join("\n")}\n`;
 }
 
 function translateHealth(

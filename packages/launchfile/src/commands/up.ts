@@ -12,6 +12,7 @@ import {
 } from "@launchfile/docker";
 // The two D-50 refusals come from the SDK, so one catch covers both providers.
 import {
+	InvalidAppUrlError,
 	isLaunchError,
 	type LaunchPhase,
 	MissingOperatorStoragePathError,
@@ -46,6 +47,14 @@ export interface UpFlags {
 	 * parsed Launchfile.
 	 */
 	storage?: Record<string, string>;
+	/**
+	 * The public URL the app is reached at when routing is owned upstream of
+	 * the provider — a reverse proxy, tunnel, or edge (D-58). Passed to the
+	 * provider raw: `normalizeAppUrl` in the SDK is the only implementation of
+	 * validation and normalization, and `deriveAppUrlProperties` the only
+	 * implementation of what `$app.*` becomes.
+	 */
+	url?: string;
 }
 
 /**
@@ -153,17 +162,22 @@ export async function handleUp(
 						dryRun: flags.dryRun,
 						name: flags.name,
 						storage: flags.storage,
+						appUrl: flags.url,
 					}),
 				recordDir,
 			);
 		} catch (err) {
-			// An unsupplied `required:` variable (D-52) or an unbound/absent
-			// operator storage path (D-50) is an operator's problem to fix, not a
-			// bug — it gets the provider's own message, not a stack trace.
+			// An unsupplied `required:` variable (D-52), an unbound/absent
+			// operator storage path (D-50), or a malformed publication URL
+			// (D-58) is an operator's problem to fix, not a bug — it gets the
+			// provider's own message, not a stack trace. The URL refusal masks
+			// any userinfo in its own message (D-18), so the raw value the
+			// operator typed is never echoed here.
 			if (
 				err instanceof UnsuppliedRequiredEnvError ||
 				err instanceof UnboundOperatorStorageError ||
-				err instanceof MissingOperatorStoragePathError
+				err instanceof MissingOperatorStoragePathError ||
+				err instanceof InvalidAppUrlError
 			) {
 				console.error(`\n${err.message}`);
 				process.exit(1);
@@ -247,15 +261,18 @@ export async function handleUp(
 						dryRun: flags.dryRun,
 						detach: flags.detach,
 						storage: flags.storage,
+						appUrl: flags.url,
 					}),
 				recordDir,
 			);
 		} catch (err) {
-			// Same two D-50 refusals the docker branch prints: an operator's
-			// problem to fix, so it gets the provider's message, not a trace.
+			// The same operator-fixable refusals the docker branch prints — the
+			// two D-50 storage ones and D-58's malformed publication URL: the
+			// operator gets the provider's message, not a trace.
 			if (
 				err instanceof UnboundOperatorStorageError ||
-				err instanceof MissingOperatorStoragePathError
+				err instanceof MissingOperatorStoragePathError ||
+				err instanceof InvalidAppUrlError
 			) {
 				console.error(`\n${err.message}`);
 				process.exit(1);

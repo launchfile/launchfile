@@ -8,51 +8,84 @@
 import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import {
+	type AppEndpointProperties,
 	deriveAppUrlProperties,
+	endpointProperties,
 	resolveExpression,
 	isExpression,
 	type NormalizedComponent,
 	type NormalizedLaunch,
+	parseUseKey,
 	type ResolverContext,
 	type Secret,
+	suppliedAppProperties,
+	UNPUBLISHED_APP_ENDPOINT,
 	type UnsuppliedRequiredEnv,
 	unsuppliedRequiredEnv,
+	useKeys,
 } from "@launchfile/sdk";
+import { declaredPrimaryComponent, wireHttpsOrigins } from "./https-origin.js";
+import { getProvisioner } from "./resources/index.js";
 import type { ResourceProperties } from "./resources/types.js";
+import { coveredUses, type DbIndexes, namedDatabases, withCoveredUses } from "./resources/uses.js";
 import { generateValue } from "./secret-generator.js";
+import { type LaunchState, recordedDbIndexes } from "./state.js";
 
 // Re-export so existing callers in the macos-dev provider keep their import path.
 export type { ResolverContext, UnsuppliedRequiredEnv };
 
 /**
  * Compute the $app.* property set (D-33, D-35) for a Launchfile under the
- * macos-dev provider. The app's "primary" port comes from the first component
- * (in declaration order) that has at least one `exposed: true` provides entry.
- * The `authority`/`scheme`/`tls` trio is derived from the resulting URL via the
- * SDK so split-field tokens (e.g. `CMD_DOMAIN: $app.authority`) resolve.
+ * macos-dev provider.
+ *
+ * With no `appUrl`, this provider's own routing strategy answers: the app's
+ * "primary" port is the port of the component that declares an `https-origin`
+ * entry (D-60 rule 3 — declaration fixes the primary, fulfilled or not), else
+ * the first component (in declaration order) that has at least one
+ * `exposed: true` provides entry, and `http://localhost:<port>` is the address.
  * Apps with no exposed component get `port: 0` and `url: ""` (and empty
  * authority/scheme/tls).
  *
+ * With an `appUrl` — the orchestrator-supplied publication context (D-58) —
+ * routing has moved upstream and the supplied URL answers instead, via the
+ * SDK's `suppliedAppProperties`: the same derivation `@launchfile/docker` uses,
+ * so one Launchfile behind one proxy resolves identical `$app.*` under either
+ * provider (P-5). The allocated local ports stay orthogonal — still bound, just
+ * not the address anyone reaches the app at.
+ *
+ * Either way the `authority`/`scheme`/`tls` trio is derived from the resulting
+ * URL via the SDK so split-field tokens (e.g. `CMD_DOMAIN: $app.authority`)
+ * resolve from one definition (D-35).
+ *
  * For multi-exposed-component apps that need a specific component's URL,
  * use `$components.<name>.url` instead — `$app.*` always points at the
- * first exposed component to give a single, predictable answer.
+ * primary endpoint to give a single, predictable answer (D-58 rule 4). This
+ * provider allocates one port per component, so the named endpoint's address
+ * is its component's port.
  */
 export function computeAppProperties(
 	launch: NormalizedLaunch,
 	componentPorts: Record<string, number>,
+	appUrl?: string,
 ): Record<string, string | number> {
+	if (appUrl !== undefined) return suppliedAppProperties(launch.name, appUrl);
+
 	let primaryPort = 0;
-	for (const [name, component] of Object.entries(launch.components)) {
-		// Only endpoints explicitly marked `exposed: true` are reachable from
-		// outside the host (D-27), so only they can be the app's public address.
-		// This provider has no orchestrator-facing publication channel (#294), so
-		// $app.* always comes from its own routing strategy. The docker provider
-		// answers by this same rule only when no orchestrator supplies an appUrl
-		// (PROVIDERS.md §7).
-		const hasExposed = component.provides?.some((p) => p.exposed === true) ?? false;
-		if (hasExposed && componentPorts[name]) {
-			primaryPort = componentPorts[name]!;
-			break;
+	const declared = declaredPrimaryComponent(launch);
+	if (declared !== undefined) {
+		// A declared `https-origin` names the primary explicitly, so the
+		// positional answer below does not run — the point of D-60 rule 3. The
+		// SDK requires the named endpoint to be `exposed: true` on this component.
+		primaryPort = componentPorts[declared] ?? 0;
+	} else {
+		for (const [name, component] of Object.entries(launch.components)) {
+			// Only endpoints explicitly marked `exposed: true` are reachable from
+			// outside the host (D-27), so only they can be the app's public address.
+			const hasExposed = component.provides?.some((p) => p.exposed === true) ?? false;
+			if (hasExposed && componentPorts[name]) {
+				primaryPort = componentPorts[name]!;
+				break;
+			}
 		}
 	}
 
@@ -67,14 +100,73 @@ export function computeAppProperties(
 }
 
 /**
+ * `$app.endpoints.<name>.*` under this provider (D-63 rule 4): every
+ * property of every named published endpoint resolves `""`. The allocator
+ * hands out one port per **component** (`allocatePorts`, keyed by component
+ * name), so a second `exposed: true` entry on a component has no host-side
+ * address to publish — not the primary's, and not its own (#294). The
+ * primary's entry is `""` too, rather than a copy of `$app.*`, because the
+ * per-endpoint form promises a per-endpoint publication this provider does
+ * not perform; `$app.*` keeps its own routing answer. Registering the empty
+ * answer explicitly, rather than nothing, records that the provider has read
+ * the namespace and declined it.
+ */
+export function computeAppEndpoints(
+	launch: NormalizedLaunch,
+): Record<string, AppEndpointProperties> {
+	const endpoints: Record<string, AppEndpointProperties> = {};
+	for (const component of Object.values(launch.components)) {
+		for (const p of component.provides ?? []) {
+			if (p.name === undefined || p.exposed !== true) continue;
+			endpoints[p.name] ??= UNPUBLISHED_APP_ENDPOINT;
+		}
+	}
+	return endpoints;
+}
+
+/**
+ * The `provides` entries this provider can name a reachable port for, or
+ * `undefined` when it can name none.
+ *
+ * macos-dev allocates exactly one host port per component and hands it to the
+ * process as `PORT`. That port belongs to whichever declared endpoint the
+ * allocator anchored on; the rest are unallocated, and the process binds the
+ * ports they declare. When the component's preferred port was taken, the
+ * allocator moves it to a free port outside the declared set — then no declared
+ * endpoint can be named at that port, so the component reports no per-endpoint
+ * properties rather than an endpoint address nothing listens on (L-4). A
+ * container provider has no such collapse: it binds every declared port.
+ */
+function allocatedEndpoints(
+	component: NormalizedComponent | undefined,
+	allocatedPort: number,
+): NormalizedComponent["provides"] {
+	const provides = component?.provides;
+	if (!provides?.some((entry) => entry.port === allocatedPort)) return undefined;
+	return provides;
+}
+
+/**
  * Build a ResolverContext from provisioned resources, component ports,
- * secrets, and (D-33) the platform-injected app properties.
+ * secrets, (D-33) the platform-injected app properties, (D-63) the
+ * per-endpoint map — `computeAppEndpoints`, which under this provider is
+ * every named published endpoint resolving `""` — and the `uses` each
+ * resource entry declares (`declaredUses`), which the resolver reads to
+ * resolve `$<resource>.<use>.<property>` strictly.
+ *
+ * `declared` carries the declared components, whose `provides` entries are
+ * what the named-endpoint form `$components.<name>.<endpoint>.<prop>`
+ * (D-6, D-66) resolves against. Omit it and only the primary
+ * `url`/`host`/`port` are registered.
  */
 export function buildResolverContext(
 	resourceMap: Record<string, ResourceProperties>,
 	componentPorts: Record<string, number>,
 	secrets: Record<string, string>,
 	app: Record<string, string | number>,
+	appEndpoints: Record<string, AppEndpointProperties> = {},
+	uses: Record<string, readonly string[]> = {},
+	declared?: Record<string, NormalizedComponent>,
 ): ResolverContext {
 	// Build components map from ports
 	const components: Record<string, Record<string, string | number>> = {};
@@ -83,6 +175,10 @@ export function buildResolverContext(
 			url: `http://localhost:${port}`,
 			host: "localhost",
 			port,
+			...endpointProperties(
+				allocatedEndpoints(declared?.[name], port),
+				"localhost",
+			),
 		};
 	}
 
@@ -98,7 +194,109 @@ export function buildResolverContext(
 		resources[name] = record;
 	}
 
-	return { resources, components, secrets, app };
+	return { resources, components, secrets, app, appEndpoints, uses };
+}
+
+/**
+ * The use keys each resource entry declares (`db`, `db.cache`), keyed like
+ * the resource namespace (`name ?? type`, app-global). Same-name entries pool
+ * their keys — D-24 says they describe one resource. Host-capability entries
+ * have none.
+ */
+export function declaredUses(
+	launch: NormalizedLaunch,
+): Record<string, string[]> {
+	const uses: Record<string, string[]> = {};
+	for (const component of Object.values(launch.components)) {
+		for (const entry of [...(component.requires ?? []), ...(component.supports ?? [])]) {
+			if (entry.host || !entry.uses) continue;
+			const pooled = (uses[entry.name ?? entry.type] ??= []);
+			for (const key of useKeys(entry.uses)) {
+				if (!pooled.includes(key)) pooled.push(key);
+			}
+		}
+	}
+	return uses;
+}
+
+/**
+ * A resource's property map as `up`, `env` and `bootstrap` all register it:
+ * the provisioner's instance vocabulary plus every pooled use this provider
+ * covers under `<use>.<property>` / `<use>.<name>.<property>` (D-24:
+ * same-name entries describe one resource). `dbIndexes` carries the numbered
+ * database each redis `db` use key selects. A pooled `db` key with no index
+ * in it stays unregistered, so a `$<resource>.db.<property>` (or
+ * `$<resource>.db.<name>.<property>`) reference throws `UnresolvedUseError`
+ * instead of falling through to the instance url.
+ */
+export function registerResource(
+	type: string,
+	resourceName: string,
+	uses: Record<string, readonly string[]>,
+	base: ResourceProperties,
+	dbIndexes: DbIndexes,
+): ResourceProperties {
+	const pooled = coveredUses(type, uses[resourceName] ?? []);
+	const registered = pooled.filter(
+		(key) => parseUseKey(key).use !== "db" || Object.hasOwn(dbIndexes, key),
+	);
+	return withCoveredUses(type, registered, base, dbIndexes);
+}
+
+/**
+ * The resource map a subcommand run after `up` (`env`, `bootstrap`) resolves
+ * against, rebuilt from state and registered exactly as `up` registered it.
+ * Each recorded resource is re-provisioned to read its current properties —
+ * every provisioner is idempotent, so this neither re-creates nor corrupts
+ * the resource — and a redis `db` use reads back the index `up` recorded
+ * rather than one re-derived from the file, which may have changed since. A
+ * state file written before the index was recorded leaves `db.*`
+ * unregistered, so the strict resolver throws for `$<resource>.db.*` — never
+ * the instance url — until the next `up` records it.
+ */
+export async function resourceMapFromState(
+	launch: NormalizedLaunch,
+	state: LaunchState,
+	projectDir: string,
+): Promise<Record<string, ResourceProperties>> {
+	const uses = declaredUses(launch);
+	const resourceMap: Record<string, ResourceProperties> = {};
+	for (const [name, res] of Object.entries(state.resources)) {
+		const provisioner = getProvisioner(res.type);
+		if (!provisioner) continue;
+		const result = await provisioner.provision(
+			{ type: res.type, name: res.name },
+			{ appName: state.appName, projectDir, databases: namedDatabases(uses[name] ?? []) },
+			res,
+		);
+		resourceMap[name] = registerResource(res.type, name, uses, result.properties, recordedDbIndexes(res));
+	}
+	return resourceMap;
+}
+
+/**
+ * The resolver context `up`, `env` and `bootstrap` share, built from the same
+ * inputs: the registered resources, the recorded ports and secrets, `$app.*`
+ * from the recorded publication context (D-58) with a satisfied
+ * `https-origin` wired to the same string (D-60 rule 4), and the declared
+ * uses the resolver applies strictly.
+ */
+export function resolverContextFor(
+	launch: NormalizedLaunch,
+	resourceMap: Record<string, ResourceProperties>,
+	state: LaunchState,
+): ResolverContext {
+	const appProperties = computeAppProperties(launch, state.ports, state.appUrl);
+	wireHttpsOrigins(launch, resourceMap, state.appUrl);
+	return buildResolverContext(
+		resourceMap,
+		state.ports,
+		state.secrets,
+		appProperties,
+		computeAppEndpoints(launch),
+		declaredUses(launch),
+		launch.components,
+	);
 }
 
 /**

@@ -5,7 +5,7 @@ description: "Self-hosted password manager — works with all Bitwarden apps and
 repository: https://github.com/dani-garcia/vaultwarden
 logo: https://raw.githubusercontent.com/dani-garcia/vaultwarden/main/resources/vaultwarden-icon.svg
 
-image: vaultwarden/server:latest
+image: vaultwarden/server:1.37.2
 provides:
   - name: web
     protocol: http

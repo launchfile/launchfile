@@ -9,6 +9,7 @@ import { readFile, writeFile, mkdir, chmod } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { registerSecrets } from "./redact.js";
+import type { DbIndexes } from "./resources/uses.js";
 
 export interface ResourceState {
 	type: string;
@@ -18,6 +19,51 @@ export interface ResourceState {
 	dbName?: string;
 	user?: string;
 	password?: string;
+	/**
+	 * The numbered database `up` allocated to this resource for its bare redis
+	 * `db` use (SPEC.md § Resource uses). Recorded so `env` registers the same
+	 * `db.url` / `db.index` the running app was given, rather than re-deriving
+	 * an index from a file that may have changed since. Absent on a resource
+	 * with no bare `db` use and on state written before the index was recorded.
+	 */
+	dbIndex?: number;
+	/**
+	 * The numbered database allocated to each named redis `db` use, by name
+	 * (`- db: cache` → `{ cache: 1 }`), recorded for the same reason as
+	 * `dbIndex`. Absent on a resource with no named `db` use.
+	 */
+	namedDbIndexes?: Record<string, number>;
+	/**
+	 * The extra databases the provisioner created for named `database` uses
+	 * (`<instance>_<name>`), so `destroy` drops what `up` created. Absent on a
+	 * resource with no named `database` use.
+	 */
+	databases?: string[];
+}
+
+/** The `db` use keys → index map `up` recorded on a resource: `db` from `dbIndex`, `db.<name>` from `namedDbIndexes`. */
+export function recordedDbIndexes(res: ResourceState): DbIndexes {
+	const indexes: Record<string, number> = {};
+	if (res.dbIndex !== undefined) indexes.db = res.dbIndex;
+	for (const [name, index] of Object.entries(res.namedDbIndexes ?? {})) {
+		indexes[`db.${name}`] = index;
+	}
+	return indexes;
+}
+
+/** `res` with the allocated `db` indexes recorded — the inverse of {@link recordedDbIndexes}. Records nothing for an empty allocation. */
+export function withRecordedDbIndexes(res: ResourceState, indexes: DbIndexes): ResourceState {
+	const named: Record<string, number> = {};
+	let dbIndex: number | undefined;
+	for (const [key, index] of Object.entries(indexes)) {
+		if (key === "db") dbIndex = index;
+		else named[key.slice("db.".length)] = index;
+	}
+	return {
+		...res,
+		...(dbIndex !== undefined ? { dbIndex } : {}),
+		...(Object.keys(named).length > 0 ? { namedDbIndexes: named } : {}),
+	};
 }
 
 /**
@@ -80,6 +126,17 @@ export interface LaunchState {
 	 * written before this existed omit it.
 	 */
 	operatorStorage?: Record<string, Record<string, string>>;
+	/**
+	 * Orchestrator-supplied publication context (D-58): the normalized public
+	 * URL `$app.*` resolves from, persisted alongside `ports` so `env` and
+	 * `bootstrap` resolve the same values as the `up` that set it. A later `up`
+	 * that supplies a different value replaces it and the derived env recomputes
+	 * (D-49); one that omits it preserves what is recorded — the same rule
+	 * `@launchfile/docker` applies to its own `appUrl`. Optional for backward
+	 * compatibility — absent means this provider's own localhost routing
+	 * answers.
+	 */
+	appUrl?: string;
 }
 
 const STATE_DIR = ".launchfile";

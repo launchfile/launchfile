@@ -46,6 +46,14 @@ export interface ShellRunner {
 export interface ProvisionOpts {
 	appName: string;
 	projectDir: string;
+	/**
+	 * The names of the entry's named `database` uses (SPEC.md § Resource
+	 * uses), pooled across same-name entries. A SQL provisioner creates one
+	 * more database per name beside the app's — `<instance>_<name>` — and
+	 * records them in state so `destroy` drops them. Other provisioners
+	 * ignore it.
+	 */
+	databases?: readonly string[];
 }
 
 /**

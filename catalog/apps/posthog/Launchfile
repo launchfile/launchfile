@@ -21,6 +21,7 @@ requires:
     set_env:
       CLICKHOUSE_HOST: $host
       CLICKHOUSE_DATABASE: $name
+      CLICKHOUSE_SECURE: "false"
   - type: kafka
     set_env:
       KAFKA_HOSTS: $url

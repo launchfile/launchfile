@@ -1,5 +1,37 @@
 # launchfile
 
+## 0.10.0
+
+### Minor Changes
+
+- [#399](https://github.com/launchfile/launchfile/pull/399) [`927a211`](https://github.com/launchfile/launchfile/commit/927a2119a1940e18a7d481d7d5c237539e03ccc8) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - `launchfile up --url <public-url>` — the operator spelling of D-58's
+  publication channel
+  
+  An operator running behind their own Caddy, nginx, or tunnel supplies the
+  public URL of the app's primary endpoint on the command line, and `$app.*`
+  resolves from it instead of the provider's own routing answer. The flag reaches
+  `appUrl` on both providers, so `up`, `up --native`, and `dev` all take it.
+  
+  The value is passed through untouched: the SDK's `normalizeAppUrl` stays the
+  only implementation of validation and normalization, and a refused value stops
+  the deploy with the provider's message — never a degraded or guessed `$app.*`.
+  Omit the flag and behavior is unchanged.
+
+### Patch Changes
+
+- [#490](https://github.com/launchfile/launchfile/pull/490) [`45eca18`](https://github.com/launchfile/launchfile/commit/45eca1823642d21e40d30e3e15093f4fc3c1452a) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Fixed boolean CLI flags silently ignoring a `--flag=<value>` spelling. `launchfile bootstrap <app> --reveal=false` printed the sensitive capture it looked like it was suppressing, and `launchfile up . --dry-run=true` ran a real deploy — neither helper behind those flags reads the text after `=`, so the value meant nothing in one direction or the other. The CLI now names every bare boolean flag in one table and refuses the valued spelling before it dispatches a command: `--reveal takes no value, e.g. --reveal`, exit code 1. The `--flag=<value>` form still works for the flags that take a value (`--name`, `--component`, `--schema-path`, `--storage`).
+
+- [#394](https://github.com/launchfile/launchfile/pull/394) [`a399ba3`](https://github.com/launchfile/launchfile/commit/a399ba365a2c7a3fe3b349d43810d3ff329e77c2) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Sanitize file-derived text at `validate`'s diagnostic boundaries. Every lint warning (`checkResourceProperties`, the unknown-storage-key check, D-24/D-40/D-43/D-44/D-50 checks) embeds strings taken verbatim from the parsed Launchfile — resource types, storage keys, component names — and so do the `host capabilities requested:` and `operator-supplied storage:` summary lines `validate` prints. A crafted key containing a newline or an ANSI escape sequence could inject a spoofed line or terminal control codes into that output (CWE-117) when validating an untrusted third-party Launchfile.
+  
+  `sdk/src/errors.ts` now exports `stripControlInline`, applied where lint warnings are joined into `ValidateResult.warnings`, at every file-derived value `cmdValidate` prints (`name`, `components`, `requires`, `host capabilities requested:`, `operator-supplied storage:`, and each `deprecated:` line's path), and on the validation-failure lines `formatZodErrors` builds from a Zod issue path — a component name is an unconstrained map key, so it reaches the error path verbatim. It builds on the existing `stripControl` (ANSI-escape and control-character stripping) and additionally escapes any embedded backslash, tab or newline into its visible two-character form, so a diagnostic that must render as one line always does and a reader can tell a real newline from the two characters `\n` — `stripControl` alone keeps `\t`/`\n` literal, which is correct for its own multi-line command-output-tail use but not for a single-line diagnostic.
+  
+  `formatZodErrors`'s other two branches go through `stripControl` instead. A `yaml` parse error quotes the offending source line verbatim (the library's `prettyErrors` default), so a syntax error in a hostile file put that file's own bytes — ANSI escapes included — into the same `console.error` loop, in `cmdInspect` as well as `cmdValidate`. That quoted snippet is legitimately multi-line, so escapes and control characters go while the `\n`/`\t` laying out the caret stay.
+  
+  `ValidateResult` now documents where the boundary sits: `warnings` and `errors` are sanitized diagnostics, while `name`, `components`, `requires`, `hostCapabilities`, `operatorStorage` and `deprecations[].path` hold the document's strings verbatim for programmatic callers, which sanitize themselves before printing. No behavior change for any well-formed document.
+- Updated dependencies [[`ab3e359`](https://github.com/launchfile/launchfile/commit/ab3e359e70f00fe9758855b33cc99506e1736dc2), [`ab3e359`](https://github.com/launchfile/launchfile/commit/ab3e359e70f00fe9758855b33cc99506e1736dc2), [`6c01af7`](https://github.com/launchfile/launchfile/commit/6c01af72d20d27430ceff8316732b19ea1eed319), [`f00e67e`](https://github.com/launchfile/launchfile/commit/f00e67ecd203846ab5ac461adb5644c4dfc4f0ea), [`795f96b`](https://github.com/launchfile/launchfile/commit/795f96bcae6d37cfe3157ff6739e5d8630d582ce), [`e0087ae`](https://github.com/launchfile/launchfile/commit/e0087ae612d70c075302e10eefb2dc2f23a3a748), [`6e3cf29`](https://github.com/launchfile/launchfile/commit/6e3cf29f15d2b03df1063551b849d770ee6cc7c1), [`a264017`](https://github.com/launchfile/launchfile/commit/a26401714640f779b4131f4e3b8555b25d728459), [`f40e7b6`](https://github.com/launchfile/launchfile/commit/f40e7b68d99f61d777455f0f79e4ab94d2cf1519), [`3587317`](https://github.com/launchfile/launchfile/commit/35873173251a6a8e9f97d5fae592fa7fd998bf7d), [`31dbac2`](https://github.com/launchfile/launchfile/commit/31dbac2a4c58dc50c4d4959facf6ff0b3aefa1e3), [`1123da3`](https://github.com/launchfile/launchfile/commit/1123da37959a0fbebca27c112ed6e8ebd8dc0bff), [`d2039b2`](https://github.com/launchfile/launchfile/commit/d2039b22ce1ed3fb5fc2fb7f2cb427d3582e4269), [`d2039b2`](https://github.com/launchfile/launchfile/commit/d2039b22ce1ed3fb5fc2fb7f2cb427d3582e4269), [`1796de9`](https://github.com/launchfile/launchfile/commit/1796de9ae8d42f920cca6a4326de9e2ed981fe2f), [`1796de9`](https://github.com/launchfile/launchfile/commit/1796de9ae8d42f920cca6a4326de9e2ed981fe2f), [`39df9db`](https://github.com/launchfile/launchfile/commit/39df9db10c64b7fded71e9afd74c08c7a8614285), [`a399ba3`](https://github.com/launchfile/launchfile/commit/a399ba365a2c7a3fe3b349d43810d3ff329e77c2)]:
+  - @launchfile/docker@0.10.0
+  - @launchfile/sdk@0.10.0
+
 ## 0.9.0
 
 ### Minor Changes

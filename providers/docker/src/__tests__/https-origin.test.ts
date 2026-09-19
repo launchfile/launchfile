@@ -94,13 +94,13 @@ describe("requires: https-origin", () => {
 		expect(refusal).toContain("no publication URL was supplied");
 	});
 
-	it("never emits a backing service or an unknown-type warning for it", () => {
+	it("never emits a backing service for it, nor refuses it as an unprovisionable type", () => {
 		const result = launchToCompose(readLaunch(VAULTWARDEN), {
 			appUrl: "https://vault.example.com",
 		});
 		expect(Object.keys(services(result.yaml))).toEqual(["vaultwarden"]);
 		expect(result.images).toEqual(["vaultwarden/server:latest"]);
-		expect(result.warnings.join("\n")).not.toContain("Unknown backing service");
+		expect(result.warnings.join("\n")).not.toContain("refused:");
 	});
 });
 

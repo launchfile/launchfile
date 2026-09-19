@@ -1,3 +1,11 @@
+# Security-update PRs (Dependabot's advisory path) key off the vulnerable
+# dependency's ecosystem, not the package-ecosystem set per entry below — so
+# `package-ecosystem: bun` never applies to them, and they land with
+# package.json bumped but bun.lock untouched, which fails CI's
+# frozen-lockfile install. Runbook: check out the PR's branch, run
+# `bun install` inside the changed directory, then commit and push the
+# regenerated bun.lock. Auto-merge is failing against the active ruleset
+# (#379), so these merge by hand regardless.
 version: 2
 updates:
   # Bun workspace root — covers sdk/, providers/*, and packages/*.
@@ -33,7 +41,7 @@ updates:
       # tsconfig — so `astro check` dies with "Cannot read properties of
       # undefined (reading 'fileExists')". @astrojs/check 0.9.10 is the newest
       # release and still pins language-server ^2.16.7, so there is no version
-      # to upgrade into. These two sites stay on TypeScript 6 until a
+      # to upgrade into. These sites stay on TypeScript 6 until a
       # language-server release supports the 7.x API; the workspace root is
       # unaffected because it runs `tsc` directly. Drop this once that lands.
       - dependency-name: typescript
@@ -60,7 +68,34 @@ updates:
       # tsconfig — so `astro check` dies with "Cannot read properties of
       # undefined (reading 'fileExists')". @astrojs/check 0.9.10 is the newest
       # release and still pins language-server ^2.16.7, so there is no version
-      # to upgrade into. These two sites stay on TypeScript 6 until a
+      # to upgrade into. These sites stay on TypeScript 6 until a
+      # language-server release supports the 7.x API; the workspace root is
+      # unaffected because it runs `tsc` directly. Drop this once that lands.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+    groups:
+      astro-ecosystem:
+        patterns: ["astro", "@astrojs/*"]
+      tailwind:
+        patterns: ["tailwindcss", "@tailwindcss/*"]
+      other:
+        patterns: ["*"]
+        exclude-patterns: ["astro", "@astrojs/*", "tailwindcss", "@tailwindcss/*"]
+
+  # www-shared (Astro layouts/components shared by www-dev and www-org)
+  - package-ecosystem: bun
+    directory: /www-shared
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    ignore:
+      # TypeScript 7 (the native port) exports no `ts.sys`, and
+      # @astrojs/language-server calls `ts.sys.fileExists` when it looks for a
+      # tsconfig — so `astro check` dies with "Cannot read properties of
+      # undefined (reading 'fileExists')". @astrojs/check 0.9.10 is the newest
+      # release and still pins language-server ^2.16.7, so there is no version
+      # to upgrade into. These sites stay on TypeScript 6 until a
       # language-server release supports the 7.x API; the workspace root is
       # unaffected because it runs `tsc` directly. Drop this once that lands.
       - dependency-name: typescript
@@ -75,7 +110,9 @@ updates:
         exclude-patterns: ["astro", "@astrojs/*", "tailwindcss", "@tailwindcss/*"]
 
   # Catalog test harness
-  - package-ecosystem: npm
+  # bun ecosystem so dependabot regenerates bun.lock — npm-ecosystem PRs only
+  # bumped package.json, which fails CI's frozen-lockfile install
+  - package-ecosystem: bun
     directory: /catalog/test
     schedule:
       interval: weekly

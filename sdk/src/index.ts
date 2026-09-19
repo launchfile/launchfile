@@ -1,4 +1,11 @@
 export {
+	InvalidAppUrlError,
+	normalizeAppUrl,
+	suppliedAppAddress,
+	type SuppliedAppAddress,
+	suppliedAppProperties,
+} from "./app-url.js";
+export {
 	cmdInspect,
 	cmdSchema,
 	cmdValidate,
@@ -49,6 +56,7 @@ export {
 	type Redactor,
 	slotForCommand,
 	stripControl,
+	stripControlInline,
 	TAIL_LINES,
 	tailLines,
 	type UnsuppliedRequirement,
@@ -63,7 +71,12 @@ export {
 	type UnsuppliedRequiredEnv,
 	unsuppliedRequiredEnv,
 } from "./env.js";
-export { lintLaunch, lintUnknownStorageKeys } from "./lint.js";
+export {
+	type AppEndpointReference,
+	appEndpointReferences,
+	lintLaunch,
+	lintUnknownStorageKeys,
+} from "./lint.js";
 export {
 	indexOperatorStoragePaths,
 	MissingOperatorStoragePathError,
@@ -77,14 +90,24 @@ export { parseLaunchYaml, readLaunch, validateLaunch } from "./reader.js";
 export { parseRepository } from "./repository.js";
 export type { RepositoryRef } from "./repository.js";
 export {
+	APP_ENDPOINT_PROPERTIES,
+	type AppEndpointProperties,
+	type AppEndpointProperty,
 	deriveAppUrlProperties,
+	endpointProperties,
 	isExpression,
 	parseDotPath,
 	parseExpression,
 	type ResolverContext,
 	resolveExpression,
+	UNPUBLISHED_APP_ENDPOINT,
+	UnresolvedUseError,
 } from "./resolver.js";
-export { RESOURCE_PROPERTY_VOCABULARY } from "./resource-properties.js";
+export {
+	isRepeatableUse,
+	RESOURCE_PROPERTY_VOCABULARY,
+	RESOURCE_USE_VOCABULARY,
+} from "./resource-properties.js";
 export { LaunchSchema } from "./schema.js";
 export {
 	type SelectionClosureResult,
@@ -114,4 +137,13 @@ export type {
 } from "./toolchain.js";
 export { extractToolchainVersions } from "./toolchain.js";
 export type * from "./types.js";
+export {
+	type DeclaredUse,
+	declaredUse,
+	formatUseKey,
+	parseUseKey,
+	useKey,
+	useKeyOf,
+	useKeys,
+} from "./uses.js";
 export { writeLaunch } from "./writer.js";

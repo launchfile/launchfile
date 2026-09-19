@@ -1,15 +1,20 @@
 category: Dashboard
-tagline: "Self-hosted dashboard with RSS, weather, bookmarks, and more"
+tagline: Self-hosted dashboard with RSS, weather, bookmarks, and more
 homepage: https://github.com/glanceapp/glance
+notes: "config is operator-supplied: the image ships no default glance.yml. Create a directory containing one (see
+  https://github.com/glanceapp/glance) and bind it with `launchfile up catalog/apps/glance --docker --storage
+  config=<dir>`."
+test_storage:
+  config: test/config
 test_results:
-  last_tested: 2026-04-08
-  pull_time_seconds: 7
-  startup_time_seconds: 1
-  total_disk_mb: 21
+  last_tested: 2026-09-09
+  pull_time_seconds: 3
+  startup_time_seconds: 6
+  total_disk_mb: 10
   health_check_passed: true
   notes: ""
 images:
   - name: glanceapp/glance:latest
-    size_mb: 21
+    size_mb: 10
     platform:
       - linux/arm64

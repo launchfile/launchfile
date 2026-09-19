@@ -167,8 +167,11 @@ speaks on that entry's `port`, in the configuration this Launchfile describes. I
 never describes a public endpoint's scheme. A provider may publish an `https://`
 URL while forwarding cleartext HTTP to a component declaring `protocol: http`;
 that is not a mismatch and no tool may report it as one. The app's primary public
-scheme is `$app.scheme`, derived from `$app.url`; other published endpoints have
-no declared public address ([D-58](DESIGN.md#d-58-orchestrator-supplied-publication-context--app-under-an-owning-orchestrator) rule 4). Declaring one listener configuration
+scheme is `$app.scheme`, derived from `$app.url`; every other published endpoint's
+public address is `$app.endpoints.<name>.*`, reachable by the entry's `name:`
+([Per-endpoint properties](#per-endpoint-properties), [D-63](DESIGN.md#d-63-appendpointsname--per-endpoint-publication-context)) — a
+supplied publication context still asserts the primary's address only
+([D-58](DESIGN.md#d-58-orchestrator-supplied-publication-context--app-under-an-owning-orchestrator) rule 4). Declaring one listener configuration
 says nothing about the other configurations an app supports — a consumer MUST NOT
 infer from `protocol: http` that a component cannot be configured to serve TLS.
 
@@ -207,7 +210,7 @@ env:
 
 *"I serve HTTP on 3000. I can serve HTTPS on that same listener with this certificate; here is the wiring."*
 
-**Declared and effective.** Every `provides` entry has a **declared** protocol and port — the fields in the file — and an **effective** protocol and port, which is what the listener speaks in the configuration the deployment selected. They are equal unless a bound certificate is **active**; then the effective protocol is `https` and the effective port is the declared `port:`. Validation, tooling and the audit surface read the declared value; every URL-emitting expression derived from a listener (`$components.<name>.url`, and `$app.url` where the provider computes it from its own publication of that listener) reads the effective one. An orchestrator-supplied publication context still wins ([PROVIDERS.md](PROVIDERS.md) §7).
+**Declared and effective.** Every `provides` entry has a **declared** protocol and port — the fields in the file — and an **effective** protocol and port, which is what the listener speaks in the configuration the deployment selected. They are equal unless a bound certificate is **active**; then the effective protocol is `https` and the effective port is the declared `port:`. Validation, tooling and the audit surface read the declared value; every URL-emitting expression derived from a listener (`$components.<name>.url`, `$components.<name>.<endpoint>.url` with its `protocol`, and `$app.url` where the provider computes it from its own publication of that listener) reads the effective one. An orchestrator-supplied publication context still wins ([PROVIDERS.md](PROVIDERS.md) §7).
 
 Five rules bind the binding:
 
@@ -234,6 +237,7 @@ An object entry is one of two kinds, distinguished by its marker field: a **back
 | `endpoint` | `string` | conditional | The `provides` entry this resource fronts, by its `name`. **Required** on a `type: https-origin` entry; meaningless on any other type — see [Public HTTPS origins](#public-https-origins) |
 | `version` | `string` | no | Version constraint using semver ranges (e.g. `>=15`, `^7.0`, `20.x`) |
 | `config` | `map<string, any>` | no | Resource provisioning hints (platform-interpreted) |
+| `uses` | `array<string \| object>` | no | Which features of the resource the app uses (e.g. `[db, pubsub]` for redis); a repeatable use may be named more than once (`- db: cache`) — see [Resource uses](#resource-uses) |
 | `set_env` | `map<string, string>` | no | Maps resource properties to app env vars using `$` expressions |
 
 ```yaml
@@ -294,6 +298,48 @@ requires:
 ```
 
 The platform interprets these hints when provisioning the resource. Unknown keys are ignored by platforms that don't support them.
+
+### Resource uses
+
+`requires: redis` says the app needs Redis. It does not say what the app needs *of* it — one keyspace, pub/sub channels, or the whole server. `uses` states that fact. It is a list of tokens from a small per-type vocabulary ([Resource Use Vocabulary](#resource-use-vocabulary)):
+
+```yaml
+requires:
+  - type: redis
+    uses: [db, pubsub]
+    set_env:
+      CACHE_URL: $redis.db.url          # redis://host:6379/<index>
+      CACHE_DB: $redis.db.index         # the integer
+      REDIS_URL: $url                   # the instance, as before
+```
+
+**Undeclared means what the property vocabulary already promises.** A `requires: redis` entry with no `uses` is satisfied by any Redis the platform supplies that speaks the property vocabulary — pooled or dedicated — exactly as before; it does not mean a dedicated server. A `requires: postgres` entry with no `uses` is one database (`name`), also as before. An app that needs the whole server declares `uses: [server]`.
+
+**Declared uses narrow the need and select the fields.** A platform may satisfy the entry from a shared unit only when every declared use fits in that unit; otherwise it provisions, or refuses. Each use registers its own properties, addressed as `$<resource>.<use>.<property>` — `$redis.db.url` is the standard Redis URL with the database selected by path (`redis://[user:password@]host:port/<index>`), `$redis.db.index` that integer. The entry-level `$url`, `$host`, `$port` and `$password` keep their meaning: the instance address. A use that registers no property of its own (`pubsub`, `server`) is addressed through the instance properties. Inside an entry that declares `uses`, a `$<resource>.<use>.<property>` path either resolves from the use's registered properties or is an **error** — never an empty string, never a fallback to the instance value — so a mistyped use fails at wiring time rather than connecting the app to the wrong database. That error stops generation for the whole app: the provider emits nothing, for any component. It does not skip the single component, which is what a provider does when it cannot cover a declared use ([D-64](DESIGN.md#d-64-a-requires-entry-a-provider-cannot-provision-is-refused--provision-accept-supplied-or-refuse-for-every-type)) — a reference to a use the entry never declared is wrong in the file, so no partly-wired deployment is produced.
+
+**A provider covers every declared use or refuses the component.** A use the provider cannot cover — including a token it does not recognise, since no provider can claim to cover a use it does not know — takes the same refuse branch as a resource type it cannot provision ([PROVIDERS.md](PROVIDERS.md) §10 item 5, [D-64](DESIGN.md#d-64-a-requires-entry-a-provider-cannot-provision-is-refused--provision-accept-supplied-or-refuse-for-every-type)): the component is refused before launch, naming the entry and the uncovered use. The vocabulary is open, so a token outside the standard set is a `validate` warning rather than a validation error — but at deploy time a typo fails the deployment rather than being silently ignored. On a `supports:` entry the same shortfall leaves the entry unfulfilled with a warning, never refused.
+
+**A repeatable use may be named more than once.** A use the vocabulary marks **repeatable** (`db` on redis, `database` on postgres and mysql) may appear more than once on one entry, each occurrence written as a single-key map naming it. The name is an expression path segment and takes the name grammar (`^[a-z][a-z0-9-]*$`):
+
+```yaml
+requires:
+  - type: redis
+    uses:
+      - db: cache
+      - db: sessions
+      - pubsub
+    set_env:
+      CACHE_URL: $redis.db.cache.url        # redis://host:6379/<index of cache>
+      SESSION_URL: $redis.db.sessions.url   # a different index
+      SESSION_DB: $redis.db.sessions.index
+      REDIS_URL: $url                       # the instance, as before
+```
+
+Each named use registers the token's properties under its name, addressed as `$<resource>.<use>.<name>.<property>` — the same nesting `$app.endpoints.<name>.<property>` uses: `$redis.db.cache.url` is `redis://[user:password@]host:port/<index>` with the index allocated to `cache`, `$redis.db.cache.index` that integer; `$postgres.database.<name>.url` is the standard URL with `/<database>` as its path and `$postgres.database.<name>.name` that database. A platform hands each named occurrence its own unit — one Redis database per named `db`, one database per named `database` — so two names never share one. The entry-level properties keep the instance meaning, and an unnamed single `db` keeps the three-segment `$redis.db.url` form: naming is for the entry that needs more than one.
+
+Within one entry a token is declared **bare or named, never both** — `uses: [db, {db: cache}]` is invalid, because `$redis.db.url` and `$redis.db.cache.url` would then name two different databases under one token; name every occurrence, or declare the token once unnamed. The same name twice on one token is invalid, as a bare token twice is. A name on a use the vocabulary marks non-repeatable (`pubsub`, `server`) is a **validation error**, not a lint warning: the name would promise a second set of channels or a second server the type cannot hand over. A token outside the standard vocabulary may take a name — the vocabulary is open, and whether a provider-defined use repeats is that provider's to say.
+
+The strict resolution rule above extends to the named form. On an entry that names its `db` uses, `$redis.db.url` — the bare form — is an error, not the instance URL and not any one of the named databases; `$redis.db.nosuch.url` names an occurrence the entry does not declare and is an error too. A provider covers each named occurrence or refuses the component, naming the entry, the token and the name; a supplied resource satisfies the entry only when its map carries every registered `<use>.<name>.<property>` key.
 
 ### Expression wiring
 
@@ -410,7 +456,7 @@ supports:
 
 The literal `"1"` is injected alongside the dynamic `$url` -- `set_env` values without `$` are passed through verbatim.
 
-`supports` entries can also request a [public HTTPS origin](#public-https-origins), a [certificate for native TLS](#native-tls-with-a-certificate-binding), or [host capabilities](#host-capabilities). The capability is optional: when the provider grants it, the entry's `set_env` vars are injected; when it doesn't, they are simply absent and the app degrades gracefully.
+`supports` entries can also request a [public HTTPS origin](#public-https-origins), a [certificate for native TLS](#native-tls-with-a-certificate-binding), or [host capabilities](#host-capabilities). The capability is optional: when the provider grants it, the entry's `set_env` vars are injected; when it doesn't, they are simply absent and the app degrades gracefully. A `supports` entry may declare [`uses`](#resource-uses) too; a declared use the provider cannot cover leaves the entry unfulfilled — bindings absent, a warning emitted — and never refuses the component.
 
 The expected app-side pattern: the app checks for the env var at startup and enables the feature if present. In this example, the app checks `CACHE_URL` — if it's set, caching is enabled; if Redis wasn't provisioned, the variable is simply absent and the app runs without caching. No conditional logic in the Launchfile.
 
@@ -1033,10 +1079,13 @@ The `$` reference system is used in `set_env` values and `env` defaults to wire 
 |---|---|
 | `$prop` | Property from enclosing resource |
 | `$resource.prop` | Property from a named resource |
+| `$resource.use.prop` | Property a declared use of a named resource registers (see [Resource uses](#resource-uses)) |
+| `$resource.use.name.prop` | Property a named occurrence of a repeatable use registers, like `$redis.db.cache.url` (see [Resource uses](#resource-uses)) |
 | `$components.name.prop` | Property from another component's provides |
 | `$components.name.endpoint.prop` | Property from a named endpoint on another component |
 | `$secrets.name` | App-wide generated secret |
 | `$app.prop` | Platform-injected app property (see [App Properties](#app-properties)) |
+| `$app.endpoints.name.prop` | Public address of a named published endpoint (see [Per-endpoint properties](#per-endpoint-properties)) |
 | `$ref\|transform` | Any reference piped through a transform (e.g. `\|base64`) |
 | `${prop}` | Explicit braced form (same as `$prop`) |
 | `${prop:-default}` | Reference with fallback value |
@@ -1057,12 +1106,13 @@ flowchart TD
 
 **Resolution order** for a path:
 
-1. Starts with `app` -- platform-injected app property (see [App Properties](#app-properties))
+1. Starts with `app` -- platform-injected app property (see [App Properties](#app-properties)); `app.endpoints.<name>.<prop>` is the per-endpoint form (see [Per-endpoint properties](#per-endpoint-properties))
 2. Starts with `secrets` -- app-wide secret lookup
 3. Starts with `components` -- component endpoint lookup
 4. Starts with `storage` -- provider-resolved storage path (see [Storage Properties](#storage-properties))
 5. Single segment -- enclosing resource property (e.g. `$url` inside a `set_env` block)
-6. Multi-segment -- first segment is the resource name (defaults to `type`, overridden by `name`), rest is property path
+6. On a resource whose entry declares `uses`, a three-or-more-segment path -- `resource.use.property`, or `resource.use.name.property` where the entry names the use, resolved only from that use's registered properties; an undeclared use or name, or an unregistered property, is an error, not an empty string (see [Resource uses](#resource-uses))
+7. Multi-segment -- first segment is the resource name (defaults to `type`, overridden by `name`), rest is property path
 
 The `app` and `storage` namespaces are reserved: each is checked before any user-named resource and cannot be shadowed by one. If a `requires:` entry is named `app`, or a `storage:` volume or resource is named `storage`, expressions like `$app.url` and `$storage.cache.path` still resolve via their reserved tables rather than against that resource — use a different name to avoid the reserved words.
 
@@ -1125,6 +1175,47 @@ env:
   CMD_URL_ADDPORT: "false"            # authority already carries the public port
 ```
 
+### Per-endpoint properties
+
+`$app.*` describes the app's **primary** endpoint only. An app that publishes more than one endpoint reaches the others through `$app.endpoints.<name>.*`, where `<name>` is the `provides` entry's `name:` ([named endpoints](#provides)) and the entry is `exposed: true` ([D-63](DESIGN.md#d-63-appendpointsname--per-endpoint-publication-context)):
+
+| Property | Description |
+|---|---|
+| `$app.endpoints.<name>.url` | The endpoint's public URL; `""` for a `tcp` or `udp` endpoint, which has no origin |
+| `$app.endpoints.<name>.host` | The endpoint's public hostname |
+| `$app.endpoints.<name>.port` | The published host-side port the provider allocated for that endpoint — never the container port |
+| `$app.endpoints.<name>.authority` | Public host **and** port, port omitted when it is the scheme default; a `tcp`/`udp` endpoint always carries its port |
+| `$app.endpoints.<name>.scheme` | The public URL's scheme — `http` or `https`; `""` for a `tcp` or `udp` endpoint |
+| `$app.endpoints.<name>.tls` | The string `true` when the scheme is `https`, else `false` |
+
+The six are the standard `$app.*` set less `name`, each defined per endpoint exactly as [App Properties](#app-properties) defines it for the primary, and each is a **public** address: `$components.<name>.*` stays the component-side address. Five rules:
+
+1. A provider computes every endpoint's address through the same derivation it uses for `$app.*`. Where a provider publishes a per-endpoint address, the **primary** endpoint's `$app.endpoints.<name>.url` **is** `$app.url` — the same value, never a second computation.
+2. `scheme`, `tls` and `url` read the entry's **effective** listener ([Native TLS](#native-tls-with-a-certificate-binding)): an active certificate binding makes them read `https` and `true`.
+3. Unnamed endpoints are not addressable — add a `name:`. An endpoint name is app-wide: the same name on two components is a **validation error** naming both.
+4. Anything else resolves `""` with a `validate` warning naming it: an unknown name, a named endpoint that is not `exposed: true`, `$app.endpoints` with no name, `$app.endpoints.<name>` with no property, a property outside the six, and an endpoint the provider publishes no address for (`@launchfile/macos-dev` and `@launchfile/aws` today, where this reaches the primary too and `$app.url` keeps its own value). A `tcp`/`udp` endpoint's `""` `url` and `scheme` are a defined answer and draw no warning.
+5. An orchestrator-supplied publication context asserts the **primary** endpoint's address only ([D-58](DESIGN.md#d-58-orchestrator-supplied-publication-context--app-under-an-owning-orchestrator) rule 4): while one is supplied, every other named endpoint resolves `""`.
+
+```yaml
+# gitea — the clone URL wants the published SSH address in two pieces
+provides:
+  - name: web
+    protocol: http
+    port: 3000
+    exposed: true
+  - name: ssh
+    protocol: tcp
+    port: 22
+    exposed: true
+env:
+  GITEA__server__ROOT_URL:
+    default: $app.url                        # the primary — same value as $app.endpoints.web.url
+  GITEA__server__SSH_DOMAIN:
+    default: $app.endpoints.ssh.host         # the published SSH hostname
+  GITEA__server__SSH_PORT:
+    default: $app.endpoints.ssh.port         # the published SSH port, not 22
+```
+
 ## Storage Properties
 
 The `$storage.*` namespace exposes the filesystem path the provider actually provisioned for a declared `storage:` volume, resolved at deploy time by whichever provider is running the app. It lets an app put *its own* storage location into the environment without hardcoding a path that only one provider understands.
@@ -1184,6 +1275,24 @@ This vocabulary is also published in machine-readable form as [`schema/resource-
 The table above is the **portable** vocabulary: every provider that supports a listed type must expose those properties under those names. It is authoritative but **not closed** — a provider MAY expose additional properties for a listed type as a platform-specific extension, mirroring the `$app.*` rule above. Portable Launchfiles should use only the standard set. A reference outside the standard set is therefore not invalid: tooling reports it as an **advisory warning**, never a validation error, because it may be either a typo or a deliberate provider extension. Unknown properties resolve to empty string.
 
 Resource types are extensible -- any string is accepted. Unknown types have no predefined property vocabulary; their properties are platform-defined, and no warning is reported for them.
+
+## Resource Use Vocabulary
+
+A `requires`/`supports` entry may declare which features of the resource the app uses (see [Resource uses](#resource-uses)). Each type that has a use vocabulary lists its tokens here, with the properties each registers under `$<resource>.<use>.<property>`:
+
+| Resource | Use | Registers | Repeatable | Meaning |
+|---|---|---|---|---|
+| `redis` | `db` | `url`, `index` | yes | One logical database (keyspace) on the instance, selected by index: `url` is `redis://[user:password@]host:port/<index>`, `index` the integer |
+| `redis` | `pubsub` | — | no | Publish/subscribe channels. Pub/sub ignores database numbers, so isolated channels need an instance the app does not share channels on |
+| `redis` | `server` | — | no | The whole server: keyspace notifications, `CONFIG`, `SELECT` across databases, `FLUSHALL`, modules — anything that assumes the app owns the instance |
+| `postgres` | `database` | `url`, `name` | yes | One database on the server: `url` is the standard connection URL with `/<name>` as its path, `name` the database name |
+| `postgres` | `server` | — | no | The whole server: superuser access, `CREATE DATABASE`, server-wide settings |
+| `mysql` | `database` | `url`, `name` | yes | One database on the server: `url` is the standard connection URL with `/<name>` as its path, `name` the database name |
+| `mysql` | `server` | — | no | The whole server: root access, `CREATE DATABASE`, server-wide settings |
+
+A **repeatable** use may occur more than once on one entry, each occurrence named as a single-key map (`- db: cache`) and addressed as `$<resource>.<use>.<name>.<property>`; a name on a non-repeatable use is a validation error (see [Resource uses](#resource-uses)). A use that registers nothing (`—`) is addressed through the entry's instance properties. The entry-level properties (`$url`, `$host`, `$port`, `$password`, `$name`) are unchanged by any declared use.
+
+This vocabulary is published in machine-readable form under the `uses` key of [`schema/resource-properties.json`](schema/resource-properties.json), a sibling of `types`: these are features an author declares, not properties a provider publishes. It is **open** in the same way the property vocabulary is: a token outside the table is an advisory `validate` warning, never a validation error. It is not open at deploy time — a provider refuses a `requires` entry declaring a token it does not recognise, because no provider can claim to cover a use it does not know. A type absent from the table has no use vocabulary; its tokens are provider-defined and draw no warning.
 
 ## YAML Compatibility
 

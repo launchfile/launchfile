@@ -12,7 +12,8 @@ provides:
     exposed: true
 storage:
   config:
-    path: /app/data
+    path: /app/config
+    content: operator
     persistent: true
 health: /api/healthz
 restart: always

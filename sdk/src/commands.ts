@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { lintDeprecations } from "./deprecations.js";
 import type { Deprecation } from "./deprecations.js";
+import { stripControl, stripControlInline } from "./errors.js";
 import { lintLaunch, lintUnknownStorageKeys } from "./lint.js";
 import { parseLaunchYaml, readLaunch, validateLaunch } from "./reader.js";
 import type { NormalizedLaunch } from "./types.js";
@@ -131,17 +132,28 @@ function formatZodErrors(err: unknown): string[] {
 	) {
 		return (err as { issues: Array<{ path: (string | number)[]; message: string }> }).issues.map(
 			(issue) => {
+				// A component name is a `z.record` key, so it reaches the issue path
+				// verbatim from the document. `cmdValidate` prints these lines raw
+				// under "Validation failed" (#279, CWE-117).
 				const path = issue.path.length > 0 ? issue.path.join(".") : "(root)";
-				return `${path}: ${issue.message}`;
+				return stripControlInline(`${path}: ${issue.message}`);
 			},
 		);
 	}
 
+	// Neither branch below carries a Zod issue list, so neither message is
+	// SDK-authored text. A YAML parse error embeds the offending source line
+	// verbatim (the `yaml` library's prettyErrors default), which puts a
+	// hostile file's own bytes — ANSI escapes included — into the
+	// `console.error` loops of `cmdValidate` and `cmdInspect` (#279, CWE-117).
+	// That pretty snippet is legitimately multi-line, so `stripControl` is the
+	// right tool here rather than `stripControlInline`: it removes escapes and
+	// control characters and keeps the `\n`/`\t` that lay the snippet out.
 	if (err instanceof Error) {
-		return [err.message];
+		return [stripControl(err.message)];
 	}
 
-	return [String(err)];
+	return [stripControl(String(err))];
 }
 
 // --- Public command functions ---
@@ -159,6 +171,24 @@ export interface ValidateOpts {
 	detached?: boolean;
 }
 
+/**
+ * The result of `cmdValidate`, and its `--json` payload.
+ *
+ * Sanitization here is deliberately partial, and a caller that renders this
+ * object needs to know where the boundary sits. `warnings` and `errors` are
+ * diagnostics — display prose the SDK composes — so they arrive already run
+ * through `stripControlInline`/`stripControl` and carry no ANSI escape. Every
+ * `warnings` entry is also single-line. `errors` is single-line except on a
+ * YAML parse failure, where the entry keeps the literal newlines and tabs
+ * that lay out the quoted source snippet and its caret — a caller that feeds
+ * `errors` to a line-oriented log sink must split or re-escape it first.
+ * `name`, `components`, `requires`, `hostCapabilities`,
+ * `operatorStorage` and `deprecations[].path` are data: they hold the
+ * document's own strings verbatim, so a programmatic caller can match them
+ * against the file it validated. A caller that prints one of those to a
+ * terminal sanitizes it itself — `stripControlInline` is exported for exactly
+ * that, and `cmdValidate`'s own human-readable output uses it.
+ */
 export interface ValidateResult {
 	valid: boolean;
 	path: string;
@@ -202,13 +232,17 @@ export function cmdValidate(path: string, opts: ValidateOpts = {}): ValidateResu
 		const allRequires = collectRequires(launch);
 		const hostCapabilities = collectHostCapabilities(launch);
 		const operatorStorage = collectOperatorStorage(launch);
+		// Every emitter embeds strings taken verbatim from the parsed (or raw)
+		// YAML document (resource types, storage keys, component names). A
+		// single sanitization pass here — rather than per-emitter — covers the
+		// whole lint surface, and any future check, for free (#279, CWE-117).
 		const warnings = [
 			...lintLaunch(launch, {
 				detached: opts.detached,
 				suppressPortabilityWarnings: envFlag("LAUNCHFILE_NO_PORTABILITY_WARNINGS"),
 			}),
 			...lintUnknownStorageKeys(raw),
-		];
+		].map(stripControlInline);
 		const deprecations = lintDeprecations(launch);
 
 		const result: ValidateResult = {
@@ -229,16 +263,25 @@ export function cmdValidate(path: string, opts: ValidateOpts = {}): ValidateResu
 		}
 
 		if (!opts.quiet) {
-			console.log(`${fmt.green("✓")} ${fmt.bold(launch.name)} is valid`);
-			console.log(`  ${fmt.dim("components:")} ${componentNames.join(", ")}`);
+			// Component names are unconstrained map keys (`z.record(z.string(), ...)`)
+			// and a requirement `type:` is any 1-256 character string, so both reach
+			// this line carrying whatever the document author wrote (#279, CWE-117).
+			// `launch.name` is pattern-constrained and cannot, but is wrapped too so
+			// no value printed here is an exception.
+			console.log(`${fmt.green("✓")} ${fmt.bold(stripControlInline(launch.name))} is valid`);
+			console.log(
+				`  ${fmt.dim("components:")} ${componentNames.map(stripControlInline).join(", ")}`,
+			);
 			if (allRequires.length > 0) {
-				console.log(`  ${fmt.dim("requires:")}   ${allRequires.join(", ")}`);
+				console.log(
+					`  ${fmt.dim("requires:")}   ${allRequires.map(stripControlInline).join(", ")}`,
+				);
 			}
 			if (hostCapabilities.length > 0) {
 				// The D-44 privilege-surface audit line — always emitted when any
 				// capability is requested, in either spelling (entry or legacy block).
 				console.log(
-					`  ${fmt.dim("host capabilities requested:")} ${hostCapabilities.join(", ")}`,
+					`  ${fmt.dim("host capabilities requested:")} ${hostCapabilities.map(stripControlInline).join(", ")}`,
 				);
 			}
 			if (operatorStorage.length > 0) {
@@ -246,14 +289,18 @@ export function cmdValidate(path: string, opts: ValidateOpts = {}): ValidateResu
 				// D-44 line above. The grant or refusal itself is a launch-time
 				// fact the provider reports (PROVIDERS.md §11).
 				console.log(
-					`  ${fmt.dim("operator-supplied storage:")}   ${operatorStorage.join(", ")}`,
+					`  ${fmt.dim("operator-supplied storage:")}   ${operatorStorage.map(stripControlInline).join(", ")}`,
 				);
 			}
 			for (const d of deprecations) {
 				// P-14: the deprecation is reported with its migration, never
 				// applied. `valid` and the exit code are untouched.
+				// `d.path` embeds the component-map key verbatim
+				// (`deprecations.ts`), so it is sanitized here like every other
+				// file-derived value this command prints (#279, CWE-117). The
+				// other fields are registry literals.
 				console.error(
-					`  ${fmt.yellow("deprecated:")} ${d.path} — deprecated in ${d.deprecated_in}, ` +
+					`  ${fmt.yellow("deprecated:")} ${stripControlInline(d.path)} — deprecated in ${d.deprecated_in}, ` +
 						`removed in ${d.removed_in}; use ${d.replacement}. ${d.hint}`,
 				);
 			}

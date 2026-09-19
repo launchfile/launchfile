@@ -6,6 +6,8 @@
  */
 
 import { z } from "zod";
+import { isRepeatableUse } from "./resource-properties.js";
+import { declaredUse, useKey } from "./uses.js";
 
 // --- Name constraint: letters, digits, hyphens; starts with letter ---
 const namePattern = /^[a-z][a-z0-9-]*$/;
@@ -62,6 +64,67 @@ const ProvidesSchema = z.object({
 
 // --- Requirement (full form) ---
 
+/**
+ * One token of a requirement's `uses` list: a feature of the required resource
+ * the app uses (`db`, `pubsub`, `server`). The vocabulary is per type and open
+ * — lint warns on a token outside the standard set, the schema never rejects
+ * one. A token is also an expression path segment (`$redis.db.url`), so it
+ * takes the name grammar.
+ */
+const UseTokenSchema = z
+	.string()
+	.max(63)
+	.regex(namePattern, "Use tokens must match ^[a-z][a-z0-9-]*$");
+
+/**
+ * One `uses` item: a bare token, or a single-key map `{ <token>: <name> }`
+ * naming one occurrence of a repeatable use (`- db: cache`). The name is an
+ * expression path segment too (`$redis.db.cache.url`), so it takes the name
+ * grammar. Two keys in one map would be two uses in one item; rejected.
+ */
+const UseItemSchema = z.union([
+	UseTokenSchema,
+	z
+		.record(UseTokenSchema, NameSchema)
+		.refine((map) => Object.keys(map).length === 1, {
+			message: "a named use is a single-key map, `- db: cache`",
+		}),
+]);
+
+/**
+ * The `uses` list as a whole: each use key (`db`, `db.cache`) once, and a
+ * token either bare or named on one entry — never both, since `$redis.db.url`
+ * and `$redis.db.cache.url` would then name two different databases under one
+ * token. Which tokens may be named at all depends on the entry's `type`, so
+ * that check lives on the requirement object below.
+ */
+const UsesSchema = z
+	.array(UseItemSchema)
+	.nonempty()
+	.superRefine((uses, ctx) => {
+		const keys = uses.map(useKey);
+		const bare = new Set<string>();
+		const named = new Set<string>();
+		for (const item of uses) {
+			const { use, name } = declaredUse(item);
+			(name === undefined ? bare : named).add(use);
+		}
+		if (new Set(keys).size !== keys.length) {
+			ctx.addIssue({
+				code: "custom",
+				message: "a use is declared once per entry",
+			});
+		}
+		for (const use of bare) {
+			if (named.has(use)) {
+				ctx.addIssue({
+					code: "custom",
+					message: `use "${use}" is declared both bare and named on one entry — name every occurrence, or declare it once unnamed`,
+				});
+			}
+		}
+	});
+
 const RequirementObjectSchema = z.object({
 	name: NameSchema.optional(),
 	type: z.string().min(1).max(256),
@@ -78,7 +141,31 @@ const RequirementObjectSchema = z.object({
 	// Security: config is intentionally unconstrained — providers MUST validate/sanitize
 	// these values before using them in shell commands, SQL, or other injectable contexts.
 	config: z.record(z.string(), z.unknown()).optional(),
+	/**
+	 * Which features of the resource the app uses. Undeclared means what the
+	 * type's property vocabulary already promises; declared narrows the need
+	 * and selects the `$<resource>.<use>.<property>` fields. A provider covers
+	 * every declared use or refuses the component. A repeatable use may occur
+	 * more than once as a named map item, `- db: cache`.
+	 */
+	uses: UsesSchema.optional(),
 	set_env: z.record(z.string(), z.string()).optional(),
+}).superRefine((req, ctx) => {
+	// A name on a use the standard vocabulary marks non-repeatable (`pubsub`,
+	// `server`) is a validation error, not a lint warning: the name would
+	// promise a second pub/sub channel set or a second server the vocabulary
+	// says the type cannot hand over. A token or type outside the registry has
+	// no standard answer and keeps the open-vocabulary treatment (L-4).
+	for (const [index, item] of (req.uses ?? []).entries()) {
+		const { use, name } = declaredUse(item);
+		if (name !== undefined && isRepeatableUse(req.type, use) === false) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["uses", index],
+				message: `use "${use}" on ${req.type} is not repeatable and takes no name — declare it as a bare token`,
+			});
+		}
+	}
 });
 
 // --- Host capability entry (D-44) ---
@@ -99,6 +186,10 @@ const HostCapabilityObjectSchema = z.object({
 	// listeners; a capability fronts nothing. Listed for the same reason `host:`
 	// is listed above — strip mode would swallow it without a word.
 	endpoint: z.never().optional(),
+	// A capability is granted or refused, never provisioned, so it has no
+	// feature to use. Listed for the same reason `host:` and `endpoint:` are:
+	// strip mode would swallow it without a word.
+	uses: z.never().optional(),
 	set_env: z.record(z.string(), z.string()).optional(),
 });
 
@@ -136,6 +227,21 @@ const RequirementSchema = z
 				message:
 					"`endpoint:` names the `provides` entry a `type: https-origin` resource " +
 					"fronts (D-60 rule 2); a host capability fronts nothing — remove it",
+			});
+		}
+		if (
+			typeof val === "object" &&
+			val !== null &&
+			!Array.isArray(val) &&
+			"host" in val &&
+			"uses" in val
+		) {
+			ctx.addIssue({
+				code: "custom",
+				message:
+					"`uses:` declares which features of a backing service the app uses; " +
+					"a host capability is granted or refused, never provisioned, so it has " +
+					"nothing to use — remove it",
 			});
 		}
 	})
@@ -509,6 +615,62 @@ function checkHttpsOrigin(
 	}
 }
 
+/**
+ * D-63 rule 4: a `provides[].name` is addressable app-wide through
+ * `$app.endpoints.<name>.*`, by name alone, so the same name on two
+ * components would give one expression two answers. Refused naming both.
+ * Scoped to declaration sites — the top level and each component — the same
+ * scopes `checkHttpsOrigin` reads; a name repeated within one component is
+ * outside this rule (D-60 rule 2 already reports it where an `https-origin`
+ * names it).
+ */
+function checkEndpointNames(
+	launch: Record<string, unknown>,
+	ctx: z.RefinementCtx,
+): void {
+	const components = launch.components as
+		| Record<string, Record<string, unknown>>
+		| undefined;
+	const scopes: Array<{
+		label: string;
+		prefix: Array<string | number>;
+		provides: unknown;
+	}> = [{ label: "(top-level)", prefix: [], provides: launch.provides }];
+	for (const [name, component] of Object.entries(components ?? {})) {
+		if (typeof component !== "object" || component === null) continue;
+		scopes.push({
+			label: name,
+			prefix: ["components", name],
+			provides: component.provides,
+		});
+	}
+
+	const seen = new Map<string, string>();
+	for (const scope of scopes) {
+		if (!Array.isArray(scope.provides)) continue;
+		const local = new Set<string>();
+		for (const [index, raw] of (scope.provides as ProvidesLike[]).entries()) {
+			if (typeof raw !== "object" || raw === null) continue;
+			const name = raw.name;
+			if (typeof name !== "string" || local.has(name)) continue;
+			local.add(name);
+			const owner = seen.get(name);
+			if (owner === undefined) {
+				seen.set(name, scope.label);
+				continue;
+			}
+			ctx.addIssue({
+				code: "custom",
+				path: [...scope.prefix, "provides", index, "name"],
+				message:
+					`\`provides\` entry "${name}" is named on both ${owner} and ${scope.label}; ` +
+					"an endpoint name is app-wide — `$app.endpoints." +
+					`${name}.*\` addresses it by name alone (D-63 rule 4). Rename one.`,
+			});
+		}
+	}
+}
+
 /** The `supports:` resource type a `tls:` binding names (D-61 rule 1). */
 const CERTIFICATE = "certificate";
 
@@ -730,6 +892,7 @@ export const LaunchSchema = z.object({
 	components: z.record(z.string(), ComponentSchema).optional(),
 }).superRefine((launch, ctx) => {
 	checkHttpsOrigin(launch as Record<string, unknown>, ctx);
+	checkEndpointNames(launch as Record<string, unknown>, ctx);
 	checkCertificateBindings(launch as Record<string, unknown>, ctx);
 });
 

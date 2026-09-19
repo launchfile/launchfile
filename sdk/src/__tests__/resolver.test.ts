@@ -5,6 +5,8 @@ import {
 	parseDotPath,
 	isExpression,
 	deriveAppUrlProperties,
+	UnresolvedUseError,
+	endpointProperties,
 } from "../resolver.js";
 
 /*---
@@ -823,13 +825,17 @@ describe("resolveExpression — inherited prototype keys (D-33, D-39, L-4)", () 
 		expect(resolveExpression("$toString.host", shadowed)).toBe("ts-host");
 	});
 
-	// The dotted-key-then-last-segment double fallback still probes both keys.
-	it("keeps the dotted-key → last-segment fallback on guarded lookups", () => {
+	// The dotted-key-then-last-segment double fallback still probes both keys
+	// — for a resource whose entry declares no `uses`. A resource that does
+	// declare `uses` takes the strict branch pinned in the suite below, and a
+	// component has no last-segment fallback at all (D-66): the guarded
+	// component lookup resolves the dotted key only.
+	it("keeps the dotted-key → last-segment fallback on guarded resource lookups for entries without uses", () => {
 		const nested = {
 			components: { web: { host: "web-host" } },
 			resources: { postgres: { host: "pg-host" } },
 		};
-		expect(resolveExpression("$components.web.deep.host", nested)).toBe("web-host");
+		expect(resolveExpression("$components.web.deep.host", nested)).toBe("");
 		expect(resolveExpression("$postgres.deep.host", nested)).toBe("pg-host");
 	});
 
@@ -841,5 +847,284 @@ describe("resolveExpression — inherited prototype keys (D-33, D-39, L-4)", () 
 			parts: [{ kind: "text", value: "$__proto__" }],
 		});
 		expect(resolveExpression("$__proto__", ctx)).toBe("$__proto__");
+	});
+});
+
+describe("$<resource>.<use>.<property> on an entry that declares uses", () => {
+	const ctx = {
+		resources: {
+			redis: {
+				url: "redis://app-redis:6379",
+				host: "app-redis",
+				port: "6379",
+				password: "",
+				"db.url": "redis://app-redis:6379/0",
+				"db.index": "0",
+			},
+			postgres: { url: "postgres://pg/app", host: "pg-host" },
+		},
+		uses: { redis: ["db", "pubsub"] },
+	};
+
+	it("resolves a declared use's registered property from the dotted key", () => {
+		expect(resolveExpression("$redis.db.url", ctx)).toBe("redis://app-redis:6379/0");
+		expect(resolveExpression("$redis.db.index", ctx)).toBe("0");
+	});
+
+	it("keeps the two-segment instance properties as they were", () => {
+		expect(resolveExpression("$redis.url", ctx)).toBe("redis://app-redis:6379");
+		expect(resolveExpression("$redis.host", ctx)).toBe("app-redis");
+	});
+
+	it("throws on a use the entry does not declare instead of falling back to the instance url", () => {
+		expect(() => resolveExpression("$redis.cache.url", ctx)).toThrow(UnresolvedUseError);
+		expect(() => resolveExpression("$redis.cache.url", ctx)).toThrow(
+			'$redis.cache.url does not resolve: redis declares no use "cache" (declared: db, pubsub)',
+		);
+	});
+
+	it("throws on a property the use does not register", () => {
+		expect(() => resolveExpression("$redis.db.host", ctx)).toThrow(
+			'$redis.db.host does not resolve: use "db" on redis registers no property "host"',
+		);
+	});
+
+	it("throws on a declared use that registers nothing", () => {
+		// `pubsub` is declared but registers no property: the instance
+		// vocabulary addresses it, so the three-segment form has no answer.
+		expect(() => resolveExpression("$redis.pubsub.url", ctx)).toThrow(UnresolvedUseError);
+	});
+
+	it("is not softened by a :-default — the path is wrong, not empty", () => {
+		expect(() => resolveExpression("${redis.cache.url:-none}", ctx)).toThrow(UnresolvedUseError);
+	});
+
+	it("throws inside a template too", () => {
+		expect(() => resolveExpression("redis://x/${redis.nope.index}", ctx)).toThrow(UnresolvedUseError);
+	});
+
+	it("leaves a resource that declares no uses on the general fallback", () => {
+		expect(resolveExpression("$postgres.deep.host", ctx)).toBe("pg-host");
+	});
+
+	it("carries the resource, use and property on the error", () => {
+		try {
+			resolveExpression("$redis.cache.url", ctx);
+		} catch (err) {
+			expect(err).toBeInstanceOf(UnresolvedUseError);
+			const e = err as UnresolvedUseError;
+			expect([e.resource, e.use, e.property]).toEqual(["redis", "cache", "url"]);
+			return;
+		}
+		throw new Error("did not throw");
+	});
+
+	it("throws when the resource declares uses but has no property map at all", () => {
+		expect(() => resolveExpression("$redis.db.url", { uses: { redis: ["db"] } })).toThrow(
+			UnresolvedUseError,
+		);
+	});
+
+	it("does not treat an inherited key as a declared resource", () => {
+		expect(resolveExpression("$constructor.db.url", ctx)).toBe("");
+	});
+});
+
+describe("$<resource>.<use>.<name>.<property> on an entry that names a repeatable use", () => {
+	const ctx = {
+		resources: {
+			redis: {
+				url: "redis://app-redis:6379",
+				host: "app-redis",
+				"db.cache.url": "redis://app-redis:6379/0",
+				"db.cache.index": "0",
+				"db.sessions.url": "redis://app-redis:6379/1",
+				"db.sessions.index": "1",
+			},
+			postgres: {
+				url: "postgres://pg:5432/app",
+				name: "app",
+				"database.url": "postgres://pg:5432/app",
+				"database.name": "app",
+			},
+		},
+		uses: { redis: ["db.cache", "db.sessions", "pubsub"], postgres: ["database"] },
+	};
+
+	it("resolves each named use's registered property from the four-segment form", () => {
+		expect(resolveExpression("$redis.db.cache.url", ctx)).toBe("redis://app-redis:6379/0");
+		expect(resolveExpression("$redis.db.sessions.url", ctx)).toBe("redis://app-redis:6379/1");
+		expect(resolveExpression("$redis.db.sessions.index", ctx)).toBe("1");
+	});
+
+	it("throws on the bare three-segment form when every `db` on the entry is named — never the instance url", () => {
+		expect(() => resolveExpression("$redis.db.url", ctx)).toThrow(UnresolvedUseError);
+		expect(() => resolveExpression("$redis.db.url", ctx)).toThrow(
+			'$redis.db.url does not resolve: redis declares no use "db" (declared: db: cache, db: sessions, pubsub)',
+		);
+	});
+
+	it("throws on a name the entry does not declare", () => {
+		expect(() => resolveExpression("$redis.db.nosuch.url", ctx)).toThrow(
+			'$redis.db.nosuch.url does not resolve: redis declares no use "db: nosuch" (declared: db: cache, db: sessions, pubsub)',
+		);
+	});
+
+	it("throws on a property a named use does not register", () => {
+		expect(() => resolveExpression("$redis.db.cache.host", ctx)).toThrow(
+			'$redis.db.cache.host does not resolve: use "db: cache" on redis registers no property "host"',
+		);
+	});
+
+	it("reads a fourth segment as a property path on an entry whose use is bare", () => {
+		// `database` is unnamed on postgres, so `.name` after `.database` is a
+		// property, not a use name; and `.main.url` is an unregistered property.
+		expect(resolveExpression("$postgres.database.name", ctx)).toBe("app");
+		expect(() => resolveExpression("$postgres.database.main.url", ctx)).toThrow(
+			'$postgres.database.main.url does not resolve: use "database" on postgres registers no property "main.url"',
+		);
+	});
+
+	it("carries the use key on the error for the named form", () => {
+		try {
+			resolveExpression("$redis.db.cache.host", ctx);
+		} catch (err) {
+			expect(err).toBeInstanceOf(UnresolvedUseError);
+			const e = err as UnresolvedUseError;
+			expect([e.resource, e.use, e.property]).toEqual(["redis", "db.cache", "host"]);
+			return;
+		}
+		throw new Error("did not throw");
+	});
+
+	it("is not softened by a :-default in the named form either", () => {
+		expect(() => resolveExpression("${redis.db.nosuch.url:-none}", ctx)).toThrow(UnresolvedUseError);
+	});
+});
+
+/*---
+req: REQ-422
+type: unit
+status: implemented
+area: launch-spec
+summary: Named-endpoint component references resolve by their own key only
+rationale: |
+  SPEC.md documents $components.<component>.<endpoint>.<property>. Providers
+  register those as dotted keys on the component's flat record. A reference to
+  an endpoint nobody registered must degrade to empty (L-4) — never to the
+  primary endpoint's value, which wires a sibling to a live but wrong port
+  with nothing reported.
+acceptance:
+  - Registered named endpoint resolves to its own value
+  - Unregistered endpoint name resolves to empty, not the primary property
+  - endpointProperties builds dotted keys for every named declared endpoint
+tags: [launch-spec, resolver, D-6]
+source:
+  type: implementation
+  ref: issue-276
+changed:
+  - date: 2026-09-09
+    note: Added with the per-endpoint $components registration fix (#276)
+---*/
+describe("$components named endpoints", () => {
+	const context = {
+		components: {
+			web: {
+				url: "http://web:3000",
+				host: "web",
+				port: 3000,
+				"api.host": "web",
+				"api.port": 3000,
+				"api.protocol": "http",
+				"api.url": "http://web:3000",
+				"metrics.host": "web",
+				"metrics.port": 9090,
+				"metrics.protocol": "http",
+				"metrics.url": "http://web:9090",
+			},
+		},
+	};
+
+	it("resolves a registered named endpoint", () => {
+		expect(resolveExpression("$components.web.metrics.port", context)).toBe("9090");
+		expect(resolveExpression("$components.web.metrics.url", context)).toBe("http://web:9090");
+	});
+
+	it("resolves an unknown endpoint name to empty, not the primary port", () => {
+		expect(resolveExpression("$components.web.https.port", context)).toBe("");
+		expect(resolveExpression("$components.web.https.url", context)).toBe("");
+	});
+
+	it("still resolves the flat three-segment form", () => {
+		expect(resolveExpression("$components.web.port", context)).toBe("3000");
+	});
+
+	it("takes a :-default when the endpoint is unknown", () => {
+		expect(resolveExpression("${components.web.https.port:-8443}", context)).toBe("8443");
+	});
+
+	it("resolves an unknown component to empty", () => {
+		expect(resolveExpression("$components.absent.api.port", context)).toBe("");
+	});
+});
+
+describe("endpointProperties", () => {
+	it("builds dotted keys for every named endpoint, exposed or not", () => {
+		expect(
+			endpointProperties(
+				[
+					{ name: "api", protocol: "http", port: 3000, exposed: true },
+					{ name: "metrics", protocol: "http", port: 9090, exposed: false },
+				],
+				"web",
+			),
+		).toEqual({
+			"api.host": "web",
+			"api.port": 3000,
+			"api.protocol": "http",
+			"api.url": "http://web:3000",
+			"metrics.host": "web",
+			"metrics.port": 9090,
+			"metrics.protocol": "http",
+			"metrics.url": "http://web:9090",
+		});
+	});
+
+	it("omits url for a protocol that names no scheme", () => {
+		expect(endpointProperties([{ name: "pg", protocol: "tcp", port: 5432 }], "db")).toEqual({
+			"pg.host": "db",
+			"pg.port": 5432,
+			"pg.protocol": "tcp",
+		});
+	});
+
+	it("writes the scheme the protocol names", () => {
+		expect(
+			endpointProperties([{ name: "web", protocol: "https", port: 443 }], "edge")["web.url"],
+		).toBe("https://edge:443");
+	});
+
+	it("ignores unnamed entries and an absent provides", () => {
+		expect(endpointProperties([{ protocol: "http", port: 3000 }], "web")).toEqual({});
+		expect(endpointProperties(undefined, "web")).toEqual({});
+	});
+
+	it("reads the effective listener under an active certificate binding (D-61 rule 2)", () => {
+		const provides = [
+			{ name: "web", protocol: "http" as const, port: 3000, tls: "server-cert" },
+			{ name: "ssh", protocol: "tcp" as const, port: 22 },
+		];
+		expect(endpointProperties(provides, "gitea", ["server-cert"])).toEqual({
+			"web.host": "gitea",
+			"web.port": 3000,
+			"web.protocol": "https",
+			"web.url": "https://gitea:3000",
+			"ssh.host": "gitea",
+			"ssh.port": 22,
+			"ssh.protocol": "tcp",
+		});
+		// Inactive — or never told about the binding — the declared values stand.
+		expect(endpointProperties(provides, "gitea", [])["web.url"]).toBe("http://gitea:3000");
+		expect(endpointProperties(provides, "gitea")["web.protocol"]).toBe("http");
 	});
 });

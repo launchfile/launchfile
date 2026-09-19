@@ -43,6 +43,18 @@ export function supportedResourceTypes(): string[] {
 	return Object.keys(factories);
 }
 
+export {
+	allocateDbIndexes,
+	coverUse,
+	coveredUses,
+	type DbIndexes,
+	namedDatabase,
+	namedDatabases,
+	uncoveredUses,
+	withCoveredUses,
+	withDatabasePath,
+} from "./uses.js";
+
 export type {
 	ResourceProvisioner,
 	ResourceProperties,

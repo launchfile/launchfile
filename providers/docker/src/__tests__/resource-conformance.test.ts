@@ -104,12 +104,26 @@ describe("docker provider — resource property conformance", () => {
 		}
 	});
 
-	it("skips the types it does not stand up", () => {
+	it("conforms kafka — a registry type it stands up", async () => {
+		const registry = await readRegistry();
 		const provider = resourcePropertyKeys();
-		// Both are in the registry; neither has a factory here. addBackingService
-		// warns and skips, so there is nothing to conform.
+		expect(provider).toHaveProperty("kafka");
+		for (const key of registry.kafka!) {
+			expect(provider.kafka).toContain(key);
+		}
+	});
+
+	it("refuses sqlite — a registry type it does not stand up (D-64)", () => {
+		// No factory, so nothing to conform; and no warn-and-skip either. A
+		// component requiring it is refused, never started without it
+		// (`unprovisionable-requires.test.ts` pins the outcome).
+		const provider = resourcePropertyKeys();
 		expect(provider).not.toHaveProperty("sqlite");
-		expect(provider).not.toHaveProperty("kafka");
+		const result = launchToCompose(
+			readLaunch("name: app\nimage: app:1\nrequires:\n  - type: sqlite\n"),
+		);
+		expect(result.warnings.filter((w) => w.startsWith("refused:"))).toHaveLength(1);
+		expect(result.yaml).not.toContain("image: app:1");
 	});
 });
 

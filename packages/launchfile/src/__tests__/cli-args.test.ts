@@ -5,15 +5,19 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+	BOOLEAN_FLAGS,
 	flagPresent,
 	getFlagValue,
 	getFlagValues,
 	getPositional,
 	hasFlag,
 	parseStoragePairs,
+	VALUE_FLAGS,
+	valuedBooleanFlag,
 } from "../cli-args.js";
 
 describe("getPositional (#248)", () => {
@@ -44,6 +48,13 @@ describe("getPositional (#248)", () => {
 	it("does not skip the token after a boolean flag", () => {
 		const args = ["up", "--dry-run", "ghost"];
 		expect(getPositional(args, 1)).toBe("ghost");
+	});
+
+	it("skips the --url value so a public URL is never the up target (D-58)", () => {
+		const args = ["up", "--url", "https://x.example.com"];
+		expect(getPositional(args, 0)).toBe("up");
+		expect(getPositional(args, 1)).toBeUndefined();
+		expect(getPositional(["up", "--url", "https://x.example.com", "ghost"], 1)).toBe("ghost");
 	});
 
 	it("skips --storage values so a pair is never the up target (D-50)", () => {
@@ -170,5 +181,123 @@ describe("--reveal on bootstrap (D-62): exact long form, no alias, no value", ()
 		const args = ["bootstrap", "--reveal", "ghost"];
 		expect(getPositional(args, 0)).toBe("bootstrap");
 		expect(getPositional(args, 1)).toBe("ghost");
+	});
+});
+
+describe("valuedBooleanFlag (#485)", () => {
+	it("accepts the bare form of every boolean flag", () => {
+		for (const flag of BOOLEAN_FLAGS) {
+			const args = ["up", `--${flag}`];
+			expect(valuedBooleanFlag(args)).toBeUndefined();
+			expect(hasFlag(args, flag)).toBe(true);
+			expect(flagPresent(args, flag)).toBe(true);
+		}
+	});
+
+	it("names a boolean flag written as --flag=false", () => {
+		for (const flag of BOOLEAN_FLAGS) {
+			expect(valuedBooleanFlag(["up", `--${flag}=false`])).toBe(flag);
+		}
+	});
+
+	it("names a boolean flag written as --flag=true", () => {
+		for (const flag of BOOLEAN_FLAGS) {
+			expect(valuedBooleanFlag(["up", `--${flag}=true`])).toBe(flag);
+		}
+	});
+
+	it("names a boolean flag written with an empty value", () => {
+		expect(valuedBooleanFlag(["bootstrap", "ghost", "--reveal="])).toBe(
+			"reveal",
+		);
+	});
+
+	it("leaves the =-form of a value flag alone", () => {
+		for (const flag of VALUE_FLAGS) {
+			expect(valuedBooleanFlag(["up", `--${flag}=x`])).toBeUndefined();
+		}
+		expect(valuedBooleanFlag([])).toBeUndefined();
+		expect(
+			valuedBooleanFlag(["up", "--storage", "music=/srv/music"]),
+		).toBeUndefined();
+	});
+
+	it("ignores a positional that happens to contain an =", () => {
+		expect(valuedBooleanFlag(["up", "KEY=value"])).toBeUndefined();
+		expect(valuedBooleanFlag(["up", "-json=false"])).toBeUndefined();
+	});
+
+	it("returns the first offender when several appear", () => {
+		expect(valuedBooleanFlag(["up", "--dry-run=true", "--json=false"])).toBe(
+			"dry-run",
+		);
+	});
+});
+
+describe("the flag tables cover cli.ts exactly (#485)", () => {
+	it("declares no flag in both tables", () => {
+		const both = [...BOOLEAN_FLAGS].filter((flag) => VALUE_FLAGS.has(flag));
+		expect(both).toEqual([]);
+	});
+
+	/**
+	 * A flag cli.ts reads but neither table names inherits #485's bug: an
+	 * unlisted boolean silently accepts an ignored value. Reading the source is
+	 * what makes the next flag added fail here rather than in an operator's CI log.
+	 */
+	it("names every long flag cli.ts reads in exactly one table", () => {
+		const source = readFileSync(
+			resolve(import.meta.dirname, "..", "cli.ts"),
+			"utf-8",
+		);
+		const calls =
+			/\b(?:args)?(?:[hH]asFlag|[fF]lagPresent|[gG]etFlagValues?)\(\s*(?:args,\s*)?"([^"]+)"/g;
+		const read = new Set<string>();
+		for (const [, flag] of source.matchAll(calls)) if (flag) read.add(flag);
+
+		expect(read.size).toBeGreaterThan(0);
+		const unlisted = [...read].filter(
+			(flag) => !BOOLEAN_FLAGS.has(flag) && !VALUE_FLAGS.has(flag),
+		);
+		expect(unlisted).toEqual([]);
+	});
+});
+
+describe("launchfile --flag=value on a boolean flag (built CLI, #485)", () => {
+	const CLI = join(resolve(import.meta.dirname, "..", ".."), "dist", "cli.js");
+
+	function run(cliArgs: string[]): { output: string; exitCode: number } {
+		try {
+			const output = execFileSync("node", [CLI, ...cliArgs], {
+				encoding: "utf-8",
+				stdio: ["ignore", "pipe", "pipe"],
+			});
+			return { output, exitCode: 0 };
+		} catch (err) {
+			const e = err as { stdout?: string; stderr?: string; status?: number };
+			return {
+				output: `${e.stdout ?? ""}${e.stderr ?? ""}`,
+				exitCode: e.status ?? 1,
+			};
+		}
+	}
+
+	it.each([...BOOLEAN_FLAGS])("refuses a value on --%s", (flag) => {
+		for (const value of ["false", "true"]) {
+			const { output, exitCode } = run(["up", `--${flag}=${value}`]);
+			expect(exitCode).toBe(1);
+			expect(output).toContain(`--${flag} takes no value, e.g. --${flag}`);
+		}
+	});
+
+	it("refuses before dispatch, so bootstrap never prints the sensitive capture (D-62)", () => {
+		const { output, exitCode } = run(["bootstrap", "ghost", "--reveal=false"]);
+		expect(exitCode).toBe(1);
+		expect(output).toContain("--reveal takes no value, e.g. --reveal");
+	});
+
+	it("still accepts the =-form of a value flag", () => {
+		const { output } = run(["schema", "--schema-path=/nope/schema.json"]);
+		expect(output).not.toContain("takes no value");
 	});
 });

@@ -25,11 +25,13 @@ import {
 	composeProject,
 	stateDir,
 	stateBaseDir,
+	hashLaunchfile,
 	type StateEndpoint,
 } from "./state.js";
 import { allocatePorts } from "./port-allocator.js";
 import {
 	launchToCompose,
+	type InitOnlyDatabases,
 	type InitOnlyExtensions,
 	type StorageBind,
 	type UnsuppliedRequiredVar,
@@ -110,6 +112,25 @@ export function initOnlyExtensionsWarning(
 		"To have this provider create them, run `launchfile down --destroy` then `launchfile up` — " +
 		`that deletes ${entry.service}'s data. To keep the data, run the CREATE EXTENSION ` +
 		"statements against the running database yourself."
+	);
+}
+
+/**
+ * The advisory for a SQL service whose named `database` uses ride on an init
+ * script the image has already run past — the same shape and remedies as
+ * {@link initOnlyExtensionsWarning}, for the same reason.
+ */
+export function initOnlyDatabasesWarning(
+	entry: InitOnlyDatabases,
+	volumeName: string,
+): string {
+	return (
+		`${entry.service}: the named database uses (${entry.databases.join(", ")}) reach the server ` +
+		"through an init script it reads only while it initializes an empty data directory. " +
+		`Volume ${volumeName} already exists, so this run creates none of them. ` +
+		"To have this provider create them, run `launchfile down --destroy` then `launchfile up` — " +
+		`that deletes ${entry.service}'s data. To keep the data, create the databases against ` +
+		"the running server yourself."
 	);
 }
 
@@ -458,6 +479,24 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 			state.sourceType = sourceInfo.sourceType;
 			if (sourceInfo.sourcePath !== undefined) state.sourcePath = sourceInfo.sourcePath;
 			if (sourceInfo.sourceUrl !== undefined) state.sourceUrl = sourceInfo.sourceUrl;
+
+			// The recorded Launchfile hash, re-read (#441). The foreign-source
+			// guard above (D-55 rule 3) compares where the source came from — a
+			// path or a URL — so it cannot see a Launchfile edited in place at
+			// the same path. The hash can. Different input, different action:
+			// that refuses, this warns and continues, because the
+			// edit-then-redeploy cycle D-49 needs in order to re-resolve
+			// derived values has to keep working. The recorded hash then
+			// follows the deployment this run produces.
+			const currentHash = hashLaunchfile(resolved.yaml);
+			if (state.launchfileHash !== undefined && state.launchfileHash !== currentHash) {
+				const message =
+					`the Launchfile for "${slug}" differs from the one this deployment was created from ` +
+					`(recorded ${state.launchfileHash}, current ${currentHash}) — redeploying with the current one.`;
+				log.warn({ slug, recordedHash: state.launchfileHash, currentHash }, message);
+				console.warn(`  Warning: ${message}`);
+			}
+			state.launchfileHash = currentHash;
 		}
 
 		// Publication context (#290), same preservation rule as the source info
@@ -492,6 +531,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		const result = await inPhase("provision", failure(), async () =>
 			launchToCompose(launch, {
 				secrets: state.secrets,
+				resourcePasswords: state.resourcePasswords,
 				generatedEnv: state.generatedEnv,
 				hostPorts,
 				projectDir: resolved.dir,
@@ -564,6 +604,13 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 					result.warnings.push(initOnlyExtensionsWarning(entry, volumeName));
 				}
 			}
+			for (const entry of result.initOnlyDatabases) {
+				if (!launching.has(entry.component)) continue;
+				const volumeName = await composeVolumeName(composeProjectName, entry.volume);
+				if (volumeName !== null) {
+					result.warnings.push(initOnlyDatabasesWarning(entry, volumeName));
+				}
+			}
 		}
 
 		// Log warnings; refusals (un-grantable host capabilities, D-44) are
@@ -582,6 +629,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// the allocator reads back on the next `up` — persisting only the
 		// primary would let every secondary endpoint move across restarts.
 		state.secrets = result.secrets;
+		state.resourcePasswords = result.resourcePasswords;
 		state.generatedEnv = result.generatedEnv;
 		state.ports = result.ports;
 		state.endpoints = result.endpoints;
@@ -690,6 +738,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 			services: result.services,
 			hostPorts: result.ports,
 			secrets: state.secrets,
+			resourcePasswords: state.resourcePasswords,
 			appUrl,
 			only: summaryOnly,
 		});

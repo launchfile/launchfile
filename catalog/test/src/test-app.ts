@@ -103,7 +103,18 @@ const testEnv: Record<string, string> = Object.fromEntries(
   ]),
 );
 
-const result = launchToCompose(launch, { testEnv, appUrl });
+// Same channel, for `content: operator` volumes (D-50): a `test_storage:` block
+// in metadata.yaml maps a volume key to a path relative to the app's directory —
+// the harness resolves it to an absolute host path before it ever reaches the
+// translator, so no host path enters the Launchfile or metadata.yaml.
+const testStorage: Record<string, string> = Object.fromEntries(
+  Object.entries((metadata.test_storage as Record<string, unknown>) ?? {}).map(([k, v]) => [
+    k,
+    resolve(appDir, String(v)),
+  ]),
+);
+
+const result = launchToCompose(launch, { testEnv, appUrl, storagePaths: testStorage });
 
 // A required variable with no fixture entry is a hard failure naming the app and
 // the variable — never a silent pass. Passing here would let this app's
@@ -144,6 +155,23 @@ if (result.originRefusals.length > 0) {
   process.exit(1);
 }
 
+// A required backing-service type this harness cannot provision is the same
+// class of hard failure (D-64, PROVIDERS.md §10 item 5): the shipped Docker
+// provider refuses the component, so starting the app without the resource
+// and recording `health_check_passed: true` would certify an app that does
+// not run. Fails before any pull, container, or volume exists.
+if (result.resourceRefusals.length > 0) {
+  console.error(`\n=== ${appName}: FAIL — required resource type not provisionable (D-64) ===`);
+  for (const { component, entry, message } of result.resourceRefusals) {
+    console.error(`  - ${appName} [${component}]: ${entry} — ${message}`);
+  }
+  console.error(
+    "\nThe Launchfile requires a backing-service type neither this harness nor the docker",
+  );
+  console.error("provider stands up. Add a factory to both, or use a type the provider provisions.\n");
+  process.exit(1);
+}
+
 // A `content: operator` volume the translator could not bind is the same
 // class of hard failure (D-50): starting the app over an empty volume where
 // the operator's content belongs would record `health_check_passed: true`
@@ -153,6 +181,11 @@ if (result.storageRefusals.length > 0) {
   console.error(`\n=== ${appName}: FAIL — operator-supplied storage not bound (D-50) ===`);
   for (const { component, volume, message } of result.storageRefusals) {
     console.error(`  - ${appName} [${component}]: ${volume} — ${message}`);
+  }
+  console.error(`\nDeclare a fixture in ${metadataPath}:\n`);
+  console.error("  test_storage:");
+  for (const { volume } of result.storageRefusals) {
+    console.error(`    ${volume}: "<path relative to the app directory>"`);
   }
   process.exit(1);
 }
