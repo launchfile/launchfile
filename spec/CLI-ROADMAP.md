@@ -40,7 +40,7 @@ Every long flag the CLI reads is declared in one of two tables in
 value) and `BOOLEAN_FLAGS` (bare flags). Their union is the allowlist: a
 `--flag` or `--flag=value` in neither table is refused before dispatch, on
 every verb, with exit 1 and a message on stderr that names the flag and
-suggests the one nearest declared flag when exactly one fits (D-next).
+suggests the one nearest declared flag when exactly one fits (D-67).
 
 ```bash
 $ launchfile up . --storagex vol=/srv/vol
