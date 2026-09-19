@@ -196,7 +196,7 @@ deployment selected. They differ only when a bound `certificate` is active.
 | `effectiveListener(entry, activeCertificates?)` | Read one `provides` entry's listener in both readings. Omit `activeCertificates` and the entry reads as its baseline |
 | `boundCertificate(entry)` | The certificate name an entry binds, in either spelling (`tls: server-cert` or `tls: { certificate: server-cert }`), else `undefined` |
 | `certificateBindings(component)` | Every certificate binding on one component, as `provides` entry → certificate name |
-| `CERTIFICATE` | The `tls:` map key that names a bound certificate |
+| `CERTIFICATE` | The `supports:` entry type a `tls:` binding names — `type: certificate` (D-61 rule 1) |
 
 ### Resource uses
 
@@ -226,7 +226,7 @@ job.
 
 | Function | Description |
 |----------|-------------|
-| `formatCaptures(captures, captureMeta, options?)` | The indented lines a provider prints for one command's captures. `reveal: true` prints every value; otherwise a `sensitive: true` entry prints as `CAPTURE_MASK` and one `REVEAL_HINT` line follows |
+| `formatCaptures(captures, captureMeta, reveal, options?)` | The indented lines a provider prints for one command's captures. `reveal: true` prints every value; otherwise a `sensitive: true` entry prints as `CAPTURE_MASK`, and one `REVEAL_HINT` line follows unless `options.hint` is `false` |
 | `sensitiveCaptureValues(captures, captureMeta)` | The values of every capture whose entry declares `sensitive: true` — what a provider registers with its redactor |
 | `CAPTURE_MASK` | The mask a sensitive value displays as |
 | `REVEAL_HINT` | The trailing line naming the command that prints masked values |
