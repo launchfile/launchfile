@@ -216,12 +216,12 @@ local watcher ← emit ← diff() ← fs change ────┘
 - **`up` opts:** `withOptional`, `noBuild`, `detach`, `dryRun`, `projectDir`.
 - **Resources (native, via Homebrew services):** `postgres`, `mysql`, `redis`, `sqlite`.
 - **Runtimes:** `bun`, `node`, `python`, `ruby`.
-- **Prepare-on-change:** `lockfile-detect` decides when to (re)install — `prepare` is not re-run on every `up`.
+- **Prepare-on-change:** `prepare` runs on demand, not on every `up` — a fingerprint of the prepare command plus the dependency manifests and lockfiles in its working directory, recorded per component in `LaunchState.prepared`; a first launch or a changed fingerprint re-runs it.
 - **Process management:** components are spawned detached; `pid`/`pgid`/`startedAt`/`command` are recorded so `down` from another shell can signal the whole group, guarded against pid reuse.
 - **Also:** health checks, secret generation, persistent storage, env writing.
 - **`env`:** prints a component's resolved environment (§7) — the read surface §8 generalizes.
 - **Storage:** resolves `$storage.<name>.path` to `.launchfile/storage/<component>/<name>` on the host (D-39).
-- **State:** `LaunchState` at `<projectDir>/.launchfile/state.json`, keyed by Launchfile **content hash**; holds `resources`, `secrets`, `ports`, `processes`.
+- **State:** `LaunchState` at `<projectDir>/.launchfile/state.json`, keyed by Launchfile **content hash**; holds `resources`, `secrets`, `ports`, `processes`, `prepared`.
 - **Selection:** narrows `components` to the selected set's downward `depends_on` closure (`selectionClosure`) after the prereq gate, so every phase honors it.
 
 ### Mode coverage today
