@@ -14,6 +14,7 @@
 
 import {
 	deriveAppUrlProperties,
+	endpointProperties,
 	isExpression,
 	type NormalizedComponent,
 	type NormalizedEnvVar,
@@ -337,6 +338,12 @@ export function translate(
 			host: ip,
 			port: first.port,
 			url: `http://${ip}:${first.port}`,
+			// Per-endpoint properties for `$components.<name>.<endpoint>.<prop>`
+			// (D-6, D-66). Each instance binds every port its component
+			// declares, so a named endpoint is reachable at the same private IP
+			// on its own port — including one marked `exposed: false`, which
+			// speaks to the load balancer boundary and not to the VPC.
+			...endpointProperties(comp.provides, ip),
 		};
 	}
 

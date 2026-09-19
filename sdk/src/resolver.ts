@@ -10,6 +10,8 @@
  *   no $            — literal string
  */
 
+import { effectiveListener } from "./effective-listener.js";
+import type { Provides } from "./types.js";
 import { formatUseKey } from "./uses.js";
 
 /** Context for resolving expressions */
@@ -164,6 +166,62 @@ export function deriveAppUrlProperties(
 	} catch {
 		return { authority: "", scheme: "", tls: "" };
 	}
+}
+
+/**
+ * URL schemes for the `protocol` values that name one. `tcp`, `udp`, and `grpc`
+ * describe a wire protocol without fixing a `scheme://host:port` form, so an
+ * endpoint declaring one gets no `url` property rather than a guessed scheme.
+ */
+const ENDPOINT_URL_SCHEMES: Partial<Record<Provides["protocol"], string>> = {
+	http: "http",
+	https: "https",
+	ws: "ws",
+};
+
+/**
+ * Build the flat `<endpoint>.<property>` keys that make the documented
+ * `$components.<component>.<endpoint>.<property>` form (D-6, SPEC.md
+ * § Expression Syntax) resolvable, for one component's `provides` entries at
+ * `host`.
+ *
+ * Keys are dotted, not nested: {@link ResolverContext.components} maps a
+ * component to `Record<string, string | number>`, and the resolver looks the
+ * whole path tail up as one key. Merge the result onto the component's record
+ * alongside its primary `url`/`host`/`port`.
+ *
+ * Every *declared* endpoint is registered, whatever its `exposed` value: D-27
+ * governs reachability from outside the host, not visibility between siblings,
+ * so an internal-only named endpoint still has an in-network address. Entries
+ * without a `name` contribute nothing — a name is the identity the reference
+ * form uses (D-6). `url` appears only for a protocol that names a scheme.
+ *
+ * `protocol` and `url` read the entry's *effective* listener (D-61 rule 2):
+ * with a bound certificate in `activeCertificates` they say `https`, exactly
+ * as the primary `$components.<name>.url` does. The port is the declared port
+ * either way. Omit `activeCertificates` on a provider that activates no
+ * binding — declared and effective are then the same values.
+ *
+ * Providers share this so the same file answers the same way everywhere (P-5);
+ * each supplies its own `host` — a compose service name, a private IP, a host
+ * loopback address — and the port each endpoint is actually reachable on.
+ */
+export function endpointProperties(
+	provides: Provides[] | undefined,
+	host: string,
+	activeCertificates?: ReadonlySet<string> | readonly string[],
+): Record<string, string | number> {
+	const props: Record<string, string | number> = {};
+	for (const entry of provides ?? []) {
+		if (!entry.name) continue;
+		const listener = effectiveListener(entry, activeCertificates);
+		props[`${entry.name}.host`] = host;
+		props[`${entry.name}.port`] = listener.port;
+		props[`${entry.name}.protocol`] = listener.protocol;
+		const scheme = ENDPOINT_URL_SCHEMES[listener.protocol];
+		if (scheme) props[`${entry.name}.url`] = `${scheme}://${host}:${listener.port}`;
+	}
+	return props;
 }
 
 /** Result of parsing a set_env value */
@@ -479,15 +537,20 @@ function resolvePath(
 		if (val !== undefined) return String(val);
 	}
 
-	// components.name.prop
+	// components.name.prop and components.name.endpoint.prop (D-6). The provider
+	// registers one flat record per component whose keys are either a bare
+	// property (`url`) or a dotted `<endpoint>.<property>` pair, so the whole
+	// tail of the path is a single key. An unnamed key resolves to undefined —
+	// the caller degrades to "" or a `:-default` (L-4). There is deliberately no
+	// last-segment fallback: it made an unregistered endpoint answer with the
+	// primary endpoint's value, so a sibling wired itself to a live, plausible,
+	// wrong port with nothing reported.
 	if (first === "components" && path.length >= 3 && context.components) {
 		const componentName = path[1]!;
 		const component = own(context.components, componentName);
 		if (!component) return undefined;
-		// Try remaining path as dotted key, then just last segment
 		const propKey = path.slice(2).join(".");
-		const val =
-			own(component, propKey) ?? own(component, path[path.length - 1]!);
+		const val = own(component, propKey);
 		return val !== undefined ? String(val) : undefined;
 	}
 
