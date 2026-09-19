@@ -9,9 +9,11 @@ import { accessSync, constants as fsConstants } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join, resolve as resolvePath } from "node:path";
 import {
+	buildLaunchErrorContext,
 	CERTIFICATE,
 	certificateBindings,
 	indexOperatorStoragePaths,
+	LaunchError,
 	MissingOperatorStoragePathError,
 	normalizeAppUrl,
 	readLaunch,
@@ -57,7 +59,8 @@ import { allocatePorts } from "./port-allocator.js";
 import { getRuntimeInstaller } from "./runtimes/index.js";
 import { detectPackageManager } from "./lockfile-detect.js";
 import { provisionStorage, storagePaths } from "./storage.js";
-import { ProcessManager } from "./process-manager.js";
+import { HealthGateError, ProcessManager } from "./process-manager.js";
+import { redactSecrets } from "./redact.js";
 import { stopRecordedProcesses } from "./process-stopper.js";
 import { shellScript } from "./shell.js";
 import { parseDuration } from "./bootstrap.js";
@@ -1033,20 +1036,43 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		process.exit(0);
 	});
 
-	await pm2.startAll();
+	try {
+		await pm2.startAll();
+	} catch (err) {
+		// A failed health gate fails the invocation with the `health` phase
+		// (SPEC.md § Failure semantics), the same record the docker provider
+		// raises: the CLI registers the deployment as unhealthy so `down`
+		// reaches the processes left running, and `diagnose` finds the record.
+		if (err instanceof HealthGateError) {
+			throw new LaunchError(
+				buildLaunchErrorContext(
+					{
+						phase: "health",
+						provider: "macos-dev",
+						key: launch.name,
+						app: launch.name,
+						message: err.message,
+					},
+					redactSecrets,
+				),
+			);
+		}
+		throw err;
+	} finally {
+		// Record spawned pids so `launch down` can stop them from another shell or
+		// after this foreground session ends (closes #49). Backward compatible: the
+		// field is optional and absent in pre-existing state files. Recorded on
+		// the failure path too: a component that never became healthy fails the
+		// invocation (SPEC.md § Failure semantics) but its process is left
+		// running, and `status`/`logs`/`down` must still reach it.
+		state.processes = pm2.getRecordedProcesses();
+		await saveState(projectDir, state);
+	}
 	console.log("");
 	console.log(`  \u2713 All components started`);
 
-	// Record spawned pids so `launch down` can stop them from another shell or
-	// after this foreground session ends (closes #49). Backward compatible: the
-	// field is optional and absent in pre-existing state files.
-	state.processes = pm2.getRecordedProcesses();
-
 	// 17. Print summary
 	printSummary(launch, componentPorts, resourceMap);
-
-	// Save final state (now including recorded pids)
-	await saveState(projectDir, state);
 }
 
 function printSummary(
