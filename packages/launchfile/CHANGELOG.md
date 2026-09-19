@@ -1,5 +1,21 @@
 # launchfile
 
+## 0.11.0
+
+### Patch Changes
+
+- [#530](https://github.com/launchfile/launchfile/pull/530) [`fb49a83`](https://github.com/launchfile/launchfile/commit/fb49a83c2fd0f854fb92ba43ac158bef76a1e085) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - `launchfile` now refuses a long flag it does not declare — on every verb,
+  before anything runs. `launchfile up . --storagex vol=/srv/vol` used to launch
+  normally with exit 0, the typo'd flag silently dropped and the token after it
+  read as the target; it now exits 1 with `no such flag --storagex — did you mean
+  --storage?` on stderr. The suggestion names the one nearest declared flag when
+  exactly one fits and is omitted otherwise; the CLI never auto-corrects. A
+  script that passed a stray flag and relied on exit 0 now fails. Single-dash
+  aliases (`-d`, `-f`) are unchanged.
+- Updated dependencies [[`abf6852`](https://github.com/launchfile/launchfile/commit/abf68525f653f9fd4f369e35661de5d452b857aa), [`02e2921`](https://github.com/launchfile/launchfile/commit/02e29217bffd0ee4b1e81781678263d85bfcf41a)]:
+  - @launchfile/sdk@0.11.0
+  - @launchfile/docker@0.11.0
+
 ## 0.10.0
 
 ### Minor Changes
