@@ -78,6 +78,41 @@ describe("checkIdentity", () => {
 		expect(await checkIdentity(rec, fns)).toBe("mismatch");
 	});
 
+	it("flags identity mismatch when the live process started much earlier than the record", async () => {
+		const recordedStart = new Date("2020-01-01T00:00:00.000Z");
+		const rec: RecordedProcess = {
+			pid: 100,
+			pgid: 100,
+			startedAt: recordedStart.toISOString(),
+			command: "app",
+		};
+		// The record claims a spawn a full day after the live process began, so
+		// it cannot be describing this pid — a clock jump or a foreign state file.
+		const fns = fakeSignals({
+			alive: new Set([100]),
+			startTimes: { 100: recordedStart.getTime() - 86_400_000 },
+		});
+		expect(await checkIdentity(rec, fns)).toBe("mismatch");
+	});
+
+	it("verifies a live pid reading slightly earlier than the record (ps lstart truncation)", async () => {
+		const recordedStart = new Date("2020-01-01T00:00:00.000Z");
+		const rec: RecordedProcess = {
+			pid: 100,
+			pgid: 100,
+			startedAt: recordedStart.toISOString(),
+			command: "app",
+		};
+		// `spawn()` forks before we timestamp, and `ps lstart` rounds down to
+		// whole seconds, so a genuine record reads sub-second earlier. This must
+		// stay inside the tolerance window.
+		const fns = fakeSignals({
+			alive: new Set([100]),
+			startTimes: { 100: recordedStart.getTime() - 1500 },
+		});
+		expect(await checkIdentity(rec, fns)).toBe("alive-verified");
+	});
+
 	it("treats a missing start time as alive-unverified", async () => {
 		const rec: RecordedProcess = {
 			pid: 100,
@@ -175,6 +210,29 @@ describe("stopProcess", () => {
 		expect(outcome).toEqual({ component: "web", result: "identity-mismatch" });
 		// Only the liveness probe (signal 0) may have been sent — never a real kill.
 		expect(fns.sent.every((s) => s.signal === 0)).toBe(true);
+	});
+
+	it("does NOT signal a process whose live start time precedes the record", async () => {
+		const recordedStart = new Date("2020-01-01T00:00:00.000Z");
+		const rec: RecordedProcess = {
+			pid: 450,
+			pgid: 450,
+			startedAt: recordedStart.toISOString(),
+			command: "app",
+		};
+		const fns = fakeSignals({
+			alive: new Set([450]),
+			startTimes: { 450: recordedStart.getTime() - 86_400_000 },
+		});
+		const outcome = await stopProcess("web", rec, fns, {
+			graceMs: 0,
+			sleep: noSleep,
+		});
+
+		expect(outcome).toEqual({ component: "web", result: "identity-mismatch" });
+		// Only the liveness probe (signal 0) may have been sent — never a real
+		// kill, and never against the group target.
+		expect(fns.sent).toEqual([{ pid: 450, signal: 0 }]);
 	});
 
 	it("reports already-dead and signals nothing for a dead pid", async () => {
