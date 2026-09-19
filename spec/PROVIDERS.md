@@ -207,7 +207,7 @@ local watcher ← emit ← diff() ← fs change ────┘
 - **Flow:** build (from source) → release (one-shot `docker compose run --rm` per declaring component, in `depends_on` order; compose brings that component's backing resources up healthy first, and a non-zero exit fails the deploy) → start (`compose up`) → bootstrap.
 - **Sources:** local path, catalog slug, remote URL (with a confirmation prompt for remote, bypassable via `yes`).
 - **Storage:** resolves `$storage.<name>.path` to the bind-mounted container path (D-39).
-- **State:** `DockerState` per slug (compose project/path, allocated ports, source info) under the provider state dir.
+- **State:** `DockerState` per slug (compose project/path, allocated ports, source info) under the provider state dir. Checked field by field on load: a malformed key is dropped with a warning naming the state file and the key, every other key is kept, unknown keys survive a load-and-save round trip, and an absent or malformed `ports` map loads as empty. The recorded Launchfile hash is recompared on `up`; a mismatch warns, naming the deployment, and the deploy continues.
 - **Selection:** honors the component selector; the post-`up` summary reports only the started subset.
 
 ### `@launchfile/macos-dev` — source / native
