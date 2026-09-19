@@ -16,6 +16,8 @@ import {
 	getPositional,
 	hasFlag,
 	parseStoragePairs,
+	suggestFlag,
+	unknownFlags,
 	VALUE_FLAGS,
 	valuedBooleanFlag,
 } from "../cli-args.js";
@@ -299,5 +301,149 @@ describe("launchfile --flag=value on a boolean flag (built CLI, #485)", () => {
 	it("still accepts the =-form of a value flag", () => {
 		const { output } = run(["schema", "--schema-path=/nope/schema.json"]);
 		expect(output).not.toContain("takes no value");
+	});
+});
+
+describe("unknownFlags (#510)", () => {
+	it("reports an unknown flag in the --flag value form", () => {
+		expect(unknownFlags(["up", ".", "--docker", "--totally-bogus-flag", "xyz"])).toEqual([
+			"totally-bogus-flag",
+		]);
+	});
+
+	it("reports an unknown flag in the --flag=value form", () => {
+		expect(unknownFlags(["up", ".", "--totally-bogus-flag=xyz"])).toEqual([
+			"totally-bogus-flag",
+		]);
+	});
+
+	it("accepts every name in both tables, in every spelling cli.ts reads", () => {
+		for (const flag of VALUE_FLAGS) {
+			expect(unknownFlags(["up", `--${flag}`, "value"])).toEqual([]);
+			expect(unknownFlags(["up", `--${flag}=value`])).toEqual([]);
+		}
+		for (const flag of BOOLEAN_FLAGS) {
+			expect(unknownFlags(["up", `--${flag}`])).toEqual([]);
+		}
+	});
+
+	it("does not report a value-flag's value that starts with --", () => {
+		// `--name`'s own refusal owns this case: the token is its value, not a flag.
+		expect(unknownFlags(["up", "--name", "--bogus"])).toEqual([]);
+		expect(unknownFlags(["up", "--url", "--dry-run"])).toEqual([]);
+	});
+
+	it("judges long flags only — positionals and single-dash tokens pass", () => {
+		expect(unknownFlags(["up", "ghost", "KEY=value", "-f", "-d"])).toEqual([]);
+		expect(unknownFlags([])).toEqual([]);
+	});
+
+	it("is one allowlist for every verb — a declared flag a verb does not read is not unknown", () => {
+		expect(unknownFlags(["up", "--url", "https://x.example.com"])).toEqual([]);
+		expect(unknownFlags(["down", "--url", "https://x.example.com"])).toEqual([]);
+		expect(unknownFlags(["schema", "--url=https://x.example.com"])).toEqual([]);
+		expect(unknownFlags(["inspect", "--jsonn"])).toEqual(["jsonn"]);
+	});
+
+	it("names the flag that would otherwise make xyz the up target", () => {
+		const args = ["up", "--totally-bogus-flag", "xyz", "."];
+		// Without the refusal, getPositional reads the unknown flag's value as the target.
+		expect(getPositional(args, 1)).toBe("xyz");
+		expect(unknownFlags(args)).toEqual(["totally-bogus-flag"]);
+	});
+
+	it("returns every unknown flag in argv order", () => {
+		expect(unknownFlags(["up", "--storagex", "a=b", "--env", "FOO=bar"])).toEqual([
+			"storagex",
+			"env",
+		]);
+	});
+});
+
+describe("suggestFlag (#510)", () => {
+	it("suggests the one declared flag within edit distance 2", () => {
+		expect(suggestFlag("components")).toBe("component");
+		expect(suggestFlag("storagex")).toBe("storage");
+		expect(suggestFlag("jsonn")).toBe("json");
+		expect(suggestFlag("detac")).toBe("detach");
+	});
+
+	it("suggests on a prefix match in either direction", () => {
+		expect(suggestFlag("stor")).toBe("storage");
+		expect(suggestFlag("storage-dir")).toBe("storage");
+	});
+
+	it("suggests nothing when no declared flag is near", () => {
+		expect(suggestFlag("env")).toBeUndefined();
+		expect(suggestFlag("totally-bogus-flag")).toBeUndefined();
+	});
+
+	it("suggests nothing when several declared flags fit equally", () => {
+		// `d` is a prefix of five flags; docker and detach are equally near.
+		expect(suggestFlag("d")).toBeUndefined();
+		expect(suggestFlag("detache")).toBeUndefined(); // detach vs detached, both 1 away
+	});
+
+	it("picks the nearest of several prefix matches when one is nearer", () => {
+		// `n` is a prefix of name, native and no-color; name is nearest.
+		expect(suggestFlag("n")).toBe("name");
+	});
+});
+
+describe("launchfile with an unknown long flag (built CLI, #510)", () => {
+	const CLI = join(resolve(import.meta.dirname, "..", ".."), "dist", "cli.js");
+
+	function run(cliArgs: string[]): { stdout: string; stderr: string; exitCode: number } {
+		try {
+			const stdout = execFileSync("node", [CLI, ...cliArgs], {
+				encoding: "utf-8",
+				stdio: ["ignore", "pipe", "pipe"],
+			});
+			return { stdout, stderr: "", exitCode: 0 };
+		} catch (err) {
+			const e = err as { stdout?: string; stderr?: string; status?: number };
+			return { stdout: e.stdout ?? "", stderr: e.stderr ?? "", exitCode: e.status ?? 1 };
+		}
+	}
+
+	it("refuses up . --docker --totally-bogus-flag xyz on stderr with exit 1, no suggestion", () => {
+		const { stdout, stderr, exitCode } = run([
+			"up",
+			".",
+			"--docker",
+			"--totally-bogus-flag",
+			"xyz",
+		]);
+		expect(exitCode).toBe(1);
+		expect(stderr).toContain("no such flag --totally-bogus-flag\n");
+		expect(stderr).not.toContain("did you mean");
+		expect(stderr).toContain("Run `launchfile --help` for usage.");
+		expect(stdout).toBe("");
+	});
+
+	it("names the nearest declared flag for a typo", () => {
+		const { stderr, exitCode } = run(["up", ".", "--docker", "--storagex", "vol=/tmp"]);
+		expect(exitCode).toBe(1);
+		expect(stderr).toContain("no such flag --storagex — did you mean --storage?");
+	});
+
+	it("refuses on every verb, not only the deploying ones", () => {
+		const { stderr, exitCode } = run(["inspect", "--jsonn"]);
+		expect(exitCode).toBe(1);
+		expect(stderr).toContain("no such flag --jsonn — did you mean --json?");
+	});
+
+	it("refuses before --version and --help are honoured", () => {
+		for (const argv of [["--bogus", "--version"], ["up", "--bogus", "--help"]]) {
+			const { stdout, stderr, exitCode } = run(argv);
+			expect(exitCode).toBe(1);
+			expect(stderr).toContain("no such flag --bogus");
+			expect(stdout).toBe("");
+		}
+	});
+
+	it("passes a declared flag on a verb that does not read it (one allowlist)", () => {
+		const { stderr } = run(["schema", "--url", "https://x.example.com", "--schema-path", "/nope"]);
+		expect(stderr).not.toContain("no such flag");
 	});
 });

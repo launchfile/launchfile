@@ -85,6 +85,8 @@ npx launchfile up --native
 
   <p>Now try it with your own app — create a <code>Launchfile</code> in your project root, then run <code>npx launchfile up</code>.</p>
 
+  <p>A flag the CLI does not know is refused before anything starts: <code>launchfile up --storagex vol=/srv/vol</code> exits 1 with <code>no such flag --storagex — did you mean --storage?</code>, so a typo never launches with defaults.</p>
+
   <h2 id="when-a-launch-fails">When a launch fails</h2>
 
   <p>A failed <code>up</code> writes a structured record of what went wrong. Ask for it afterwards — from any directory, in a new shell:</p>
