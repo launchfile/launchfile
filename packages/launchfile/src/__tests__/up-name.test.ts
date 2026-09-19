@@ -8,7 +8,7 @@
  * and nothing talks to docker.
  */
 
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { DockerUpOpts, DockerUpResult } from "@launchfile/docker";
@@ -25,9 +25,11 @@ let output: string[];
 let restore: (() => void) | null = null;
 
 beforeEach(async () => {
-	indexDir = await mkdtemp(join(tmpdir(), "lf-name-index-"));
-	recordDir = await mkdtemp(join(tmpdir(), "lf-name-records-"));
-	projectDir = await mkdtemp(join(tmpdir(), "lf-name-project-"));
+	const root = await mkdtemp(join(tmpdir(), "lf-name-"));
+	indexDir = join(root, "index");
+	recordDir = join(root, "records");
+	projectDir = join(root, "project");
+	await Promise.all([mkdir(indexDir), mkdir(recordDir), mkdir(projectDir)]);
 	await writeFile(join(projectDir, "Launchfile"), "name: iso\n");
 
 	output = [];

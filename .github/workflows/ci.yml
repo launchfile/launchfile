@@ -30,6 +30,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
       - run: cd sdk && bun install --frozen-lockfile
       - run: cd sdk && bun run typecheck
       - run: cd sdk && bun run build
@@ -45,6 +47,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
       - name: Build SDK (local dependency)
         run: cd sdk && bun install --frozen-lockfile && bun run build
       - run: cd providers/${{ matrix.provider }} && bun install --frozen-lockfile
@@ -65,6 +69,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_wrapper: false
@@ -91,6 +97,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
       - name: Build SDK and providers (local dependencies)
         run: |
           cd sdk && bun install --frozen-lockfile && bun run build
@@ -124,6 +132,8 @@ jobs:
           # edits, so the base commit has to be in history to diff against.
           fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
       - name: Build SDK and Docker provider (local dependencies)
         run: |
           cd sdk && bun install --frozen-lockfile && bun run build
@@ -162,6 +172,8 @@ jobs:
         with:
           node-version: "22"
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
       # www-shared carries the shared Sätteri markdown plugins; the site configs
       # import them, so its deps (satteri, hast/mdast types) must be installed
       # before the site build/typecheck can resolve them.
@@ -235,6 +247,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/lint-spec-citations.mjs spec --strict
+
+  # The root lockfile's own signal. Every other install here is `cd <subdir> &&
+  # bun install --frozen-lockfile`, and a subdirectory install inside a root
+  # workspace member resolves the ROOT bun.lock — so root-only drift is real but
+  # has no dedicated check: it surfaces as five unrelated jobs failing at once at
+  # their first step, which reads like five broken packages instead of one stale
+  # lockfile. This job fails on that drift by itself, and says so in one place.
+  root-install:
+    name: Root install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
 
   # Catches invalid YAML in workflow files before it gets merged and breaks
   # the CI/release pipeline. actionlint alone is not sufficient here — it
@@ -317,6 +345,7 @@ jobs:
       - websites
       - spec-citations
       - workflow-lint
+      - root-install
     # Without always() this job is skipped the moment anything it needs fails,
     # and a skipped required check never reports — the merge box would wait for
     # a result that is not coming.

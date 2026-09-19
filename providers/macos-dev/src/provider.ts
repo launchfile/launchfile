@@ -1086,7 +1086,9 @@ export async function launchDown(opts: { destroy?: boolean; projectDir?: string 
 					console.log(`  ${o.component} was not running`);
 					break;
 				case "identity-mismatch":
-					console.log(`  Skipped ${o.component} (pid recycled — left untouched)`);
+					console.log(
+						`  Skipped ${o.component} (live process start time does not match the recorded one — left untouched)`,
+					);
 					break;
 				case "error":
 					console.log(`  Failed to stop ${o.component}: ${o.error}`);

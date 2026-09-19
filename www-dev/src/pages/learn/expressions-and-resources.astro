@@ -113,6 +113,7 @@ const metabaseYaml = metabaseYamlRaw.replace(/^#.*\n/gm, "").trim();
     <tr><td><code>$resource.use.prop</code></td><td>Property registered by a declared <code>use</code> of a named resource, like <code>$redis.db.url</code></td></tr>
     <tr><td><code>$resource.use.name.prop</code></td><td>Property registered by a named occurrence of a repeatable use, like <code>$redis.db.cache.url</code></td></tr>
     <tr><td><code>$components.name.prop</code></td><td>Another component's endpoint (Lesson 6)</td></tr>
+    <tr><td><code>$components.name.endpoint.prop</code></td><td>One <em>named</em> endpoint on another component — <code>host</code>, <code>port</code>, <code>protocol</code>, and <code>url</code> for an <code>http</code>/<code>https</code>/<code>ws</code> endpoint</td></tr>
     <tr><td><code>$secrets.name</code></td><td>App-wide generated secret (Lesson 3)</td></tr>
     <tr><td><code>$app.prop</code></td><td>Platform-injected app property, like <code>$app.url</code> (Lesson 3)</td></tr>
     <tr><td><code>$app.endpoints.name.prop</code></td><td>Public address of a named published endpoint, like <code>$app.endpoints.ssh.port</code> (Lesson 3)</td></tr>

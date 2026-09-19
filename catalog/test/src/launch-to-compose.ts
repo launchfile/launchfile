@@ -487,7 +487,9 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
 
     const allExposedPorts = [...directPorts, ...loopbackPorts];
     if (allExposedPorts.length > 0) {
-      service.ports = allExposedPorts.map((p) => `0:${p.port}`);
+      service.ports = allExposedPorts.map(
+        (p) => `0:${p.port}${p.protocol === "udp" ? "/udp" : ""}`,
+      );
     }
 
     // Register this component for $components.<name>.prop resolution, mirroring the
@@ -654,13 +656,15 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
       service.healthcheck = translateHealth(component.health, component.provides);
     }
 
-    // Storage volumes — use anonymous volumes to preserve image filesystem ownership
-    // (named volumes mount as root, which breaks non-root containers). A
-    // `content: operator` volume (D-50) is instead bound to the supplied host
-    // path, mirroring the Docker provider's four states: path supplied →
-    // bind; no path → refused; path absent/unreadable → refused, never
-    // created; no marker → unchanged. A refused volume gets NO mount — an
-    // empty volume standing in for the operator's content is exactly the
+    // Storage volumes — name volumes to match `providers/docker`'s emission.
+    // Ownership is moot: every service in this harness runs as `user: "0:0"`
+    // (see above), so a root-mounted named volume breaks nothing. Nothing
+    // survives teardown either way — `test-app.ts` runs `docker compose down
+    // -v`. A `content: operator` volume (D-50) is instead bound to the
+    // supplied host path, mirroring the Docker provider's four states: path
+    // supplied → bind; no path → refused; path absent/unreadable → refused,
+    // never created; no marker → unchanged. A refused volume gets NO mount —
+    // an empty volume standing in for the operator's content is exactly the
     // fabrication whose health pass this harness must not certify.
     if (component.storage) {
       const svcVolumes: string[] = [];
@@ -694,7 +698,9 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
           svcVolumes.push(`${bound.path}:${vol.path}`);
           continue;
         }
-        svcVolumes.push(vol.path);
+        const namedVolume = `${serviceName}-${volName}`;
+        svcVolumes.push(`${namedVolume}:${vol.path}`);
+        volumes[namedVolume] = {};
       }
       if (svcVolumes.length > 0) {
         service.volumes = svcVolumes;

@@ -35,6 +35,8 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
       - name: Run smoke tests
         run: bash smoke-tests/run.sh
         env:
@@ -58,6 +60,8 @@ jobs:
         with:
           sparse-checkout: smoke-tests
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
       - name: Install dependencies
         working-directory: smoke-tests
         run: bun install

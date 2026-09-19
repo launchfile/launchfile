@@ -72,7 +72,7 @@ Just commit normally. No changeset needed. No changelog entry will be generated.
 
 1. Changesets accumulate on `main` as PRs are merged
 2. The [release workflow](.github/workflows/release.yml) (Phase A) opens/updates a "Version Packages" PR
-3. That PR shows: version bumps, changelog entries, consumed changeset files
+3. That PR shows: version bumps, changelog entries, consumed changeset files, and a regenerated root `bun.lock` — `version-script` runs the root `ci:version` script, which chains `bun install --lockfile-only` after `changeset version` because the lockfile records each workspace member's own version and CI's `bun install --frozen-lockfile` rejects the drift
 4. **Merge the PR** → the same [release workflow](.github/workflows/release.yml) runs again with no changesets present (Phase B):
    - Packages are built and published to npm with provenance via OIDC
    - Git tags are pushed and a GitHub Release is created per package

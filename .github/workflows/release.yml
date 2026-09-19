@@ -67,6 +67,8 @@ jobs:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
 
       # Build packages in dependency order so `npm publish` ships fresh dist/.
       # changesets/action runs `publish-script:` from the repo root, so builds must
@@ -75,6 +77,23 @@ jobs:
       - run: cd providers/docker && bun install --frozen-lockfile && bun run build
       - run: cd providers/macos-dev && bun install --frozen-lockfile && bun run build
       - run: cd packages/launchfile && bun install --frozen-lockfile && bun run build
+
+      # `changeset version` rewrites package.json versions and CHANGELOGs and
+      # touches no lockfile. The root bun.lock records every workspace member's
+      # own `version` and its internal `@launchfile/*` ranges, and `bun install
+      # --frozen-lockfile` inside any member resolves up to that root file — so
+      # a version PR carrying no regenerated lockfile fails the SDK, Catalog and
+      # AWS terraform-validate jobs at their first install step, before a single
+      # test runs. `ci:version` regenerates it, and the action commits the whole
+      # diff it finds afterwards, so the refreshed bun.lock ships in the version
+      # PR without being named anywhere.
+      #
+      # The chained command lives in the root package.json, NOT here. The action
+      # runs `version-script` through @actions/exec, which never invokes a
+      # shell: it splits the string on whitespace and spawns argv[0] directly.
+      # An `&&` written here reaches changesets as a literal argument, its
+      # parser rejects the tokens after it, and the step exits 1 — taking Phase
+      # A down instead of fixing it. Keep this a single shell-free command.
 
       # Phase selector. See the header comment at the top of this file for
       # the full explanation of why `version-script:` and `publish-script:` are
@@ -88,7 +107,7 @@ jobs:
           # is required: @changesets/changelog-github reads process.env.GITHUB_TOKEN
           # to resolve PR/author links while `changeset version` writes CHANGELOGs.
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          version-script: npx changeset version
+          version-script: bun run ci:version
           publish-script: npx changeset publish
           commit-message: "chore: version packages"
           pr-title: "chore: version packages"

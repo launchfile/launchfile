@@ -94,6 +94,7 @@ export {
 	type AppEndpointProperties,
 	type AppEndpointProperty,
 	deriveAppUrlProperties,
+	endpointProperties,
 	isExpression,
 	parseDotPath,
 	parseExpression,

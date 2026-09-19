@@ -196,6 +196,7 @@ components:
     <li>Use <code>components:</code> when your app has multiple services (frontend, backend, workers).</li>
     <li><code>depends_on</code> controls startup order — a component waits until its dependency is healthy.</li>
     <li><code>$components.&lt;name&gt;.url</code> lets components discover each other without hardcoded addresses.</li>
+    <li>Give a <code>provides</code> entry a <code>name</code> and siblings can reach that one endpoint: <code>$components.&lt;name&gt;.&lt;endpoint&gt;.url</code>, and the same for <code>host</code>, <code>port</code>, and <code>protocol</code>. It works for an internal endpoint too — <code>exposed</code> decides what the outside world reaches, not what siblings can.</li>
     <li>Only public-facing components need <code>exposed: true</code> — keep backends internal.</li>
     <li><code>launchfile up &lt;component&gt;</code> starts that component plus its downward dependency closure — its dependencies and their services, never the components that depend on it.</li>
   </ul>
