@@ -17,6 +17,7 @@ import {
 	RESOURCE_PROPERTY_VOCABULARY,
 	RESOURCE_USE_VOCABULARY,
 } from "./resource-properties.js";
+import { AT_APP_HOST } from "./at.js";
 import { lintDurations } from "./durations.js";
 import { StorageVolumeSchema } from "./schema.js";
 import type {
@@ -517,6 +518,31 @@ function checkAppEndpointReferences(
 }
 
 /**
+ * D-next rule 4: a primary endpoint (D-60 rule 3) that declares `at:` without
+ * `"@"` does not answer at the app host, yet `$app.url` still names that host.
+ * Valid — `$app.host` is then a base name and not a surface — and the file is
+ * told, as D-63 rule 4 tells it about an address that resolves `""`.
+ */
+function checkPrimaryWithoutAppHost(
+	launch: NormalizedLaunch,
+	warnings: string[],
+): void {
+	for (const [component, def] of Object.entries(launch.components)) {
+		const where = component === "default" ? "(top-level)" : component;
+		for (const req of [...(def.requires ?? []), ...(def.supports ?? [])]) {
+			if (req.type !== "https-origin" || req.endpoint === undefined) continue;
+			const primary = (def.provides ?? []).find((p) => p.name === req.endpoint);
+			if (primary?.at === undefined || primary.at.includes(AT_APP_HOST)) continue;
+			warnings.push(
+				`${where}: primary endpoint "${req.endpoint}" declares \`at:\` without "@" — ` +
+					"the app does not answer at the app host, so `$app.url` names a host " +
+					"nothing in this app serves; build addresses from `$app.host` instead",
+			);
+		}
+	}
+}
+
+/**
  * Lint a normalized Launch, returning non-fatal warning strings (empty = clean).
  *
  * Checks:
@@ -603,6 +629,7 @@ export function lintLaunch(
 	checkResourceUses(launch, warnings);
 	checkEnvBareReferences(launch, warnings);
 	checkAppEndpointReferences(launch, warnings);
+	checkPrimaryWithoutAppHost(launch, warnings);
 	checkOperatorStorageContradiction(launch, warnings);
 	checkPortability(launch, warnings, opts);
 

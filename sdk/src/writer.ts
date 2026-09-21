@@ -20,6 +20,7 @@ import type {
 	NormalizedBuild,
 	NormalizedHealth,
 	NormalizedEnvVar,
+	Provides,
 } from "./types.js";
 
 /** Serialize a NormalizedLaunch to a YAML string */
@@ -72,7 +73,7 @@ function denormalizeComponent(comp: NormalizedComponent): Record<string, unknown
 	if (build !== undefined) result.build = build;
 	if (comp.source) result.source = comp.source;
 
-	if (comp.provides?.length) result.provides = comp.provides;
+	if (comp.provides?.length) result.provides = comp.provides.map(denormalizeProvides);
 
 	const requires = denormalizeRequirements(comp.requires);
 	if (requires?.length) result.requires = requires;
@@ -103,6 +104,13 @@ function denormalizeComponent(comp: NormalizedComponent): Record<string, unknown
 }
 
 // --- Shorthand collapsers ---
+
+/** Collapse a one-name `at:` list to its string shorthand. */
+function denormalizeProvides(entry: Provides): Record<string, unknown> {
+	const { at, ...rest } = entry;
+	if (at === undefined) return rest;
+	return { ...rest, at: at.length === 1 ? at[0] : at };
+}
 
 function denormalizeBuild(build: NormalizedBuild | undefined): string | Record<string, unknown> | undefined {
 	if (!build) return undefined;
