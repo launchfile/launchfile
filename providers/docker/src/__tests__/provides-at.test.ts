@@ -12,6 +12,7 @@
 import { readLaunch } from "@launchfile/sdk";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
+import { computeAppContext } from "../app-url.js";
 import { type ComposeOpts, launchToCompose } from "../compose-generator.js";
 
 interface ComposeDoc {
@@ -189,5 +190,51 @@ env:
 		});
 		expect(yaml).toBe(PLAIN_COMPOSE);
 		expect(warnings).toEqual([]);
+	});
+});
+
+describe("`at:` changes no reference value (D-next rule 6)", () => {
+	const twoEndpoints = (at: string) => `
+name: app
+image: acme/app:1
+provides:
+  - name: web
+    protocol: http
+    port: 8080
+    exposed: true
+${at}
+  - name: admin
+    protocol: http
+    port: 9090
+    exposed: true
+requires:
+  - type: https-origin
+    endpoint: web
+`;
+	const declared = readLaunch(twoEndpoints('    at: ["@", dash, "*", "*.*"]'));
+	const bare = readLaunch(twoEndpoints(""));
+	const hostPorts = { web: 18080, admin: 19090 };
+
+	it("declares `at:` on one fixture only, so the comparison is not empty", () => {
+		expect(declared.components.default?.provides?.[0]?.at).toEqual([
+			"@",
+			"dash",
+			"*",
+			"*.*",
+		]);
+		expect(bare.components.default?.provides?.[0]?.at).toBeUndefined();
+	});
+
+	it("computes the same `$app.*` and `$app.endpoints.*` from the provider's own publication", () => {
+		const withAt = computeAppContext(declared, hostPorts);
+		expect(withAt).toEqual(computeAppContext(bare, hostPorts));
+		expect(withAt.appEndpoints.web?.url).not.toBe("");
+	});
+
+	it("computes the same values under a supplied publication URL", () => {
+		const url = "https://app.example.com";
+		const withAt = computeAppContext(declared, hostPorts, url);
+		expect(withAt).toEqual(computeAppContext(bare, hostPorts, url));
+		expect(withAt.app.host).toBe("app.example.com");
 	});
 });
