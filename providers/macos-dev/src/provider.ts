@@ -9,7 +9,7 @@ import { accessSync, constants as fsConstants } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join, resolve as resolvePath } from "node:path";
 import {
-	type AtDeclaration,
+	AT_APP_HOST,
 	atDeclarations,
 	atEntryLabel,
 	CERTIFICATE,
@@ -438,52 +438,51 @@ export function applyResourceUseRefusals(
 }
 
 /**
- * Components this provider must refuse because a `provides` entry declares
- * `at:` (D-68 rule 5), mapped to the declaring entries. A provider
- * provisions every declared name — routed, resolved, certified — or refuses
- * the component; partial coverage and a silent no-op are both non-conformant.
+ * The mandatory report for every `provides` entry that declares `at:` (D-68
+ * rule 5), one line per declaring entry. This provider starts each process on
+ * a local port with nothing in front that routes by host name, so every
+ * request reaches the listener with its `Host` intact and only name resolution
+ * is left to the operator. It launches and reports — never a silent launch,
+ * and never a refusal.
  *
- * This provider starts processes on local ports and routes no host names, so
- * it covers no value. A publication URL (D-58) states the app host's address
- * only; it does not say which `at:` values an orchestrator covers, so it
- * changes nothing here.
+ * `ports` maps a component to the local port its process listens on; an
+ * absent entry means the port is not known yet. Under a supplied publication
+ * URL (D-58) the names are whoever routes that URL's to send here (rule 7).
  */
-export function refusedAtDeclarations(
+export function atReports(
 	launch: NormalizedLaunch,
-): Map<string, AtDeclaration[]> {
-	const refused = new Map<string, AtDeclaration[]>();
-	for (const declaration of atDeclarations(launch)) {
-		const list = refused.get(declaration.component) ?? [];
-		list.push(declaration);
-		refused.set(declaration.component, list);
-	}
-	return refused;
+	ports: Record<string, number> = {},
+	suppliedAppUrl?: string,
+): string[] {
+	const host =
+		suppliedAppUrl === undefined ? "localhost" : new URL(suppliedAppUrl).hostname;
+	return atDeclarations(launch).map((declaration) => {
+		const names = declaration.values
+			.map((value) => (value === AT_APP_HOST ? host : `${value}.${host}`))
+			.join(", ");
+		const head = `${atEntryLabel(declaration)} answers at ${names} (\`at:\`, D-68)`;
+		if (suppliedAppUrl !== undefined) {
+			return (
+				`${head} — this provider sets up no host names, and the supplied publication URL ` +
+				`(${suppliedAppUrl}) says nothing about them; whatever routes that URL must send each ` +
+				"name to this endpoint with the requested `Host` intact"
+			);
+		}
+		const port = ports[declaration.component];
+		const target =
+			port === undefined ? "the component's local port" : `localhost:${port}`;
+		return (
+			`${head} — this provider starts the process on a local port and sets up no host names. ` +
+			`Every request that reaches ${target} reaches the listener with its \`Host\` intact, so ` +
+			"map each name that does not resolve to this machine (hosts file or DNS), or use a " +
+			"provider that routes host names"
+		);
+	});
 }
 
-/**
- * Remove every component that declares `at:`, and say so on stderr — each
- * entry and every value it declares, since coverage is all or nothing. Same
- * shape and same reason as {@link applyHostCapabilityRefusals}: the removal IS
- * the refusal.
- */
-export function applyAtRefusals(launch: NormalizedLaunch): "ok" | "none-left" {
-	const refused = refusedAtDeclarations(launch);
-	for (const [name, declarations] of refused) {
-		const entries = declarations.map(
-			(d) => `${atEntryLabel(d)}: ${d.values.map((v) => `"${v}"`).join(", ")}`,
-		);
-		console.error(
-			`  Refused: ${name} declares \`at:\` host names this provider cannot cover ` +
-				`(${entries.join("; ")}) — this provider starts processes on local ports and routes ` +
-				"no host names, and an orchestrator-supplied statement of the values it covers is " +
-				"not available yet (#543); use a provider that provisions the names — component not started",
-		);
-	}
-	if (refused.size === 0) return "ok";
-	launch.components = Object.fromEntries(
-		Object.entries(launch.components).filter(([n]) => !refused.has(n)),
-	);
-	return Object.keys(launch.components).length === 0 ? "none-left" : "ok";
+/** Print {@link atReports} the way this provider prints every warning. */
+function printAtReports(reports: readonly string[]): void {
+	for (const report of reports) console.warn(`  Warning: ${report}`);
 }
 
 export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
@@ -610,16 +609,10 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		);
 		process.exit(1);
 	}
-	// 2a-sexies. A `provides` entry declaring `at:` is refused the same way
-	// (D-68 rule 5): this provider routes no host names, so it covers no
-	// declared value, with or without a publication URL. Graded here for the
-	// same selector and before-anything-happens reasons.
-	if (applyAtRefusals(launch) === "none-left") {
-		console.error(
-			"Every selected component declares `at:` host names this provider cannot cover.",
-		);
-		process.exit(1);
-	}
+	// 2a-sexies. A `provides` entry declaring `at:` is reported, not refused
+	// (D-68 rule 5). The report belongs at the end of provisioning, after the
+	// summary; a dry run never gets there, so it prints here.
+	if (opts.dryRun) printAtReports(atReports(launch, {}, suppliedAppUrl));
 	// An optional capability is not refused — the component runs, degraded.
 	for (const [name, c] of Object.entries(launch.components)) {
 		for (const sup of c.supports ?? []) {
@@ -1106,6 +1099,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 
 	// 17. Print summary
 	printSummary(launch, componentPorts, resourceMap);
+	printAtReports(atReports(launch, componentPorts, suppliedAppUrl));
 
 	// Save final state (now including recorded pids)
 	await saveState(projectDir, state);

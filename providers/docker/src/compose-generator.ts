@@ -8,6 +8,7 @@
 
 import { resolve as resolvePath } from "node:path";
 import {
+	AT_APP_HOST,
 	type AtDeclaration,
 	atDeclarations,
 	atEntryLabel,
@@ -352,23 +353,42 @@ function uncoveredUseRefusal(
 	);
 }
 
+/** The name one `at:` value stands for under `host` (D-68 rule 2). */
+function atName(value: string, host: string): string {
+	return value === AT_APP_HOST ? host : `${value}.${host}`;
+}
+
 /**
- * The surfaced refusal for a component with a `provides` entry declaring `at:`
- * (D-68 rule 5). Names each entry and every value it declares — coverage is
- * all or nothing, so no value is singled out as the uncovered one.
+ * The mandatory report for one `provides` entry that declares `at:` (D-68
+ * rule 5). This provider publishes the listener's port and sets up no host
+ * names, so it launches the component and says which names the operator has
+ * to make resolve — never a silent launch, and never a refusal.
+ *
+ * `authority` is the entry's published address (`localhost:18080`), or `""`
+ * when this provider does not know it. `suppliedUrl` is the orchestrator's
+ * publication URL, under which the names are the orchestrator's to route
+ * (rule 7).
  */
-function uncoveredAtRefusal(
-	componentName: string,
-	declarations: readonly AtDeclaration[],
+function atReport(
+	declaration: AtDeclaration,
+	host: string,
+	authority: string,
+	suppliedUrl: string | undefined,
 ): string {
-	const entries = declarations.map(
-		(d) => `${atEntryLabel(d)}: ${d.values.map((v) => `"${v}"`).join(", ")}`,
-	);
+	const names = declaration.values.map((v) => atName(v, host)).join(", ");
+	const head = `${atEntryLabel(declaration)} answers at ${names} (\`at:\`, D-68)`;
+	if (suppliedUrl !== undefined) {
+		return (
+			`${head} — this provider sets up no host names, and the supplied publication URL ` +
+			`(${suppliedUrl}) says nothing about them; whatever routes that URL must send each name ` +
+			"to this endpoint with the requested `Host` intact"
+		);
+	}
+	const target = authority !== "" ? authority : "the port this provider publishes for the entry";
 	return (
-		`refused: ${componentName} declares \`at:\` host names this provider cannot cover ` +
-		`(${entries.join("; ")}) — this provider publishes ports and routes no host names, and ` +
-		"an orchestrator-supplied statement of the values it covers is not available yet (#543); " +
-		"use a provider that provisions the names — component skipped"
+		`${head} — this provider publishes the port and sets up no host names. Every request ` +
+		`that reaches ${target} reaches the listener with its \`Host\` intact, so map each name ` +
+		"that does not resolve to this machine (hosts file or DNS), or use a provider that routes host names"
 	);
 }
 
@@ -1226,15 +1246,30 @@ export function launchToCompose(
 		uses: declaredUses,
 	};
 
-	// `at:` on a `provides` entry (D-68). This provider publishes ports and
-	// routes no host names, so it covers no value. A supplied publication URL
-	// (`opts.appUrl`) asserts the app host's address only — it says nothing
-	// about which `at:` values the orchestrator routes, resolves and certifies.
-	const atByComponent = new Map<string, AtDeclaration[]>();
+	// `at:` on a `provides` entry (D-68 rule 5). This provider publishes the
+	// listener's port with nothing in front that routes by host name, so every
+	// request reaches the listener with its `Host` intact and only name
+	// resolution is left to the operator. It launches and reports.
+	const appHost = String(appProperties.host ?? "");
 	for (const declaration of atDeclarations(launch)) {
-		const list = atByComponent.get(declaration.component) ?? [];
-		list.push(declaration);
-		atByComponent.set(declaration.component, list);
+		const provides = launch.components[declaration.component]?.provides ?? [];
+		const position = provides
+			.slice(0, declaration.index)
+			.filter((entry) => entry.exposed === true).length;
+		const published = publishedEndpointAddresses(
+			declaration.component,
+			provides,
+			opts.hostPorts,
+			certificates.active,
+		)[position];
+		warnings.push(
+			atReport(
+				declaration,
+				appHost,
+				published?.address.authority ?? "",
+				opts.appUrl,
+			),
+		);
 	}
 
 	for (const [componentName, component] of Object.entries(launch.components)) {
@@ -1377,16 +1412,6 @@ export function launchToCompose(
 		}
 		if (uncoveredUses.length > 0) {
 			warnings.push(uncoveredUseRefusal(componentName, uncoveredUses));
-			continue;
-		}
-
-		// A `provides` entry declaring `at:` REFUSES the component the same way
-		// (D-68 rule 5): a provider provisions every declared name or refuses,
-		// never partial coverage and never a silent no-op. Launching it anyway
-		// starts a listener that answers at none of the names the app expects.
-		const uncoveredAt = atByComponent.get(componentName);
-		if (uncoveredAt) {
-			warnings.push(uncoveredAtRefusal(componentName, uncoveredAt));
 			continue;
 		}
 

@@ -1,12 +1,12 @@
 /**
- * `at:` on a `provides` entry on `@launchfile/docker` (D-68 rule 5): a
- * provider provisions every declared name or refuses the component before
- * launch. This provider publishes ports and routes no host names, and a
- * supplied publication URL states the app host's address, not which `at:`
- * values an orchestrator covers — so every declaring component is refused.
+ * `at:` on a `provides` entry on `@launchfile/docker` (D-68 rule 5). This
+ * provider publishes the listener's port and sets up no host names, so every
+ * request reaches the listener with its `Host` intact and only name resolution
+ * is left to the operator. It launches the component and reports the names —
+ * never a silent launch, never a refusal.
  *
- * Every refusal test asserts the outcome (the service is absent), never only
- * the message.
+ * Every test asserts the outcome (the service is generated), never only the
+ * message.
  */
 
 import { readLaunch } from "@launchfile/sdk";
@@ -38,37 +38,54 @@ provides:
     at: ${at}
 `;
 
-describe("provides: an entry declaring `at:` is refused (D-68 rule 5)", () => {
-	it("refuses the component: no service, no image", () => {
+const reports = (warnings: string[]) =>
+	warnings.filter((w) => w.includes("(`at:`, D-68)"));
+
+describe("provides: an entry declaring `at:` launches and is reported (D-68 rule 5)", () => {
+	it("generates the component and refuses nothing", () => {
 		const { doc, images, warnings } = compose(app('["@", dash, "*"]'));
-		expect(doc.services.app).toBeUndefined();
-		expect(images).toEqual([]);
-		expect(refusals(warnings)).toHaveLength(1);
+		expect(doc.services.app).toBeDefined();
+		expect(images).toEqual(["acme/app:1"]);
+		expect(refusals(warnings)).toEqual([]);
+		expect(reports(warnings)).toHaveLength(1);
 	});
 
-	it("names the entry and every declared value", () => {
-		const [refusal] = refusals(compose(app('["@", dash, "*"]')).warnings);
-		expect(refusal).toContain('`provides` entry "web" on default');
-		expect(refusal).toContain('"@"');
-		expect(refusal).toContain('"dash"');
-		expect(refusal).toContain('"*"');
+	it("generates the same compose file as the same app without `at:`", () => {
+		const withAt = compose(app('["@", dash, "*"]'), {
+			hostPorts: { default: 18080 },
+		});
+		const bare = compose(app('["@"]').replace('    at: ["@"]\n', ""), {
+			hostPorts: { default: 18080 },
+		});
+		expect(bare.warnings).toEqual([]);
+		expect(withAt.yaml).toBe(bare.yaml);
 	});
 
-	it("says what this provider does and why nothing can cover the values yet", () => {
-		const [refusal] = refusals(compose(app('["@", dash]')).warnings);
-		expect(refusal).toBe(
-			"refused: default declares `at:` host names this provider cannot cover " +
-				'(`provides` entry "web" on default: "@", "dash") — this provider publishes ports ' +
-				"and routes no host names, and an orchestrator-supplied statement of the values it " +
-				"covers is not available yet (#543); use a provider that provisions the names — " +
-				"component skipped",
+	it("names the entry and every name it answers at, under the app host", () => {
+		const [report] = reports(compose(app('["@", dash, "*", "*.*"]')).warnings);
+		expect(report).toContain('`provides` entry "web" on default');
+		expect(report).toContain(
+			"answers at localhost, dash.localhost, *.localhost, *.*.localhost",
 		);
 	});
 
-	it("refuses the scalar form, which parses to a one-value list", () => {
-		const { doc, warnings } = compose(app('"@"'));
-		expect(doc.services.app).toBeUndefined();
-		expect(refusals(warnings)[0]).toContain('on default: "@")');
+	it("says where requests arrive and what the operator can do", () => {
+		const [report] = reports(
+			compose(app('["@", dash]'), { hostPorts: { default: 18080 } }).warnings,
+		);
+		expect(report).toBe(
+			'`provides` entry "web" on default answers at localhost, dash.localhost (`at:`, D-68) — ' +
+				"this provider publishes the port and sets up no host names. Every request that " +
+				"reaches localhost:18080 reaches the listener with its `Host` intact, so map each " +
+				"name that does not resolve to this machine (hosts file or DNS), or use a provider " +
+				"that routes host names",
+		);
+	});
+
+	it("reports the scalar form, which parses to a one-value list", () => {
+		const { doc, warnings } = compose(app("dash"));
+		expect(doc.services.app).toBeDefined();
+		expect(reports(warnings)[0]).toContain("answers at dash.localhost (");
 	});
 
 	it("names an unnamed entry by position", () => {
@@ -81,13 +98,14 @@ provides:
     exposed: true
     at: dash
 `);
-		expect(refusals(warnings)[0]).toContain(
-			'`provides` entry #1 (unnamed) on default: "dash"',
+		expect(reports(warnings)[0]).toContain(
+			"`provides` entry #1 (unnamed) on default answers at dash.localhost",
 		);
 	});
 
-	it("lists every declaring entry of the component in one refusal", () => {
-		const { warnings } = compose(`
+	it("reports each declaring entry on its own, with its own published address", () => {
+		const { warnings } = compose(
+			`
 name: app
 image: acme/app:1
 provides:
@@ -101,30 +119,39 @@ provides:
     port: 9090
     exposed: true
     at: ["*", "*.*"]
-`);
-		expect(refusals(warnings)).toHaveLength(1);
-		expect(refusals(warnings)[0]).toContain(
-			'(`provides` entry "web" on default: "@"; `provides` entry "admin" on default: "*", "*.*")',
+`,
 		);
+		const [web, admin] = reports(warnings);
+		expect(reports(warnings)).toHaveLength(2);
+		expect(web).toContain('entry "web" on default answers at localhost (');
+		expect(web).toContain("reaches localhost:8080 ");
+		expect(admin).toContain(
+			'entry "admin" on default answers at *.localhost, *.*.localhost (',
+		);
+		expect(admin).toContain("reaches localhost:9090 ");
 	});
 });
 
-describe("a supplied publication URL covers no `at:` value", () => {
-	it("still refuses the component under an https appUrl", () => {
-		const { doc, images, warnings } = compose(app('["@", dash, "*"]'), {
+describe("under a supplied publication URL (D-68 rule 7)", () => {
+	it("still launches, and reports the names under the supplied host", () => {
+		const { doc, warnings } = compose(app('["@", dash, "*"]'), {
 			appUrl: "https://app.example.com",
 		});
-		expect(doc.services.app).toBeUndefined();
-		expect(images).toEqual([]);
-		expect(refusals(warnings)).toHaveLength(1);
-		expect(refusals(warnings)[0]).toContain(
-			'`provides` entry "web" on default: "@", "dash", "*"',
+		expect(doc.services.app).toBeDefined();
+		expect(refusals(warnings)).toEqual([]);
+		const [report] = reports(warnings);
+		expect(report).toContain(
+			"answers at app.example.com, dash.app.example.com, *.app.example.com",
+		);
+		expect(report).toContain(
+			"the supplied publication URL (https://app.example.com) says nothing about them",
 		);
 	});
 });
 
-describe("the refusal is per component", () => {
-	const TWO = `
+describe("components that declare no `at:`", () => {
+	it("draw no report beside a sibling that declares it", () => {
+		const { doc, warnings } = compose(`
 name: app
 components:
   web:
@@ -137,15 +164,11 @@ components:
         at: ["@", dash, "*"]
   worker:
     image: acme/worker:1
-`;
-
-	it("a sibling that declares no `at:` is still generated", () => {
-		const { doc, images, warnings } = compose(TWO);
-		expect(doc.services["app-web"]).toBeUndefined();
+`);
+		expect(doc.services["app-web"]).toBeDefined();
 		expect(doc.services["app-worker"]).toBeDefined();
-		expect(images).toEqual(["acme/worker:1"]);
-		expect(refusals(warnings)).toHaveLength(1);
-		expect(refusals(warnings)[0]).toMatch(/^refused: web /);
+		expect(reports(warnings)).toHaveLength(1);
+		expect(reports(warnings)[0]).toContain('entry "web" on web');
 	});
 });
 
@@ -178,10 +201,10 @@ env:
   APP_URL: $app.url
 `;
 
-	it("are not refused", () => {
+	it("draw no report", () => {
 		const { doc, warnings } = compose(PLAIN);
 		expect(doc.services.plain).toBeDefined();
-		expect(refusals(warnings)).toEqual([]);
+		expect(warnings).toEqual([]);
 	});
 
 	it("generate a byte-identical compose file", () => {

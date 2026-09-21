@@ -33,10 +33,10 @@ const atGaps = (yaml: string) =>
 	tf(yaml).conformance.gaps.filter((g) => g.field === "provides.at");
 
 describe("translate — `at:` on a provides entry (D-68 rule 5)", () => {
-	it("reports the entry unmapped, as a blocker on its component", () => {
+	it("reports the entry unmapped, as a workaround gap on its component", () => {
 		const gaps = atGaps(withAt('["@", dash, "*"]'));
 		expect(gaps).toHaveLength(1);
-		expect(gaps[0]!.severity).toBe("blocker");
+		expect(gaps[0]!.severity).toBe("workaround");
 		expect(gaps[0]!.component).toBe("default");
 	});
 

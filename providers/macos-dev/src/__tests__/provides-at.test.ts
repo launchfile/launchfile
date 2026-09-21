@@ -1,14 +1,13 @@
 import { readLaunch } from "@launchfile/sdk";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { applyAtRefusals, refusedAtDeclarations } from "../provider.js";
+import { describe, expect, it } from "vitest";
+import { atReports } from "../provider.js";
 
 /**
- * `at:` on a `provides` entry (D-68 rule 5): a provider provisions every
- * declared name or refuses the component before launch. This provider starts
- * processes on local ports and routes no host names, and a publication URL
- * states the app host's address, not which `at:` values an orchestrator
- * covers — so every declaring component is refused, and the refusal takes no
- * publication URL at all.
+ * `at:` on a `provides` entry (D-68 rule 5). This provider starts each process
+ * on a local port with nothing in front that routes by host name, so every
+ * request reaches the listener with its `Host` intact and only name resolution
+ * is left to the operator. It launches the component and reports the names —
+ * never a silent launch, never a refusal.
  */
 
 const mk = (body: string) =>
@@ -43,6 +42,11 @@ components:
         port: 8080
         exposed: true
         at: ["@", dash, "*"]
+      - name: admin
+        protocol: http
+        port: 9090
+        exposed: true
+        at: "*.*"
     commands:
       start: run
   worker:
@@ -50,86 +54,49 @@ components:
       start: work
 `;
 
-const captureStderr = (): string[] => {
-	const errors: string[] = [];
-	vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
-		errors.push(args.map(String).join(" "));
-	});
-	return errors;
-};
-
-describe("refusedAtDeclarations (D-68 rule 5)", () => {
-	it("refuses a component whose `provides` entry declares `at:`", () => {
-		const refused = refusedAtDeclarations(mk(web('["@", dash, "*"]')));
-		expect([...refused.keys()]).toEqual(["default"]);
-		expect(refused.get("default")).toEqual([
-			{ component: "default", index: 0, name: "web", values: ["@", "dash", "*"] },
-		]);
+describe("atReports", () => {
+	it("names the entry and every name it answers at, under localhost", () => {
+		const [report] = atReports(mk(web('["@", dash, "*", "*.*"]')));
+		expect(report).toContain('`provides` entry "web" on default');
+		expect(report).toContain(
+			"answers at localhost, dash.localhost, *.localhost, *.*.localhost",
+		);
 	});
 
-	it("refuses the scalar form, which parses to a one-value list", () => {
-		const refused = refusedAtDeclarations(mk(web('"@"')));
-		expect(refused.get("default")?.[0]?.values).toEqual(["@"]);
+	it("says where requests arrive and what the operator can do", () => {
+		const [report] = atReports(mk(web('["@", dash]')), { default: 18080 });
+		expect(report).toBe(
+			'`provides` entry "web" on default answers at localhost, dash.localhost (`at:`, D-68) — ' +
+				"this provider starts the process on a local port and sets up no host names. Every " +
+				"request that reaches localhost:18080 reaches the listener with its `Host` intact, so " +
+				"map each name that does not resolve to this machine (hosts file or DNS), or use a " +
+				"provider that routes host names",
+		);
 	});
 
-	it("collects every declaring entry of one component", () => {
-		const launch = mk(`provides:
-  - name: web
-    protocol: http
-    port: 8080
-    exposed: true
-    at: "@"
-  - name: admin
-    protocol: http
-    port: 9090
-    exposed: true
-    at: ["*", "*.*"]
-commands:
-  start: run
-`);
-		expect(refusedAtDeclarations(launch).get("default")?.map((d) => d.name)).toEqual([
-			"web",
-			"admin",
-		]);
+	it("does not name a port it does not know", () => {
+		const [report] = atReports(mk(web("dash")));
+		expect(report).toContain("reaches the component's local port reaches");
+		expect(report).not.toContain("localhost:");
 	});
 
-	it("ignores an app that declares no `at:`", () => {
-		expect(refusedAtDeclarations(mk(PLAIN)).size).toBe(0);
-	});
-});
-
-describe("applyAtRefusals — the refusal is the removal", () => {
-	afterEach(() => vi.restoreAllMocks());
-
-	it("removes the refused component from the run", () => {
-		captureStderr();
-		const launch = mk(web('["@", dash, "*"]'));
-		expect(applyAtRefusals(launch)).toBe("none-left");
-		expect(Object.keys(launch.components)).toEqual([]);
+	it("reports the scalar form, which parses to a one-value list", () => {
+		const [report] = atReports(mk(web("dash")));
+		expect(report).toContain("answers at dash.localhost (");
 	});
 
-	it("names the entry and every declared value on stderr", () => {
-		const errors = captureStderr();
-		applyAtRefusals(mk(web('["@", dash, "*"]')));
-		expect(errors).toHaveLength(1);
-		expect(errors[0]).toContain('`provides` entry "web" on default: "@", "dash", "*"');
-	});
-
-	it("says what this provider does and why nothing can cover the values yet", () => {
-		const errors = captureStderr();
-		applyAtRefusals(mk(web('["@", dash]')));
-		expect(errors).toEqual([
-			"  Refused: default declares `at:` host names this provider cannot cover " +
-				'(`provides` entry "web" on default: "@", "dash") — this provider starts processes ' +
-				"on local ports and routes no host names, and an orchestrator-supplied statement of " +
-				"the values it covers is not available yet (#543); use a provider that provisions " +
-				"the names — component not started",
-		]);
+	it("reports each declaring entry on its own, and no other component", () => {
+		const reports = atReports(readLaunch(TWO), { web: 18080, worker: 18081 });
+		expect(reports).toHaveLength(2);
+		expect(reports[0]).toContain(
+			'entry "web" on web answers at localhost, dash.localhost',
+		);
+		expect(reports[1]).toContain('entry "admin" on web answers at *.*.localhost (');
+		expect(reports.join("\n")).not.toContain("worker");
 	});
 
 	it("names an unnamed entry by position", () => {
-		const errors = captureStderr();
-		applyAtRefusals(
+		const [report] = atReports(
 			mk(`provides:
   - protocol: http
     port: 8080
@@ -139,24 +106,31 @@ commands:
   start: run
 `),
 		);
-		expect(errors[0]).toContain('`provides` entry #1 (unnamed) on default: "dash"');
+		expect(report).toContain("`provides` entry #1 (unnamed) on default");
 	});
 
-	it("keeps the components that declare no `at:`", () => {
-		const errors = captureStderr();
+	it("reports the names under the supplied host, and whose they are to route", () => {
+		const [report] = atReports(
+			mk(web('["@", dash, "*"]')),
+			{ default: 18080 },
+			"https://app.example.com",
+		);
+		expect(report).toContain(
+			"answers at app.example.com, dash.app.example.com, *.app.example.com",
+		);
+		expect(report).toContain(
+			"the supplied publication URL (https://app.example.com) says nothing about them",
+		);
+		expect(report).not.toContain("localhost");
+	});
+
+	it("is empty for an app that declares no `at:`", () => {
+		expect(atReports(mk(PLAIN), { default: 18080 })).toEqual([]);
+	});
+
+	it("leaves the launch untouched: no component is removed", () => {
 		const launch = readLaunch(TWO);
-		expect(applyAtRefusals(launch)).toBe("ok");
-		expect(Object.keys(launch.components)).toEqual(["worker"]);
-		expect(errors).toHaveLength(1);
-		expect(errors[0]).toMatch(/^ {2}Refused: web /);
-	});
-
-	it("leaves an app that declares no `at:` untouched and silent", () => {
-		const errors = captureStderr();
-		const launch = mk(PLAIN);
-		const before = structuredClone(launch);
-		expect(applyAtRefusals(launch)).toBe("ok");
-		expect(launch).toEqual(before);
-		expect(errors).toEqual([]);
+		atReports(launch);
+		expect(Object.keys(launch.components)).toEqual(["web", "worker"]);
 	});
 });

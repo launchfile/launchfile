@@ -451,19 +451,18 @@ export function translate(
 	}
 
 	// --- `at:` on a `provides` entry (D-68) ---
-	// A provider provisions every declared name — routed with the requested
-	// `Host`, resolved in DNS, certified — or refuses the component (rule 5).
-	// This probe emits one ALB default action per listener and no DNS record,
-	// host-header rule or certificate, so it covers no value; on `translate`
-	// there is no launch at which to refuse, so each declaring entry is
-	// reported unmapped rather than silently dropped (PROVIDERS.md §10 items 5
-	// and 8).
+	// A provider sets up the declared names or reports each one it did not
+	// (rule 5). This probe emits one ALB default action per listener, which
+	// forwards every host name to it, and no DNS record, host-header rule or
+	// certificate. Nothing here is launched, so each declaring entry is reported
+	// unmapped rather than silently dropped (PROVIDERS.md §10 items 5 and 8). An
+	// operator can add the records by hand, so the gap is a workaround.
 	for (const declaration of atDeclarations(launch)) {
 		// Code spans: a bare `*` would read as emphasis in the Markdown report.
 		const values = declaration.values.map((v) => `\`${v}\``).join(", ");
 		c.gap(
 			"provides.at",
-			"blocker",
+			"workaround",
 			`${atEntryLabel(declaration)} declares the host names ${values} relative to the app host, and this probe routes no host names — it emits one ALB default action per listener and no DNS record, host-header rule or certificate`,
 			"add aws_route53_record + aws_lb_listener_rule (host_header) + an ACM certificate covering every declared name, or use a provider that provisions the names",
 			declaration.component,
