@@ -225,7 +225,7 @@ A reader that ignores `tls:` and the `certificate` entry launches the declared b
 
 ### Host names under the app host
 
-Some apps serve different surfaces on different host names from one listener: the server reads the `Host` header and picks a surface. `at:` says which names a published listener answers at ([D-next](DESIGN.md#d-next-at--a-published-endpoint-declares-the-names-it-answers-at-under-the-app-host)). Every name is relative to the **app host**, the value of `$app.host`. The file never names the app host itself.
+Some apps serve different surfaces on different host names from one listener: the server reads the `Host` header and picks a surface. `at:` says which names a published listener answers at ([D-68](DESIGN.md#d-68-at--a-published-endpoint-declares-the-names-it-answers-at-under-the-app-host)). Every name is relative to the **app host**, the value of `$app.host`. The file never names the app host itself.
 
 ```yaml
 provides:

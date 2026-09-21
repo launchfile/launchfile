@@ -190,7 +190,7 @@
           ]
         },
         "at": {
-          "description": "The names this listener answers at, relative to the app host ($app.host) (D-next). \"@\" is the app host itself; a label such as dash is dash.<app host>; \"*\" is every name exactly one label below the app host and \"*.*\" every name exactly two labels below it. String shorthand for a list of one. Valid only on an entry with exposed: true and an HTTP-family protocol. Absent, the entry answers as a provider publishes it today; present, it answers at the listed names only.",
+          "description": "The names this listener answers at, relative to the app host ($app.host) (D-68). \"@\" is the app host itself; a label such as dash is dash.<app host>; \"*\" is every name exactly one label below the app host and \"*.*\" every name exactly two labels below it. String shorthand for a list of one. Valid only on an entry with exposed: true and an HTTP-family protocol. Absent, the entry answers as a provider publishes it today; present, it answers at the listed names only.",
           "oneOf": [
             { "$ref": "#/$defs/atValue" },
             {
