@@ -9,6 +9,9 @@ import { accessSync, constants as fsConstants } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join, resolve as resolvePath } from "node:path";
 import {
+	type AtDeclaration,
+	atDeclarations,
+	atEntryLabel,
 	CERTIFICATE,
 	certificateBindings,
 	indexOperatorStoragePaths,
@@ -434,6 +437,55 @@ export function applyResourceUseRefusals(
 	return Object.keys(launch.components).length === 0 ? "none-left" : "ok";
 }
 
+/**
+ * Components this provider must refuse because a `provides` entry declares
+ * `at:` (D-next rule 5), mapped to the declaring entries. A provider
+ * provisions every declared name — routed, resolved, certified — or refuses
+ * the component; partial coverage and a silent no-op are both non-conformant.
+ *
+ * This provider starts processes on local ports and routes no host names, so
+ * it covers no value. A publication URL (D-58) states the app host's address
+ * only; it does not say which `at:` values an orchestrator covers, so it
+ * changes nothing here.
+ */
+export function refusedAtDeclarations(
+	launch: NormalizedLaunch,
+): Map<string, AtDeclaration[]> {
+	const refused = new Map<string, AtDeclaration[]>();
+	for (const declaration of atDeclarations(launch)) {
+		const list = refused.get(declaration.component) ?? [];
+		list.push(declaration);
+		refused.set(declaration.component, list);
+	}
+	return refused;
+}
+
+/**
+ * Remove every component that declares `at:`, and say so on stderr — each
+ * entry and every value it declares, since coverage is all or nothing. Same
+ * shape and same reason as {@link applyHostCapabilityRefusals}: the removal IS
+ * the refusal.
+ */
+export function applyAtRefusals(launch: NormalizedLaunch): "ok" | "none-left" {
+	const refused = refusedAtDeclarations(launch);
+	for (const [name, declarations] of refused) {
+		const entries = declarations.map(
+			(d) => `${atEntryLabel(d)}: ${d.values.map((v) => `"${v}"`).join(", ")}`,
+		);
+		console.error(
+			`  Refused: ${name} declares \`at:\` host names this provider cannot cover ` +
+				`(${entries.join("; ")}) — this provider starts processes on local ports and routes ` +
+				"no host names, and an orchestrator-supplied statement of the values it covers is " +
+				"not available yet (#543); use a provider that provisions the names — component not started",
+		);
+	}
+	if (refused.size === 0) return "ok";
+	launch.components = Object.fromEntries(
+		Object.entries(launch.components).filter(([n]) => !refused.has(n)),
+	);
+	return Object.keys(launch.components).length === 0 ? "none-left" : "ok";
+}
+
 export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 
@@ -555,6 +607,16 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	if (applyResourceUseRefusals(launch) === "none-left") {
 		console.error(
 			"Every selected component requires a use of a resource this provider cannot cover.",
+		);
+		process.exit(1);
+	}
+	// 2a-sexies. A `provides` entry declaring `at:` is refused the same way
+	// (D-next rule 5): this provider routes no host names, so it covers no
+	// declared value, with or without a publication URL. Graded here for the
+	// same selector and before-anything-happens reasons.
+	if (applyAtRefusals(launch) === "none-left") {
+		console.error(
+			"Every selected component declares `at:` host names this provider cannot cover.",
 		);
 		process.exit(1);
 	}

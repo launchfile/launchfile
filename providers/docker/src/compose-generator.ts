@@ -8,6 +8,9 @@
 
 import { resolve as resolvePath } from "node:path";
 import {
+	type AtDeclaration,
+	atDeclarations,
+	atEntryLabel,
 	effectiveListener,
 	endpointProperties,
 	indexOperatorStoragePaths,
@@ -346,6 +349,26 @@ function uncoveredUseRefusal(
 		`(${entries.join("; ")}) — a provider covers every declared use or refuses; declare only ` +
 		"what the app uses, supply a resource that covers it through the provider's " +
 		"supplied-resource channel (D-56), or use a provider that covers it — component skipped"
+	);
+}
+
+/**
+ * The surfaced refusal for a component with a `provides` entry declaring `at:`
+ * (D-next rule 5). Names each entry and every value it declares — coverage is
+ * all or nothing, so no value is singled out as the uncovered one.
+ */
+function uncoveredAtRefusal(
+	componentName: string,
+	declarations: readonly AtDeclaration[],
+): string {
+	const entries = declarations.map(
+		(d) => `${atEntryLabel(d)}: ${d.values.map((v) => `"${v}"`).join(", ")}`,
+	);
+	return (
+		`refused: ${componentName} declares \`at:\` host names this provider cannot cover ` +
+		`(${entries.join("; ")}) — this provider publishes ports and routes no host names, and ` +
+		"an orchestrator-supplied statement of the values it covers is not available yet (#543); " +
+		"use a provider that provisions the names — component skipped"
 	);
 }
 
@@ -1203,6 +1226,17 @@ export function launchToCompose(
 		uses: declaredUses,
 	};
 
+	// `at:` on a `provides` entry (D-next). This provider publishes ports and
+	// routes no host names, so it covers no value. A supplied publication URL
+	// (`opts.appUrl`) asserts the app host's address only — it says nothing
+	// about which `at:` values the orchestrator routes, resolves and certifies.
+	const atByComponent = new Map<string, AtDeclaration[]>();
+	for (const declaration of atDeclarations(launch)) {
+		const list = atByComponent.get(declaration.component) ?? [];
+		list.push(declaration);
+		atByComponent.set(declaration.component, list);
+	}
+
 	for (const [componentName, component] of Object.entries(launch.components)) {
 		const serviceName =
 			componentName === "default"
@@ -1343,6 +1377,16 @@ export function launchToCompose(
 		}
 		if (uncoveredUses.length > 0) {
 			warnings.push(uncoveredUseRefusal(componentName, uncoveredUses));
+			continue;
+		}
+
+		// A `provides` entry declaring `at:` REFUSES the component the same way
+		// (D-next rule 5): a provider provisions every declared name or refuses,
+		// never partial coverage and never a silent no-op. Launching it anyway
+		// starts a listener that answers at none of the names the app expects.
+		const uncoveredAt = atByComponent.get(componentName);
+		if (uncoveredAt) {
+			warnings.push(uncoveredAtRefusal(componentName, uncoveredAt));
 			continue;
 		}
 
