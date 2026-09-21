@@ -197,9 +197,9 @@ deployment selected. They differ only when a bound `certificate` is active.
 | `boundCertificate(entry)` | The certificate name an entry binds, in either spelling (`tls: server-cert` or `tls: { certificate: server-cert }`), else `undefined` |
 | `certificateBindings(component)` | Every certificate binding on one component, as `provides` entry → certificate name |
 | `CERTIFICATE` | The `supports:` entry type a `tls:` binding names — `type: certificate` (D-61 rule 1) |
-| `atDeclarations(launch)` | Every `provides` entry that declares `at:` — its component, index, `name` and values (D-next). A provider covers each value or refuses the component |
+| `atDeclarations(launch)` | Every `provides` entry that declares `at:` — its component, index, `name` and values (D-68). A provider covers each value or refuses the component |
 | `atEntryLabel(declaration)` | How an `at:` declaration's entry is named in a message: `` `provides` entry "web" on web `` |
-| `AT_APP_HOST` | The `at:` value that names the app host itself — `"@"` (D-next rule 2) |
+| `AT_APP_HOST` | The `at:` value that names the app host itself — `"@"` (D-68 rule 2) |
 
 ### Resource uses
 

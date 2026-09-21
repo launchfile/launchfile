@@ -518,7 +518,7 @@ function checkAppEndpointReferences(
 }
 
 /**
- * D-next rule 4: a primary endpoint (D-60 rule 3) that declares `at:` without
+ * D-68 rule 4: a primary endpoint (D-60 rule 3) that declares `at:` without
  * `"@"` does not answer at the app host, yet `$app.url` still names that host.
  * Valid — `$app.host` is then a base name and not a surface — and the file is
  * told, as D-63 rule 4 tells it about an address that resolves `""`.

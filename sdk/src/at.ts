@@ -1,5 +1,5 @@
 /**
- * `at:` on a `provides` entry (D-next): the names a published listener
+ * `at:` on a `provides` entry (D-68): the names a published listener
  * answers at, relative to the app host.
  */
 
@@ -22,7 +22,7 @@ export interface AtDeclaration {
 
 /**
  * Every `provides` entry that declares `at:`. A provider covers each value or
- * refuses the component (D-next rule 5), so this is the list it must answer
+ * refuses the component (D-68 rule 5), so this is the list it must answer
  * for. Empty for a Launchfile that declares no `at:`.
  */
 export function atDeclarations(launch: NormalizedLaunch): AtDeclaration[] {

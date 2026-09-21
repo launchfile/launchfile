@@ -9,7 +9,7 @@ import { LaunchSchema } from "../schema.js";
 import { writeLaunch } from "../writer.js";
 
 /**
- * D-next: a published HTTP-family `provides` entry may declare `at:`, the
+ * D-68: a published HTTP-family `provides` entry may declare `at:`, the
  * names it answers at relative to the app host.
  */
 

@@ -52,7 +52,7 @@ const TlsBindingSchema = z.union([
 	z.strictObject({ certificate: NameSchema }),
 ]);
 
-/** `at:` value naming the app host itself (D-next rule 2). */
+/** `at:` value naming the app host itself (D-68 rule 2). */
 const AT_APP_HOST = "@";
 
 /**
@@ -735,7 +735,7 @@ function atValues(entry: AtProvidesLike): string[] | undefined {
 }
 
 /**
- * Enforce the cross-entry rules an `at:` declaration carries (D-next rule 4):
+ * Enforce the cross-entry rules an `at:` declaration carries (D-68 rule 4):
  * the entry is `exposed: true`, it speaks an HTTP-family protocol, and each
  * value occurs once per app across all components.
  *
