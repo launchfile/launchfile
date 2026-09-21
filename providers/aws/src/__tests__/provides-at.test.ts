@@ -1,9 +1,9 @@
 /**
  * `at:` on a `provides` entry on `@launchfile/aws` (D-68 rule 5): a provider
- * provisions every declared name or refuses the component. `translate` has no
- * launch at which to refuse, and this probe emits no DNS record, host-header
- * rule or certificate — so each declaring entry is reported unmapped rather
- * than silently dropped (PROVIDERS.md §10 items 5 and 8).
+ * sets up each declared name or reports it. `translate` launches nothing, and
+ * this probe emits no DNS record, host-header rule or certificate — so each
+ * declaring entry is reported unmapped rather than silently dropped
+ * (PROVIDERS.md §10 items 5 and 8).
  */
 
 import { readLaunch } from "@launchfile/sdk";
