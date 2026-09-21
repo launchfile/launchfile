@@ -2,10 +2,8 @@
 "@launchfile/macos-dev": minor
 ---
 
-Refuse a component whose `provides` entry declares `at:` ([#547](https://github.com/launchfile/launchfile/issues/547), D-68 rule 5).
+Launch a component whose `provides` entry declares `at:`, and report the names it answers at ([#547](https://github.com/launchfile/launchfile/issues/547), D-68 rule 5).
 
-A provider provisions every declared name or refuses the component before launch. This provider starts processes on local ports and routes no host names, so it covers no value: the component is removed from the run before anything is provisioned, installed, wired or started, with a stderr message naming each declaring entry and every value it declares — the same removal-is-the-refusal path as an unprovisionable `requires` entry (D-64). Components that declare no `at:` still start; when none is left, `up` exits non-zero.
+A provider sets up the names a published entry declares or reports each one it did not set up; a silent launch is non-conformant. This provider starts each process on a local port with nothing in front that routes by host name, so every request reaches the listener with its `Host` intact and only name resolution is left to the operator. After the run summary, `up` prints one warning per declaring entry: the entry, the names under `localhost`, the local port requests arrive at, and the operator's options — map the name with a hosts file or DNS, or use a provider that routes host names. A dry run prints the same report without the port. Under a publication URL the report names the hosts under the supplied host and says that whatever routes that URL must send each name here.
 
-A publication URL (`LaunchUpOpts.appUrl`, `launchfile up --url`) does not change this: it states the app host's address, not which `at:` values an orchestrator covers, and the channel for that statement does not exist yet ([#543](https://github.com/launchfile/launchfile/issues/543)).
-
-A Launchfile that declares no `at:` runs exactly as before.
+New export: `atReports(launch, ports?, suppliedAppUrl?)`. Nothing changes for a Launchfile that declares no `at:`.

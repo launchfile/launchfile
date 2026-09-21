@@ -15,6 +15,6 @@ Four new validation errors:
 
 `validate` warns when the primary endpoint declares `at:` without `"@"`: `$app.url` then names a host nothing in the app serves.
 
-New API: `atDeclarations(launch)` lists every `provides` entry that declares `at:` — the list a provider must cover or refuse (D-68 rule 5) — and `atEntryLabel(declaration)` names an entry in a message. The `AtDeclaration` type and the `AT_APP_HOST` constant (`"@"`) come with them.
+New API: `atDeclarations(launch)` lists every `provides` entry that declares `at:` — the list a provider must set up or report (D-68 rule 5) — and `atEntryLabel(declaration)` names an entry in a message. The `AtDeclaration` type and the `AT_APP_HOST` constant (`"@"`) come with them.
 
 Every file that declares no `at:` parses, validates and serializes exactly as before.
