@@ -1,5 +1,13 @@
 # launchfile
 
+## 0.12.0
+
+### Patch Changes
+
+- Updated dependencies [[`036fac1`](https://github.com/launchfile/launchfile/commit/036fac13ecd17b56982710ce15d74ad6c6569bbe), [`036fac1`](https://github.com/launchfile/launchfile/commit/036fac13ecd17b56982710ce15d74ad6c6569bbe)]:
+  - @launchfile/docker@0.12.0
+  - @launchfile/sdk@0.12.0
+
 ## 0.11.0
 
 ### Patch Changes
