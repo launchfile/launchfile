@@ -161,6 +161,7 @@ Declares what network endpoints a component exposes. Value is an array of object
 | `exposed` | `boolean` | no | `false` | Whether the port is reachable from outside the host. Most components in a multi-component app are internal services — only frontends and API gateways typically need `exposed: true`. |
 | `spec` | `map<string, string>` | no | -- | API spec references (e.g. `openapi: file:docs/openapi.yaml`) |
 | `tls` | `string` or `object` | no | -- | Names one `supports:` entry of type `certificate` on the same component: the certificate this listener serves when native TLS is selected. See [Native TLS](#native-tls-with-a-certificate-binding). |
+| `at` | `string` or `string[]` | no | -- | The names this listener answers at, relative to the app host: `"@"`, a DNS label, `"*"` or `"*.*"`. See [Host names under the app host](#host-names-under-the-app-host). |
 
 Each `provides` entry's `protocol` describes what that component's own listener
 speaks on that entry's `port`, in the configuration this Launchfile describes. It
@@ -221,6 +222,34 @@ Five rules bind the binding:
 5. **Delivery, then refuse or run the baseline.** `cert_file` and `key_file` arrive through the provider's supplied-resource channel ([D-56](DESIGN.md#d-56-orchestrator-satisfied-requiressupports--the-supplied-resource-channel)) and the provider does not verify them. Selected but missing either one, or selected on a provider that cannot activate native TLS, **fails before launch naming the entry** — never a silent fall back to HTTP. Not selected, the component runs its declared HTTP baseline.
 
 A reader that ignores `tls:` and the `certificate` entry launches the declared baseline, which is correct rather than degraded: nobody selected the capability.
+
+### Host names under the app host
+
+Some apps serve different surfaces on different host names from one listener: the server reads the `Host` header and picks a surface. `at:` says which names a published listener answers at ([D-68](DESIGN.md#d-68-at--a-published-endpoint-declares-the-names-it-answers-at-under-the-app-host)). Every name is relative to the **app host**, the value of `$app.host`. The file never names the app host itself.
+
+```yaml
+provides:
+  - name: https
+    protocol: https
+    port: 443
+    exposed: true
+    at: ["@", dash, auth, "*", "*.*"]
+```
+
+*"Publish this listener. It answers at my host, at `dash.` and `auth.` under it, at every other name one label below it, and at every name two labels below it."*
+
+`at: dash` is shorthand for `at: [dash]`. Nothing expands into extra `provides` entries: one listener stays one entry, with one `name:`.
+
+Six rules bind the field:
+
+1. **Three kinds of value.** `"@"` is the app host itself. A **label**, such as `dash`, is the name `dash.<app host>`: one lowercase DNS label of at most 63 characters, with no leading or trailing hyphen and no `--` in its third and fourth characters. A **pattern** is `"*"`, every name exactly one label below the app host, or `"*.*"`, every name exactly two labels below it. `*.dash`, `dash.*`, a dotted label and a deeper pattern are **validation errors**. Labels are lowercase because DNS compares names without case.
+2. **Absent means today. Present means exactly this.** A file with no `at:` keeps today's meaning. An entry that declares `at:` answers at the listed names and no others. Without `"@"` in the list the app does not answer at the app host, and the platform may put anything there. This describes the app; it is not a filter a provider must apply. A provider that publishes a bare port cannot stop another name from reaching the listener, and is not asked to.
+3. **Where it is valid.** Only on an entry with `exposed: true`: an unpublished listener has no public name. Only on an HTTP-family listener — `http`, `https`, `ws` or `grpc`; on `tcp` or `udp` it is a **validation error** naming the entry and its protocol, the same family line [`tls:`](#native-tls-with-a-certificate-binding) and an [`https-origin`](#public-https-origins) `endpoint:` draw.
+4. **A value occurs once per app**, across all components. A second entry that declares `dash`, or a second `"*"`, is a **validation error** naming both entries. So each name reaches at most one listener: an exact label matches first, otherwise the pattern of that depth, and no other precedence exists. An entry without `at:` answers at the app host, so the app's primary endpoint ([`https-origin`](#public-https-origins) rule 3) holds `"@"` without declaring it; a second entry that declares `"@"` beside such a primary is the same error. A primary entry that declares `at:` without `"@"` is valid and draws a `validate` **warning**: `$app.url` then names a host nothing in the app serves.
+5. **Set up the names, or report them.** For each value a provider sets up what it can: requests for a matching name reach this entry's listener with the requested host in `Host`, DNS resolves the name, and the provider serves a certificate valid for the name where it terminates TLS. A provider that publishes the listener directly, with no edge of its own that routes by host name, already delivers every request with its `Host` intact. For every value a provider does **not** fully set up, it launches the component and **reports** at the end of provisioning: the entry, the names, where requests arrive, and the operator's options — map the name with a hosts file or DNS, or use a provider that routes host names. The report is mandatory; a launch that says nothing is non-conformant. One case refuses: a provider whose **own edge routes by host name**, and would drop a declared name it did not route, routes every declared value or **refuses the component before launch**, naming the entry and the value. Under an orchestrator-supplied public URL the provider never infers that a value is set up; it launches and returns the same report to the orchestrator, which decides what to do with it. See [PROVIDERS.md](PROVIDERS.md) §7 and §10.
+6. **`at:` changes no reference value.** `$app.*` and `$app.endpoints.<name>.*` resolve exactly as they do without it. The app builds its own addresses from `$app.host`, `$app.scheme` and `$app.authority`.
+
+Declare only the names the app answers at in the configuration the file describes. A reader that predates `at:` ignores the field, publishes one host and reports nothing, which is today's result for such an app, not a new one.
 
 ## Requires
 

@@ -52,6 +52,50 @@ const TlsBindingSchema = z.union([
 	z.strictObject({ certificate: NameSchema }),
 ]);
 
+/** `at:` value naming the app host itself (D-68 rule 2). */
+const AT_APP_HOST = "@";
+
+/**
+ * One `at:` value: the app host (`@`), a single DNS label, or one of the two
+ * patterns (`*`, `*.*`). A label is lowercase because DNS compares names
+ * without case — `dash` and `DASH` are one name, and accepting both would let
+ * two entries claim it. It may start with a digit (RFC 1123), unlike a
+ * `provides[].name`.
+ */
+const AtValueSchema = z
+	.string()
+	.regex(/^(@|\*|\*\.\*|[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)$/, {
+		message:
+			'an `at:` value is "@" (the app host), one lowercase DNS label of at most ' +
+			'63 characters with no leading or trailing hyphen, "*" or "*.*"',
+	})
+	.refine((value) => value.slice(2, 4) !== "--", {
+		message:
+			"an `at:` label must not carry `--` in its third and fourth characters " +
+			"(RFC 5890 §2.3.1 reserves that form)",
+	});
+
+/**
+ * `at: <value>` is shorthand for `at: [<value>]`. Both parse to the list, so
+ * consumers read one shape.
+ */
+const AtSchema = z
+	.union([AtValueSchema, z.array(AtValueSchema).min(1)])
+	.transform((value) => (typeof value === "string" ? [value] : value))
+	.superRefine((values, ctx) => {
+		const seen = new Set<string>();
+		for (const [index, value] of values.entries()) {
+			if (seen.has(value)) {
+				ctx.addIssue({
+					code: "custom",
+					path: [index],
+					message: `\`at:\` lists "${value}" twice`,
+				});
+			}
+			seen.add(value);
+		}
+	});
+
 const ProvidesSchema = z.object({
 	name: NameSchema.optional(),
 	protocol: ProtocolSchema,
@@ -60,6 +104,7 @@ const ProvidesSchema = z.object({
 	exposed: z.boolean().optional(),
 	spec: z.record(z.string(), z.string()).optional(),
 	tls: TlsBindingSchema.optional(),
+	at: AtSchema.optional(),
 });
 
 // --- Requirement (full form) ---
@@ -671,6 +716,152 @@ function checkEndpointNames(
 	}
 }
 
+/** A `provides` entry, as far as the `at:` rules need to see it. */
+interface AtProvidesLike {
+	name?: unknown;
+	protocol?: unknown;
+	exposed?: unknown;
+	at?: unknown;
+}
+
+/** The names a `provides` entry declares under `at:`, in either spelling. */
+function atValues(entry: AtProvidesLike): string[] | undefined {
+	const at = entry.at;
+	if (typeof at === "string") return [at];
+	if (Array.isArray(at)) {
+		return at.filter((v): v is string => typeof v === "string");
+	}
+	return undefined;
+}
+
+/**
+ * Enforce the cross-entry rules an `at:` declaration carries (D-68 rule 4):
+ * the entry is `exposed: true`, it speaks an HTTP-family protocol, and each
+ * value occurs once per app across all components.
+ *
+ * An entry without `at:` answers at the app host, so the primary endpoint
+ * (D-60 rule 3) holds `"@"` without declaring it. A second entry that
+ * declares `"@"` beside such a primary is the same clash as two declared
+ * values, and is refused the same way.
+ *
+ * Scoped to declaration sites, as {@link checkEndpointNames} is.
+ */
+function checkAtNames(
+	launch: Record<string, unknown>,
+	ctx: z.RefinementCtx,
+): void {
+	const components = launch.components as
+		| Record<string, Record<string, unknown>>
+		| undefined;
+	const scopes: OriginScope[] = [
+		{
+			label: "(top-level)",
+			prefix: [],
+			requires: launch.requires,
+			supports: launch.supports,
+			provides: launch.provides,
+		},
+	];
+	for (const [name, component] of Object.entries(components ?? {})) {
+		if (typeof component !== "object" || component === null) continue;
+		scopes.push({
+			label: name,
+			prefix: ["components", name],
+			requires: component.requires,
+			supports: component.supports,
+			provides: component.provides,
+		});
+	}
+
+	/** The entry that declared each value, as it is named in a message. */
+	const holders = new Map<string, string>();
+	const describe = (scope: OriginScope, entry: AtProvidesLike, index: number) =>
+		`\`provides\` entry ${providesLabel(entry, index)} on ${scope.label}`;
+
+	for (const scope of scopes) {
+		if (!Array.isArray(scope.provides)) continue;
+		for (const [index, entry] of (scope.provides as AtProvidesLike[]).entries()) {
+			if (typeof entry !== "object" || entry === null) continue;
+			const values = atValues(entry);
+			if (values === undefined) continue;
+			const path = [...scope.prefix, "provides", index, "at"];
+
+			if (entry.exposed !== true) {
+				ctx.addIssue({
+					code: "custom",
+					path,
+					message:
+						`${describe(scope, entry, index)} declares \`at:\` but is not ` +
+						"`exposed: true`; an unpublished listener has no public name (D-27)",
+				});
+			}
+			const protocol =
+				typeof entry.protocol === "string" ? entry.protocol : "";
+			if (!HTTP_FAMILY_PROTOCOLS.has(protocol)) {
+				ctx.addIssue({
+					code: "custom",
+					path,
+					message:
+						`${describe(scope, entry, index)} declares \`at:\` with \`protocol: ` +
+						`${protocol}\`; host names address an HTTP-family listener (\`http\`, ` +
+						"`https`, `ws`, `grpc`) — a `tcp` or `udp` listener is not routed by name",
+				});
+			}
+
+			for (const [valueIndex, value] of values.entries()) {
+				const owner = holders.get(value);
+				if (owner === undefined) {
+					holders.set(value, describe(scope, entry, index));
+					continue;
+				}
+				ctx.addIssue({
+					code: "custom",
+					path: [...path, valueIndex],
+					message:
+						`\`at:\` value "${value}" is declared by both ${owner} and ` +
+						`${describe(scope, entry, index)}; a name reaches one listener. Remove one.`,
+				});
+			}
+		}
+	}
+
+	const declared = holders.get(AT_APP_HOST);
+	if (declared === undefined) return;
+	for (const scope of scopes) {
+		const provides = Array.isArray(scope.provides)
+			? (scope.provides as AtProvidesLike[])
+			: [];
+		const entries = [
+			...(Array.isArray(scope.requires) ? scope.requires : []),
+			...(Array.isArray(scope.supports) ? scope.supports : []),
+		] as EntryLike[];
+		for (const origin of entries) {
+			if (typeof origin !== "object" || origin === null) continue;
+			if (origin.type !== HTTPS_ORIGIN || typeof origin.endpoint !== "string") {
+				continue;
+			}
+			const index = provides.findIndex(
+				(entry) =>
+					typeof entry === "object" &&
+					entry !== null &&
+					entry.name === origin.endpoint,
+			);
+			if (index === -1) continue;
+			const primary = provides[index] as AtProvidesLike;
+			if (atValues(primary) !== undefined) continue;
+			ctx.addIssue({
+				code: "custom",
+				path: [...scope.prefix, "provides", index],
+				message:
+					`${describe(scope, primary, index)} is the app's primary endpoint (D-60 rule 3) ` +
+					"and declares no `at:`, so it answers at the app host — and " +
+					`${declared} declares \`at: "@"\` too. Give the primary an \`at:\` list, ` +
+					'or drop "@" from the other entry.',
+			});
+		}
+	}
+}
+
 /** The `supports:` resource type a `tls:` binding names (D-61 rule 1). */
 const CERTIFICATE = "certificate";
 
@@ -894,6 +1085,7 @@ export const LaunchSchema = z.object({
 	checkHttpsOrigin(launch as Record<string, unknown>, ctx);
 	checkEndpointNames(launch as Record<string, unknown>, ctx);
 	checkCertificateBindings(launch as Record<string, unknown>, ctx);
+	checkAtNames(launch as Record<string, unknown>, ctx);
 });
 
 // --- Exported sub-schemas for testing ---

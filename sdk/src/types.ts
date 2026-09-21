@@ -85,6 +85,17 @@ export interface Provides {
 	 * {@link effectiveListener} rather than reading this field directly.
 	 */
 	tls?: string | TlsBinding;
+	/**
+	 * The names this listener answers at, relative to the app host
+	 * (`$app.host`): `"@"` is the app host itself, a label such as `dash` is
+	 * `dash.<app host>`, `"*"` is every name one label below it and `"*.*"`
+	 * every name two labels below it (D-68). `at: dash` in a Launchfile is
+	 * shorthand for `at: [dash]`; a parsed entry always carries the list.
+	 *
+	 * Absent, the entry answers as a provider publishes it today. Present, it
+	 * answers at the listed names only — without `"@"`, not at the app host.
+	 */
+	at?: string[];
 }
 
 /** The expanded form of a `provides` entry's `tls:` binding (D-61 rule 1). */

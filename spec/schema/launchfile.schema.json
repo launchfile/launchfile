@@ -188,9 +188,27 @@
               "additionalProperties": false
             }
           ]
+        },
+        "at": {
+          "description": "The names this listener answers at, relative to the app host ($app.host) (D-68). \"@\" is the app host itself; a label such as dash is dash.<app host>; \"*\" is every name exactly one label below the app host and \"*.*\" every name exactly two labels below it. String shorthand for a list of one. Valid only on an entry with exposed: true and an HTTP-family protocol. Absent, the entry answers as a provider publishes it today; present, it answers at the listed names only.",
+          "oneOf": [
+            { "$ref": "#/$defs/atValue" },
+            {
+              "type": "array",
+              "items": { "$ref": "#/$defs/atValue" },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          ]
         }
       },
       "additionalProperties": false
+    },
+    "atValue": {
+      "type": "string",
+      "pattern": "^(@|\\*|\\*\\.\\*|[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)$",
+      "not": { "pattern": "^..--" },
+      "description": "One `at:` value: \"@\", \"*\", \"*.*\", or one lowercase DNS label (RFC 5890 §2.3.1) of at most 63 characters with no leading or trailing hyphen and no -- in its third and fourth characters"
     },
     "requirement": {
       "type": "object",

@@ -9,6 +9,9 @@ import { accessSync, constants as fsConstants } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join, resolve as resolvePath } from "node:path";
 import {
+	AT_APP_HOST,
+	atDeclarations,
+	atEntryLabel,
 	CERTIFICATE,
 	certificateBindings,
 	indexOperatorStoragePaths,
@@ -434,6 +437,54 @@ export function applyResourceUseRefusals(
 	return Object.keys(launch.components).length === 0 ? "none-left" : "ok";
 }
 
+/**
+ * The mandatory report for every `provides` entry that declares `at:` (D-68
+ * rule 5), one line per declaring entry. This provider starts each process on
+ * a local port with nothing in front that routes by host name, so every
+ * request reaches the listener with its `Host` intact and only name resolution
+ * is left to the operator. It launches and reports — never a silent launch,
+ * and never a refusal.
+ *
+ * `ports` maps a component to the local port its process listens on; an
+ * absent entry means the port is not known yet. Under a supplied publication
+ * URL (D-58) the names are whoever routes that URL's to send here (rule 7).
+ */
+export function atReports(
+	launch: NormalizedLaunch,
+	ports: Record<string, number> = {},
+	suppliedAppUrl?: string,
+): string[] {
+	const host =
+		suppliedAppUrl === undefined ? "localhost" : new URL(suppliedAppUrl).hostname;
+	return atDeclarations(launch).map((declaration) => {
+		const names = declaration.values
+			.map((value) => (value === AT_APP_HOST ? host : `${value}.${host}`))
+			.join(", ");
+		const head = `${atEntryLabel(declaration)} answers at ${names} (\`at:\`, D-68)`;
+		if (suppliedAppUrl !== undefined) {
+			return (
+				`${head} — this provider sets up no host names, and the supplied publication URL ` +
+				`(${suppliedAppUrl}) says nothing about them; whatever routes that URL must send each ` +
+				"name to this endpoint with the requested `Host` intact"
+			);
+		}
+		const port = ports[declaration.component];
+		const target =
+			port === undefined ? "the component's local port" : `localhost:${port}`;
+		return (
+			`${head} — this provider starts the process on a local port and sets up no host names. ` +
+			`Every request that reaches ${target} reaches the listener with its \`Host\` intact, so ` +
+			"map each name that does not resolve to this machine (hosts file or DNS), or use a " +
+			"provider that routes host names"
+		);
+	});
+}
+
+/** Print {@link atReports} the way this provider prints every warning. */
+function printAtReports(reports: readonly string[]): void {
+	for (const report of reports) console.warn(`  Warning: ${report}`);
+}
+
 export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 
@@ -558,6 +609,10 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		);
 		process.exit(1);
 	}
+	// 2a-sexies. A `provides` entry declaring `at:` is reported, not refused
+	// (D-68 rule 5). The report belongs at the end of provisioning, after the
+	// summary; a dry run never gets there, so it prints here.
+	if (opts.dryRun) printAtReports(atReports(launch, {}, suppliedAppUrl));
 	// An optional capability is not refused — the component runs, degraded.
 	for (const [name, c] of Object.entries(launch.components)) {
 		for (const sup of c.supports ?? []) {
@@ -1044,6 +1099,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 
 	// 17. Print summary
 	printSummary(launch, componentPorts, resourceMap);
+	printAtReports(atReports(launch, componentPorts, suppliedAppUrl));
 
 	// Save final state (now including recorded pids)
 	await saveState(projectDir, state);

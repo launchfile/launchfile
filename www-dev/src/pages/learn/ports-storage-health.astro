@@ -103,6 +103,42 @@ health:
   },
 ]} />
 
+<h2 id="more-than-one-host-name">More than one host name</h2>
+
+<p>
+  Some apps serve different surfaces on different host names from one listener: a dashboard at <code>dash.</code>, an API at <code>api.</code>, or one name per tenant. The server reads the <code>Host</code> header and picks a surface. Launched on a single host, such an app starts, passes its health check, and cannot be used. <code>at:</code> tells the platform which names the listener answers at:
+</p>
+
+<pre><code>{`provides:
+  - name: https
+    protocol: https
+    port: 443
+    exposed: true
+    at: ["@", dash, api, "*", "*.*"]`}</code></pre>
+
+<p>
+  Every value is relative to the <GlossaryTip term="app host" definition="The host name the platform gives your app — the value of $app.host. Your Launchfile never names it; the platform decides it.">app host</GlossaryTip>, the value of <code>$app.host</code>. You never write the domain itself — the platform decides that.
+</p>
+
+<ul>
+  <li><strong><code>"@"</code></strong> — the app host itself.</li>
+  <li><strong>A label</strong>, such as <code>dash</code> — the name <code>dash.&lt;app host&gt;</code>. One lowercase DNS label, no dots.</li>
+  <li><strong><code>"*"</code></strong> — every name exactly one label below the app host. Use it when names are created while the app runs, such as one per tenant.</li>
+  <li><strong><code>"*.*"</code></strong> — every name exactly two labels below the app host.</li>
+</ul>
+
+<p>
+  For a single name, <code>at: dash</code> is shorthand for <code>at: [dash]</code>. Quote <code>"@"</code>, <code>"*"</code> and <code>"*.*"</code>: YAML reads them as syntax otherwise.
+</p>
+
+<p>
+  An entry that declares <code>at:</code> answers at the listed names and no others. Leave out <code>"@"</code> and your app does not answer at the app host, so the platform can put something else there. A value may appear once in the whole app, so every name reaches exactly one listener: an exact label wins over a pattern. <code>at:</code> is valid only on an <code>exposed: true</code> entry that speaks <code>http</code>, <code>https</code>, <code>ws</code> or <code>grpc</code>.
+</p>
+
+<Callout type="info">
+  A platform sets up the names it can — routing, DNS, and a certificate where it terminates TLS — and must tell you about every name it did not set up. It never launches in silence. The reference providers publish your port directly and set up no host names, so after <code>launchfile up</code> they print the names your app answers at and where requests arrive, for example <code>dash.localhost</code> on <code>localhost:18080</code>. Every request that reaches that port reaches your app with its <code>Host</code> header intact, so the only step left is making the name resolve: names under <code>localhost</code> often resolve to your machine already, and a line in your hosts file covers the rest. A platform that puts its own host-routing proxy in front of your app is different: it routes every name you list or refuses to launch, because no hosts file can fix a name its proxy drops. Your app builds its own addresses from <code>$app.host</code>, <code>$app.scheme</code> and <code>$app.authority</code>; <code>at:</code> adds no new expression.
+</Callout>
+
 <h2 id="who-fills-the-volume">Who fills the volume?</h2>
 
 <p>
