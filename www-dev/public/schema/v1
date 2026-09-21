@@ -206,7 +206,8 @@
     },
     "atValue": {
       "type": "string",
-      "pattern": "^(@|\\*|\\*\\.\\*|(?!..--)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)$",
+      "pattern": "^(@|\\*|\\*\\.\\*|[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)$",
+      "not": { "pattern": "^..--" },
       "description": "One `at:` value: \"@\", \"*\", \"*.*\", or one lowercase DNS label (RFC 5890 §2.3.1) of at most 63 characters with no leading or trailing hyphen and no -- in its third and fourth characters"
     },
     "requirement": {
