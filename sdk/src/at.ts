@@ -21,9 +21,9 @@ export interface AtDeclaration {
 }
 
 /**
- * Every `provides` entry that declares `at:`. A provider covers each value or
- * refuses the component (D-68 rule 5), so this is the list it must answer
- * for. Empty for a Launchfile that declares no `at:`.
+ * Every `provides` entry that declares `at:`. A provider sets up each value or
+ * reports it (D-68 rule 5), so this is the list it must answer for. Empty for
+ * a Launchfile that declares no `at:`.
  */
 export function atDeclarations(launch: NormalizedLaunch): AtDeclaration[] {
 	const out: AtDeclaration[] = [];
