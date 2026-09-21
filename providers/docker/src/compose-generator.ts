@@ -354,7 +354,7 @@ function uncoveredUseRefusal(
 
 /**
  * The surfaced refusal for a component with a `provides` entry declaring `at:`
- * (D-next rule 5). Names each entry and every value it declares — coverage is
+ * (D-68 rule 5). Names each entry and every value it declares — coverage is
  * all or nothing, so no value is singled out as the uncovered one.
  */
 function uncoveredAtRefusal(
@@ -1226,7 +1226,7 @@ export function launchToCompose(
 		uses: declaredUses,
 	};
 
-	// `at:` on a `provides` entry (D-next). This provider publishes ports and
+	// `at:` on a `provides` entry (D-68). This provider publishes ports and
 	// routes no host names, so it covers no value. A supplied publication URL
 	// (`opts.appUrl`) asserts the app host's address only — it says nothing
 	// about which `at:` values the orchestrator routes, resolves and certifies.
@@ -1381,7 +1381,7 @@ export function launchToCompose(
 		}
 
 		// A `provides` entry declaring `at:` REFUSES the component the same way
-		// (D-next rule 5): a provider provisions every declared name or refuses,
+		// (D-68 rule 5): a provider provisions every declared name or refuses,
 		// never partial coverage and never a silent no-op. Launching it anyway
 		// starts a listener that answers at none of the names the app expects.
 		const uncoveredAt = atByComponent.get(componentName);

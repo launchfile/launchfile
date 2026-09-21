@@ -1,5 +1,5 @@
 /**
- * `at:` on a `provides` entry on `@launchfile/aws` (D-next rule 5): a provider
+ * `at:` on a `provides` entry on `@launchfile/aws` (D-68 rule 5): a provider
  * provisions every declared name or refuses the component. `translate` has no
  * launch at which to refuse, and this probe emits no DNS record, host-header
  * rule or certificate — so each declaring entry is reported unmapped rather
@@ -32,7 +32,7 @@ const withAt = (at: string) => `${APP}    at: ${at}\n`;
 const atGaps = (yaml: string) =>
 	tf(yaml).conformance.gaps.filter((g) => g.field === "provides.at");
 
-describe("translate — `at:` on a provides entry (D-next rule 5)", () => {
+describe("translate — `at:` on a provides entry (D-68 rule 5)", () => {
 	it("reports the entry unmapped, as a blocker on its component", () => {
 		const gaps = atGaps(withAt('["@", dash, "*"]'));
 		expect(gaps).toHaveLength(1);

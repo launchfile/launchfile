@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { applyAtRefusals, refusedAtDeclarations } from "../provider.js";
 
 /**
- * `at:` on a `provides` entry (D-next rule 5): a provider provisions every
+ * `at:` on a `provides` entry (D-68 rule 5): a provider provisions every
  * declared name or refuses the component before launch. This provider starts
  * processes on local ports and routes no host names, and a publication URL
  * states the app host's address, not which `at:` values an orchestrator
@@ -58,7 +58,7 @@ const captureStderr = (): string[] => {
 	return errors;
 };
 
-describe("refusedAtDeclarations (D-next rule 5)", () => {
+describe("refusedAtDeclarations (D-68 rule 5)", () => {
 	it("refuses a component whose `provides` entry declares `at:`", () => {
 		const refused = refusedAtDeclarations(mk(web('["@", dash, "*"]')));
 		expect([...refused.keys()]).toEqual(["default"]);

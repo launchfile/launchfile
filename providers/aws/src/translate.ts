@@ -450,7 +450,7 @@ export function translate(
 		}
 	}
 
-	// --- `at:` on a `provides` entry (D-next) ---
+	// --- `at:` on a `provides` entry (D-68) ---
 	// A provider provisions every declared name — routed with the requested
 	// `Host`, resolved in DNS, certified — or refuses the component (rule 5).
 	// This probe emits one ALB default action per listener and no DNS record,

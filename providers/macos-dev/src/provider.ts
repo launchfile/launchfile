@@ -439,7 +439,7 @@ export function applyResourceUseRefusals(
 
 /**
  * Components this provider must refuse because a `provides` entry declares
- * `at:` (D-next rule 5), mapped to the declaring entries. A provider
+ * `at:` (D-68 rule 5), mapped to the declaring entries. A provider
  * provisions every declared name — routed, resolved, certified — or refuses
  * the component; partial coverage and a silent no-op are both non-conformant.
  *
@@ -611,7 +611,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		process.exit(1);
 	}
 	// 2a-sexies. A `provides` entry declaring `at:` is refused the same way
-	// (D-next rule 5): this provider routes no host names, so it covers no
+	// (D-68 rule 5): this provider routes no host names, so it covers no
 	// declared value, with or without a publication URL. Graded here for the
 	// same selector and before-anything-happens reasons.
 	if (applyAtRefusals(launch) === "none-left") {

@@ -1,5 +1,5 @@
 /**
- * `at:` on a `provides` entry on `@launchfile/docker` (D-next rule 5): a
+ * `at:` on a `provides` entry on `@launchfile/docker` (D-68 rule 5): a
  * provider provisions every declared name or refuses the component before
  * launch. This provider publishes ports and routes no host names, and a
  * supplied publication URL states the app host's address, not which `at:`
@@ -38,7 +38,7 @@ provides:
     at: ${at}
 `;
 
-describe("provides: an entry declaring `at:` is refused (D-next rule 5)", () => {
+describe("provides: an entry declaring `at:` is refused (D-68 rule 5)", () => {
 	it("refuses the component: no service, no image", () => {
 		const { doc, images, warnings } = compose(app('["@", dash, "*"]'));
 		expect(doc.services.app).toBeUndefined();
@@ -193,7 +193,7 @@ env:
 	});
 });
 
-describe("`at:` changes no reference value (D-next rule 6)", () => {
+describe("`at:` changes no reference value (D-68 rule 6)", () => {
 	const twoEndpoints = (at: string) => `
 name: app
 image: acme/app:1
