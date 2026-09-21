@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { AT_APP_HOST, atDeclarations, atEntryLabel } from "../at.js";
 import { lintLaunch } from "../lint.js";
@@ -295,5 +298,54 @@ describe("atDeclarations", () => {
 
 	it("is empty for a Launchfile that declares no `at:`", () => {
 		expect(atDeclarations(validateLaunch(app(undefined)))).toEqual([]);
+	});
+});
+
+describe("the published JSON Schema and the SDK accept the same `at:` values", () => {
+	const schemaPath = resolve(
+		dirname(fileURLToPath(import.meta.url)),
+		"..",
+		"..",
+		"..",
+		"spec",
+		"schema",
+		"launchfile.schema.json",
+	);
+	const schemaText = readFileSync(schemaPath, "utf-8");
+	const atValue = JSON.parse(schemaText).$defs.atValue as {
+		pattern: string;
+		not: { pattern: string };
+	};
+	const schemaAccepts = (value: string) =>
+		new RegExp(atValue.pattern).test(value) &&
+		!new RegExp(atValue.not.pattern).test(value);
+
+	it.each([
+		"@",
+		"*",
+		"*.*",
+		"dash",
+		"a-b",
+		"a--b",
+		"1up",
+		"a".repeat(63),
+		"ab--cd",
+		"ab--",
+		"dash-",
+		"-dash",
+		"DASH",
+		"*.dash",
+		"*.*.*",
+		"admin.internal",
+		"a".repeat(64),
+		"",
+	])("agree on %j", (value) => {
+		expect(schemaAccepts(value)).toBe(
+			LaunchSchema.safeParse(app(value)).success,
+		);
+	});
+
+	it("uses no regex lookaround, which RE2-based validators cannot compile", () => {
+		expect(schemaText).not.toContain("(?");
 	});
 });
