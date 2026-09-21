@@ -103,6 +103,42 @@ health:
   },
 ]} />
 
+<h2 id="more-than-one-host-name">More than one host name</h2>
+
+<p>
+  Some apps serve different surfaces on different host names from one listener: a dashboard at <code>dash.</code>, an API at <code>api.</code>, or one name per tenant. The server reads the <code>Host</code> header and picks a surface. Launched on a single host, such an app starts, passes its health check, and cannot be used. <code>at:</code> tells the platform which names the listener answers at:
+</p>
+
+<pre><code>{`provides:
+  - name: https
+    protocol: https
+    port: 443
+    exposed: true
+    at: ["@", dash, api, "*", "*.*"]`}</code></pre>
+
+<p>
+  Every value is relative to the <GlossaryTip term="app host" definition="The host name the platform gives your app — the value of $app.host. Your Launchfile never names it; the platform decides it.">app host</GlossaryTip>, the value of <code>$app.host</code>. You never write the domain itself — the platform decides that.
+</p>
+
+<ul>
+  <li><strong><code>"@"</code></strong> — the app host itself.</li>
+  <li><strong>A label</strong>, such as <code>dash</code> — the name <code>dash.&lt;app host&gt;</code>. One lowercase DNS label, no dots.</li>
+  <li><strong><code>"*"</code></strong> — every name exactly one label below the app host. Use it when names are created while the app runs, such as one per tenant.</li>
+  <li><strong><code>"*.*"</code></strong> — every name exactly two labels below the app host.</li>
+</ul>
+
+<p>
+  For a single name, <code>at: dash</code> is shorthand for <code>at: [dash]</code>. Quote <code>"@"</code>, <code>"*"</code> and <code>"*.*"</code>: YAML reads them as syntax otherwise.
+</p>
+
+<p>
+  An entry that declares <code>at:</code> answers at the listed names and no others. Leave out <code>"@"</code> and your app does not answer at the app host, so the platform can put something else there. A value may appear once in the whole app, so every name reaches exactly one listener: an exact label wins over a pattern. <code>at:</code> is valid only on an <code>exposed: true</code> entry that speaks <code>http</code>, <code>https</code>, <code>ws</code> or <code>grpc</code>.
+</p>
+
+<Callout type="warning">
+  <code>at:</code> is a requirement, not a hint. A platform either sets up every name you list — routing, DNS, and a certificate where it terminates TLS — or refuses to launch the component and tells you which name it cannot cover. The reference providers publish ports and route no host names, so today they refuse a component that declares <code>at:</code>. Your app builds its own addresses from <code>$app.host</code>, <code>$app.scheme</code> and <code>$app.authority</code>; <code>at:</code> adds no new expression.
+</Callout>
+
 <h2 id="who-fills-the-volume">Who fills the volume?</h2>
 
 <p>
