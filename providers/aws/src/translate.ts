@@ -77,8 +77,11 @@ export interface TranslateOptions {
 	region?: string;
 	/**
 	 * What an earlier translation or apply already minted, read from the output
-	 * directory by `readPriorStack()`. Absent means a fresh stack: every
-	 * generator is minted for the first time and D-47 governs the output.
+	 * directory by `readPriorStack()`. Omitting it asserts a fresh stack: every
+	 * generator is minted for the first time and D-47 governs the output. A
+	 * caller writing into a directory an earlier stack already used must call
+	 * `readPriorStack(outDir)` first, as `cli.ts` does — without it a deployed
+	 * secret is re-minted and destroyed on the next apply (D-49).
 	 */
 	priorStack?: PriorStack;
 }

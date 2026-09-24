@@ -70,7 +70,7 @@ written into the generated HCL.
 
 | What it finds | What it does |
 |---|---|
-| nothing — a fresh stack | mints under D-47: `random_bytes`, 32 bytes as 64 hex characters |
+| nothing — a fresh stack | mints under D-47: `random_bytes`, 32 bytes as 64 hex characters. Point `--out` at the directory that holds the stack's `terraform.tfstate`, or the `main.tf` last written for it: an empty directory reads as a fresh stack even when a live stack exists elsewhere, and the secret is re-minted |
 | the same resource type | emits it unchanged |
 | a pre-D-47 `random_password` under a `generator: secret` | **preserves** it — keeps emitting `random_password`, so `plan` shows no diff and the deployed value survives. Reported as a gap in `CONFORMANCE.md`: the value is the old 32 alphanumeric characters, not the D-47 output |
 | any other type change over a minted value | **refuses** — prints the app, the scope, the variable and the re-key steps, writes nothing, exits 1 |
