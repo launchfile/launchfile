@@ -19,7 +19,15 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { readLaunch } from "@launchfile/sdk";
 import { describe, expect, it } from "vitest";
+import { parse } from "yaml";
 import { launchToCompose, resourcePropertyKeys } from "../compose-generator.js";
+
+function envOf(yaml: string, service: string): Record<string, string> {
+	const compose = parse(yaml) as {
+		services: Record<string, { environment?: Record<string, string> }>;
+	};
+	return compose.services[service]?.environment ?? {};
+}
 
 const REGISTRY_PATH = join(
 	import.meta.dirname,
@@ -134,7 +142,7 @@ describe("docker clickhouse", () => {
 		expect(keys.clickhouse).toContain("password");
 	});
 
-	it("resolves $user through set_env to the image's default user", () => {
+	it("resolves $user and $password to the default user and its generated password", () => {
 		const launch = readLaunch(`
 name: analytics
 image: app:1
@@ -147,8 +155,49 @@ requires:
 		const result = launchToCompose(launch);
 
 		expect(result.yaml).toContain("CLICKHOUSE_USER: default");
-		// Empty password is the image's shipped default, reported honestly.
-		expect(result.yaml).toContain('CLICKHOUSE_PASSWORD: ""');
+		expect(result.yaml).not.toContain('CLICKHOUSE_PASSWORD: ""');
+		const app = envOf(result.yaml, "analytics");
+		const server = envOf(result.yaml, "analytics-clickhouse");
+		expect(app.CLICKHOUSE_PASSWORD).toBeTruthy();
+		expect(app.CLICKHOUSE_PASSWORD).toBe(server.CLICKHOUSE_PASSWORD);
+		expect(server.CLICKHOUSE_USER).toBe("default");
+		expect(result.resourcePasswords.clickhouse).toBe(app.CLICKHOUSE_PASSWORD);
+	});
+
+	it("carries the credentials in $url, with the password URL-encoded", () => {
+		const launch = readLaunch(`
+name: analytics
+image: app:1
+requires:
+  - type: clickhouse
+    set_env:
+      CLICKHOUSE_DATABASE_URL: $url
+`);
+		const password = "p@ss/w:rd?#";
+		const result = launchToCompose(launch, {
+			resourcePasswords: { clickhouse: password },
+		});
+		const raw = envOf(result.yaml, "analytics").CLICKHOUSE_DATABASE_URL ?? "";
+		expect(raw).toMatch(/^http:\/\/default:[^@]+@/);
+		const url = new URL(raw);
+		expect(url.username).toBe("default");
+		expect(decodeURIComponent(url.password)).toBe(password);
+		expect(url.host).toBe("analytics-clickhouse:8123");
+	});
+
+	it("reuses a saved password instead of minting a new one", () => {
+		const launch = readLaunch(`
+name: analytics
+image: app:1
+requires:
+  - type: clickhouse
+`);
+		const result = launchToCompose(launch, {
+			resourcePasswords: { clickhouse: "saved-clickhouse-pw" },
+		});
+		expect(envOf(result.yaml, "analytics-clickhouse").CLICKHOUSE_PASSWORD).toBe(
+			"saved-clickhouse-pw",
+		);
 	});
 });
 
