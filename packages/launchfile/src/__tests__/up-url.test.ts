@@ -5,6 +5,10 @@
  *
  * Directories are injected temp paths — nothing touches the real
  * ~/.launchfile and nothing talks to docker.
+ *
+ * Every `handleUp` call passes `docker: true`. Without a provider flag,
+ * `detectProvider` spawns `docker info` (5 s timeout), which races Vitest's
+ * 5000 ms test timeout on a busy runner.
  */
 
 import { mkdtemp, writeFile } from "node:fs/promises";
@@ -59,7 +63,7 @@ describe("up --url reaches the docker provider (D-58)", () => {
 		const calls: DockerUpOpts[] = [];
 		await handleUp(
 			projectDir,
-			{ url: "https://notes.example.com/" },
+			{ docker: true, url: "https://notes.example.com/" },
 			{ up: fakeUp(calls), indexDir, recordDir },
 		);
 		expect(calls).toHaveLength(1);
@@ -69,16 +73,28 @@ describe("up --url reaches the docker provider (D-58)", () => {
 
 	it("passes no URL when --url is absent, so a recorded one is preserved (D-49)", async () => {
 		const calls: DockerUpOpts[] = [];
-		await handleUp(projectDir, {}, { up: fakeUp(calls), indexDir, recordDir });
+		await handleUp(
+			projectDir,
+			{ docker: true },
+			{ up: fakeUp(calls), indexDir, recordDir },
+		);
 		expect(calls[0]!.appUrl).toBeUndefined();
 	});
 
 	it("carries a second, different URL through so the provider can replace it", async () => {
 		const calls: DockerUpOpts[] = [];
 		const deps = { up: fakeUp(calls), indexDir, recordDir };
-		await handleUp(projectDir, { url: "https://notes.example.com" }, deps);
-		await handleUp(projectDir, {}, deps);
-		await handleUp(projectDir, { url: "https://wiki.example.com" }, deps);
+		await handleUp(
+			projectDir,
+			{ docker: true, url: "https://notes.example.com" },
+			deps,
+		);
+		await handleUp(projectDir, { docker: true }, deps);
+		await handleUp(
+			projectDir,
+			{ docker: true, url: "https://wiki.example.com" },
+			deps,
+		);
 		expect(calls.map((c) => c.appUrl)).toEqual([
 			"https://notes.example.com",
 			undefined,
@@ -116,7 +132,7 @@ describe("a refused publication URL reaches the operator (D-58 rule 3)", () => {
 	 * burying the one instruction the operator needs.
 	 */
 	async function expectRefusalPrinted(
-		flags: { native?: boolean; url: string },
+		flags: { docker?: boolean; native?: boolean; url: string },
 		err: Error,
 	): Promise<string> {
 		const exit = process.exit;
@@ -150,7 +166,7 @@ describe("a refused publication URL reaches the operator (D-58 rule 3)", () => {
 
 	it("prints the docker refusal with no stack", async () => {
 		const printed = await expectRefusalPrinted(
-			{ url: "notes.example.com" },
+			{ docker: true, url: "notes.example.com" },
 			new InvalidAppUrlError(
 				"notes.example.com",
 				"not a parseable absolute URL",
@@ -173,7 +189,7 @@ describe("a refused publication URL reaches the operator (D-58 rule 3)", () => {
 
 	it("never echoes userinfo from the refused value (D-18)", async () => {
 		const printed = await expectRefusalPrinted(
-			{ url: "https://admin:hunter2@notes.example.com" },
+			{ docker: true, url: "https://admin:hunter2@notes.example.com" },
 			new InvalidAppUrlError(
 				"https://admin:hunter2@notes.example.com",
 				"userinfo is not allowed",

@@ -6,6 +6,10 @@
  *
  * Directories are injected temp paths — nothing touches the real ~/.launchfile
  * and nothing talks to docker.
+ *
+ * Every `handleUp` call passes `docker: true`. Without a provider flag,
+ * `detectProvider` spawns `docker info` (5 s timeout), which races Vitest's
+ * 5000 ms test timeout on a busy runner.
  */
 
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
@@ -67,14 +71,14 @@ async function index(): Promise<DeploymentIndex> {
 describe("up --name reaches the docker provider", () => {
 	it("threads the label into the provider opts", async () => {
 		const calls: DockerUpOpts[] = [];
-		await handleUp(projectDir, { name: "a" }, { up: fakeUp(calls), indexDir, recordDir });
+		await handleUp(projectDir, { docker: true, name: "a" }, { up: fakeUp(calls), indexDir, recordDir });
 		expect(calls).toHaveLength(1);
 		expect(calls[0]!.name).toBe("a");
 	});
 
 	it("passes no label when --name is absent", async () => {
 		const calls: DockerUpOpts[] = [];
-		await handleUp(projectDir, {}, { up: fakeUp(calls), indexDir, recordDir });
+		await handleUp(projectDir, { docker: true }, { up: fakeUp(calls), indexDir, recordDir });
 		expect(calls[0]!.name).toBeUndefined();
 	});
 });
@@ -82,9 +86,9 @@ describe("up --name reaches the docker provider", () => {
 describe("the deployment index keys instances by (source, name) (D-55)", () => {
 	it("gives each label from one directory its own entry, plus the unnamed one", async () => {
 		const deps = { up: fakeUp([]), indexDir, recordDir };
-		await handleUp(projectDir, {}, deps);
-		await handleUp(projectDir, { name: "a" }, deps);
-		await handleUp(projectDir, { name: "b" }, deps);
+		await handleUp(projectDir, { docker: true }, deps);
+		await handleUp(projectDir, { docker: true, name: "a" }, deps);
+		await handleUp(projectDir, { docker: true, name: "b" }, deps);
 
 		const entries = Object.values((await index()).deployments);
 		expect(entries).toHaveLength(3);
@@ -95,17 +99,17 @@ describe("the deployment index keys instances by (source, name) (D-55)", () => {
 
 	it("re-ups the same (source, name) pair into the same entry", async () => {
 		const deps = { up: fakeUp([]), indexDir, recordDir };
-		await handleUp(projectDir, { name: "a" }, deps);
+		await handleUp(projectDir, { docker: true, name: "a" }, deps);
 		const first = Object.keys((await index()).deployments);
-		await handleUp(projectDir, { name: "a" }, deps);
+		await handleUp(projectDir, { docker: true, name: "a" }, deps);
 		const second = Object.keys((await index()).deployments);
 		expect(second).toEqual(first);
 	});
 
 	it("does not fold an unnamed up into an existing named instance", async () => {
 		const deps = { up: fakeUp([]), indexDir, recordDir };
-		await handleUp(projectDir, { name: "a" }, deps);
-		await handleUp(projectDir, {}, deps);
+		await handleUp(projectDir, { docker: true, name: "a" }, deps);
+		await handleUp(projectDir, { docker: true }, deps);
 
 		const idx = await index();
 		expect(Object.keys(idx.deployments)).toHaveLength(2);
