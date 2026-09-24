@@ -290,6 +290,9 @@ describe("runBootstraps — the returned command carries no live credential (D-1
 	const API_KEY = "sk-live-9f3c1d7a5b2e4086";
 	const LAUNCH = `name: acme
 version: "1.0"
+secrets:
+  api-key:
+    generator: secret
 components:
   api:
     image: acme/api:1
