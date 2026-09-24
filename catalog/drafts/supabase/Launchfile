@@ -3,6 +3,10 @@ version: launch/v1
 name: supabase
 description: "Open-source Firebase alternative (backend-as-a-service)"
 
+secrets:
+  postgres-password:
+    generator: secret
+
 # GAP: Real Supabase has 8+ tightly coupled services. This is simplified.
 # Missing: storage-api, imgproxy, edge-functions, analytics, vector, logflare.
 # Also, supabase bundles its own Postgres with extensions (pgvector, etc.)
@@ -16,7 +20,7 @@ components:
         port: 5432
     env:
       POSTGRES_PASSWORD:
-        generator: secret
+        default: "$secrets.postgres-password"
         sensitive: true
     storage:
       data:
@@ -78,7 +82,7 @@ components:
       DB_USER:
         default: "postgres"
       DB_PASSWORD:
-        generator: secret
+        default: "$secrets.postgres-password"
         required: true
         sensitive: true
       DB_NAME:
