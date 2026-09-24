@@ -1,7 +1,7 @@
 import { readLaunch } from "@launchfile/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-	declaredPrimaryComponent,
+	declaredPrimary,
 	httpsOriginSatisfied,
 	httpsOriginShortfall,
 	wireHttpsOrigins,
@@ -179,17 +179,28 @@ describe("wireHttpsOrigins — one registered property, `url` (D-60 rule 4)", ()
 	});
 });
 
-describe("declaredPrimaryComponent (D-60 rule 3)", () => {
+describe("declaredPrimary (D-60 rule 3, D-next)", () => {
 	it("names the component the entry sits on, fulfilled or not", () => {
-		expect(declaredPrimaryComponent(REQUIRED)).toBe("default");
+		expect(declaredPrimary(REQUIRED, "https://vw.example.com")).toEqual({
+			component: "default",
+			refused: false,
+		});
 		expect(
-			declaredPrimaryComponent(
+			declaredPrimary(
 				mk(`${WEB}supports:\n  - type: https-origin\n    endpoint: web\n`),
 			),
-		).toBe("default");
+		).toEqual({ component: "default", refused: false });
+	});
+
+	it("still names it when the required entry is refused, and says so", () => {
+		expect(declaredPrimary(REQUIRED)).toEqual({ component: "default", refused: true });
+		expect(declaredPrimary(REQUIRED, "http://vw.example.com")).toEqual({
+			component: "default",
+			refused: true,
+		});
 	});
 
 	it("is undefined when no entry is declared", () => {
-		expect(declaredPrimaryComponent(mk(WEB))).toBeUndefined();
+		expect(declaredPrimary(mk(WEB))).toBeUndefined();
 	});
 });

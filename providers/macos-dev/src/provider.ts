@@ -33,6 +33,7 @@ import {
 
 import { checkPrereqs } from "./prereqs.js";
 import {
+	declaredPrimary,
 	HTTPS_ORIGIN,
 	httpsOriginSatisfied,
 	httpsOriginShortfall,
@@ -540,6 +541,27 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 			Object.entries(launch.components).filter(([n]) => startSet.has(n)),
 		);
 	}
+	// State is loaded ahead of every refusal (loading writes nothing; the
+	// first write is `ensureDirs`): the https-origin refusal at 2a-bis reads
+	// the recorded publication context, and the declared primary below is
+	// read against it.
+	let state = await loadState(projectDir);
+	if (!state) {
+		state = initState(launch.name, launchfileContent);
+	}
+	// Publication context (D-58), the same preservation rule the docker provider
+	// applies: a supplied value replaces the recorded one — the derived $app.*
+	// env recomputes below from it (D-49) — while omission keeps what is
+	// recorded, so a later plain `up` cannot silently flip a proxied deployment
+	// back to localhost.
+	if (suppliedAppUrl !== undefined) state.appUrl = suppliedAppUrl;
+	// The primary an `https-origin` entry declares (D-60 rule 3), read now,
+	// while the start-set is whole: the refusals below remove a refused
+	// component from `launch.components`, and a primary read after that
+	// would fall back to a surviving sibling. Declaration fixes the primary;
+	// a refused one keeps its place and resolves the empty address at step
+	// 8 (D-next).
+	const primary = declaredPrimary(launch, state.appUrl);
 	// 2a. Host capabilities are granted or refused, never provisioned (D-44,
 	// PROVIDERS.md §11). This provider runs processes directly on the host and
 	// grants none of them, so a component with a required capability is
@@ -557,20 +579,8 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	// 2a-bis. A required `https-origin` (D-60 rule 5, PROVIDERS.md §10 item 5)
 	// is satisfied by the publication context when its scheme is https —
 	// supplied on this run, or recorded by an earlier one and preserved on
-	// omission, which is why state is loaded here rather than after the
-	// refusals (loading writes nothing; the first write is `ensureDirs`).
-	// Otherwise it is refused in the same way as a host capability: starting
-	// the component anyway is the silent success the type removes.
-	let state = await loadState(projectDir);
-	if (!state) {
-		state = initState(launch.name, launchfileContent);
-	}
-	// Publication context (D-58), the same preservation rule the docker provider
-	// applies: a supplied value replaces the recorded one — the derived $app.*
-	// env recomputes below from it (D-49) — while omission keeps what is
-	// recorded, so a later plain `up` cannot silently flip a proxied deployment
-	// back to localhost.
-	if (suppliedAppUrl !== undefined) state.appUrl = suppliedAppUrl;
+	// omission. Otherwise it is refused in the same way as a host capability:
+	// starting the component anyway is the silent success the type removes.
 	if (applyHttpsOriginRefusals(launch, state.appUrl) === "none-left") {
 		console.error(
 			"Every selected component requires a public HTTPS origin this provider cannot supply.",
@@ -784,7 +794,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		console.warn(`  Warning: --storage ${key} matches no \`content: operator\` volume — ignored`);
 	}
 
-	// 3. State: loaded at step 2a-bis, where the https-origin refusal reads it.
+	// 3. State: loaded ahead of step 2a, where the refusals read it.
 
 	// 4. Ensure directories
 	await ensureDirs(projectDir);
@@ -911,7 +921,9 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	// 8. Build resolver context (including $app.* properties from D-33). A
 	// satisfied `https-origin` registers `url` — the same string as `$app.url`
 	// (D-60 rule 4) — so its set_env resolves like any provisioned resource's.
-	const context = resolverContextFor(launch, resourceMap, state);
+	// `primary` is the declared primary as read before the refusals, so a
+	// refused one resolves the empty address rather than a sibling's (D-next).
+	const context = resolverContextFor(launch, resourceMap, state, primary);
 	// `$app.endpoints.<name>.*` resolves "" here (D-63 rule 4, #294). Said
 	// once per `up`, and only when the file asks, so the empty value is not a
 	// silent one (PROVIDERS.md §10 item 8).

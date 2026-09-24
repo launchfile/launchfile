@@ -217,6 +217,9 @@ env:
 });
 
 describe("`at:` changes no reference value (D-68 rule 6)", () => {
+	// The optional mood names the primary (D-60 rule 3) without refusing its
+	// component when no URL is supplied, so the provider's own publication —
+	// not a refused primary's empty address — is what the two fixtures compare.
 	const twoEndpoints = (at: string) => `
 name: app
 image: acme/app:1
@@ -230,7 +233,7 @@ ${at}
     protocol: http
     port: 9090
     exposed: true
-requires:
+supports:
   - type: https-origin
     endpoint: web
 `;
