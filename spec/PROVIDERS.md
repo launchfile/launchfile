@@ -224,7 +224,7 @@ local watcher ← emit ← diff() ← fs change ────┘
 - **Also:** health checks, secret generation, persistent storage, env writing.
 - **`env`:** prints a component's resolved environment (§7) — the read surface §8 generalizes.
 - **Storage:** resolves `$storage.<name>.path` to `.launchfile/storage/<component>/<name>` on the host (D-39).
-- **State:** `LaunchState` at `<projectDir>/.launchfile/state.json`, keyed by Launchfile **content hash**; holds `resources`, `secrets`, `ports`, `processes`, `prepared`.
+- **State:** `LaunchState` at `<projectDir>/.launchfile/state.json`, keyed by Launchfile **content hash**; holds `resources`, `secrets`, `ports`, `processes`, `generatedEnv`, `operatorStorage`, `appUrl`, `prepared`.
 - **Selection:** narrows `components` to the selected set's downward `depends_on` closure (`selectionClosure`) after the prereq gate, so every phase honors it.
 
 ### Mode coverage today
