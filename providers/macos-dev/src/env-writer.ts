@@ -89,7 +89,9 @@ export function computeAppProperties(
  * component that declares an `https-origin` entry (D-60 rule 3 — declaration
  * fixes the primary, fulfilled or not), else the first component in
  * declaration order that has an `exposed: true` provides entry and an
- * allocated port. `undefined` when the app publishes nothing. `up` records
+ * allocated port. `undefined` when the app publishes nothing, and when the
+ * declared component has no allocated port (the answer is always a
+ * `componentPorts` key or nothing). `up` records
  * the answer in state so `status`, which never reads the Launchfile, places
  * the supplied URL on the same component.
  */
@@ -102,7 +104,10 @@ export function primaryComponent(
 		// A declared `https-origin` names the primary explicitly, so the
 		// positional answer below does not run — the point of D-60 rule 3. The
 		// SDK requires the named endpoint to be `exposed: true` on this component.
-		return declared;
+		// Without an allocated port it is still the primary, so the search stays
+		// off — but it is not a `ports` key, and `primaryEndpoint` must name one
+		// or nothing, so answer `undefined` rather than a key `state.ports` lacks.
+		return componentPorts[declared] ? declared : undefined;
 	}
 	for (const [name, component] of Object.entries(launch.components)) {
 		// Only endpoints explicitly marked `exposed: true` are reachable from
