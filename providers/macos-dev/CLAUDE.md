@@ -22,7 +22,7 @@ Budgets applied when a command declares no `timeout:`:
 | prepare (`install` ?? `build`) | 10m     |
 | `release`                      | 2m      |
 | `bootstrap`                    | 2m      |
-| health gate (per component)    | 60s, only when the check declares no `retries:` |
+| health gate (per component)    | `retries × (interval + timeout)` when `retries:` is declared; otherwise 60s |
 
 An unparseable declared `timeout` is surfaced, never silently replaced: prepare/`release` fail the launch, `bootstrap` reports the failure to the invoker.
 
