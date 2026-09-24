@@ -4,10 +4,17 @@
  * checking health, collecting metrics, and tearing it down.
  *
  * Usage: bun run src/test-app.ts <app-name> [--keep] [--dry-run] [--url <public-url>]
+ *        [--wait-timeout <seconds>]
  *
  * `--url` is the harness's publication-context channel (D-58), the same input
  * the Docker provider takes as `ComposeOpts.appUrl`: it answers `$app.*`, and
  * an `https://` value is what satisfies an app's `https-origin` entry (D-60).
+ *
+ * `--wait-timeout` is the budget handed to `docker compose up --wait`, in
+ * seconds (default 120). An app whose `health.start_period` exceeds it can
+ * only ever record a timeout, so a run against such an app passes a budget at
+ * least as long as the declared start period. The transcript prints the budget
+ * used, so a recorded pass names the clock it was measured against.
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
@@ -20,10 +27,11 @@ import { launchToCompose } from "./launch-to-compose.ts";
 
 const args = process.argv.slice(2);
 
-// `--url` takes a value, in either spelling: `--url=<v>` or `--url <v>`. It is
-// pulled out before the flag/positional split so its value is never mistaken
-// for the app name.
+// `--url` and `--wait-timeout` take a value, in either spelling: `--flag=<v>`
+// or `--flag <v>`. They are pulled out before the flag/positional split so a
+// value is never mistaken for the app name.
 let appUrl: string | undefined;
+let waitTimeoutArg: string | undefined;
 const rest: string[] = [];
 for (let i = 0; i < args.length; i++) {
   const arg = args[i]!;
@@ -33,6 +41,14 @@ for (let i = 0; i < args.length; i++) {
   }
   if (arg === "--url") {
     appUrl = args[++i];
+    continue;
+  }
+  if (arg.startsWith("--wait-timeout=")) {
+    waitTimeoutArg = arg.slice("--wait-timeout=".length);
+    continue;
+  }
+  if (arg === "--wait-timeout") {
+    waitTimeoutArg = args[++i];
     continue;
   }
   rest.push(arg);
@@ -47,12 +63,22 @@ const dryRun = flags.has("--dry-run");
 
 if (!appName) {
   console.error(
-    "Usage: bun run src/test-app.ts <app-name> [--keep] [--dry-run] [--url <public-url>]",
+    "Usage: bun run src/test-app.ts <app-name> [--keep] [--dry-run] [--url <public-url>] [--wait-timeout <seconds>]",
   );
   process.exit(1);
 }
 if (appUrl !== undefined && appUrl.length === 0) {
   console.error("--url needs a value, e.g. --url https://app.example.test");
+  process.exit(1);
+}
+
+const DEFAULT_WAIT_TIMEOUT_SECONDS = 120;
+const waitTimeoutSeconds =
+  waitTimeoutArg === undefined ? DEFAULT_WAIT_TIMEOUT_SECONDS : Number(waitTimeoutArg);
+if (!Number.isInteger(waitTimeoutSeconds) || waitTimeoutSeconds <= 0) {
+  console.error(
+    `--wait-timeout needs a positive whole number of seconds, got ${JSON.stringify(waitTimeoutArg ?? "")}`,
+  );
   process.exit(1);
 }
 
@@ -74,6 +100,7 @@ if (!appDir) {
 const launchfilePath = resolve(appDir, "Launchfile");
 console.log(`\n=== Testing: ${appName} ===`);
 console.log(`Launchfile: ${launchfilePath}`);
+console.log(`Wait budget: ${waitTimeoutSeconds}s (docker compose up --wait --wait-timeout)`);
 
 // --- Parse and translate ---
 
@@ -279,11 +306,14 @@ console.log(`Total image disk: ${totalDiskMb} MB`);
 
 // --- Launch ---
 
-console.log("\nStarting containers...");
+console.log(`\nStarting containers (wait budget ${waitTimeoutSeconds}s)...`);
 const upStart = performance.now();
-const upResult = await run(["docker", "compose", "up", "-d", "--wait", "--wait-timeout", "120"], {
-  timeout: 180_000,
-});
+// The process timeout sits a minute past the compose budget: compose owns the
+// health wait, and the kill here only catches a hung `docker` binary.
+const upResult = await run(
+  ["docker", "compose", "up", "-d", "--wait", "--wait-timeout", String(waitTimeoutSeconds)],
+  { timeout: (waitTimeoutSeconds + 60) * 1000 },
+);
 const startupTimeSeconds = Math.round((performance.now() - upStart) / 1000);
 
 let healthPassed = false;
