@@ -1,15 +1,15 @@
 category: Notifications
-tagline: "Simple HTTP-based pub-sub push notification service"
+tagline: Simple HTTP-based pub-sub push notification service
 homepage: https://ntfy.sh
 test_results:
-  last_tested: 2026-04-08
-  pull_time_seconds: 7
-  startup_time_seconds: 105
-  total_disk_mb: 76
+  last_tested: 2026-09-24
+  pull_time_seconds: 2
+  startup_time_seconds: 7
+  total_disk_mb: 110
   health_check_passed: true
   notes: ""
 images:
   - name: binwiederhier/ntfy:latest
-    size_mb: 76
+    size_mb: 110
     platform:
       - linux/arm64
