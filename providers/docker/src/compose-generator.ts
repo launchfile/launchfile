@@ -26,6 +26,7 @@ import {
 	type ResolverContext,
 	resolveExpression,
 	type StorageBind,
+	suppliedAppAddress,
 	type UnboundOperatorVolume,
 	unsuppliedRequiredEnv,
 	useKeys,
@@ -46,6 +47,7 @@ import { stringify } from "yaml";
 import {
 	computeAppContext,
 	HTTPS_ORIGIN,
+	httpsOriginSatisfied,
 	publishedEndpointAddresses,
 } from "./app-url.js";
 import {
@@ -1182,13 +1184,15 @@ export function launchToCompose(
 	const resourceMap: Record<string, Record<string, string | number>> = {};
 	const componentMap: Record<string, Record<string, string | number>> = {};
 
-	// Compute $app.* properties (D-33) from the first component (in declaration
-	// order) that has at least one `exposed: true` provides entry. The "primary"
-	// component's host port is the app's externally-reachable port; the public
-	// URL is http://localhost:<hostPort> — unless the orchestrator supplied the
-	// publication context (`opts.appUrl`, #290), which answers instead. For
-	// multi-exposed-component apps that need a specific component's URL, use
-	// $components.<name>.url instead.
+	// Compute $app.* properties (D-33) from the app's primary endpoint: the
+	// one an `https-origin` entry names (D-60 rule 3), else the first
+	// `exposed: true` entry in declaration order. The primary's host port is
+	// the app's externally-reachable port; the public URL is
+	// http://localhost:<hostPort> — unless the orchestrator supplied the
+	// publication context (`opts.appUrl`, #290), which answers instead. A
+	// named primary whose component is refused below keeps its place and
+	// resolves the empty address (D-next). For multi-exposed-component apps
+	// that need a specific component's URL, use $components.<name>.url.
 	// Certificate bindings (D-61). Decided before anything is generated,
 	// because `$app.*` is: the app's public URL is derived below and has to
 	// know whether the primary endpoint's listener speaks https.
@@ -1230,8 +1234,7 @@ export function launchToCompose(
 	// exists or is ready. A built-in Caddy/Traefik/tunnel provisioner would be
 	// the provision branch; it is future work, and refusing is conformant
 	// until it exists (PROVIDERS.md §10 item 5).
-	const httpsOriginSatisfied =
-		opts.appUrl !== undefined && appProperties.scheme === "https";
+	const originSatisfied = httpsOriginSatisfied(opts.appUrl);
 	const httpsOriginProperties = { url: String(appProperties.url) };
 
 	const resolverContext: ResolverContext = {
@@ -1333,14 +1336,16 @@ export function launchToCompose(
 		// to remove: the container starts, the healthcheck passes, and the app is
 		// unusable through its own web client.
 		const refusedOrigins: string[] = [];
-		if (!httpsOriginSatisfied) {
+		if (!originSatisfied) {
 			for (const req of component.requires ?? []) {
 				if (req.type !== HTTPS_ORIGIN) continue;
 				const entry = `${req.name ?? req.type} (endpoint "${req.endpoint ?? "?"}")`;
+				// The scheme is read off the supplied URL itself: `$app.scheme`
+				// is `""` once this refusal empties the primary's address.
 				refusedOrigins.push(
 					opts.appUrl === undefined
 						? `${entry}: no publication URL was supplied, and this provider has no edge of its own`
-						: `${entry}: the supplied publication URL's scheme is "${String(appProperties.scheme)}", not https`,
+						: `${entry}: the supplied publication URL's scheme is "${suppliedAppAddress(opts.appUrl).scheme}", not https`,
 				);
 			}
 		}
@@ -1721,13 +1726,13 @@ export function launchToCompose(
 				// The optional mood (D-60 rule 6): satisfied, it wires like any
 				// other resource; unsatisfied, the component still deploys, its
 				// set_env is absent, and the un-granted dependency is noted.
-				if (httpsOriginSatisfied) {
+				if (originSatisfied) {
 					applySuppliedResource(sup, resourceName, httpsOriginProperties);
 				} else {
 					warnings.push(
 						`${componentName}: optional public HTTPS origin ${resourceName} (endpoint ` +
 							`"${sup.endpoint ?? "?"}") is not satisfied — this provider has no edge of its own and ` +
-							`${opts.appUrl === undefined ? "no publication URL was supplied" : `the supplied publication URL's scheme is "${String(appProperties.scheme)}", not https`}; ` +
+							`${opts.appUrl === undefined ? "no publication URL was supplied" : `the supplied publication URL's scheme is "${suppliedAppAddress(opts.appUrl).scheme}", not https`}; ` +
 							"its set_env bindings are omitted and the app runs degraded",
 					);
 				}

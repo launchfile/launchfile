@@ -12,9 +12,11 @@
  */
 
 import {
+	type AppEndpointProperties,
 	type NormalizedLaunch,
 	type NormalizedRequirement,
 	suppliedAppAddress,
+	UNPUBLISHED_APP_ENDPOINT,
 } from "@launchfile/sdk";
 import type { ResourceProperties } from "./resources/types.js";
 
@@ -47,23 +49,55 @@ export function httpsOriginShortfall(
 }
 
 /**
- * The component an `https-origin` entry sits on, when the file declares one
+ * The `$app.*` address of a primary whose component is refused (D-next):
+ * every field `""` — the answer D-63 rule 4 gives an endpoint the provider
+ * publishes no address for — with `tls` reading `false`, as D-63 rule 3 has
+ * a listener with no origin read it, so a literal on/off flag
+ * (`USE_SSL: $app.tls`) still receives a boolean. The same object
+ * `@launchfile/docker` resolves (P-5).
+ */
+export const REFUSED_PRIMARY_ADDRESS: Readonly<AppEndpointProperties> =
+	Object.freeze({ ...UNPUBLISHED_APP_ENDPOINT, tls: "false" });
+
+/** The primary an `https-origin` entry declares (D-60 rule 3). */
+export interface DeclaredPrimary {
+	/** The component the entry sits on — the one that owns the named endpoint. */
+	component: string;
+	/**
+	 * The entry is `requires:` and the publication context does not satisfy
+	 * it, so `up` refuses the component (D-60 rule 5). It stays the primary; it
+	 * has no address (D-next).
+	 */
+	refused: boolean;
+}
+
+/**
+ * The primary an `https-origin` entry declares, when the file declares one
  * (D-60 rule 3), else `undefined`. **Declaration** fixes the primary, not
  * fulfillment: a `supports:` entry this provider leaves unsatisfied still
- * names it, so `$app.*` does not change value with the provider's capability.
- * The SDK caps the app at one such entry and requires it to sit on the
- * component that owns the named endpoint, so the first match is the only one.
+ * names it, and so does a `requires:` entry whose component this provider
+ * refuses — `refused` says which, and `computeAppProperties` then resolves
+ * the empty address rather than a surviving sibling's (D-next). Either way
+ * `$app.*` does not move with the provider's capability. The SDK caps the app
+ * at one such entry and requires it to sit on the component that owns the
+ * named endpoint, so the first match is the only one.
+ *
+ * `up` reads this before its refusals remove anything from
+ * `launch.components`; `env` and `bootstrap` read the file whole. `appUrl` is
+ * the effective publication context — supplied or recorded — normalized.
  */
-export function declaredPrimaryComponent(
+export function declaredPrimary(
 	launch: NormalizedLaunch,
-): string | undefined {
+	appUrl?: string,
+): DeclaredPrimary | undefined {
 	for (const [name, component] of Object.entries(launch.components)) {
-		for (const entry of [
-			...(component.requires ?? []),
-			...(component.supports ?? []),
-		]) {
+		for (const entry of component.requires ?? []) {
 			if (entry.type === HTTPS_ORIGIN && entry.endpoint !== undefined)
-				return name;
+				return { component: name, refused: !httpsOriginSatisfied(appUrl) };
+		}
+		for (const entry of component.supports ?? []) {
+			if (entry.type === HTTPS_ORIGIN && entry.endpoint !== undefined)
+				return { component: name, refused: false };
 		}
 	}
 	return undefined;

@@ -312,6 +312,45 @@ components:
       start: "node worker.js"
 `;
 
+/**
+ * The D-next trigger shape: the declaring component is refused, and a sibling
+ * with its own `exposed: true` HTTP endpoint survives — the one a primary read
+ * after the refusal would fall back to.
+ */
+const ORIGIN_REQUIRED_SIBLING = `version: launch/v1
+name: origintest
+components:
+  web:
+    runtime: node
+    provides:
+      - name: ui
+        protocol: http
+        port: 3000
+        exposed: true
+    requires:
+      - type: https-origin
+        endpoint: ui
+    commands:
+      start: "node web.js"
+  admin:
+    runtime: node
+    provides:
+      - name: panel
+        protocol: http
+        port: 4000
+        exposed: true
+    env:
+      PUBLIC_URL:
+        default: $app.url
+      USE_TLS:
+        default: $app.tls
+      APP_NAME:
+        default: $app.name
+    commands:
+      start: "node admin.js"
+      bootstrap: "echo $app.url"
+`;
+
 const ORIGIN_OPTIONAL = `version: launch/v1
 name: origintest
 runtime: node
@@ -418,6 +457,35 @@ describe("launchUp https-origin through the publication context (D-60 rule 5)", 
 		await launchEnv({ projectDir, component: "web" });
 
 		expect(consoleLogs.join("\n")).toContain("DOMAIN=https://vw.example.com");
+	});
+
+	it("keeps a refused primary in place: the surviving sibling reads $app.url as \"\", never its own port (D-next)", async () => {
+		writeFileSync(join(projectDir, "Launchfile"), ORIGIN_REQUIRED_SIBLING);
+		await launchUp({ projectDir });
+
+		expect(registered("web")).toBeUndefined();
+		const admin = registered("admin");
+		expect(admin).toBeDefined();
+		expect(admin?.PUBLIC_URL).toBe("");
+		expect(admin?.USE_TLS).toBe("false");
+		expect(admin?.APP_NAME).toBe("origintest");
+		expect(consoleErrors.join("\n")).toContain(
+			"Refused: web requires a public HTTPS origin this provider cannot supply",
+		);
+
+		// `env` and `bootstrap` read the file whole and answer the same.
+		consoleLogs.length = 0;
+		await launchEnv({ projectDir, component: "admin" });
+		expect(consoleLogs.join("\n")).toMatch(/^PUBLIC_URL=$/m);
+		const commands: string[] = [];
+		await launchBootstrap({
+			projectDir,
+			exec: async (_cmd: string, args: string[]) => {
+				commands.push(args.at(-1) ?? "");
+				return { exitCode: 0, stdout: "", stderr: "" };
+			},
+		});
+		expect(commands).toEqual(["echo "]);
 	});
 
 	it("wires a satisfied `supports:` entry and leaves an unsatisfied one absent with a note", async () => {

@@ -198,6 +198,53 @@ components:
 		expect(app.url).toBe("http://localhost:10044");
 	});
 
+	// D-next: a refused primary keeps its place. The refusal is an execution
+	// outcome and the declaration is intent (P-11), so `$app.*` resolves the
+	// empty address rather than moving to the surviving sibling — and the
+	// docker provider must agree (P-5).
+	it("resolves the empty address for a declared primary whose component is refused — never a sibling's (D-next)", () => {
+		const launch = readLaunch(`version: launch/v1
+name: my-app
+components:
+  admin:
+    provides:
+      - name: panel
+        protocol: http
+        port: 4000
+        exposed: true
+    commands:
+      start: run-admin
+  web:
+    provides:
+      - name: ui
+        protocol: http
+        port: 5000
+        exposed: true
+    requires:
+      - type: https-origin
+        endpoint: ui
+    commands:
+      start: run-web
+`);
+		const ports = { admin: 10043, web: 10044 };
+		const empty = {
+			name: "my-app",
+			url: "",
+			host: "",
+			port: "",
+			scheme: "",
+			authority: "",
+			tls: "false",
+		};
+		expect(computeAppProperties(launch, ports)).toEqual(empty);
+		// The supplied value that failed to satisfy the entry is not the answer either.
+		expect(computeAppProperties(launch, ports, "http://app.example.com")).toEqual(empty);
+		// Satisfied, the supplied URL answers as it always did (D-58).
+		expect(computeAppProperties(launch, ports, "https://app.example.com").url).toBe(
+			"https://app.example.com",
+		);
+	});
+
 	// D-27: `exposed` defaults to false, so an entry that merely omits it is
 	// internal and cannot be the app's public address. The supabase shape —
 	// an internal Postgres declared before the public gateway — is the case
