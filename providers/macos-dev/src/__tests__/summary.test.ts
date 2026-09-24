@@ -124,6 +124,17 @@ components:
 		expect(primaryComponent(readLaunch(DECLARED), { web: 3000, bridge: 3001 })).toBe("bridge");
 	});
 
+	it("is undefined when the declared https-origin component has no allocated port", () => {
+		const launch = readLaunch(DECLARED);
+		const p: Record<string, number> = { web: 3000 };
+		// The declaration still fixes the primary (D-60 rule 3): no fallthrough to `web`.
+		expect(primaryComponent(launch, p)).toBeUndefined();
+		expect(computeAppProperties(launch, p)).toMatchObject({ port: 0, url: "" });
+		// `status` output with nothing recorded as primary: localhost on every key.
+		const publication = { appUrl: "https://notes.example.com", primaryEndpoint: primaryComponent(launch, p) };
+		expect(statusLines(p, publication)).toEqual(["  web: http://localhost:3000"]);
+	});
+
 	it("is undefined when nothing is published", () => {
 		expect(primaryComponent(readLaunch(TWO), { api: 4000 })).toBeUndefined();
 	});
