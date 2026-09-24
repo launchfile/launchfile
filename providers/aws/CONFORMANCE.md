@@ -4,9 +4,9 @@
 
 ## Summary
 
-- **85** Launchfile(s) translated
-- **166** field mappings
-- **97** gaps logged (never silently dropped)
+- **86** Launchfile(s) translated
+- **169** field mappings
+- **98** gaps logged (never silently dropped)
 - **8** specializations safely ignored
 
 ### Distinct gaps
@@ -1112,6 +1112,20 @@
 | Launchfile field | → Terraform | Component |
 |---|---|---|
 | `requires:postgres` | `aws_db_instance` | — |
+| `provides.exposed` | `aws_lb (ALB)` | — |
+
+**Gaps**
+
+- 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+
+### board
+
+> Source: `spec/examples/resource-uses.yaml` — 3 mapped, 1 gap(s), 0 ignored
+
+| Launchfile field | → Terraform | Component |
+|---|---|---|
+| `requires:postgres` | `aws_db_instance` | — |
+| `requires:redis` | `aws_elasticache_cluster` | — |
 | `provides.exposed` | `aws_lb (ALB)` | — |
 
 **Gaps**
