@@ -506,7 +506,7 @@ export interface SourcePrepareContext {
 	labelComponents?: boolean;
 	/** Runs one command. Injected so tests can observe without a real shell. */
 	run?: (command: string, opts: { cwd: string; env?: Record<string, string>; timeout?: number }) => Promise<unknown>;
-	/** Persists state after each successful prepare. */
+	/** Persists state whenever a component's `state.prepared` record changes. */
 	save?: (projectDir: string, state: LaunchState) => Promise<void>;
 }
 
@@ -534,7 +534,8 @@ export async function runSourcePrepare(
 ): Promise<void> {
 	const run = ctx.run ?? shellScript;
 	const save = ctx.save ?? saveState;
-	const prepared = (ctx.state.prepared ??= {});
+	ctx.state.prepared ??= {};
+	const prepared = ctx.state.prepared;
 	const ranThisUp = new Set<string>();
 
 	for (const [name, component] of Object.entries(launch.components)) {
@@ -550,7 +551,13 @@ export async function runSourcePrepare(
 		const fingerprint = await prepareFingerprint(cwd, command);
 
 		if (prepared[name] === fingerprint || ranThisUp.has(sharedKey)) {
-			prepared[name] = fingerprint;
+			// A component sharing this prepare is covered by an up-to-date record
+			// as much as by a run this `up`.
+			ranThisUp.add(sharedKey);
+			if (prepared[name] !== fingerprint) {
+				prepared[name] = fingerprint;
+				await save(ctx.projectDir, ctx.state);
+			}
 			console.log(`  \u2713 Prepare up to date${label} (no dependency change)`);
 			continue;
 		}

@@ -291,6 +291,101 @@ components:
 		expect(Object.keys(saved[0]!.prepared ?? {})).toEqual(["web"]);
 	});
 
+	it("persists a shared-prepare skip so a later failure in the same launch keeps it", async () => {
+		await mkdir(join(dir, "api"), { recursive: true });
+		const sharedThenFailing = `name: demo
+components:
+  web:
+    commands:
+      install: bun install
+      dev: bun run dev
+  worker:
+    commands:
+      install: bun install
+      dev: bun run worker
+  api:
+    source: api
+    commands:
+      install: cargo build
+      dev: bun run api
+`;
+		let onDisk: LaunchState | undefined;
+		const failApi: SourcePrepareContext["run"] = async (command) => {
+			if (command === "cargo build") throw new Error("boom");
+			return undefined;
+		};
+		await expect(
+			runSourcePrepare(readLaunch(sharedThenFailing), {
+				projectDir: dir,
+				state,
+				envs: {},
+				run: failApi,
+				save: async (_dir, s) => {
+					onDisk = structuredClone(s);
+				},
+			}),
+		).rejects.toThrow("boom");
+		expect(Object.keys(onDisk?.prepared ?? {}).sort()).toEqual([
+			"web",
+			"worker",
+		]);
+		if (!onDisk) throw new Error("expected state to be saved");
+
+		const retry = recorder();
+		await runSourcePrepare(readLaunch(sharedThenFailing), {
+			projectDir: dir,
+			state: onDisk,
+			envs: {},
+			run: retry.run,
+			save: async () => {},
+		});
+		expect(retry.commands).toEqual(["cargo build"]);
+	});
+
+	it("treats a sibling's up-to-date record as covering a shared prepare", async () => {
+		const shared = `name: demo
+components:
+  web:
+    commands:
+      install: bun install
+      dev: bun run dev
+  worker:
+    commands:
+      install: bun install
+      dev: bun run worker
+`;
+		state.prepared = { web: await prepareFingerprint(dir, "bun install") };
+		const saves: LaunchState[] = [];
+		const rec = recorder();
+		await runSourcePrepare(readLaunch(shared), {
+			projectDir: dir,
+			state,
+			envs: {},
+			run: rec.run,
+			save: async (_dir, s) => {
+				saves.push(structuredClone(s));
+			},
+		});
+		expect(rec.commands).toEqual([]);
+		expect(saves).toHaveLength(1);
+		expect(saves[0]?.prepared?.worker).toBe(state.prepared.web);
+	});
+
+	it("does not write state when every record is already current", async () => {
+		await prepare(SINGLE, recorder());
+		let saves = 0;
+		await runSourcePrepare(readLaunch(SINGLE), {
+			projectDir: dir,
+			state,
+			envs: {},
+			run: recorder().run,
+			save: async () => {
+				saves++;
+			},
+		});
+		expect(saves).toBe(0);
+	});
+
 	it("passes the component's resolved env to the command", async () => {
 		const seen: (Record<string, string> | undefined)[] = [];
 		const run: SourcePrepareContext["run"] = async (_command, opts) => {
