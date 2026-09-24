@@ -144,12 +144,16 @@ describe("dockerUp --dry-run appUrl (#290)", () => {
 	it("prints the recorded URL on a later run that omits the option (#386)", async () => {
 		await seedState("https://notes.example.com");
 		await dockerUp(projectDir, { dryRun: true });
-		expect(output.join("\n")).toContain("  web is running at https://notes.example.com");
+		expect(output.join("\n")).toContain(
+			"  web is running at https://notes.example.com",
+		);
 	});
 
 	it("prints localhost in the up summary when no URL is recorded or supplied", async () => {
 		await dockerUp(projectDir, { dryRun: true });
-		expect(output.join("\n")).toMatch(/  web is running at http:\/\/localhost:\d+/);
+		expect(output.join("\n")).toMatch(
+			/ {2}web is running at http:\/\/localhost:\d+/,
+		);
 	});
 
 	it("refuses a malformed appUrl before anything exists — never a localhost fallback", async () => {

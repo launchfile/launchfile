@@ -12,29 +12,41 @@ import { computeAppProperties, primaryComponent } from "../env-writer.js";
 import { componentAddress, statusLines, summaryLines } from "../provider.js";
 
 const ports = { web: 31245, api: 31246 };
-const publication = { appUrl: "https://notes.example.com", primaryEndpoint: "web" };
+const publication = {
+	appUrl: "https://notes.example.com",
+	primaryEndpoint: "web",
+};
 
 describe("componentAddress", () => {
 	it("prints the supplied URL for the primary component, as stored", () => {
-		expect(componentAddress("web", 31245, publication)).toBe("https://notes.example.com");
+		expect(componentAddress("web", 31245, publication)).toBe(
+			"https://notes.example.com",
+		);
 		// A non-root path survives verbatim (D-58 rule 2) — nothing re-normalizes here.
 		expect(
-			componentAddress("web", 31245, { appUrl: "https://notes.example.com/app", primaryEndpoint: "web" }),
+			componentAddress("web", 31245, {
+				appUrl: "https://notes.example.com/app",
+				primaryEndpoint: "web",
+			}),
 		).toBe("https://notes.example.com/app");
 	});
 
 	it("prints localhost for every other component (D-58 rule 4)", () => {
-		expect(componentAddress("api", 31246, publication)).toBe("http://localhost:31246");
+		expect(componentAddress("api", 31246, publication)).toBe(
+			"http://localhost:31246",
+		);
 	});
 
 	it("prints localhost with no URL, with a URL but no recorded primary, and with no state", () => {
 		expect(componentAddress("web", 31245)).toBe("http://localhost:31245");
 		expect(componentAddress("web", 31245, {})).toBe("http://localhost:31245");
-		expect(componentAddress("web", 31245, { primaryEndpoint: "web" })).toBe("http://localhost:31245");
-		// A state file from before the primary key was recorded: URL set, key unknown.
-		expect(componentAddress("web", 31245, { appUrl: "https://notes.example.com" })).toBe(
+		expect(componentAddress("web", 31245, { primaryEndpoint: "web" })).toBe(
 			"http://localhost:31245",
 		);
+		// A state file from before the primary key was recorded: URL set, key unknown.
+		expect(
+			componentAddress("web", 31245, { appUrl: "https://notes.example.com" }),
+		).toBe("http://localhost:31245");
 	});
 });
 
@@ -56,10 +68,16 @@ describe("summaryLines", () => {
 	});
 
 	it("labels the default component with the app name", () => {
-		expect(summaryLines("notes", { default: 31245 }, { ...publication, primaryEndpoint: "default" })).toEqual([
-			"  notes is running at https://notes.example.com",
+		expect(
+			summaryLines(
+				"notes",
+				{ default: 31245 },
+				{ ...publication, primaryEndpoint: "default" },
+			),
+		).toEqual(["  notes is running at https://notes.example.com"]);
+		expect(summaryLines("notes", { default: 31245 })).toEqual([
+			"  notes is running at http://localhost:31245",
 		]);
-		expect(summaryLines("notes", { default: 31245 })).toEqual(["  notes is running at http://localhost:31245"]);
 	});
 });
 
@@ -72,7 +90,10 @@ describe("statusLines", () => {
 	});
 
 	it("is byte-identical to today without a URL", () => {
-		expect(statusLines(ports)).toEqual(["  web: http://localhost:31245", "  api: http://localhost:31246"]);
+		expect(statusLines(ports)).toEqual([
+			"  web: http://localhost:31245",
+			"  api: http://localhost:31246",
+		]);
 		expect(statusLines(ports, {})).toEqual(statusLines(ports));
 	});
 });
@@ -117,11 +138,15 @@ components:
 `;
 
 	it("is the first component with an exposed endpoint and a port", () => {
-		expect(primaryComponent(readLaunch(TWO), { api: 4000, web: 3000 })).toBe("web");
+		expect(primaryComponent(readLaunch(TWO), { api: 4000, web: 3000 })).toBe(
+			"web",
+		);
 	});
 
 	it("is the component a declared https-origin names (D-60 rule 3)", () => {
-		expect(primaryComponent(readLaunch(DECLARED), { web: 3000, bridge: 3001 })).toBe("bridge");
+		expect(
+			primaryComponent(readLaunch(DECLARED), { web: 3000, bridge: 3001 }),
+		).toBe("bridge");
 	});
 
 	it("is undefined when the declared https-origin component has no allocated port", () => {
@@ -131,8 +156,13 @@ components:
 		expect(primaryComponent(launch, p)).toBeUndefined();
 		expect(computeAppProperties(launch, p)).toMatchObject({ port: 0, url: "" });
 		// `status` output with nothing recorded as primary: localhost on every key.
-		const publication = { appUrl: "https://notes.example.com", primaryEndpoint: primaryComponent(launch, p) };
-		expect(statusLines(p, publication)).toEqual(["  web: http://localhost:3000"]);
+		const publication = {
+			appUrl: "https://notes.example.com",
+			primaryEndpoint: primaryComponent(launch, p),
+		};
+		expect(statusLines(p, publication)).toEqual([
+			"  web: http://localhost:3000",
+		]);
 	});
 
 	it("is undefined when nothing is published", () => {
@@ -142,6 +172,9 @@ components:
 	it("is the component whose port $app.url reads", () => {
 		const launch = readLaunch(TWO);
 		const p: Record<string, number> = { api: 4000, web: 3000 };
-		expect(computeAppProperties(launch, p).url).toBe(`http://localhost:${p[primaryComponent(launch, p)!]}`);
+		const primary = primaryComponent(launch, p) ?? "";
+		expect(computeAppProperties(launch, p).url).toBe(
+			`http://localhost:${p[primary]}`,
+		);
 	});
 });
