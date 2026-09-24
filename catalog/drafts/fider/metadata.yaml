@@ -7,7 +7,17 @@ test_results:
   startup_time_seconds: 107
   total_disk_mb: 433
   health_check_passed: false
-  notes: "Migration errors: column 'created_at' of relation 'logs' does not exist. Likely upstream app bug or schema incompatibility with postgres 16."
+  notes: >-
+    Upstream fider defect, not a Postgres version issue: fider's SQL logger inserts
+    into logs(created_at) while its own migrations name the column created_on until
+    migration 201809262108_rename_datetime_fields renames it, so Postgres logs
+    'column "created_at" of relation "logs" does not exist' during the first boot's
+    migrations. In 2026-09-24 runs the errors stopped within a second, all 95
+    migrations applied and fider served GET /_health with 200. The health check
+    still fails: the Launchfile probes /api/health (404 on fider), and the image
+    ships neither wget nor curl for the harness probe. As committed, the harness
+    stops before any pull: BASE_URL, EMAIL_NOREPLY and EMAIL_SMTP_HOST are
+    required with no value source (#231).
 images:
   - name: getfider/fider:stable
     size_mb: 174
