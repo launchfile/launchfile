@@ -9,7 +9,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createWriteStream, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { NormalizedHealth, NormalizedDependsOnEntry } from "@launchfile/sdk";
-import { describeHealthCheck, healthCheckNeedsPort, waitForHealthy } from "./health.js";
+import { describeHealthCheck, healthBudgetMs, healthCheckNeedsPort, waitForHealthy } from "./health.js";
 import { redactSecrets } from "./redact.js";
 
 /**
@@ -32,16 +32,22 @@ export class HealthGateError extends Error {
 	}
 }
 
+/** One component the health gate gave up on: the probe asked and the window it got. */
+export interface StuckComponent {
+	name: string;
+	check: string;
+	budgetMs: number;
+}
+
 /**
  * What a health-gate failure says. Every stuck component is named with the
- * probe that was asked of it, so "did not become healthy" is actionable.
+ * probe that was asked of it and the budget it actually got — budgets differ
+ * per component once a file declares `retries` — so "did not become healthy"
+ * is actionable.
  */
-export function healthFailureMessage(
-	stuck: ReadonlyArray<{ name: string; check: string }>,
-	budgetMs: number,
-): string {
-	const named = stuck.map((s) => `${s.name} (${s.check})`).join(", ");
-	return `component(s) ${named} did not become healthy within ${budgetMs / 1000}s`;
+export function healthFailureMessage(stuck: ReadonlyArray<StuckComponent>): string {
+	const named = stuck.map((s) => `${s.name} (${s.check}) within ${s.budgetMs / 1000}s`).join(", ");
+	return `component(s) did not become healthy: ${named}`;
 }
 
 // ANSI colors for log prefixing
@@ -156,19 +162,28 @@ export class ProcessManager {
 
 		// A dependency gate above already verified some components; the sweep
 		// covers the rest — including every component nothing depends on.
-		const stuck: Array<{ name: string; check: string }> = [];
+		const stuck: StuckComponent[] = [];
 		await Promise.all(
 			[...this.processes.values()].map(async (proc) => {
 				const health = proc.health;
 				if (!health || !proc.process || proc.status === "healthy") return;
 				if (!(await this.pollHealthy(proc, health))) {
-					stuck.push({ name: proc.name, check: describeHealthCheck(health, proc.port) });
+					stuck.push(this.stuck(proc, health));
 				}
 			}),
 		);
 		if (stuck.length > 0) {
-			throw this.healthFailure(healthFailureMessage(stuck, this.healthTimeoutMs));
+			throw this.healthFailure(healthFailureMessage(stuck));
 		}
+	}
+
+	/** The failure-message entry for a component whose check never passed. */
+	private stuck(proc: ManagedProcess, health: NormalizedHealth): StuckComponent {
+		return {
+			name: proc.name,
+			check: describeHealthCheck(health, proc.port),
+			budgetMs: healthBudgetMs(health, this.healthTimeoutMs),
+		};
 	}
 
 	/** Report a health-gate failure on stderr and build the error `up` rejects with. */
@@ -191,7 +206,8 @@ export class ProcessManager {
 			);
 		}
 		// A command check never reads the port; 0 only fills the parameter.
-		const ok = await waitForHealthy(proc.name, health, proc.port ?? 0, this.healthTimeoutMs);
+		const budget = healthBudgetMs(health, this.healthTimeoutMs);
+		const ok = await waitForHealthy(proc.name, health, proc.port ?? 0, budget);
 		if (ok) proc.status = "healthy";
 		return ok;
 	}
@@ -215,10 +231,7 @@ export class ProcessManager {
 					);
 				}
 				if (depProc.status !== "healthy" && !(await this.pollHealthy(depProc, depProc.health))) {
-					const message = healthFailureMessage(
-						[{ name: dep.component, check: describeHealthCheck(depProc.health, depProc.port) }],
-						this.healthTimeoutMs,
-					);
+					const message = healthFailureMessage([this.stuck(depProc, depProc.health)]);
 					throw this.healthFailure(`${message}; ${name} was not started`);
 				}
 			}

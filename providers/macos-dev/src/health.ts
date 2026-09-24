@@ -36,8 +36,25 @@ export function describeHealthCheck(health: NormalizedHealth, port: number | und
 }
 
 /**
+ * How long a check gets before the component counts as never healthy. A
+ * declared `retries` is the file's own window — that many consecutive failures,
+ * each costing up to one `timeout` plus one `interval` (SPEC.md § health, the
+ * window docker's compose healthcheck gives it). The provider default fills in
+ * only when the file declares no `retries`: PROVIDERS.md §10 rule 10 keeps
+ * defaults for absent values, never over declared ones. `start_period` is
+ * waited in full before the window opens and is not part of it.
+ */
+export function healthBudgetMs(health: NormalizedHealth, fallbackMs: number): number {
+	if (health.retries === undefined) return fallbackMs;
+	const interval = parseDuration(health.interval ?? "3s");
+	const checkTimeout = parseDuration(health.timeout ?? "5s");
+	return health.retries * (interval + checkTimeout);
+}
+
+/**
  * Wait for a component to become healthy.
- * Returns true if healthy, false if timed out.
+ * Returns true if healthy, false if timed out. `overallTimeout` is the polling
+ * window after `start_period`; callers derive it with `healthBudgetMs`.
  */
 export async function waitForHealthy(
 	name: string,

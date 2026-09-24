@@ -56,7 +56,7 @@ describe("ProcessManager health gate (issue #376)", () => {
 		pm.register("web", { command: "sleep 30", env: {}, cwd: projectDir, health: NEVER, port: 3000 });
 
 		await expect(pm.startAll()).rejects.toThrow(
-			healthFailureMessage([{ name: "web", check: "command `exit 1`" }], BUDGET_MS),
+			healthFailureMessage([{ name: "web", check: "command `exit 1`", budgetMs: BUDGET_MS }]),
 		);
 
 		// Left running for inspection, and recorded so status/logs/down reach it.
@@ -86,6 +86,42 @@ describe("ProcessManager health gate (issue #376)", () => {
 		expect(msg).toContain(`within ${BUDGET_MS / 1000}s`);
 	});
 
+	it("gives a check that declares retries its own window, not the provider default", async () => {
+		// retries × (interval + timeout) = 8 × (100ms + 1s) = 8.8s, well past the
+		// injected 400ms default. The probe passes on its sixth poll (~500ms in),
+		// so it can only succeed if the declared window governs.
+		const counter = join(projectDir, "polls");
+		writeFileSync(counter, "");
+		pm.register("web", {
+			command: "sleep 30",
+			env: {},
+			cwd: projectDir,
+			health: {
+				command: `echo poll >> "${counter}" && test "$(wc -l < "${counter}")" -ge 6`,
+				interval: "100ms",
+				timeout: "1s",
+				retries: 8,
+			},
+			port: 3000,
+		});
+
+		await expect(pm.startAll()).resolves.toBeUndefined();
+		expect(readFileSync(counter, "utf8").trim().split("\n")).toHaveLength(6);
+		expect(pm.getStatus().find((s) => s.name === "web")?.status).toBe("healthy");
+	});
+
+	it("names the derived window when a check with retries never passes", async () => {
+		// 2 × (100ms + 1s) = 2.2s, and the message says so — not the 400ms default.
+		const withRetries = { ...NEVER, retries: 2 };
+		pm.register("web", { command: "sleep 30", env: {}, cwd: projectDir, health: withRetries, port: 3000 });
+
+		const started = Date.now();
+		await expect(pm.startAll()).rejects.toThrow(
+			healthFailureMessage([{ name: "web", check: "command `exit 1`", budgetMs: 2200 }]),
+		);
+		expect(Date.now() - started).toBeGreaterThanOrEqual(2200);
+	});
+
 	it("fails a condition: healthy gate whose target never becomes healthy, and never starts the dependent", async () => {
 		pm.register("api", { command: "sleep 30", env: {}, cwd: projectDir, health: NEVER, port: 3000 });
 		pm.register("web", {
@@ -96,7 +132,7 @@ describe("ProcessManager health gate (issue #376)", () => {
 		});
 
 		await expect(pm.startAll()).rejects.toThrow(
-			`${healthFailureMessage([{ name: "api", check: "command `exit 1`" }], BUDGET_MS)}; web was not started`,
+			`${healthFailureMessage([{ name: "api", check: "command `exit 1`", budgetMs: BUDGET_MS }])}; web was not started`,
 		);
 
 		expect(alive(pidOf(pm, "api") ?? -1)).toBe(true);

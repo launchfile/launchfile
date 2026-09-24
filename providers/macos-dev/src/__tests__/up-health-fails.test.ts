@@ -35,6 +35,7 @@ vi.mock("../shell.js", () => ({
 vi.mock("../health.js", () => ({
 	parseDuration: () => 0,
 	healthCheckNeedsPort: () => true,
+	healthBudgetMs: (_health: unknown, fallbackMs: number) => fallbackMs,
 	describeHealthCheck: (_health: unknown, port: number | undefined) =>
 		`GET http://localhost:${port}/healthz`,
 	waitForHealthy: async () => false,
@@ -95,7 +96,7 @@ describe("launchUp fails the invocation when a component never becomes healthy (
 		const err = await launchUp({ projectDir }).catch((e: unknown) => e);
 		expect(err).toBeInstanceOf(Error);
 		expect((err as Error).message).toMatch(
-			/component\(s\) default \(GET http:\/\/localhost:\d+\/healthz\) did not become healthy within 60s/,
+			/component\(s\) did not become healthy: default \(GET http:\/\/localhost:\d+\/healthz\) within 60s/,
 		);
 		// Tagged with the phase so the CLI records the deployment as unhealthy.
 		expect(isLaunchError(err)).toBe(true);
