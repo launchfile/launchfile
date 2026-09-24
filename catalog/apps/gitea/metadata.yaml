@@ -2,18 +2,18 @@ category: Git
 tagline: "Lightweight self-hosted Git service"
 homepage: https://about.gitea.com
 test_results:
-  last_tested: 2026-04-06
-  pull_time_seconds: 3
-  startup_time_seconds: 7
-  total_disk_mb: 435
+  last_tested: 2026-09-24
+  pull_time_seconds: 17
+  startup_time_seconds: 9
+  total_disk_mb: 646
   health_check_passed: true
   notes: ""
 images:
   - name: gitea/gitea:latest
-    size_mb: 176
+    size_mb: 254
     platform:
       - linux/arm64
   - name: postgres:16-alpine
-    size_mb: 259
+    size_mb: 392
     platform:
       - linux/arm64
