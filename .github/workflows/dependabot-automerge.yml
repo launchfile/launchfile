@@ -5,11 +5,13 @@ name: Dependabot auto-merge
 # information. Every other PR merges (see STEWARD.md) to preserve the
 # monorepo's one-commit-one-directory history for `git subtree split`.
 #
-# Triggering on workflow_run rather than pull_request_target is deliberate:
-# `gh pr merge --auto` only defers to *required* status checks, and main has no
-# branch protection, so --auto would merge the bump the instant it opened —
-# before CI had run at all. workflow_run fires after CI has actually finished,
-# so the success conclusion below is a real gate rather than a decorative one.
+# This job runs when CI finishes, but CI is not the only gate. Checks produced
+# outside CI — steward/review, CodeQL — may still be pending at that moment, and
+# a plain merge would fail against the main ruleset with nothing to retry it.
+# `--auto` hands the wait to GitHub: it merges once every check the ruleset
+# requires is green. The workflow names no checks itself, so the ruleset's list
+# can change without touching this file. This needs "Allow auto-merge" enabled
+# in the repository settings.
 #
 # workflow_run grants a write token to a workflow definition taken from the
 # default branch, never from the PR head, and this job checks out no code, so a
@@ -59,5 +61,5 @@ jobs:
             exit 0
           fi
 
-          echo "Squash-merging dependabot PR #$pr ($HEAD_SHA)"
-          gh pr merge "$pr" --repo "$REPO" --squash --delete-branch
+          echo "Enabling squash auto-merge for dependabot PR #$pr ($HEAD_SHA)"
+          gh pr merge "$pr" --repo "$REPO" --squash --delete-branch --auto
