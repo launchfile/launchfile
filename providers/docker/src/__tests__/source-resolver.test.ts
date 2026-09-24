@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
 import { join } from "node:path";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -158,5 +158,72 @@ describe("resolveSource directory without Launchfile", () => {
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
+	});
+});
+
+describe("resolveSource URL credentials (#373)", () => {
+	const TOKEN = "ghp_abc123";
+	const URL_WITH_TOKEN = `https://x-access-token:${TOKEN}@raw.githubusercontent.com/acme/shop/main/Launchfile`;
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	async function rejectionOf(input: string): Promise<string> {
+		try {
+			await resolveSource(input);
+		} catch (err) {
+			return (err as Error).message;
+		}
+		return expect.unreachable("resolveSource should have thrown");
+	}
+
+	it("masks the token when the server answers non-OK", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => new Response("nope", { status: 404, statusText: "Not Found" })),
+		);
+
+		const message = await rejectionOf(URL_WITH_TOKEN);
+
+		expect(message).not.toContain(TOKEN);
+		expect(message).toContain("raw.githubusercontent.com/acme/shop/main/Launchfile");
+		expect(message).toContain("404 Not Found");
+	});
+
+	it("masks the token when fetch itself rejects with the URL in its message", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (input: string) => {
+				throw new TypeError(`Request cannot be constructed from a URL that includes credentials: ${input}`);
+			}),
+		);
+
+		const message = await rejectionOf(URL_WITH_TOKEN);
+
+		expect(message).not.toContain(TOKEN);
+		expect(message).toContain("raw.githubusercontent.com/acme/shop/main/Launchfile");
+		expect(message).toContain("includes credentials");
+	});
+
+	it("masks the token from the runtime's own fetch rejection", async () => {
+		// Port 9 (discard) on loopback: Node rejects the credentialed URL before
+		// connecting; Bun refuses the connection. Neither touches the network.
+		const message = await rejectionOf(`http://x-access-token:${TOKEN}@127.0.0.1:9/Launchfile`);
+
+		expect(message).not.toContain(TOKEN);
+		expect(message).toContain("127.0.0.1:9/Launchfile");
+	});
+
+	it("returns the URL unmasked on success so source identity is stable", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => new Response("name: shop\nimage: nginx\n", { status: 200 })),
+		);
+
+		const result = await resolveSource(URL_WITH_TOKEN);
+
+		expect(result.source).toBe("url");
+		expect(result.url).toBe(URL_WITH_TOKEN);
 	});
 });
