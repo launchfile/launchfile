@@ -5,7 +5,7 @@ description: "Open-source resume builder with real-time preview and export"
 repository: https://github.com/AmruthPillai/Reactive-Resume
 logo: https://raw.githubusercontent.com/AmruthPillai/Reactive-Resume/main/apps/client/public/logo/light.svg
 
-image: amruthpillai/reactive-resume:latest
+image: amruthpillai/reactive-resume:v5
 provides:
   - protocol: http
     port: 3000
@@ -15,10 +15,11 @@ requires:
     set_env:
       DATABASE_URL: $url
 env:
-  SECRET_KEY:
+  AUTH_SECRET:
     generator: secret
     sensitive: true
-  PUBLIC_URL:
+  APP_URL:
+    default: $app.url
     required: true
     description: "Public-facing URL"
 storage:
