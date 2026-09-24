@@ -552,27 +552,35 @@ function createBackingServices(
 			};
 		},
 
-		clickhouse: (name) => ({
-			image: "clickhouse/clickhouse-server:latest",
-			dataPath: "/var/lib/clickhouse",
-			environment: {},
-			properties: {
-				// The image's shipped defaults: the `default` user with an empty
-				// password. Reported as-is so the values match the deployment.
-				user: "default",
-				password: "",
-				host: `${name}-clickhouse`,
-				port: "8123",
-				url: `http://${name}-clickhouse:8123`,
-				name: name,
-			},
-			healthcheck: {
-				test: ["CMD-SHELL", "wget --spider -q http://localhost:8123/ping"],
-				interval: "5s",
-				timeout: "5s",
-				retries: 5,
-			},
-		}),
+		clickhouse: (name) => {
+			// The image's entrypoint writes CLICKHOUSE_USER/CLICKHOUSE_PASSWORD into
+			// users.d on every start, so the password applies to an existing data
+			// volume too. It stays on `default`: that user already has full rights,
+			// and a second user beside it would leave the open one in place.
+			const pw = getPassword("clickhouse");
+			return {
+				image: "clickhouse/clickhouse-server:latest",
+				dataPath: "/var/lib/clickhouse",
+				environment: {
+					CLICKHOUSE_USER: "default",
+					CLICKHOUSE_PASSWORD: pw,
+				},
+				properties: {
+					user: "default",
+					password: pw,
+					host: `${name}-clickhouse`,
+					port: "8123",
+					url: `http://default:${encodeURIComponent(pw)}@${name}-clickhouse:8123`,
+					name: name,
+				},
+				healthcheck: {
+					test: ["CMD-SHELL", "wget --spider -q http://localhost:8123/ping"],
+					interval: "5s",
+					timeout: "5s",
+					retries: 5,
+				},
+			};
+		},
 
 		elasticsearch: (name) => {
 			// Security: enable xpack security with generated credentials.
