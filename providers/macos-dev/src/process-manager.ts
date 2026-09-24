@@ -6,7 +6,7 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { createWriteStream, mkdirSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { NormalizedHealth, NormalizedDependsOnEntry } from "@launchfile/sdk";
 import { describeHealthCheck, healthBudgetMs, healthCheckNeedsPort, waitForHealthy } from "./health.js";
@@ -83,6 +83,69 @@ function killGroupOrSelf(
 		proc?.kill(signal);
 	} catch {
 		// Already exited.
+	}
+}
+
+const TAIL_INTERVAL_MS = 200;
+
+/**
+ * Prints a component's log file as it grows. The component writes the file
+ * itself; this only reads what it appends, so the console view holds nothing
+ * the writer depends on. Polled, from the size the file had at `start`.
+ */
+class LogTail {
+	private offset = 0;
+	private partial = "";
+	private timer?: NodeJS.Timeout;
+
+	constructor(
+		private readonly path: string,
+		private readonly onLine: (line: string) => void,
+	) {}
+
+	start(): void {
+		this.offset = this.size();
+		this.timer = setInterval(() => this.drain(), TAIL_INTERVAL_MS);
+		// The child handle keeps the session alive; the tail never should.
+		this.timer.unref();
+	}
+
+	/** Print the rest of the file and stop polling. */
+	stop(): void {
+		if (this.timer) clearInterval(this.timer);
+		this.timer = undefined;
+		this.drain();
+		if (this.partial) {
+			this.onLine(this.partial);
+			this.partial = "";
+		}
+	}
+
+	private size(): number {
+		try {
+			return statSync(this.path).size;
+		} catch {
+			return 0;
+		}
+	}
+
+	private drain(): void {
+		const size = this.size();
+		if (size <= this.offset) return;
+		const buf = Buffer.alloc(size - this.offset);
+		const fd = openSync(this.path, "r");
+		try {
+			const read = readSync(fd, buf, 0, buf.length, this.offset);
+			this.offset += read;
+			this.partial += buf.subarray(0, read).toString();
+		} finally {
+			closeSync(fd);
+		}
+		const lines = this.partial.split("\n");
+		this.partial = lines.pop() ?? "";
+		for (const line of lines) {
+			if (line) this.onLine(line);
+		}
 	}
 }
 
@@ -189,7 +252,9 @@ export class ProcessManager {
 	/** Report a health-gate failure on stderr and build the error `up` rejects with. */
 	private healthFailure(message: string): HealthGateError {
 		console.error(`  ! ${message}`);
-		console.error("    Processes are left running. Inspect them with: launchfile status / launchfile logs");
+		console.error(
+			"    Processes are left running: `launchfile status` lists them, .launchfile/logs/<component>.log has their output, `launchfile down` stops them.",
+		);
 		return new HealthGateError(message);
 	}
 
@@ -241,55 +306,48 @@ export class ProcessManager {
 		proc.status = "starting";
 		console.log(`  [${name}] Starting: ${redactSecrets(proc.command)}`);
 
-		const logFile = createWriteStream(join(this.logDir, `${name}.log`), { flags: "a" });
 		const colorIdx = [...this.processes.keys()].indexOf(name) % COLORS.length;
 		const color = COLORS[colorIdx]!;
 		const maxNameLen = Math.max(...[...this.processes.keys()].map((n) => n.length));
 		const paddedName = name.padEnd(maxNameLen);
+
+		// The child writes its stdout and stderr straight to its log file. A pipe
+		// held by this process would die with it, and a component left running
+		// after `up` fails (SPEC.md § Failure semantics) must survive its next
+		// write. The console view is a tail of that file.
+		const logPath = join(this.logDir, `${name}.log`);
+		const tail = new LogTail(logPath, (line) => {
+			process.stdout.write(`${color}[${paddedName}]${RESET} ${line}\n`);
+		});
+		tail.start();
 
 		// `detached: true` makes the child the leader of a new process group
 		// (pgid === pid). That lets `launch down` signal the whole group later via
 		// a negative pid, killing the app AND any children it spawned — matching
 		// the foreground SIGINT behavior across sessions. We still keep the handle
 		// so the foreground session can kill it directly on Ctrl+C.
-		proc.process = spawn("sh", ["-c", proc.command], {
-			env: { ...process.env, ...proc.env },
-			cwd: proc.cwd,
-			stdio: ["ignore", "pipe", "pipe"],
-			detached: true,
-		});
+		const logFd = openSync(logPath, "a");
+		try {
+			proc.process = spawn("sh", ["-c", proc.command], {
+				env: { ...process.env, ...proc.env },
+				cwd: proc.cwd,
+				stdio: ["ignore", logFd, logFd],
+				detached: true,
+			});
+		} finally {
+			// The child holds its own copy of the descriptor.
+			closeSync(logFd);
+		}
 		if (proc.process.pid !== undefined) {
 			proc.startedAt = new Date().toISOString();
 		}
 
-		// Pipe stdout with prefix
-		proc.process.stdout?.on("data", (data: Buffer) => {
-			const lines = data.toString().split("\n");
-			for (const line of lines) {
-				if (line) {
-					process.stdout.write(`${color}[${paddedName}]${RESET} ${line}\n`);
-					logFile.write(`${new Date().toISOString()} ${line}\n`);
-				}
-			}
-		});
-
-		// Pipe stderr with prefix
-		proc.process.stderr?.on("data", (data: Buffer) => {
-			const lines = data.toString().split("\n");
-			for (const line of lines) {
-				if (line) {
-					process.stderr.write(`${color}[${paddedName}]${RESET} \x1b[2m${line}${RESET}\n`);
-					logFile.write(`${new Date().toISOString()} ERR ${line}\n`);
-				}
-			}
-		});
-
 		proc.process.on("exit", (code) => {
 			proc.status = code === 0 ? "stopped" : "failed";
+			tail.stop();
 			console.log(
 				`${color}[${paddedName}]${RESET} Process exited with code ${code}`,
 			);
-			logFile.end();
 		});
 
 		proc.status = "running";

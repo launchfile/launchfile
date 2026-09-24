@@ -43,7 +43,9 @@ vi.mock("../health.js", () => ({
 
 const { launchUp } = await import("../provider.js");
 const { loadState } = await import("../state.js");
-const { realSignalFns, stopRecordedProcesses } = await import("../process-stopper.js");
+const { realSignalFns, stopRecordedProcesses } = await import(
+	"../process-stopper.js"
+);
 
 const NEVER_HEALTHY = `
 name: app
@@ -113,8 +115,12 @@ describe("launchUp fails the invocation when a component never becomes healthy (
 		expect(alive(recorded.default?.pid ?? -1)).toBe(true);
 
 		// What `down` runs reaches the recorded process.
-		const outcomes = await stopRecordedProcesses(recorded, realSignalFns, { graceMs: 100 });
-		expect(outcomes).toEqual([expect.objectContaining({ component: "default", result: "stopped" })]);
+		const outcomes = await stopRecordedProcesses(recorded, realSignalFns, {
+			graceMs: 100,
+		});
+		expect(outcomes).toEqual([
+			expect.objectContaining({ component: "default", result: "stopped" }),
+		]);
 		expect(alive(recorded.default?.pid ?? -1)).toBe(false);
 	});
 

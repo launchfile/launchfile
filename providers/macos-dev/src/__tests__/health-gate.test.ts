@@ -17,8 +17,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	HEALTH_TIMEOUT_MS,
 	HealthGateError,
-	ProcessManager,
 	healthFailureMessage,
+	ProcessManager,
 } from "../process-manager.js";
 
 const NEVER = { command: "exit 1", interval: "100ms", timeout: "1s" };
@@ -53,10 +53,18 @@ describe("ProcessManager health gate (issue #376)", () => {
 	});
 
 	it("fails startAll when a component's own check never passes and nothing depends on it", async () => {
-		pm.register("web", { command: "sleep 30", env: {}, cwd: projectDir, health: NEVER, port: 3000 });
+		pm.register("web", {
+			command: "sleep 30",
+			env: {},
+			cwd: projectDir,
+			health: NEVER,
+			port: 3000,
+		});
 
 		await expect(pm.startAll()).rejects.toThrow(
-			healthFailureMessage([{ name: "web", check: "command `exit 1`", budgetMs: BUDGET_MS }]),
+			healthFailureMessage([
+				{ name: "web", check: "command `exit 1`", budgetMs: BUDGET_MS },
+			]),
 		);
 
 		// Left running for inspection, and recorded so status/logs/down reach it.
@@ -74,8 +82,20 @@ describe("ProcessManager health gate (issue #376)", () => {
 			health: { path: "/healthz", interval: "100ms", timeout: "1s" },
 			port: 1, // nothing listens on port 1
 		});
-		pm.register("worker", { command: "sleep 30", env: {}, cwd: projectDir, health: NEVER, port: 3001 });
-		pm.register("ok", { command: "sleep 30", env: {}, cwd: projectDir, health: ALWAYS, port: 3002 });
+		pm.register("worker", {
+			command: "sleep 30",
+			env: {},
+			cwd: projectDir,
+			health: NEVER,
+			port: 3001,
+		});
+		pm.register("ok", {
+			command: "sleep 30",
+			env: {},
+			cwd: projectDir,
+			health: ALWAYS,
+			port: 3002,
+		});
 
 		const err = await pm.startAll().catch((e: unknown) => e as Error);
 		expect(err).toBeInstanceOf(HealthGateError);
@@ -107,23 +127,39 @@ describe("ProcessManager health gate (issue #376)", () => {
 
 		await expect(pm.startAll()).resolves.toBeUndefined();
 		expect(readFileSync(counter, "utf8").trim().split("\n")).toHaveLength(6);
-		expect(pm.getStatus().find((s) => s.name === "web")?.status).toBe("healthy");
+		expect(pm.getStatus().find((s) => s.name === "web")?.status).toBe(
+			"healthy",
+		);
 	});
 
 	it("names the derived window when a check with retries never passes", async () => {
 		// 2 × (100ms + 1s) = 2.2s, and the message says so — not the 400ms default.
 		const withRetries = { ...NEVER, retries: 2 };
-		pm.register("web", { command: "sleep 30", env: {}, cwd: projectDir, health: withRetries, port: 3000 });
+		pm.register("web", {
+			command: "sleep 30",
+			env: {},
+			cwd: projectDir,
+			health: withRetries,
+			port: 3000,
+		});
 
 		const started = Date.now();
 		await expect(pm.startAll()).rejects.toThrow(
-			healthFailureMessage([{ name: "web", check: "command `exit 1`", budgetMs: 2200 }]),
+			healthFailureMessage([
+				{ name: "web", check: "command `exit 1`", budgetMs: 2200 },
+			]),
 		);
 		expect(Date.now() - started).toBeGreaterThanOrEqual(2200);
 	});
 
 	it("fails a condition: healthy gate whose target never becomes healthy, and never starts the dependent", async () => {
-		pm.register("api", { command: "sleep 30", env: {}, cwd: projectDir, health: NEVER, port: 3000 });
+		pm.register("api", {
+			command: "sleep 30",
+			env: {},
+			cwd: projectDir,
+			health: NEVER,
+			port: 3000,
+		});
 		pm.register("web", {
 			command: "sleep 30",
 			env: {},
@@ -141,7 +177,12 @@ describe("ProcessManager health gate (issue #376)", () => {
 	});
 
 	it("fails closed when a condition: healthy target declares no health check", async () => {
-		pm.register("api", { command: "sleep 30", env: {}, cwd: projectDir, port: 3000 });
+		pm.register("api", {
+			command: "sleep 30",
+			env: {},
+			cwd: projectDir,
+			port: 3000,
+		});
 		pm.register("web", {
 			command: "sleep 30",
 			env: {},
@@ -169,14 +210,32 @@ describe("ProcessManager health gate (issue #376)", () => {
 	});
 
 	it("resolves when every declared check passes, and marks those components healthy", async () => {
-		pm.register("api", { command: "sleep 30", env: {}, cwd: projectDir, health: ALWAYS, port: 3000 });
-		pm.register("web", { command: "sleep 30", env: {}, cwd: projectDir, health: ALWAYS, port: 3001 });
+		pm.register("api", {
+			command: "sleep 30",
+			env: {},
+			cwd: projectDir,
+			health: ALWAYS,
+			port: 3000,
+		});
+		pm.register("web", {
+			command: "sleep 30",
+			env: {},
+			cwd: projectDir,
+			health: ALWAYS,
+			port: 3001,
+		});
 		pm.register("worker", { command: "sleep 30", env: {}, cwd: projectDir });
 
 		await expect(pm.startAll()).resolves.toBeUndefined();
 
-		const byName = Object.fromEntries(pm.getStatus().map((s) => [s.name, s.status]));
-		expect(byName).toEqual({ api: "healthy", web: "healthy", worker: "running" });
+		const byName = Object.fromEntries(
+			pm.getStatus().map((s) => [s.name, s.status]),
+		);
+		expect(byName).toEqual({
+			api: "healthy",
+			web: "healthy",
+			worker: "running",
+		});
 	});
 
 	it("polls a dependency verified at its gate once, not again in the sweep", async () => {
@@ -186,7 +245,11 @@ describe("ProcessManager health gate (issue #376)", () => {
 			command: "sleep 30",
 			env: {},
 			cwd: projectDir,
-			health: { command: `echo poll >> "${counter}"`, interval: "100ms", timeout: "1s" },
+			health: {
+				command: `echo poll >> "${counter}"`,
+				interval: "100ms",
+				timeout: "1s",
+			},
 			port: 3000,
 		});
 		pm.register("web", {
