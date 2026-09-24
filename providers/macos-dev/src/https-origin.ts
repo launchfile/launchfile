@@ -15,7 +15,9 @@ import {
 	type NormalizedLaunch,
 	type NormalizedRequirement,
 	suppliedAppAddress,
+	useKeys,
 } from "@launchfile/sdk";
+import { uncoveredUses, withCoveredUses } from "./resources/index.js";
 import type { ResourceProperties } from "./resources/types.js";
 
 /** The backing-service type that declares the app's public HTTPS origin (D-60). */
@@ -29,6 +31,15 @@ export const HTTPS_ORIGIN = "https-origin";
  */
 export function httpsOriginSatisfied(appUrl: string | undefined): boolean {
 	return appUrl !== undefined && suppliedAppAddress(appUrl).scheme === "https";
+}
+
+/**
+ * The uses an `https-origin` entry declares that this provider cannot cover,
+ * spelled as the file spells them. Asked of the use registry, never assumed:
+ * a use registered for the type later is covered with no change here.
+ */
+export function uncoveredOriginUses(entry: NormalizedRequirement): string[] {
+	return entry.uses ? uncoveredUses(entry.type, useKeys(entry.uses)) : [];
 }
 
 /**
@@ -72,10 +83,13 @@ export function declaredPrimaryComponent(
 /**
  * Register every satisfied `https-origin` entry as a resource so its `set_env`
  * resolves. One registered property, `url` (D-60 rule 4), holding the same
- * string as `$app.url`. Mutates `resourceMap`; a no-op when the recorded
- * publication URL does not satisfy the type, so an unsatisfied entry's
- * `set_env` stays absent (never `""`) exactly as for any other resource this
- * provider did not provision.
+ * string as `$app.url`, plus the properties of each declared use. Mutates
+ * `resourceMap`; a no-op when the recorded publication URL does not satisfy
+ * the type, so an unsatisfied entry's `set_env` stays absent (never `""`)
+ * exactly as for any other resource this provider did not provision. An entry
+ * declaring a use this provider cannot cover is unsatisfied the same way
+ * (D-65): a `supports:` entry runs degraded, and a `requires:` one refused its
+ * component before launch.
  */
 export function wireHttpsOrigins(
 	launch: NormalizedLaunch,
@@ -91,7 +105,13 @@ export function wireHttpsOrigins(
 			...(component.supports ?? []),
 		]) {
 			if (entry.type !== HTTPS_ORIGIN) continue;
-			resourceMap[entry.name ?? entry.type] = { url };
+			if (uncoveredOriginUses(entry).length > 0) continue;
+			resourceMap[entry.name ?? entry.type] = withCoveredUses(
+				entry.type,
+				entry.uses ? useKeys(entry.uses) : undefined,
+				{ url },
+				{},
+			);
 		}
 	}
 }

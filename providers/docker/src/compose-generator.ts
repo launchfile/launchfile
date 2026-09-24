@@ -1721,7 +1721,17 @@ export function launchToCompose(
 				// The optional mood (D-60 rule 6): satisfied, it wires like any
 				// other resource; unsatisfied, the component still deploys, its
 				// set_env is absent, and the un-granted dependency is noted.
-				if (httpsOriginSatisfied) {
+				// A declared use the origin's properties do not cover leaves it
+				// unfulfilled the same way (D-65 rule 4).
+				const uncovered =
+					httpsOriginSatisfied && sup.uses
+						? uncoveredSuppliedUses(sup.type, useKeys(sup.uses), httpsOriginProperties)
+						: [];
+				if (uncovered.length > 0) {
+					warnings.push(
+						`${componentName}: optional public HTTPS origin ${resourceName} is not satisfied — the supplied origin does not cover every declared use (${uncovered.join("; ")}); its set_env bindings are omitted and the app runs degraded`,
+					);
+				} else if (httpsOriginSatisfied) {
 					applySuppliedResource(sup, resourceName, httpsOriginProperties);
 				} else {
 					warnings.push(
