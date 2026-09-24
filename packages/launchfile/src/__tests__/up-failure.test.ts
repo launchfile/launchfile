@@ -4,6 +4,10 @@
  *
  * Both directories are injected at temp paths — nothing here reads or writes the
  * real `~/.launchfile`, and nothing here talks to docker.
+ *
+ * Every `handleUp` call passes `docker: true`. Without a provider flag,
+ * `detectProvider` spawns `docker info` (5 s timeout), which races Vitest's
+ * 5000 ms test timeout on a busy runner.
  */
 
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
@@ -113,7 +117,7 @@ describe("up, when the health gate never passes", () => {
 	it("exits non-zero, and leaves a deployment every remediation command can reach", async () => {
 		const message = "component(s) web did not become healthy within 120s";
 		await expect(
-			handleUp(projectDir, {}, deps(() => Promise.reject(launchError("health", message)))),
+			handleUp(projectDir, { docker: true }, deps(() => Promise.reject(launchError("health", message)))),
 		).rejects.toThrow(message);
 
 		// The index says a deployment exists, because it does: the health gate
@@ -150,7 +154,7 @@ describe("up, when the health gate never passes", () => {
 
 	it("tells the user the deployment was recorded", async () => {
 		await expect(
-			handleUp(projectDir, {}, deps(() => Promise.reject(launchError("health")))),
+			handleUp(projectDir, { docker: true }, deps(() => Promise.reject(launchError("health")))),
 		).rejects.toThrow();
 		expect(output.join("\n")).toContain("recorded as unhealthy");
 	});
@@ -159,7 +163,7 @@ describe("up, when the health gate never passes", () => {
 describe("up, on the other failure phases", () => {
 	it("registers a release failure too — its one-shot containers pulled resources up", async () => {
 		await expect(
-			handleUp(projectDir, {}, deps(() => Promise.reject(launchError("release")))),
+			handleUp(projectDir, { docker: true }, deps(() => Promise.reject(launchError("release")))),
 		).rejects.toThrow();
 		const entries = Object.values((await index()).deployments);
 		expect(entries).toHaveLength(1);
@@ -168,7 +172,7 @@ describe("up, on the other failure phases", () => {
 
 	it("registers nothing when the launch was refused before a container existed", async () => {
 		await expect(
-			handleUp(projectDir, {}, deps(() => Promise.reject(launchError("prereq")))),
+			handleUp(projectDir, { docker: true }, deps(() => Promise.reject(launchError("prereq")))),
 		).rejects.toThrow();
 		expect(Object.keys((await index()).deployments)).toHaveLength(0);
 		// The record still lands — that is what `diagnose` reads for a pre-deploy
@@ -180,7 +184,7 @@ describe("up, on the other failure phases", () => {
 		await expect(
 			handleUp(
 				projectDir,
-				{ dryRun: true },
+				{ docker: true, dryRun: true },
 				deps(() => Promise.reject(launchError("health"))),
 			),
 		).rejects.toThrow();
@@ -206,7 +210,7 @@ describe("up, after an earlier pre-slug failure", () => {
 			),
 		);
 		await expect(
-			handleUp(projectDir, {}, deps(() => Promise.reject(preSlug))),
+			handleUp(projectDir, { docker: true }, deps(() => Promise.reject(preSlug))),
 		).rejects.toThrow("Launchfile did not parse");
 		expect((await readLaunchErrorRecord(undefined, recordDir))?.phase).toBe("parse");
 
@@ -216,7 +220,7 @@ describe("up, after an earlier pre-slug failure", () => {
 			appName: "gov23",
 			sourceType: "local",
 		};
-		await handleUp(projectDir, {}, { up: async () => ok, indexDir, recordDir });
+		await handleUp(projectDir, { docker: true }, { up: async () => ok, indexDir, recordDir });
 
 		// The pre-slug record and the last.json pointer are both gone: a bare
 		// `diagnose` finds nothing instead of presenting the old parse failure.

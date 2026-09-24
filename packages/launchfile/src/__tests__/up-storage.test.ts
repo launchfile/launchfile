@@ -5,6 +5,10 @@
  *
  * Directories are injected temp paths — nothing touches the real
  * ~/.launchfile and nothing talks to docker.
+ *
+ * Every `handleUp` call passes `docker: true`. Without a provider flag,
+ * `detectProvider` spawns `docker info` (5 s timeout), which races Vitest's
+ * 5000 ms test timeout on a busy runner.
  */
 
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
@@ -61,7 +65,7 @@ describe("up --storage reaches the docker provider (D-50)", () => {
 		const calls: DockerUpOpts[] = [];
 		await handleUp(
 			projectDir,
-			{ storage: { music: "/srv/music", "web.books": "/srv/books" } },
+			{ docker: true, storage: { music: "/srv/music", "web.books": "/srv/books" } },
 			{ up: fakeUp(calls), indexDir, recordDir },
 		);
 		expect(calls).toHaveLength(1);
@@ -70,7 +74,7 @@ describe("up --storage reaches the docker provider (D-50)", () => {
 
 	it("passes no map when --storage is absent", async () => {
 		const calls: DockerUpOpts[] = [];
-		await handleUp(projectDir, {}, { up: fakeUp(calls), indexDir, recordDir });
+		await handleUp(projectDir, { docker: true }, { up: fakeUp(calls), indexDir, recordDir });
 		expect(calls[0]!.storage).toBeUndefined();
 	});
 });

@@ -18,8 +18,13 @@ Open a pull request directly. No RFC needed.
 2. **Include real-world motivation** — which apps need this? Show concrete Launchfile snippets
 3. **Evaluate against design principles** — does the proposal align with P-1 through P-14? (see [DESIGN.md](DESIGN.md))
 4. **Draft the spec change** — PR against SPEC.md with the new field/behavior documented
-5. **Update the JSON Schema** — if adding fields, update `schema/launchfile.schema.json`
-6. **Add or update examples** — demonstrate the new feature in `examples/`
+5. **Update the JSON Schema** — if adding fields, update `schema/launchfile.schema.json`, then copy it over `www-dev/public/schema/v1` (CI asserts the two are byte-identical)
+6. **Add or update examples** — demonstrate the new feature in `examples/`, then regenerate the AWS conformance report and commit `providers/aws/CONFORMANCE.md` (CI asserts it is current). The provider needs the SDK built first; from the repo root:
+
+   ```bash
+   cd sdk && bun install && bun run build
+   cd ../providers/aws && bun install && bun run conformance
+   ```
 
 ### What Makes a Good Proposal
 
