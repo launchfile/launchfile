@@ -36,6 +36,7 @@ import {
 	HTTPS_ORIGIN,
 	httpsOriginSatisfied,
 	httpsOriginShortfall,
+	uncoveredOriginUses,
 } from "./https-origin.js";
 import { loadState, initState, saveState, ensureDirs, withRecordedDbIndexes } from "./state.js";
 import {
@@ -390,7 +391,8 @@ export function applyResourceTypeRefusals(
  * use its provisioner cannot cover (SPEC.md § Resource uses, D-56 rule 1,
  * D-64), mapped to `<entry>: <use>` lines. Graded after
  * {@link refusedResourceTypes}: a type with no provisioner is refused on the
- * type, so only entries whose type this provider stands up reach here. A
+ * type, so only entries whose type this provider stands up, or accepts
+ * through the publication context (`https-origin`), reach here. A
  * token this provider does not recognise is uncovered — no provider can
  * claim to cover a use it does not know. `supports:` entries are optional
  * (D-8) and are not graded here.
@@ -402,7 +404,8 @@ export function refusedResourceUses(
 	for (const [name, component] of Object.entries(launch.components)) {
 		const entries: string[] = [];
 		for (const req of component.requires ?? []) {
-			if (req.host || req.type === HTTPS_ORIGIN || !req.uses || !getProvisioner(req.type)) continue;
+			if (req.host || !req.uses) continue;
+			if (req.type !== HTTPS_ORIGIN && !getProvisioner(req.type)) continue;
 			const resourceName = req.name ?? req.type;
 			for (const use of uncoveredUses(req.type, useKeys(req.uses))) {
 				entries.push(`${resourceName}: ${use}`);
@@ -625,8 +628,22 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		}
 		// The optional mood of `https-origin` (D-60 rule 6): satisfied, it is
 		// wired like any other resource at step 8; unsatisfied, the component
-		// still runs, its set_env is absent, and the shortfall is named.
-		if (httpsOriginSatisfied(state.appUrl)) continue;
+		// still runs, its set_env is absent, and the shortfall is named. A
+		// declared use this provider cannot cover leaves a satisfied entry
+		// unfulfilled the same way (D-65 rule 4).
+		if (httpsOriginSatisfied(state.appUrl)) {
+			for (const sup of c.supports ?? []) {
+				if (sup.type !== HTTPS_ORIGIN) continue;
+				const uncovered = uncoveredOriginUses(sup);
+				if (uncovered.length === 0) continue;
+				console.warn(
+					`  Warning: ${name}: optional public HTTPS origin ${sup.name ?? sup.type} not satisfied — ` +
+						`this provider does not cover ${uncovered.length === 1 ? "a use" : "uses"} it declares ` +
+						`(${uncovered.join(", ")}); running degraded`,
+				);
+			}
+			continue;
+		}
 		for (const sup of c.supports ?? []) {
 			if (sup.type !== HTTPS_ORIGIN) continue;
 			console.warn(

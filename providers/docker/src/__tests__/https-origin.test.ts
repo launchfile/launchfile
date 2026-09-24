@@ -128,6 +128,72 @@ describe("supports: https-origin — the optional mood (rule 6)", () => {
 	});
 });
 
+// The issue #536 reproduction: a use token no registry entry covers for this
+// type. `uses:` is an open vocabulary, so the file validates; coverage decides.
+const UNCOVERED_USE = `
+version: launch/v1
+name: repro
+image: nginx
+provides:
+  - name: web
+    protocol: http
+    port: 80
+    exposed: true
+supports:
+  - type: https-origin
+    endpoint: web
+    uses:
+      - anything: x
+    set_env:
+      SOME_URL: $https-origin.anything.x.url
+`;
+
+describe("uses: on an https-origin entry (D-65)", () => {
+	it("supports: an uncovered use leaves the entry unfulfilled and the component deploys", () => {
+		const result = launchToCompose(readLaunch(UNCOVERED_USE), {
+			appUrl: "https://repro.example.com",
+		});
+		expect(services(result.yaml).repro).toBeDefined();
+		expect(services(result.yaml).repro?.environment?.SOME_URL).toBeUndefined();
+		expect(result.warnings.some((w) => w.startsWith("refused:"))).toBe(false);
+		const warning = result.warnings.find((w) =>
+			w.includes("optional public HTTPS origin https-origin"),
+		);
+		expect(warning).toContain("anything: x");
+		expect(warning).toContain("set_env bindings are omitted");
+	});
+
+	it("requires: an uncovered use refuses that component and a sibling still deploys", () => {
+		const twoParts = `
+name: repro
+components:
+  web:
+    image: nginx
+    provides:
+      - name: ui
+        protocol: http
+        port: 80
+        exposed: true
+    requires:
+      - type: https-origin
+        endpoint: ui
+        uses:
+          - anything: x
+        set_env:
+          SOME_URL: $https-origin.anything.x.url
+  worker:
+    image: worker:1
+`;
+		const result = launchToCompose(readLaunch(twoParts), {
+			appUrl: "https://repro.example.com",
+		});
+		expect(services(result.yaml)["repro-web"]).toBeUndefined();
+		expect(services(result.yaml)["repro-worker"]).toBeDefined();
+		const refusal = result.warnings.find((w) => w.startsWith("refused: web"));
+		expect(refusal).toContain("anything: x");
+	});
+});
+
 describe("rule 3 — the named endpoint is the primary", () => {
 	it("resolves $app.* from the named endpoint, not from published[0]", () => {
 		const launch = readLaunch(OPENCLAW);

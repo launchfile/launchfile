@@ -329,6 +329,32 @@ commands:
   start: "node web.js"
 `;
 
+// The issue #536 reproduction: a use token no registry entry covers for this
+// type. `uses:` is an open vocabulary, so the file validates; coverage decides.
+const ORIGIN_OPTIONAL_UNCOVERED_USE = `version: launch/v1
+name: origintest
+runtime: node
+provides:
+  - name: ui
+    protocol: http
+    port: 3000
+    exposed: true
+supports:
+  - type: https-origin
+    endpoint: ui
+    uses:
+      - anything: x
+    set_env:
+      SOME_URL: $https-origin.anything.x.url
+commands:
+  start: "node web.js"
+`;
+
+const ORIGIN_REQUIRED_UNCOVERED_USE = ORIGIN_REQUIRED.replace(
+	"        endpoint: ui\n        set_env:\n          DOMAIN: $url\n",
+	"        endpoint: ui\n        uses:\n          - anything: x\n        set_env:\n          SOME_URL: $https-origin.anything.x.url\n",
+);
+
 /**
  * `https-origin` rides the publication-context channel (D-60 rule 5,
  * PROVIDERS.md §7): an https `appUrl` satisfies a required entry and wires its
@@ -434,5 +460,30 @@ describe("launchUp https-origin through the publication context (D-60 rule 5)", 
 		expect(consoleWarns.join("\n")).toContain(
 			'optional public HTTPS origin not satisfied (https-origin (endpoint "ui"): the supplied publication URL\'s scheme is "http", not https) — running degraded',
 		);
+	});
+
+	it("leaves a satisfied `supports:` entry unfulfilled when it declares a use it cannot cover (D-65 rule 4)", async () => {
+		writeFileSync(join(projectDir, "Launchfile"), ORIGIN_OPTIONAL_UNCOVERED_USE);
+		await launchUp({ projectDir, appUrl: "https://vw.example.com" });
+
+		expect(registered("default")).toBeDefined();
+		expect(registered("default")?.SOME_URL).toBeUndefined();
+		expect(consoleErrors.join("\n")).not.toContain("Refused");
+		expect(consoleWarns.join("\n")).toContain(
+			"optional public HTTPS origin https-origin not satisfied — this provider does not cover a use it declares (anything: x); running degraded",
+		);
+	});
+
+	it("refuses the component whose required entry declares a use it cannot cover; a sibling still starts (D-64, D-65 rule 3)", async () => {
+		expect(ORIGIN_REQUIRED_UNCOVERED_USE).toContain("anything: x");
+		writeFileSync(join(projectDir, "Launchfile"), ORIGIN_REQUIRED_UNCOVERED_USE);
+		await launchUp({ projectDir, appUrl: "https://vw.example.com" });
+
+		expect(registered("web")).toBeUndefined();
+		expect(registered("worker")).toBeDefined();
+		expect(consoleErrors.join("\n")).toContain(
+			"Refused: web requires a use of a resource this provider cannot cover (https-origin: anything: x)",
+		);
+		expect(writtenEnvFiles.some((f) => f.path.endsWith("web.env"))).toBe(false);
 	});
 });
