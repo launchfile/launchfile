@@ -273,8 +273,12 @@ describe("launchUp publication context (D-58)", () => {
 	it("`up` and `status` print the supplied URL for the primary component (#386)", async () => {
 		await launchUp({ projectDir, appUrl: "https://notes.example.com" });
 
-		expect(consoleLogs).toContain("  urltest is running at https://notes.example.com");
-		expect(consoleLogs.join("\n")).not.toMatch(/urltest is running at http:\/\/localhost/);
+		expect(consoleLogs).toContain(
+			"  urltest is running at https://notes.example.com",
+		);
+		expect(consoleLogs.join("\n")).not.toMatch(
+			/urltest is running at http:\/\/localhost/,
+		);
 		expect(recordedState().primaryEndpoint).toBe("default");
 
 		consoleLogs.length = 0;
@@ -285,11 +289,15 @@ describe("launchUp publication context (D-58)", () => {
 	it("`up` and `status` print localhost when no URL is recorded or supplied", async () => {
 		await launchUp({ projectDir });
 
-		expect(consoleLogs.join("\n")).toMatch(/  urltest is running at http:\/\/localhost:\d+/);
+		expect(consoleLogs.join("\n")).toMatch(
+			/ {2}urltest is running at http:\/\/localhost:\d+/,
+		);
 
 		consoleLogs.length = 0;
 		await launchStatus({ projectDir });
-		expect(consoleLogs.join("\n")).toMatch(/  default: http:\/\/localhost:\d+/);
+		expect(consoleLogs.join("\n")).toMatch(
+			/ {2}default: http:\/\/localhost:\d+/,
+		);
 	});
 
 	it("`env` and `bootstrap` answer with the same $app.* the run was configured with", async () => {
@@ -402,7 +410,9 @@ describe("launchUp https-origin through the publication context (D-60 rule 5)", 
 		expect(registered("web")?.PUBLIC_URL).toBe("https://vw.example.com");
 		expect(registered("worker")).toBeDefined();
 		expect(consoleErrors.join("\n")).not.toContain("Refused");
-		expect(consoleWarns.join("\n")).not.toContain("No provisioner for resource type: https-origin");
+		expect(consoleWarns.join("\n")).not.toContain(
+			"No provisioner for resource type: https-origin",
+		);
 	});
 
 	it("refuses the component when the supplied URL is http, naming the scheme", async () => {
@@ -450,7 +460,9 @@ describe("launchUp https-origin through the publication context (D-60 rule 5)", 
 		writeFileSync(join(projectDir, "Launchfile"), ORIGIN_OPTIONAL);
 		await launchUp({ projectDir, appUrl: "https://vw.example.com" });
 		expect(registered("default")?.DOMAIN).toBe("https://vw.example.com");
-		expect(consoleWarns.join("\n")).not.toContain("optional public HTTPS origin");
+		expect(consoleWarns.join("\n")).not.toContain(
+			"optional public HTTPS origin",
+		);
 
 		rmSync(join(projectDir, ".launchfile"), { recursive: true, force: true });
 		startRegistrations.length = 0;
