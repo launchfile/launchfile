@@ -8,7 +8,12 @@
    - The Launchfile
    - A brief description of the app and what services it needs
    - Confirmation that you tested it validates against the schema
-4. Run `cd providers/aws && bun run conformance` and commit the regenerated `providers/aws/CONFORMANCE.md` — the report covers every `catalog/apps/**/Launchfile`, and CI fails when it is stale
+4. Regenerate the AWS conformance report and commit `providers/aws/CONFORMANCE.md` — the report covers every `catalog/apps/**/Launchfile`, and CI fails when it is stale. From a fresh clone the provider needs the SDK built first:
+
+   ```bash
+   cd sdk && bun install && bun run build
+   cd ../providers/aws && bun install && bun run conformance
+   ```
 
 ## Launchfile Template
 
