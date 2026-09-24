@@ -1870,7 +1870,7 @@ export function launchToCompose(
 
 		// A component carrying `schedule:` declares a one-shot job body, not a
 		// daemon. `unless-stopped` re-runs that body on every clean exit, so the
-		// job repeats in a backoff loop instead of running once (D-next). An
+		// job repeats in a backoff loop instead of running once (D-69). An
 		// explicit `restart:` always wins — a self-scheduling daemon stays
 		// authorable.
 		const restart =
