@@ -1,3 +1,29 @@
 category: Analytics
 tagline: "Privacy-friendly web analytics"
 homepage: https://plausible.io
+test_env:
+  BASE_URL: http://localhost:8000
+test_results:
+  last_tested: 2026-09-24
+  pull_time_seconds: 53
+  startup_time_seconds: 21
+  total_disk_mb: 1780
+  health_check_passed: false
+  notes: >-
+    Boot stops at Plausible.ClickhouseRepo: CLICKHOUSE_DATABASE_URL ($url) has no database path
+    (Ecto.InvalidURLError). Past that, the image needs `db createdb && db migrate` before `run`,
+    clickhouse:latest refuses the passwordless default user over the network, and the healthcheck's
+    `localhost` resolves to ::1 while Plausible listens on IPv4 only. TOTP_VAULT_KEY is accepted.
+images:
+  - name: ghcr.io/plausible/community-edition:v2.1.4
+    size_mb: 271
+    platform:
+      - linux/arm64
+  - name: postgres:16-alpine
+    size_mb: 392
+    platform:
+      - linux/arm64
+  - name: clickhouse/clickhouse-server:latest
+    size_mb: 1117
+    platform:
+      - linux/arm64
