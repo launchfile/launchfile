@@ -64,6 +64,37 @@ describe("readPriorStack", () => {
 		expect(prior?.source).toContain("terraform.tfstate");
 	});
 
+	it("reads a parsed state that holds no generator as fresh, even beside an old main.tf", () => {
+		// `terraform state rm` of the only minted secret leaves exactly this
+		// layout. If main.tf won here, the documented re-key steps would loop.
+		const d = dir();
+		writeFileSync(
+			join(d, "main.tf"),
+			'resource "random_password" "lf_secret_session" {\n  length = 32\n}\n',
+		);
+		writeFileSync(
+			join(d, "terraform.tfstate"),
+			JSON.stringify({ version: 4, resources: [] }),
+		);
+		expect(readPriorStack(d)).toBeUndefined();
+	});
+
+	it("reads a parsed state whose only random_* resource is gone as fresh", () => {
+		const d = dir();
+		writeFileSync(
+			join(d, "main.tf"),
+			'resource "random_uuid" "lf_secret_session" {\n}\n',
+		);
+		writeFileSync(
+			join(d, "terraform.tfstate"),
+			JSON.stringify({
+				version: 4,
+				resources: [{ mode: "managed", type: "aws_vpc", name: "main" }],
+			}),
+		);
+		expect(readPriorStack(d)).toBeUndefined();
+	});
+
 	it("falls back to main.tf when the state file is unparseable", () => {
 		const d = dir();
 		writeFileSync(join(d, "terraform.tfstate"), "{ not json");

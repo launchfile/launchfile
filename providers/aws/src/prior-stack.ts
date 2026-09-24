@@ -10,11 +10,15 @@
  *
  * Translation is otherwise pure, so the knowledge of "what type was this minted
  * as" has to be read from the output directory and handed to `translate()`.
- * Two sources, most authoritative first:
+ * Two sources:
  *
- *   1. `terraform.tfstate` — what `apply` actually diffs against.
- *   2. `main.tf` — what this provider last emitted, when state lives elsewhere
- *      (remote backend, or the operator applies from another directory).
+ *   1. `terraform.tfstate` — what `apply` actually diffs against. When it
+ *      parses it is authoritative, including when it records no generator at
+ *      all: that is exactly the state `terraform state rm` leaves behind, and
+ *      the re-key steps depend on it reading as fresh.
+ *   2. `main.tf` — what this provider last emitted. Consulted only when no
+ *      state file is readable (remote backend, or the operator applies from
+ *      another directory).
  *
  * Only resource **types and names** are read. Values are never read, never
  * logged, and never reach the emitted HCL.
@@ -83,22 +87,29 @@ function fromState(json: string): Record<string, GeneratorResource> {
 }
 
 /**
- * Read what `dir` says is already minted. Returns `undefined` when the directory
- * holds no prior translation or state — the fresh-stack case, where every
- * generator is minted for the first time.
+ * Read what `dir` says is already minted. Returns `undefined` when nothing is
+ * minted — the fresh-stack case, where every generator is minted for the first
+ * time.
  *
- * A malformed state file is not a reason to guess: it falls through to
- * `main.tf`, and if that is absent too the caller is told nothing is known.
+ * A state file that parses decides the answer on its own, even when it holds no
+ * generator: after `terraform state rm` the old `main.tf` still names the
+ * removed resource, and reading it would put the re-key steps in a loop. A
+ * malformed state file is not a reason to guess: it falls through to `main.tf`,
+ * and if that is absent too the caller is told nothing is known.
  */
 export function readPriorStack(dir: string): PriorStack | undefined {
 	const statePath = join(dir, "terraform.tfstate");
 	if (existsSync(statePath)) {
+		let generators: Record<string, GeneratorResource> | undefined;
 		try {
-			const generators = fromState(readFileSync(statePath, "utf8"));
-			if (Object.keys(generators).length > 0)
-				return { generators, source: statePath };
+			generators = fromState(readFileSync(statePath, "utf8"));
 		} catch {
 			// Unparseable state — fall through to the emitted HCL.
+		}
+		if (generators !== undefined) {
+			return Object.keys(generators).length > 0
+				? { generators, source: statePath }
+				: undefined;
 		}
 	}
 	const hclPath = join(dir, "main.tf");

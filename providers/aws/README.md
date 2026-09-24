@@ -64,9 +64,10 @@ resource destroys it on the next `apply`. Anything encrypted under the old value
 becomes unreadable.
 
 So `translate` reads the output directory before it emits. It looks at
-`terraform.tfstate`, then at the `main.tf` it wrote last time, and takes **only
-resource types and names** — never a value, which is why no secret is ever
-written into the generated HCL.
+`terraform.tfstate` — authoritative whenever it parses, even after `state rm`
+leaves it empty — and only when no state is readable at the `main.tf` it wrote
+last time. It takes **only resource types and names** — never a value, which is
+why no secret is ever written into the generated HCL.
 
 | What it finds | What it does |
 |---|---|

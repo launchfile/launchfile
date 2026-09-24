@@ -1,6 +1,9 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { readLaunch } from "@launchfile/sdk";
 import { describe, expect, it } from "vitest";
-import type { PriorStack } from "../prior-stack.js";
+import { type PriorStack, readPriorStack } from "../prior-stack.js";
 import { SecretRotationError, translate } from "../translate.js";
 
 function tf(yaml: string) {
@@ -314,12 +317,8 @@ commands:
 
 	it("still emits vars the file supplies via default or generator", () => {
 		const { hcl, conformance } = tf(required);
-		expect(hcl).toContain(
-			'resource "aws_ssm_parameter" "app_default_HAS_DEFAULT"',
-		);
-		expect(hcl).toContain(
-			'resource "aws_ssm_parameter" "app_default_GENERATED"',
-		);
+		expect(hcl).toContain('resource "aws_ssm_parameter" "app_default_HAS_DEFAULT"');
+		expect(hcl).toContain('resource "aws_ssm_parameter" "app_default_GENERATED"');
 		expect(
 			conformance.gaps.some((g) => g.field.startsWith("env.HAS_DEFAULT")),
 		).toBe(false);
@@ -343,12 +342,10 @@ env:
 commands:
   start: "node server.js"
 `);
-		expect(hcl).toContain(
-			'resource "aws_ssm_parameter" "app_default_DATABASE_URL"',
-		);
-		expect(conformance.gaps.some((g) => g.field === "env.DATABASE_URL")).toBe(
-			false,
-		);
+		expect(hcl).toContain('resource "aws_ssm_parameter" "app_default_DATABASE_URL"');
+		expect(
+			conformance.gaps.some((g) => g.field === "env.DATABASE_URL"),
+		).toBe(false);
 	});
 
 	it("does NOT treat a binding on an unmappable resource as supplying the value", () => {
@@ -392,9 +389,7 @@ commands:
   start: "node server.js"
 `);
 		expect(hcl).not.toContain("app_default_CACHE_URL");
-		expect(conformance.gaps.some((g) => g.field === "env.CACHE_URL")).toBe(
-			true,
-		);
+		expect(conformance.gaps.some((g) => g.field === "env.CACHE_URL")).toBe(true);
 	});
 
 	it("still reports it when the component gaps for an unrelated reason", () => {
@@ -622,33 +617,26 @@ describe("host capabilities — grant/refuse (D-44, PROVIDERS.md §11)", () => {
 		translate(launch).conformance.gaps.map((g) => `${g.severity}:${g.field}`);
 
 	it("grades a required capability as a blocker", () => {
-		expect(
-			gapsOf(mk("requires:\n  - host: { container_runtime: docker }\n")),
-		).toContain("blocker:requires:host.container_runtime");
+		expect(gapsOf(mk("requires:\n  - host: { container_runtime: docker }\n"))).toContain(
+			"blocker:requires:host.container_runtime",
+		);
 	});
 
 	it("grades the entry form and the legacy block at the same severity", () => {
-		const entry = gapsOf(
-			mk("requires:\n  - host: { container_runtime: docker }\n"),
-		);
+		const entry = gapsOf(mk("requires:\n  - host: { container_runtime: docker }\n"));
 		const legacy = gapsOf(mk("host:\n  docker: required\n"));
-		const sev = (g: string[]) =>
-			g.filter((x) => x.startsWith("blocker:")).length;
+		const sev = (g: string[]) => g.filter((x) => x.startsWith("blocker:")).length;
 		expect(sev(entry)).toBe(sev(legacy));
 	});
 
 	it("grades an optional capability as nice-to-have, not a blocker", () => {
-		const gaps = gapsOf(
-			mk("supports:\n  - host: { container_runtime: any }\n"),
-		);
+		const gaps = gapsOf(mk("supports:\n  - host: { container_runtime: any }\n"));
 		expect(gaps).toContain("nice-to-have:supports:host.container_runtime");
 		expect(gaps.some((g) => g.startsWith("blocker:"))).toBe(false);
 	});
 
 	it("does not report a capability as a missing managed-service mapping", () => {
-		const gaps = gapsOf(
-			mk("requires:\n  - host: { container_runtime: docker }\n"),
-		);
+		const gaps = gapsOf(mk("requires:\n  - host: { container_runtime: docker }\n"));
 		expect(gaps).not.toContain("workaround:requires:host");
 	});
 
@@ -879,7 +867,7 @@ commands:
 		});
 		expect(hcl).toContain('resource "random_password" "lf_secret_session"');
 		expect(hcl).not.toContain('resource "random_bytes" "lf_secret_session"');
-		expect(hcl).toContain("${random_password.lf_secret_session.result}");
+		expect(hcl).toContain(`\${random_password.lf_secret_session.result}`);
 		expect(preservedSecrets).toEqual(["random_password.lf_secret_session"]);
 	});
 
@@ -1021,6 +1009,38 @@ components:
 			expect(e.message).toContain("component web");
 			expect(e.message).toContain("NODE_ID");
 		}
+	});
+
+	it("re-keys after `terraform state rm`: the refusal's own steps reach the D-47 output", () => {
+		const out = mkdtempSync(join(tmpdir(), "lf-aws-rekey-"));
+		const state = (resources: Array<Record<string, string>>) =>
+			writeFileSync(
+				join(out, "terraform.tfstate"),
+				JSON.stringify({ version: 4, resources }),
+			);
+		const launch = readLaunch(appSecret);
+
+		// Step 0: the stack minted this secret as a uuid; `generator: secret`
+		// would change its type, so translate refuses and writes nothing.
+		state([
+			{ mode: "managed", type: "random_uuid", name: "lf_secret_session" },
+		]);
+		writeFileSync(
+			join(out, "main.tf"),
+			'resource "random_uuid" "lf_secret_session" {\n}\n',
+		);
+		expect(() =>
+			translate(launch, { priorStack: readPriorStack(out) }),
+		).toThrow(SecretRotationError);
+
+		// Step 1: the operator removes the resource from state. The old main.tf
+		// is still there, and must not make the refusal repeat.
+		state([]);
+		const { hcl, preservedSecrets } = translate(launch, {
+			priorStack: readPriorStack(out),
+		});
+		expect(hcl).toContain('resource "random_bytes" "lf_secret_session"');
+		expect(preservedSecrets).toEqual([]);
 	});
 
 	it("lets a port change type — D-49 exempts an allocation", () => {

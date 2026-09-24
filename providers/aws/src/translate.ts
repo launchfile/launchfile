@@ -620,8 +620,6 @@ interface GeneratorEmission {
 	value: string;
 	/** The resource type actually emitted. */
 	resource: GeneratorResource;
-	/** True when a pre-D-47 secret was kept rather than re-minted. */
-	preserved: boolean;
 }
 
 /** Everything the generator emitters need beyond the block list. */
@@ -678,7 +676,6 @@ function emitGenerator(
 			return {
 				value: `\${random_password.${tf}.result}`,
 				resource: "random_password",
-				preserved: true,
 			};
 		}
 		if (MINTED_RESOURCES.includes(had)) {
@@ -691,7 +688,6 @@ function emitGenerator(
 		return {
 			value: `\${random_uuid.${tf}.result}`,
 			resource: "random_uuid",
-			preserved: false,
 		};
 	}
 	if (generator === "port") {
@@ -705,7 +701,6 @@ function emitGenerator(
 		return {
 			value: `\${random_integer.${tf}.result}`,
 			resource: "random_integer",
-			preserved: false,
 		};
 	}
 	// "secret" — spec-defined output: 32 bytes of cryptographically random
@@ -716,7 +711,6 @@ function emitGenerator(
 	return {
 		value: `\${random_bytes.${tf}.hex}`,
 		resource: "random_bytes",
-		preserved: false,
 	};
 }
 
