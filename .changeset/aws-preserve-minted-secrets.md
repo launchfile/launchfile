@@ -12,8 +12,11 @@ became unreadable. The release notes warned about it; nothing stopped it.
 
 `translate` now reads the output directory before it emits — `terraform.tfstate`
 whenever it parses, even one that `terraform state rm` has emptied, and only when
-no state is readable the `main.tf` it wrote last time — and takes **only resource
-types and names** from it, never a value.
+there is no state file at all the `main.tf` it wrote last time — and takes
+**only resource types and names** from it, never a value. A state file that
+exists but does not parse is refused, exit 1, nothing written: it proves the
+stack is not fresh and says nothing about what is minted. The refusal names the
+file and the way forward (repair or restore it, or remove it deliberately).
 
 - **Nothing there** (a fresh stack): mints under D-47, unchanged — `random_bytes`,
   32 bytes as 64 lowercase hex characters.
@@ -32,9 +35,10 @@ and the RDS master password is untouched: it is a resource credential (D-7), not
 To take the D-47 output on an existing stack, re-key deliberately: back up
 anything encrypted under the current value, `terraform state rm` the resource,
 re-translate, apply, then re-key the app. When the record came from `main.tf`
-(no state file in the output directory parses), re-translate with the new
+(no state file in the output directory), re-translate with the new
 `--rekey <random_type>.<name>` flag — `state rm` never touches `main.tf`, and
 `--rekey` drops exactly that record while every other minted secret stays
-preserved (or refused). An address the record does not hold is refused. The
+preserved (or refused). An address the record does not hold is refused, and so
+is a `--rekey` with no value or in the `--rekey=<address>` form. The
 refusal and the `CONFORMANCE.md` gap name the file they read and print the
 steps, with the addresses, for it.
