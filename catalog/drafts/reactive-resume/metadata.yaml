@@ -1,16 +1,16 @@
 test_results:
-  last_tested: 2026-04-08
-  pull_time_seconds: 46
-  startup_time_seconds: 127
-  total_disk_mb: 1458
-  health_check_passed: false
-  notes: Containers running but health check timed out
+  last_tested: 2026-09-24
+  pull_time_seconds: 66
+  startup_time_seconds: 19
+  total_disk_mb: 1959
+  health_check_passed: true
+  notes: ""
 images:
-  - name: amruthpillai/reactive-resume:latest
-    size_mb: 1199
+  - name: amruthpillai/reactive-resume:v5
+    size_mb: 1567
     platform:
       - linux/arm64
   - name: postgres:16-alpine
-    size_mb: 259
+    size_mb: 392
     platform:
       - linux/arm64
