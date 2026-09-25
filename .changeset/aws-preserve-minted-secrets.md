@@ -14,9 +14,10 @@ became unreadable. The release notes warned about it; nothing stopped it.
 whenever it parses, even one that `terraform state rm` has emptied, and only when
 there is no state file at all the `main.tf` it wrote last time — and takes
 **only resource types and names** from it, never a value. A state file that
-exists but does not parse as Terraform state — broken JSON, or JSON without an
-integer `version` and a `resources` array (`{}`, a legacy v3 state) — is
-refused, exit 1, nothing written: it proves the stack is not fresh and says
+exists but does not parse as Terraform state — broken JSON, or JSON without the
+v4 state shape (`version: 4`, an integer `serial`, a non-empty `lineage`, and a
+`resources` array of objects; `{}`, `{"version":4,"resources":[]}` and a legacy
+v3 state all fail it) — is refused, exit 1, nothing written: it proves the stack is not fresh and says
 nothing about what is minted, and `main.tf` is not read in its place. The
 refusal names the file and the way forward (repair or restore it, or remove it
 deliberately).
