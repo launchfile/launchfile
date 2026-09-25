@@ -17,6 +17,10 @@ bun run src/test-app.ts memos
 # Keep containers running after test
 bun run src/test-app.ts memos --keep
 
+# Give `docker compose up --wait` a longer budget than the 120s default — an app
+# whose `health.start_period` exceeds the budget can only ever record a timeout
+bun run src/test-app.ts posthog --wait-timeout 360
+
 # Test all apps in a tier
 bun run src/test-all.ts --tier 0
 

@@ -4,9 +4,9 @@
 
 ## Summary
 
-- **86** Launchfile(s) translated
-- **169** field mappings
-- **98** gaps logged (never silently dropped)
+- **85** Launchfile(s) translated
+- **166** field mappings
+- **95** gaps logged (never silently dropped)
 - **8** specializations safely ignored
 
 ### Distinct gaps
@@ -17,8 +17,6 @@
 | `supports:postgres` | 🟢 nice-to-have | optional resources (supports) are not provisioned by this probe | provision behind a Terraform variable toggle |
 | `supports:certificate` | 🟢 nice-to-have | the app can serve TLS on its own listener 'web' with the certificate 'server-cert', and this probe has no way to place one in the task | mount the certificate into the task and supply cert_file/key_file, or terminate TLS at the ALB instead — a different arrangement, not this entry |
 | `supports:https-origin` | 🟢 nice-to-have | the app would use a public HTTPS origin in front of endpoint 'web', and this probe emits an http-only load balancer | terminate TLS at the ALB (aws_acm_certificate + an HTTPS listener) |
-| `requires:clickhouse` | 🟡 workaround | no managed AWS service mapping for resource type 'clickhouse' | model as a self-hosted component, or extend MANAGED_RESOURCES |
-| `requires:kafka` | 🟡 workaround | no managed AWS service mapping for resource type 'kafka' | model as a self-hosted component, or extend MANAGED_RESOURCES |
 | `requires:https-origin` | 🔴 blocker | the app requires a public HTTPS origin in front of endpoint 'web', and this probe emits an http-only load balancer | terminate TLS at the ALB (aws_acm_certificate + an HTTPS listener) before deploying this app |
 | `runtime` | 🔴 blocker | no runtime and no commands.start — nothing to build or run on EC2 | — |
 | `schedule` | 🟢 nice-to-have | cron schedule not mapped (no EventBridge Scheduler in this probe) | map to aws_scheduler_schedule |
@@ -684,22 +682,6 @@
 
 **Gaps**
 
-- 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
-
-### posthog
-
-> Source: `catalog/apps/posthog/Launchfile` — 3 mapped, 3 gap(s), 0 ignored
-
-| Launchfile field | → Terraform | Component |
-|---|---|---|
-| `requires:postgres` | `aws_db_instance` | — |
-| `requires:redis` | `aws_elasticache_cluster` | — |
-| `provides.exposed` | `aws_lb (ALB)` | — |
-
-**Gaps**
-
-- 🟡 `requires:clickhouse`: no managed AWS service mapping for resource type 'clickhouse' — model as a self-hosted component, or extend MANAGED_RESOURCES
-- 🟡 `requires:kafka`: no managed AWS service mapping for resource type 'kafka' — model as a self-hosted component, or extend MANAGED_RESOURCES
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
 
 ### privatebin
