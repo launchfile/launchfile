@@ -186,6 +186,38 @@ requires:
   });
 });
 
+describe("clickhouse factory: credentials the app can bind (#512)", () => {
+  const yaml = `version: launch/v1
+name: analytics
+image: nginx:alpine
+requires:
+  - type: clickhouse
+    set_env:
+      CLICKHOUSE_HOST: "$host"
+      CLICKHOUSE_USER: "$user"
+      CLICKHOUSE_PASSWORD: "$password"
+      CLICKHOUSE_URL: "$url"
+`;
+
+  it("starts the server with CLICKHOUSE_USER/CLICKHOUSE_PASSWORD and hands the app the same pair", () => {
+    const server = envOf(yaml, "analytics-clickhouse");
+    const app = envOf(yaml, "analytics");
+    expect(server.CLICKHOUSE_USER).toBe("default");
+    expect(server.CLICKHOUSE_PASSWORD).toBeTruthy();
+    expect(app.CLICKHOUSE_USER).toBe(server.CLICKHOUSE_USER);
+    expect(app.CLICKHOUSE_PASSWORD).toBe(server.CLICKHOUSE_PASSWORD);
+    expect(app.CLICKHOUSE_HOST).toBe("analytics-clickhouse");
+  });
+
+  it("carries the credentials in $url", () => {
+    const app = envOf(yaml, "analytics");
+    const url = new URL(app.CLICKHOUSE_URL ?? "");
+    expect(url.username).toBe("default");
+    expect(url.password).toBe(app.CLICKHOUSE_PASSWORD);
+    expect(url.host).toBe("analytics-clickhouse:8123");
+  });
+});
+
 describe("$components.<name>.* context", () => {
   it("resolves a later component's reference to an earlier component's URL", () => {
     // web is declared before api, so by the time api's env resolves the

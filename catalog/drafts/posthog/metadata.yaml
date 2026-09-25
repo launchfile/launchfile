@@ -1,0 +1,36 @@
+test_results:
+  last_tested: 2026-09-25
+  pull_time_seconds: 2
+  startup_time_seconds: 369
+  total_disk_mb: 11906
+  health_check_passed: false
+  notes: >-
+    Health check timed out at a 360s wait budget (declared start_period 300s),
+    no restarts, no OOM. ClickHouse credentials now bind ($user/$password), but
+    `migrate_clickhouse` fails on the stock single-node
+    clickhouse/clickhouse-server:latest (26.9): `Code: 701 Requested cluster
+    'posthog_migrations' not found (CLUSTER_DOESNT_EXIST)`. PostHog expects a
+    cluster definition and Keeper (its hobby deploy ships a custom config.xml
+    and a zookeeper service), which `requires: clickhouse` cannot express.
+    ./bin/docker is `set -e`, so the web server never starts.
+images:
+  - name: posthog/posthog:latest
+    size_mb: 9745
+    platform:
+      - linux/arm64
+  - name: postgres:16-alpine
+    size_mb: 392
+    platform:
+      - linux/arm64
+  - name: redis:7-alpine
+    size_mb: 56
+    platform:
+      - linux/arm64
+  - name: clickhouse/clickhouse-server:latest
+    size_mb: 1117
+    platform:
+      - linux/arm64
+  - name: redpandadata/redpanda:v25.1.12
+    size_mb: 596
+    platform:
+      - linux/arm64
