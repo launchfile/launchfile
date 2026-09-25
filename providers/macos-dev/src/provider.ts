@@ -47,7 +47,7 @@ import {
 } from "./state.js";
 import {
 	declaredUses,
-	primaryComponent,
+	printedPrimaryEndpoint,
 	registerResource,
 	resolveComponentEnv,
 	resolverContextFor,
@@ -915,9 +915,9 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	// 7. Allocate ports
 	const componentPorts = await allocatePorts(launch.components, launch.name, state.ports);
 	state.ports = componentPorts;
-	// The key a supplied publication URL asserts (D-58 rule 4), recorded so
-	// `status` places it on the same component `$app.*` reads.
-	state.primaryEndpoint = primaryComponent(launch, componentPorts);
+	// The key the printouts place a supplied publication URL on (§7, D-58
+	// rules 2 and 4), recorded so `status` places it without the Launchfile.
+	state.primaryEndpoint = printedPrimaryEndpoint(launch, componentPorts);
 
 	// 8. Build resolver context (including $app.* properties from D-33). A
 	// satisfied `https-origin` registers `url` — the same string as `$app.url`
@@ -1130,9 +1130,8 @@ export type PrintedPublication = Pick<LaunchState, "appUrl" | "primaryEndpoint">
  * as stored (`normalizeAppUrl` ran when `up` recorded it; nothing runs again
  * here); this provider's own `http://localhost:<port>` on every other key,
  * and on every key when no URL is supplied — byte-identical to a run with
- * none. This provider allocates one port per component and prints it as
- * `http://`, so no listener-protocol fence applies here as it does under
- * `@launchfile/docker`.
+ * none. `up` records `primaryEndpoint` only for an HTTP-family primary, so a
+ * `ws`/`tcp`/`udp`/`grpc` primary keeps this provider's own form (§7).
  */
 export function componentAddress(
 	key: string,
