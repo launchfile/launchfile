@@ -22,8 +22,8 @@ types and names** from it, never a value.
   change and the deployed value survives. `CONFORMANCE.md` records the gap: that
   value is the old 32 alphanumeric characters, not the D-47 output.
 - **Any other resource-type change over a minted value**: refused. The CLI prints
-  the app, the scope, the variable and the re-key steps, writes nothing, and
-  exits 1.
+  the app, the scope, the variable and the re-key steps for every conflicting
+  secret at once, writes nothing, and exits 1.
 
 `generator: port` is exempt (D-49 — a port is an allocation, not an identity),
 and the RDS master password is untouched: it is a resource credential (D-7), not
@@ -32,6 +32,9 @@ and the RDS master password is untouched: it is a resource credential (D-7), not
 To take the D-47 output on an existing stack, re-key deliberately: back up
 anything encrypted under the current value, `terraform state rm` the resource,
 re-translate, apply, then re-key the app. When the record came from `main.tf`
-(no state file in the output directory parses), also move that `main.tf` aside
-before re-translating — `state rm` never touches it. The refusal and the
-`CONFORMANCE.md` gap name the file they read and print the steps for it.
+(no state file in the output directory parses), re-translate with the new
+`--rekey <random_type>.<name>` flag — `state rm` never touches `main.tf`, and
+`--rekey` drops exactly that record while every other minted secret stays
+preserved (or refused). An address the record does not hold is refused. The
+refusal and the `CONFORMANCE.md` gap name the file they read and print the
+steps, with the addresses, for it.
