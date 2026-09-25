@@ -188,6 +188,32 @@ export function publishedEndpointAddresses(
 }
 
 /**
+ * The `ports` key `up` records for `status` and both printouts to place the
+ * supplied publication URL on (§7): the primary endpoint's key, when a
+ * declared `https-origin` names it — that entry's `url` is the `https` origin
+ * for every listener it admits, `ws` and `grpc` included (D-60 rule 4) — or,
+ * with no such entry, when its effective listener is `http` or `https`.
+ * `undefined` for a positional `ws`, `tcp`, `udp` or `grpc` primary: a
+ * supplied URL is an `http`/`https` address and asserts nothing about what
+ * those listeners speak (D-58 rule 2), so that key keeps this provider's own
+ * printed form while `$app.url` still reads the supplied URL.
+ *
+ * @param primaryKey the primary's key as {@link computeAppContext} derives it
+ * @param effectiveProtocol that endpoint's effective listener (D-61 rule 2)
+ */
+export function printedPrimaryEndpoint(
+	launch: NormalizedLaunch,
+	primaryKey: string | undefined,
+	effectiveProtocol: string | undefined,
+): string | undefined {
+	if (primaryKey === undefined) return undefined;
+	if (declaredPrimaryEndpoint(launch)?.key === primaryKey) return primaryKey;
+	return effectiveProtocol === "http" || effectiveProtocol === "https"
+		? primaryKey
+		: undefined;
+}
+
+/**
  * The app's primary published endpoint: the one an `https-origin` entry names
  * when the file declares one (D-60 rule 3), else — positionally, as before —
  * the first `exposed: true` entry of the first component that has one.
@@ -296,6 +322,12 @@ export interface AppContext {
 	 * the primary endpoint's address only (D-58 rule 4, D-63 rule 5).
 	 */
 	fenced: string[];
+	/**
+	 * The `ports` key of the primary endpoint `app` describes — what a
+	 * printout needs to put the supplied URL on that key and no other (D-58
+	 * rule 4). `undefined` when the app publishes nothing.
+	 */
+	primaryEndpoint: string | undefined;
 }
 
 /**
@@ -357,5 +389,5 @@ export function computeAppContext(
 			appEndpoints[endpoint.name] = endpointPublicAddress(endpoint);
 		}
 	}
-	return { app, appEndpoints, fenced };
+	return { app, appEndpoints, fenced, primaryEndpoint: primary?.key };
 }

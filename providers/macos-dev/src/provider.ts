@@ -37,9 +37,17 @@ import {
 	httpsOriginSatisfied,
 	httpsOriginShortfall,
 } from "./https-origin.js";
-import { loadState, initState, saveState, ensureDirs, withRecordedDbIndexes } from "./state.js";
+import {
+	loadState,
+	initState,
+	saveState,
+	ensureDirs,
+	withRecordedDbIndexes,
+	type LaunchState,
+} from "./state.js";
 import {
 	declaredUses,
+	printedPrimaryEndpoint,
 	registerResource,
 	resolveComponentEnv,
 	resolverContextFor,
@@ -907,6 +915,9 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	// 7. Allocate ports
 	const componentPorts = await allocatePorts(launch.components, launch.name, state.ports);
 	state.ports = componentPorts;
+	// The key the printouts place a supplied publication URL on (§7, D-58
+	// rules 2 and 4), recorded so `status` places it without the Launchfile.
+	state.primaryEndpoint = printedPrimaryEndpoint(launch, componentPorts);
 
 	// 8. Build resolver context (including $app.* properties from D-33). A
 	// satisfied `https-origin` registers `url` — the same string as `$app.url`
@@ -1020,7 +1031,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 
 	if (opts.dryRun) {
 		console.log("\n[dry-run] Would now run build, release, and start commands.");
-		printSummary(launch, componentPorts, resourceMap);
+		printSummary(launch.name, componentPorts, state);
 		return;
 	}
 
@@ -1098,22 +1109,79 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	state.processes = pm2.getRecordedProcesses();
 
 	// 17. Print summary
-	printSummary(launch, componentPorts, resourceMap);
+	printSummary(launch.name, componentPorts, state);
 	printAtReports(atReports(launch, componentPorts, suppliedAppUrl));
 
 	// Save final state (now including recorded pids)
 	await saveState(projectDir, state);
 }
 
-function printSummary(
-	launch: NormalizedLaunch,
+/**
+ * What a printout reads to place the orchestrator-supplied publication URL
+ * (D-58): the URL, and the `ports` key it asserts. One URL asserts the
+ * primary endpoint only (D-58 rule 4), so every other key keeps this
+ * provider's own address; with no URL every key does.
+ */
+export type PrintedPublication = Pick<LaunchState, "appUrl" | "primaryEndpoint">;
+
+/**
+ * The address to print for one `ports` key — the single definition `up` and
+ * `status` share. The supplied publication URL on the primary endpoint's key,
+ * as stored (`normalizeAppUrl` ran when `up` recorded it; nothing runs again
+ * here); this provider's own `http://localhost:<port>` on every other key,
+ * and on every key when no URL is supplied — byte-identical to a run with
+ * none. `up` records `primaryEndpoint` only for an `http`/`https` primary or
+ * one a declared `https-origin` names, so a positional `ws`/`tcp`/`udp`/`grpc`
+ * primary keeps this provider's own form (§7, `printedPrimaryEndpoint`).
+ */
+export function componentAddress(
+	key: string,
+	port: number,
+	publication?: PrintedPublication,
+): string {
+	if (
+		publication?.appUrl !== undefined &&
+		publication.primaryEndpoint !== undefined &&
+		key === publication.primaryEndpoint
+	) {
+		return publication.appUrl;
+	}
+	return `http://localhost:${port}`;
+}
+
+/**
+ * The "<component> is running at …" lines `up` prints, one per `ports` key.
+ * Pure, so the placement of the supplied URL is testable without a launch.
+ */
+export function summaryLines(
+	appName: string,
 	ports: Record<string, number>,
-	_resources: Record<string, ResourceProperties>,
+	publication?: PrintedPublication,
+): string[] {
+	return Object.entries(ports).map(([name, port]) => {
+		const label = name === "default" ? appName : name;
+		return `  ${label} is running at ${componentAddress(name, port, publication)}`;
+	});
+}
+
+/** The "Components:" lines `status` prints, one per `ports` key. */
+export function statusLines(
+	ports: Record<string, number>,
+	publication?: PrintedPublication,
+): string[] {
+	return Object.entries(ports).map(
+		([name, port]) => `  ${name}: ${componentAddress(name, port, publication)}`,
+	);
+}
+
+function printSummary(
+	appName: string,
+	ports: Record<string, number>,
+	publication: PrintedPublication,
 ): void {
 	console.log("");
-	for (const [name, port] of Object.entries(ports)) {
-		const label = name === "default" ? launch.name : name;
-		console.log(`  ${label} is running at http://localhost:${port}`);
+	for (const line of summaryLines(appName, ports, publication)) {
+		console.log(line);
 	}
 	console.log("\n  Press Ctrl+C to stop all processes.");
 }
@@ -1197,8 +1265,8 @@ export async function launchStatus(opts: { projectDir?: string } = {}): Promise<
 
 	if (Object.keys(state.ports).length > 0) {
 		console.log("\nComponents:");
-		for (const [name, port] of Object.entries(state.ports)) {
-			console.log(`  ${name}: http://localhost:${port}`);
+		for (const line of statusLines(state.ports, state)) {
+			console.log(line);
 		}
 	}
 

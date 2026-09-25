@@ -90,7 +90,7 @@ vi.mock("../process-manager.js", () => ({
 	},
 }));
 
-const { launchEnv, launchUp } = await import("../provider.js");
+const { launchEnv, launchStatus, launchUp } = await import("../provider.js");
 const { launchBootstrap } = await import("../bootstrap.js");
 
 const LAUNCHFILE = `version: launch/v1
@@ -192,12 +192,16 @@ describe("launchUp publication context (D-58)", () => {
 		return file?.content ?? "";
 	}
 
-	function recordedAppUrl(): string | undefined {
+	function recordedState(): { appUrl?: string; primaryEndpoint?: string } {
 		const raw = readFileSync(
 			join(projectDir, ".launchfile", "state.json"),
 			"utf8",
 		);
-		return (JSON.parse(raw) as { appUrl?: string }).appUrl;
+		return JSON.parse(raw) as { appUrl?: string; primaryEndpoint?: string };
+	}
+
+	function recordedAppUrl(): string | undefined {
+		return recordedState().appUrl;
 	}
 
 	it("resolves $app.* from a supplied appUrl, in the env the component receives", async () => {
@@ -264,6 +268,36 @@ describe("launchUp publication context (D-58)", () => {
 		expect(err).toBeInstanceOf(InvalidAppUrlError);
 		expect((err as Error).message).not.toContain("hunter2");
 		expect((err as Error).message).toContain("***@");
+	});
+
+	it("`up` and `status` print the supplied URL for the primary component (#386)", async () => {
+		await launchUp({ projectDir, appUrl: "https://notes.example.com" });
+
+		expect(consoleLogs).toContain(
+			"  urltest is running at https://notes.example.com",
+		);
+		expect(consoleLogs.join("\n")).not.toMatch(
+			/urltest is running at http:\/\/localhost/,
+		);
+		expect(recordedState().primaryEndpoint).toBe("default");
+
+		consoleLogs.length = 0;
+		await launchStatus({ projectDir });
+		expect(consoleLogs).toContain("  default: https://notes.example.com");
+	});
+
+	it("`up` and `status` print localhost when no URL is recorded or supplied", async () => {
+		await launchUp({ projectDir });
+
+		expect(consoleLogs.join("\n")).toMatch(
+			/ {2}urltest is running at http:\/\/localhost:\d+/,
+		);
+
+		consoleLogs.length = 0;
+		await launchStatus({ projectDir });
+		expect(consoleLogs.join("\n")).toMatch(
+			/ {2}default: http:\/\/localhost:\d+/,
+		);
 	});
 
 	it("`env` and `bootstrap` answer with the same $app.* the run was configured with", async () => {
@@ -376,7 +410,9 @@ describe("launchUp https-origin through the publication context (D-60 rule 5)", 
 		expect(registered("web")?.PUBLIC_URL).toBe("https://vw.example.com");
 		expect(registered("worker")).toBeDefined();
 		expect(consoleErrors.join("\n")).not.toContain("Refused");
-		expect(consoleWarns.join("\n")).not.toContain("No provisioner for resource type: https-origin");
+		expect(consoleWarns.join("\n")).not.toContain(
+			"No provisioner for resource type: https-origin",
+		);
 	});
 
 	it("refuses the component when the supplied URL is http, naming the scheme", async () => {
@@ -424,7 +460,9 @@ describe("launchUp https-origin through the publication context (D-60 rule 5)", 
 		writeFileSync(join(projectDir, "Launchfile"), ORIGIN_OPTIONAL);
 		await launchUp({ projectDir, appUrl: "https://vw.example.com" });
 		expect(registered("default")?.DOMAIN).toBe("https://vw.example.com");
-		expect(consoleWarns.join("\n")).not.toContain("optional public HTTPS origin");
+		expect(consoleWarns.join("\n")).not.toContain(
+			"optional public HTTPS origin",
+		);
 
 		rmSync(join(projectDir, ".launchfile"), { recursive: true, force: true });
 		startRegistrations.length = 0;

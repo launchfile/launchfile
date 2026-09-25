@@ -1,0 +1,307 @@
+/**
+ * The address `up` and `status` print (#386, D-58): the supplied publication
+ * URL on the primary component, as stored, and this provider's own
+ * `http://localhost:<port>` on every other — and on every component when no
+ * URL is supplied. One definition, `componentAddress`, feeds both printouts,
+ * the shape `@launchfile/docker` tests through `summaryLines`.
+ */
+
+import { readLaunch } from "@launchfile/sdk";
+import { describe, expect, it } from "vitest";
+import {
+	computeAppProperties,
+	primaryComponent,
+	printedPrimaryEndpoint,
+} from "../env-writer.js";
+import { componentAddress, statusLines, summaryLines } from "../provider.js";
+
+const ports = { web: 31245, api: 31246 };
+const publication = {
+	appUrl: "https://notes.example.com",
+	primaryEndpoint: "web",
+};
+
+describe("componentAddress", () => {
+	it("prints the supplied URL for the primary component, as stored", () => {
+		expect(componentAddress("web", 31245, publication)).toBe(
+			"https://notes.example.com",
+		);
+		// A non-root path survives verbatim (D-58 rule 2) — nothing re-normalizes here.
+		expect(
+			componentAddress("web", 31245, {
+				appUrl: "https://notes.example.com/app",
+				primaryEndpoint: "web",
+			}),
+		).toBe("https://notes.example.com/app");
+	});
+
+	it("prints localhost for every other component (D-58 rule 4)", () => {
+		expect(componentAddress("api", 31246, publication)).toBe(
+			"http://localhost:31246",
+		);
+	});
+
+	it("prints localhost with no URL, with a URL but no recorded primary, and with no state", () => {
+		expect(componentAddress("web", 31245)).toBe("http://localhost:31245");
+		expect(componentAddress("web", 31245, {})).toBe("http://localhost:31245");
+		expect(componentAddress("web", 31245, { primaryEndpoint: "web" })).toBe(
+			"http://localhost:31245",
+		);
+		// A state file from before the primary key was recorded: URL set, key unknown.
+		expect(
+			componentAddress("web", 31245, { appUrl: "https://notes.example.com" }),
+		).toBe("http://localhost:31245");
+	});
+});
+
+describe("summaryLines", () => {
+	it("shows the URL on the primary and localhost on the rest", () => {
+		expect(summaryLines("notes", ports, publication)).toEqual([
+			"  web is running at https://notes.example.com",
+			"  api is running at http://localhost:31246",
+		]);
+	});
+
+	it("is byte-identical to today without a URL", () => {
+		const plain = summaryLines("notes", ports);
+		expect(plain).toEqual([
+			"  web is running at http://localhost:31245",
+			"  api is running at http://localhost:31246",
+		]);
+		expect(summaryLines("notes", ports, {})).toEqual(plain);
+	});
+
+	it("labels the default component with the app name", () => {
+		expect(
+			summaryLines(
+				"notes",
+				{ default: 31245 },
+				{ ...publication, primaryEndpoint: "default" },
+			),
+		).toEqual(["  notes is running at https://notes.example.com"]);
+		expect(summaryLines("notes", { default: 31245 })).toEqual([
+			"  notes is running at http://localhost:31245",
+		]);
+	});
+});
+
+describe("statusLines", () => {
+	it("places the URL the same way", () => {
+		expect(statusLines(ports, publication)).toEqual([
+			"  web: https://notes.example.com",
+			"  api: http://localhost:31246",
+		]);
+	});
+
+	it("is byte-identical to today without a URL", () => {
+		expect(statusLines(ports)).toEqual([
+			"  web: http://localhost:31245",
+			"  api: http://localhost:31246",
+		]);
+		expect(statusLines(ports, {})).toEqual(statusLines(ports));
+	});
+});
+
+describe("primaryComponent — the key the URL asserts", () => {
+	const TWO = `version: launch/v1
+name: two
+components:
+  api:
+    image: api-like
+    provides:
+      - port: 4000
+        protocol: http
+  web:
+    image: web-like
+    provides:
+      - port: 3000
+        protocol: http
+        exposed: true
+`;
+
+	const DECLARED = `version: launch/v1
+name: declared
+components:
+  web:
+    image: web-like
+    provides:
+      - name: ui
+        port: 3000
+        protocol: http
+        exposed: true
+  bridge:
+    image: bridge-like
+    provides:
+      - name: hook
+        port: 3001
+        protocol: http
+        exposed: true
+    supports:
+      - type: https-origin
+        endpoint: hook
+`;
+
+	it("is the first component with an exposed endpoint and a port", () => {
+		expect(primaryComponent(readLaunch(TWO), { api: 4000, web: 3000 })).toBe(
+			"web",
+		);
+	});
+
+	it("is the component a declared https-origin names (D-60 rule 3)", () => {
+		expect(
+			primaryComponent(readLaunch(DECLARED), { web: 3000, bridge: 3001 }),
+		).toBe("bridge");
+	});
+
+	it("is undefined when the declared https-origin component has no allocated port", () => {
+		const launch = readLaunch(DECLARED);
+		const p: Record<string, number> = { web: 3000 };
+		// The declaration still fixes the primary (D-60 rule 3): no fallthrough to `web`.
+		expect(primaryComponent(launch, p)).toBeUndefined();
+		expect(computeAppProperties(launch, p)).toMatchObject({ port: 0, url: "" });
+		// `status` output with nothing recorded as primary: localhost on every key.
+		const publication = {
+			appUrl: "https://notes.example.com",
+			primaryEndpoint: primaryComponent(launch, p),
+		};
+		expect(statusLines(p, publication)).toEqual([
+			"  web: http://localhost:3000",
+		]);
+	});
+
+	it("is undefined when nothing is published", () => {
+		expect(primaryComponent(readLaunch(TWO), { api: 4000 })).toBeUndefined();
+	});
+
+	it("is the component whose port $app.url reads", () => {
+		const launch = readLaunch(TWO);
+		const p: Record<string, number> = { api: 4000, web: 3000 };
+		const primary = primaryComponent(launch, p) ?? "";
+		expect(computeAppProperties(launch, p).url).toBe(
+			`http://localhost:${p[primary]}`,
+		);
+	});
+});
+
+describe("printedPrimaryEndpoint — the key the printouts place the URL on", () => {
+	const TCP_PRIMARY = `version: launch/v1
+name: mail
+components:
+  smtp:
+    image: smtp-like
+    provides:
+      - port: 2525
+        protocol: tcp
+        exposed: true
+  web:
+    image: web-like
+    provides:
+      - port: 3000
+        protocol: http
+        exposed: true
+`;
+
+	const DECLARED_WS = `version: launch/v1
+name: socket
+components:
+  web:
+    image: web-like
+    provides:
+      - name: ui
+        port: 3000
+        protocol: http
+        exposed: true
+      - name: live
+        port: 3001
+        protocol: ws
+        exposed: true
+    supports:
+      - type: https-origin
+        endpoint: live
+`;
+
+	const p = { smtp: 2525, web: 3000 };
+	const appUrl = "https://mail.example.com";
+
+	it("is undefined for a tcp-only primary, so up and status print its plain address", () => {
+		const launch = readLaunch(TCP_PRIMARY);
+		expect(primaryComponent(launch, p)).toBe("smtp");
+		expect(printedPrimaryEndpoint(launch, p)).toBeUndefined();
+		const publication = {
+			appUrl,
+			primaryEndpoint: printedPrimaryEndpoint(launch, p),
+		};
+		expect(summaryLines("mail", p, publication)).toEqual([
+			"  smtp is running at http://localhost:2525",
+			"  web is running at http://localhost:3000",
+		]);
+		expect(statusLines(p, publication)).toEqual([
+			"  smtp: http://localhost:2525",
+			"  web: http://localhost:3000",
+		]);
+	});
+
+	it("leaves $app.url on the supplied URL for a tcp-only primary", () => {
+		expect(computeAppProperties(readLaunch(TCP_PRIMARY), p, appUrl).url).toBe(
+			appUrl,
+		);
+	});
+
+	it("prints the supplied URL for a ws primary a declared https-origin names (D-60 rule 4)", () => {
+		const launch = readLaunch(DECLARED_WS);
+		const ports = { web: 3000 };
+		const primaryEndpoint = printedPrimaryEndpoint(launch, ports);
+		expect(primaryEndpoint).toBe("web");
+		expect(computeAppProperties(launch, ports, appUrl).url).toBe(appUrl);
+		expect(summaryLines("socket", ports, { appUrl, primaryEndpoint })).toEqual([
+			`  web is running at ${appUrl}`,
+		]);
+		expect(statusLines(ports, { appUrl, primaryEndpoint })).toEqual([
+			`  web: ${appUrl}`,
+		]);
+	});
+
+	it("prints the supplied URL for a grpc primary a declared https-origin names", () => {
+		const launch = readLaunch(
+			DECLARED_WS.replace("protocol: ws", "protocol: grpc"),
+		);
+		expect(printedPrimaryEndpoint(launch, { web: 3000 })).toBe("web");
+	});
+
+	it("is undefined for a ws or grpc primary no https-origin names", () => {
+		const positional = DECLARED_WS.replace(
+			/ {6}- name: ui\n {8}port: 3000\n {8}protocol: http\n {8}exposed: true\n/,
+			"",
+		).replace(/ {4}supports:\n[\s\S]*$/, "");
+		expect(positional).not.toContain("https-origin");
+		expect(positional).not.toContain("protocol: http\n");
+		const ws = readLaunch(positional);
+		expect(printedPrimaryEndpoint(ws, { web: 3000 })).toBeUndefined();
+		expect(
+			statusLines(
+				{ web: 3000 },
+				{ appUrl, primaryEndpoint: printedPrimaryEndpoint(ws, { web: 3000 }) },
+			),
+		).toEqual(["  web: http://localhost:3000"]);
+		const grpc = readLaunch(
+			positional.replace("protocol: ws", "protocol: grpc"),
+		);
+		expect(printedPrimaryEndpoint(grpc, { web: 3000 })).toBeUndefined();
+	});
+
+	it("is the primary component when its listener is http or https", () => {
+		const launch = readLaunch(
+			TCP_PRIMARY.replace("protocol: tcp", "protocol: https"),
+		);
+		expect(printedPrimaryEndpoint(launch, p)).toBe("smtp");
+		expect(statusLines(p, { appUrl, primaryEndpoint: "smtp" })).toEqual([
+			`  smtp: ${appUrl}`,
+			"  web: http://localhost:3000",
+		]);
+	});
+
+	it("is undefined when nothing is published", () => {
+		const launch = readLaunch(TCP_PRIMARY);
+		expect(printedPrimaryEndpoint(launch, {})).toBeUndefined();
+	});
+});
