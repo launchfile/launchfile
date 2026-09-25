@@ -6,7 +6,7 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { closeSync, mkdirSync, openSync, readSync, statSync } from "node:fs";
+import { closeSync, fchmodSync, mkdirSync, openSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { NormalizedHealth, NormalizedDependsOnEntry } from "@launchfile/sdk";
 import { describeHealthCheck, healthBudgetMs, healthCheckNeedsPort, waitForHealthy } from "./health.js";
@@ -321,13 +321,17 @@ export class ProcessManager {
 		});
 		tail.start();
 
-		// `detached: true` makes the child the leader of a new process group
-		// (pgid === pid). That lets `launch down` signal the whole group later via
-		// a negative pid, killing the app AND any children it spawned — matching
-		// the foreground SIGINT behavior across sessions. We still keep the handle
-		// so the foreground session can kill it directly on Ctrl+C.
-		const logFd = openSync(logPath, "a");
+		// The log holds the component's raw output, which can include a secret an
+		// app prints on first boot. The open mode covers a new file only, so a log
+		// left by an earlier run is tightened too.
+		const logFd = openSync(logPath, "a", 0o600);
 		try {
+			fchmodSync(logFd, 0o600);
+			// `detached: true` makes the child the leader of a new process group
+			// (pgid === pid). That lets `launch down` signal the whole group later via
+			// a negative pid, killing the app AND any children it spawned — matching
+			// the foreground SIGINT behavior across sessions. We still keep the handle
+			// so the foreground session can kill it directly on Ctrl+C.
 			proc.process = spawn("sh", ["-c", proc.command], {
 				env: { ...process.env, ...proc.env },
 				cwd: proc.cwd,

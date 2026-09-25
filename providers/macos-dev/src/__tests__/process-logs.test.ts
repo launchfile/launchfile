@@ -13,10 +13,13 @@
 
 import { spawn } from "node:child_process";
 import {
+	chmodSync,
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	readFileSync,
 	rmSync,
+	statSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -97,6 +100,42 @@ describe("component logs", () => {
 			),
 		).toBe(true);
 		expect(readFileSync(log, "utf8")).toBe("first\noops\nsecond\n");
+	});
+
+	it("creates the component's log file readable by its owner only", async () => {
+		// A component's raw output can hold a secret it prints on first boot.
+		// Under the default 022 umask an open without a mode gives 0o644.
+		const previous = process.umask(0o022);
+		try {
+			pm.register("web", { command: "sleep 30", env: {}, cwd: projectDir });
+			await pm.startAll();
+		} finally {
+			process.umask(previous);
+		}
+
+		const log = join(projectDir, ".launchfile", "logs", "web.log");
+		expect(statSync(log).mode & 0o777).toBe(0o600);
+	});
+
+	it("tightens a log file an earlier run left readable by others", async () => {
+		const logDir = join(projectDir, ".launchfile", "logs");
+		mkdirSync(logDir, { recursive: true });
+		const log = join(logDir, "web.log");
+		writeFileSync(log, "earlier run\n");
+		chmodSync(log, 0o644);
+
+		pm.register("web", {
+			command: "echo now; sleep 30",
+			env: {},
+			cwd: projectDir,
+		});
+		await pm.startAll();
+
+		expect(statSync(log).mode & 0o777).toBe(0o600);
+		expect(
+			await waitFor(() => readFileSync(log, "utf8").includes("now"), 3000),
+		).toBe(true);
+		expect(readFileSync(log, "utf8")).toBe("earlier run\nnow\n");
 	});
 
 	it("keeps a component alive, and its log growing, after the session that started it has exited", async () => {
