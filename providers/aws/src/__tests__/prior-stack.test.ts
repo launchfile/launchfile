@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { readPriorStack } from "../prior-stack.js";
+import { RekeyAddressError, readPriorStack } from "../prior-stack.js";
 
 function dir(): string {
 	return mkdtempSync(join(tmpdir(), "lf-aws-prior-"));
@@ -109,6 +109,70 @@ describe("readPriorStack", () => {
 			lf_secret_session: "random_password",
 		});
 		expect(prior?.source.kind).toBe("hcl");
+	});
+
+	it("drops exactly the --rekey address and keeps every other record", () => {
+		const d = dir();
+		writeFileSync(
+			join(d, "main.tf"),
+			[
+				'resource "random_uuid" "lf_secret_session" {',
+				"}",
+				'resource "random_password" "lf_secret_cookie" {',
+				"  length = 32",
+				"}",
+			].join("\n"),
+		);
+		const prior = readPriorStack(d, {
+			rekey: ["random_uuid.lf_secret_session"],
+		});
+		expect(prior?.generators).toEqual({ lf_secret_cookie: "random_password" });
+		expect(prior?.source.kind).toBe("hcl");
+	});
+
+	it("reads as fresh once every record is named to --rekey", () => {
+		const d = dir();
+		writeFileSync(
+			join(d, "main.tf"),
+			'resource "random_uuid" "lf_secret_session" {\n}\n',
+		);
+		expect(
+			readPriorStack(d, { rekey: ["random_uuid.lf_secret_session"] }),
+		).toBeUndefined();
+	});
+
+	it("refuses a --rekey address the directory does not hold", () => {
+		// A typo must not pass as a completed re-key: the real record would
+		// still refuse or preserve, and the operator would not know why.
+		const d = dir();
+		writeFileSync(
+			join(d, "main.tf"),
+			'resource "random_uuid" "lf_secret_session" {\n}\n',
+		);
+		for (const address of [
+			"random_uuid.lf_secret_sesion",
+			"random_bytes.lf_secret_session",
+			"lf_secret_session",
+		]) {
+			expect(() => readPriorStack(d, { rekey: [address] })).toThrow(
+				RekeyAddressError,
+			);
+		}
+		try {
+			readPriorStack(d, { rekey: ["random_uuid.lf_secret_sesion"] });
+			expect.unreachable("must refuse");
+		} catch (err) {
+			const e = err as RekeyAddressError;
+			expect(e.address).toBe("random_uuid.lf_secret_sesion");
+			expect(e.message).toContain("random_uuid.lf_secret_session");
+			expect(e.message).toContain("Nothing was written.");
+		}
+	});
+
+	it("refuses --rekey against a directory that records nothing", () => {
+		expect(() =>
+			readPriorStack(dir(), { rekey: ["random_uuid.lf_secret_session"] }),
+		).toThrow(RekeyAddressError);
 	});
 
 	it("carries resource types only — never a minted value", () => {

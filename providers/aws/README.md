@@ -83,11 +83,16 @@ credential (D-7) and is untouched by this rule.
 To take the D-47 output on an existing stack, re-key deliberately: back up
 anything encrypted under the current value, `terraform state rm` the resource,
 re-translate, `apply`, then re-key the app. When the record came from `main.tf`
-— no state file in the output directory parses, as with a remote backend — also
-move that `main.tf` aside before re-translating: `state rm` never touches it, and
-with no readable state it is what `translate` reads, so the same record would be
-found again. The refusal and the `CONFORMANCE.md` gap print the steps for the
-source they actually read.
+— no state file in the output directory parses, as with a remote backend —
+re-translate with `--rekey <random_type>.<name>` for that resource: `state rm`
+never touches `main.tf`, and with no readable state it is what `translate` reads,
+so the same record would be found again. `--rekey` drops exactly the named
+record and keeps every other one, so no other minted secret in the stack is
+touched; an address the record does not hold is refused, not ignored. Moving
+`main.tf` aside instead would erase every record with it and re-mint the lot.
+The refusal and the `CONFORMANCE.md` gap print the steps, with the addresses,
+for the source they actually read — a refusal names every conflicting secret at
+once.
 
 ## Conformance report
 

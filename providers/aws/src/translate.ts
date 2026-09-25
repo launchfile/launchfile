@@ -112,79 +112,92 @@ export interface GeneratorSite {
 	variable: string;
 }
 
+/** One minted value this translation cannot preserve. */
+export interface SecretConflict {
+	site: GeneratorSite;
+	/** The Terraform resource name, shared by the old and the new type. */
+	name: string;
+	/** The Terraform address it is minted under: `<had>.<name>`. */
+	address: string;
+	had: GeneratorResource;
+	wants: GeneratorResource;
+}
+
 /**
  * A minted value already exists under a Terraform resource type this
  * translation would not emit, and no `moved` block bridges a type change — so
  * applying would destroy the value. The provider refuses instead (D-49,
  * PROVIDERS.md §10 rule 8's never-fabricate posture applied to a destructive
- * change). Carries the coordinates rather than only a rendered string so a
- * caller can present them its own way.
+ * change). Every conflict in the stack is named in the one refusal, so the
+ * operator re-keys them together and none is left to rotate silently after the
+ * first is dealt with. Carries the coordinates rather than only a rendered
+ * string so a caller can present them its own way.
  */
 export class SecretRotationError extends Error {
-	readonly site: GeneratorSite;
-	readonly address: string;
-	readonly had: GeneratorResource;
-	readonly wants: GeneratorResource;
+	readonly conflicts: readonly SecretConflict[];
 	readonly source: PriorSource;
 
 	constructor(
-		site: GeneratorSite,
-		tf: string,
-		had: GeneratorResource,
-		wants: GeneratorResource,
+		app: string,
+		conflicts: readonly SecretConflict[],
 		source: PriorSource,
 	) {
-		const scope = site.component
-			? `component ${site.component}`
-			: "app-wide `secrets:` entry";
-		const address = `${had}.${tf}`;
+		const addresses = conflicts.map((c) => c.address);
+		const plural = conflicts.length > 1;
 		super(
 			[
-				`Refusing to translate ${site.app}: this would destroy a secret that already exists.`,
+				`Refusing to translate ${app}: this would destroy ${plural ? `${conflicts.length} secrets` : "a secret"} that already exist${plural ? "" : "s"}.`,
+				...conflicts.flatMap((c) => [
+					"",
+					`  app:       ${c.site.app}`,
+					`  scope:     ${c.site.component ? `component ${c.site.component}` : "app-wide `secrets:` entry"}`,
+					`  variable:  ${c.site.variable}`,
+					`  minted as: ${c.address}`,
+					`  would be:  ${c.wants}.${c.name}`,
+				]),
 				"",
-				`  app:       ${site.app}`,
-				`  scope:     ${scope}`,
-				`  variable:  ${site.variable}`,
-				`  minted as: ${address}`,
-				`  would be:  ${wants}.${tf}`,
 				`  read from: ${source.path}`,
 				"",
 				"Terraform cannot migrate state across a resource-type change — a `moved`",
 				"block only bridges renames of the same type — so the next `terraform apply`",
-				"would destroy the old value and create a new one. Anything encrypted under",
-				"the old value becomes unreadable. A minted value is generated once and then",
+				`would destroy the old value${plural ? "s" : ""} and create ${plural ? "new ones" : "a new one"}. Anything encrypted under`,
+				`the old value${plural ? "s" : ""} becomes unreadable. A minted value is generated once and then`,
 				"preserved (spec/DESIGN.md D-49). Nothing was written.",
 				"",
-				"To re-key deliberately, after backing up anything encrypted under it:",
-				...rekeySteps(address, source).map((step, i) => `  ${i + 1}. ${step}`),
+				`To re-key deliberately, after backing up anything encrypted under ${plural ? "them" : "it"}:`,
+				...rekeySteps(addresses, source).map(
+					(step, i) => `  ${i + 1}. ${step}`,
+				),
 			].join("\n"),
 		);
 		this.name = "SecretRotationError";
-		this.site = site;
-		this.address = address;
-		this.had = had;
-		this.wants = wants;
+		this.conflicts = conflicts;
 		this.source = source;
 	}
 }
 
 /**
- * The steps that take a minted value at `address` to a fresh D-47 mint. They
- * depend on where the record was read: `terraform state rm` clears a state
- * record, but when the record came from `main.tf` (no readable state file —
- * a remote backend, or apply run from another directory) that file still
- * names the removed resource and would be read again, so it has to go too.
+ * The steps that take the minted values at `addresses` to fresh D-47 mints.
+ * They depend on where the record was read: `terraform state rm` clears a
+ * state record, but when the record came from `main.tf` (no readable state
+ * file — a remote backend, or apply run from another directory) that file
+ * still names the removed resource and would be read again. `--rekey` skips
+ * exactly those addresses and keeps every other record, so no other minted
+ * value in the stack is touched.
  */
-function rekeySteps(address: string, source: PriorSource): string[] {
+function rekeySteps(
+	addresses: readonly string[],
+	source: PriorSource,
+): string[] {
+	const quoted = addresses.map((a) => `'${a}'`).join(" ");
+	const rerun =
+		source.kind === "hcl"
+			? `re-run \`launchfile-aws translate\` with ${addresses.map((a) => `--rekey '${a}'`).join(" ")} — with no readable state file, ${source.path} is the record, and \`--rekey\` drops only ${addresses.length > 1 ? "these" : "this one"} from it`
+			: "re-run `launchfile-aws translate`";
 	return [
-		`terraform state rm '${address}'`,
-		...(source.kind === "hcl"
-			? [
-					`move ${source.path} aside — with no readable state file it is what \`translate\` reads, and it still names ${address}`,
-				]
-			: []),
-		"re-run `launchfile-aws translate`, then `terraform apply`",
-		"re-key the app with the new value",
+		`terraform state rm ${quoted}`,
+		`${rerun}, then \`terraform apply\``,
+		`re-key the app with the new value${addresses.length > 1 ? "s" : ""}`,
 	];
 }
 
@@ -351,6 +364,7 @@ export function translate(
 		c,
 		prior: opts.priorStack,
 		preserved: preservedSecrets,
+		conflicts: [],
 	};
 
 	// --- Determine the exposed/primary component for $app.* and the ALB ---
@@ -616,6 +630,16 @@ export function translate(
 		emitAlb(blocks, c, appTf, launch, exposedComponents, targetGroupFor);
 	}
 
+	// Refuse once, naming every conflict, so nothing is emitted for a stack
+	// with a value this translation would destroy.
+	if (mint.conflicts.length > 0 && mint.prior !== undefined) {
+		throw new SecretRotationError(
+			launch.name,
+			mint.conflicts,
+			mint.prior.source,
+		);
+	}
+
 	return { hcl: document(blocks), conformance: c, preservedSecrets };
 }
 
@@ -655,6 +679,8 @@ interface MintContext {
 	c: Conformance;
 	prior: PriorStack | undefined;
 	preserved: string[];
+	/** Minted values this translation cannot preserve; any one makes it refuse. */
+	conflicts: SecretConflict[];
 }
 
 /**
@@ -666,7 +692,9 @@ interface MintContext {
  *   - nothing minted before, or the same type → emit today's shape (D-47).
  *   - a pre-D-47 `random_password` under a `generator: secret` → keep emitting
  *     `random_password`, unchanged, so the deployed value survives.
- *   - any other type change over a minted value → refuse (`SecretRotationError`).
+ *   - any other type change over a minted value → record the conflict; the
+ *     translation refuses (`SecretRotationError`) once every generator has
+ *     been seen, so the refusal names all of them.
  *
  * The preserved value itself is never read and never written into the HCL — the
  * resource stays and Terraform keeps its own state.
@@ -698,7 +726,7 @@ function emitGenerator(
 				site.component ? `env.${site.variable}` : `secrets.${site.variable}`,
 				"workaround",
 				"already minted before D-47, so the deployed value is 32 alphanumeric characters, not 64 hex — preserved as `random_password` because a minted value must survive (D-49) and Terraform cannot migrate state across a resource-type change",
-				`re-key deliberately when the app can take it: back up anything encrypted under it, then ${rekeySteps(`random_password.${tf}`, prior.source).join("; ")}`,
+				`re-key deliberately when the app can take it: back up anything encrypted under it, then ${rekeySteps([`random_password.${tf}`], prior.source).join("; ")}`,
 				site.component,
 			);
 			return {
@@ -707,7 +735,15 @@ function emitGenerator(
 			};
 		}
 		if (MINTED_RESOURCES.includes(had)) {
-			throw new SecretRotationError(site, tf, had, wants, prior.source);
+			// Keep going so the refusal can list every conflict; the blocks
+			// emitted from here on are discarded when translate() throws.
+			m.conflicts.push({
+				site,
+				name: tf,
+				address: `${had}.${tf}`,
+				had,
+				wants,
+			});
 		}
 	}
 

@@ -33,10 +33,13 @@ export {
 	type GeneratorResource,
 	type PriorSource,
 	type PriorStack,
+	type ReadPriorStackOptions,
+	RekeyAddressError,
 	readPriorStack,
 } from "./prior-stack.js";
 export {
 	type GeneratorSite,
+	type SecretConflict,
 	SecretRotationError,
 	type TranslateOptions,
 	type TranslateResult,

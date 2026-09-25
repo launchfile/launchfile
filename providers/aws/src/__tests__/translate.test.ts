@@ -1,4 +1,4 @@
-import { mkdtempSync, renameSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readLaunch } from "@launchfile/sdk";
@@ -852,6 +852,36 @@ commands:
   start: "node server.js"
 `;
 
+	// Two minted secrets in one stack: re-keying one must leave the other
+	// exactly as it was — preserved, or still refused — never re-minted.
+	const twoSecrets = `
+version: launch/v1
+name: app
+runtime: node
+secrets:
+  session:
+    generator: secret
+  cookie:
+    generator: secret
+env:
+  SESSION_SECRET:
+    default: $secrets.session
+  COOKIE_SECRET:
+    default: $secrets.cookie
+commands:
+  start: "node server.js"
+`;
+
+	function refusalOf(fn: () => unknown): SecretRotationError {
+		try {
+			fn();
+		} catch (err) {
+			if (err instanceof SecretRotationError) return err;
+			throw err;
+		}
+		return expect.unreachable("translate must refuse");
+	}
+
 	function withPrior(
 		yaml: string,
 		generators: Record<string, string>,
@@ -927,9 +957,10 @@ commands:
 		expect(gap?.suggestion).not.toContain("main.tf");
 	});
 
-	it("tells the operator to move main.tf aside when that is where the record came from", () => {
-		// With no readable state file, `state rm` clears nothing translate reads;
-		// the advice has to name the file that would otherwise be read again.
+	it("tells the operator to --rekey the one address when the record came from main.tf", () => {
+		// With no readable state file, `state rm` clears nothing translate reads.
+		// The advice names the file and the flag that skips only this record —
+		// never "move main.tf aside", which would erase every other record too.
 		const { conformance } = withPrior(
 			appSecret,
 			{ lf_secret_session: "random_password" },
@@ -939,7 +970,11 @@ commands:
 		expect(gap?.suggestion).toContain(
 			"terraform state rm 'random_password.lf_secret_session'",
 		);
-		expect(gap?.suggestion).toContain("move /stack/main.tf aside");
+		expect(gap?.suggestion).toContain(
+			"--rekey 'random_password.lf_secret_session'",
+		);
+		expect(gap?.suggestion).toContain("/stack/main.tf is the record");
+		expect(gap?.suggestion).not.toContain("aside");
 	});
 
 	it("maps the secret to the resource it actually emitted", () => {
@@ -991,26 +1026,31 @@ commands:
 			withPrior(uuidNow, { lf_secret_session: "random_password" }),
 		).toThrow(SecretRotationError);
 
-		try {
-			withPrior(uuidNow, { lf_secret_session: "random_password" });
-			expect.unreachable("translate must refuse");
-		} catch (err) {
-			const e = err as SecretRotationError;
-			expect(e.site).toEqual({ app: "app", variable: "session" });
-			expect(e.address).toBe("random_password.lf_secret_session");
-			expect(e.message).toContain("Refusing to translate app");
-			expect(e.message).toContain("session");
-			expect(e.message).toContain(
-				"terraform state rm 'random_password.lf_secret_session'",
-			);
-			expect(e.message).toContain("read from: /stack/terraform.tfstate");
-			expect(e.message).not.toContain("main.tf");
-			expect(e.message).toContain("Nothing was written.");
-			expect(e.source).toEqual({
-				kind: "state",
-				path: "/stack/terraform.tfstate",
-			});
-		}
+		const e = refusalOf(() =>
+			withPrior(uuidNow, { lf_secret_session: "random_password" }),
+		);
+		expect(e.conflicts).toEqual([
+			{
+				site: { app: "app", variable: "session" },
+				name: "lf_secret_session",
+				address: "random_password.lf_secret_session",
+				had: "random_password",
+				wants: "random_uuid",
+			},
+		]);
+		expect(e.message).toContain("Refusing to translate app");
+		expect(e.message).toContain("session");
+		expect(e.message).toContain(
+			"terraform state rm 'random_password.lf_secret_session'",
+		);
+		expect(e.message).toContain("read from: /stack/terraform.tfstate");
+		expect(e.message).not.toContain("main.tf");
+		expect(e.message).not.toContain("--rekey");
+		expect(e.message).toContain("Nothing was written.");
+		expect(e.source).toEqual({
+			kind: "state",
+			path: "/stack/terraform.tfstate",
+		});
 	});
 
 	it("names the component when the refusal is a component env var", () => {
@@ -1027,19 +1067,36 @@ components:
     commands:
       start: "node server.js"
 `;
-		try {
-			withPrior(uuidEnv, { app_web_NODE_ID_gen: "random_bytes" });
-			expect.unreachable("translate must refuse");
-		} catch (err) {
-			const e = err as SecretRotationError;
-			expect(e.site).toEqual({
-				app: "app",
-				component: "web",
-				variable: "NODE_ID",
-			});
-			expect(e.message).toContain("component web");
-			expect(e.message).toContain("NODE_ID");
-		}
+		const e = refusalOf(() =>
+			withPrior(uuidEnv, { app_web_NODE_ID_gen: "random_bytes" }),
+		);
+		expect(e.conflicts.map((c) => c.site)).toEqual([
+			{ app: "app", component: "web", variable: "NODE_ID" },
+		]);
+		expect(e.message).toContain("component web");
+		expect(e.message).toContain("NODE_ID");
+	});
+
+	it("names every conflicting secret in the one refusal, not only the first", () => {
+		// Both were minted as uuids and both now declare generator: secret. A
+		// refusal that named only session would leave cookie to be rotated
+		// silently once session was dealt with.
+		const e = refusalOf(() =>
+			withPrior(twoSecrets, {
+				lf_secret_session: "random_uuid",
+				lf_secret_cookie: "random_uuid",
+			}),
+		);
+		expect(e.conflicts.map((c) => c.address).sort()).toEqual([
+			"random_uuid.lf_secret_cookie",
+			"random_uuid.lf_secret_session",
+		]);
+		expect(e.message).toContain("destroy 2 secrets");
+		expect(e.message).toContain("variable:  session");
+		expect(e.message).toContain("variable:  cookie");
+		expect(e.message).toContain(
+			"terraform state rm 'random_uuid.lf_secret_session' 'random_uuid.lf_secret_cookie'",
+		);
 	});
 
 	it("re-keys after `terraform state rm`: the refusal's own steps reach the D-47 output", () => {
@@ -1074,6 +1131,37 @@ components:
 		expect(preservedSecrets).toEqual([]);
 	});
 
+	it("re-keys one of two preserved secrets after `terraform state rm` and keeps the other", () => {
+		const out = mkdtempSync(join(tmpdir(), "lf-aws-rekey-two-"));
+		const state = (resources: Array<Record<string, string>>) =>
+			writeFileSync(
+				join(out, "terraform.tfstate"),
+				JSON.stringify({ version: 4, resources }),
+			);
+		const launch = readLaunch(twoSecrets);
+		const password = (name: string) => ({
+			mode: "managed",
+			type: "random_password",
+			name,
+		});
+
+		state([password("lf_secret_session"), password("lf_secret_cookie")]);
+		const kept = translate(launch, { priorStack: readPriorStack(out) });
+		expect(kept.preservedSecrets.sort()).toEqual([
+			"random_password.lf_secret_cookie",
+			"random_password.lf_secret_session",
+		]);
+
+		// The operator follows the steps for session only.
+		state([password("lf_secret_cookie")]);
+		const { hcl, preservedSecrets } = translate(launch, {
+			priorStack: readPriorStack(out),
+		});
+		expect(hcl).toContain('resource "random_bytes" "lf_secret_session"');
+		expect(hcl).toContain('resource "random_password" "lf_secret_cookie"');
+		expect(preservedSecrets).toEqual(["random_password.lf_secret_cookie"]);
+	});
+
 	it("re-keys from main.tf alone: the refusal's own steps reach the D-47 output", () => {
 		// No readable state file — a remote backend, or apply run elsewhere — so
 		// the record comes from the main.tf written last time. `state rm` on the
@@ -1083,25 +1171,27 @@ components:
 		writeFileSync(hcl, 'resource "random_uuid" "lf_secret_session" {\n}\n');
 		const launch = readLaunch(appSecret);
 
-		let refusal: SecretRotationError | undefined;
-		try {
-			translate(launch, { priorStack: readPriorStack(out) });
-			expect.unreachable("translate must refuse");
-		} catch (err) {
-			refusal = err as SecretRotationError;
-		}
-		expect(refusal?.source).toEqual({ kind: "hcl", path: hcl });
-		expect(refusal?.message).toContain(`read from: ${hcl}`);
-		expect(refusal?.message).toContain(
+		const refusal = refusalOf(() =>
+			translate(launch, { priorStack: readPriorStack(out) }),
+		);
+		expect(refusal.source).toEqual({ kind: "hcl", path: hcl });
+		expect(refusal.message).toContain(`read from: ${hcl}`);
+		expect(refusal.message).toContain(
 			"1. terraform state rm 'random_uuid.lf_secret_session'",
 		);
-		expect(refusal?.message).toContain(`2. move ${hcl} aside`);
-		expect(refusal?.message).toContain("3. re-run `launchfile-aws translate`");
+		expect(refusal.message).toContain(
+			"2. re-run `launchfile-aws translate` with --rekey 'random_uuid.lf_secret_session'",
+		);
+		expect(refusal.message).toContain(`${hcl} is the record`);
+		expect(refusal.message).not.toContain("aside");
 
 		// Step 1 happens against a state file this directory does not hold.
-		// Step 2: the operator moves main.tf aside, as told.
-		renameSync(hcl, `${hcl}.pre-rekey`);
-		const fresh = translate(launch, { priorStack: readPriorStack(out) });
+		// Step 2: the operator re-runs with --rekey, as told. main.tf stays.
+		const fresh = translate(launch, {
+			priorStack: readPriorStack(out, {
+				rekey: ["random_uuid.lf_secret_session"],
+			}),
+		});
 		expect(fresh.hcl).toContain('resource "random_bytes" "lf_secret_session"');
 		expect(fresh.preservedSecrets).toEqual([]);
 	});
@@ -1122,11 +1212,95 @@ components:
 		const gap = kept.conformance.gaps.find(
 			(g) => g.field === "secrets.session",
 		);
-		expect(gap?.suggestion).toContain(`move ${hcl} aside`);
+		expect(gap?.suggestion).toContain(
+			"--rekey 'random_password.lf_secret_session'",
+		);
 
-		renameSync(hcl, `${hcl}.pre-rekey`);
-		const fresh = translate(launch, { priorStack: readPriorStack(out) });
+		const fresh = translate(launch, {
+			priorStack: readPriorStack(out, {
+				rekey: ["random_password.lf_secret_session"],
+			}),
+		});
 		expect(fresh.hcl).toContain('resource "random_bytes" "lf_secret_session"');
+		expect(fresh.preservedSecrets).toEqual([]);
+	});
+
+	it("re-keys one preserved secret from main.tf and keeps the other preserved", () => {
+		// main.tf is the only record of both. The steps for session must not
+		// clear cookie's record with it.
+		const out = mkdtempSync(join(tmpdir(), "lf-aws-rekey-hcl-two-"));
+		const hcl = join(out, "main.tf");
+		const passwordBlock = (name: string) =>
+			`resource "random_password" "${name}" {\n  length = 32\n  special = false\n}\n`;
+		writeFileSync(
+			hcl,
+			passwordBlock("lf_secret_session") + passwordBlock("lf_secret_cookie"),
+		);
+		const launch = readLaunch(twoSecrets);
+
+		const kept = translate(launch, { priorStack: readPriorStack(out) });
+		expect(kept.preservedSecrets.sort()).toEqual([
+			"random_password.lf_secret_cookie",
+			"random_password.lf_secret_session",
+		]);
+		const gap = kept.conformance.gaps.find(
+			(g) => g.field === "secrets.session",
+		);
+		expect(gap?.suggestion).toContain(
+			"--rekey 'random_password.lf_secret_session'",
+		);
+		expect(gap?.suggestion).not.toContain("cookie");
+
+		const next = translate(launch, {
+			priorStack: readPriorStack(out, {
+				rekey: ["random_password.lf_secret_session"],
+			}),
+		});
+		expect(next.hcl).toContain('resource "random_bytes" "lf_secret_session"');
+		expect(next.hcl).toContain('resource "random_password" "lf_secret_cookie"');
+		expect(next.preservedSecrets).toEqual(["random_password.lf_secret_cookie"]);
+	});
+
+	it("re-keys one of two refused secrets from main.tf and still refuses the other", () => {
+		const out = mkdtempSync(join(tmpdir(), "lf-aws-rekey-hcl-two-"));
+		const hcl = join(out, "main.tf");
+		writeFileSync(
+			hcl,
+			'resource "random_uuid" "lf_secret_session" {\n}\nresource "random_uuid" "lf_secret_cookie" {\n}\n',
+		);
+		const launch = readLaunch(twoSecrets);
+
+		const both = refusalOf(() =>
+			translate(launch, { priorStack: readPriorStack(out) }),
+		);
+		expect(both.conflicts.map((c) => c.address).sort()).toEqual([
+			"random_uuid.lf_secret_cookie",
+			"random_uuid.lf_secret_session",
+		]);
+		expect(both.message).toContain(
+			"--rekey 'random_uuid.lf_secret_session' --rekey 'random_uuid.lf_secret_cookie'",
+		);
+
+		// The operator re-keys session only: cookie is still refused, by name.
+		const remaining = refusalOf(() =>
+			translate(launch, {
+				priorStack: readPriorStack(out, {
+					rekey: ["random_uuid.lf_secret_session"],
+				}),
+			}),
+		);
+		expect(remaining.conflicts.map((c) => c.address)).toEqual([
+			"random_uuid.lf_secret_cookie",
+		]);
+
+		// Both named, as the first refusal printed them: a fresh D-47 mint.
+		const fresh = translate(launch, {
+			priorStack: readPriorStack(out, {
+				rekey: ["random_uuid.lf_secret_session", "random_uuid.lf_secret_cookie"],
+			}),
+		});
+		expect(fresh.hcl).toContain('resource "random_bytes" "lf_secret_session"');
+		expect(fresh.hcl).toContain('resource "random_bytes" "lf_secret_cookie"');
 		expect(fresh.preservedSecrets).toEqual([]);
 	});
 

@@ -40,8 +40,9 @@ export type GeneratorResource = (typeof GENERATOR_RESOURCES)[number];
 /**
  * Where a prior-stack record was read from. It decides what clears the record:
  * `terraform state rm` empties a state record but never touches `main.tf`, so
- * an HCL record is cleared only by moving that file aside. The re-key steps a
- * refusal prints are built from this.
+ * an HCL record is cleared only by naming its address to `--rekey`, which drops
+ * that one record and keeps every other. The re-key steps a refusal prints are
+ * built from this.
  */
 export interface PriorSource {
 	kind: "state" | "hcl";
@@ -98,6 +99,43 @@ function fromState(json: string): Record<string, GeneratorResource> {
 	return found;
 }
 
+export interface ReadPriorStackOptions {
+	/**
+	 * Terraform addresses (`<random_type>.<name>`) the operator is re-keying on
+	 * purpose. Each one is dropped from the record so it mints fresh under
+	 * D-47; every other record is kept, so no other minted value is touched.
+	 * An address the record does not hold is an error, not a no-op: a typo
+	 * here must not pass as a re-key.
+	 */
+	rekey?: readonly string[];
+}
+
+/**
+ * A `--rekey` address that names nothing the output directory holds. Refusing
+ * it keeps a mistyped address from reading as a completed re-key.
+ */
+export class RekeyAddressError extends Error {
+	readonly address: string;
+
+	constructor(address: string, dir: string, prior: PriorStack | undefined) {
+		const held = prior
+			? Object.entries(prior.generators)
+					.map(([name, type]) => `  ${type}.${name}`)
+					.join("\n")
+			: "  (nothing — the directory records no minted value)";
+		super(
+			[
+				`--rekey ${address}: no minted value by that address in ${dir}.`,
+				`Expected \`<random_type>.<name>\` matching one of${prior ? ` the records in ${prior.source.path}` : ""}:`,
+				held,
+				"Nothing was written.",
+			].join("\n"),
+		);
+		this.name = "RekeyAddressError";
+		this.address = address;
+	}
+}
+
 /**
  * Read what `dir` says is already minted. Returns `undefined` when nothing is
  * minted — the fresh-stack case, where every generator is minted for the first
@@ -108,8 +146,38 @@ function fromState(json: string): Record<string, GeneratorResource> {
  * removed resource, and reading it would put the re-key steps in a loop. A
  * malformed state file is not a reason to guess: it falls through to `main.tf`,
  * and if that is absent too the caller is told nothing is known.
+ *
+ * `opts.rekey` then drops exactly the named records — the only way to clear a
+ * record that came from `main.tf`, since `state rm` never touches that file
+ * and moving it aside would erase every other record with it.
  */
-export function readPriorStack(dir: string): PriorStack | undefined {
+export function readPriorStack(
+	dir: string,
+	opts: ReadPriorStackOptions = {},
+): PriorStack | undefined {
+	const prior = readRecords(dir);
+	const rekey = opts.rekey ?? [];
+	if (rekey.length === 0) return prior;
+
+	const generators: Record<string, GeneratorResource> = {
+		...prior?.generators,
+	};
+	for (const address of rekey) {
+		const dot = address.indexOf(".");
+		const type = address.slice(0, dot);
+		const name = address.slice(dot + 1);
+		if (dot < 0 || generators[name] !== type) {
+			throw new RekeyAddressError(address, dir, prior);
+		}
+		delete generators[name];
+	}
+	// `prior` is defined here: an empty record would have thrown above.
+	return prior !== undefined && Object.keys(generators).length > 0
+		? { generators, source: prior.source }
+		: undefined;
+}
+
+function readRecords(dir: string): PriorStack | undefined {
 	const statePath = join(dir, "terraform.tfstate");
 	if (existsSync(statePath)) {
 		let generators: Record<string, GeneratorResource> | undefined;
