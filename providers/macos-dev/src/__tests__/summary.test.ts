@@ -247,12 +247,49 @@ components:
 		);
 	});
 
-	it("reads the endpoint a declared https-origin names, not the first exposed entry", () => {
+	it("prints the supplied URL for a ws primary a declared https-origin names (D-60 rule 4)", () => {
 		const launch = readLaunch(DECLARED_WS);
-		expect(printedPrimaryEndpoint(launch, { web: 3000 })).toBeUndefined();
+		const ports = { web: 3000 };
+		const primaryEndpoint = printedPrimaryEndpoint(launch, ports);
+		expect(primaryEndpoint).toBe("web");
+		expect(computeAppProperties(launch, ports, appUrl).url).toBe(appUrl);
+		expect(summaryLines("socket", ports, { appUrl, primaryEndpoint })).toEqual([
+			`  web is running at ${appUrl}`,
+		]);
+		expect(statusLines(ports, { appUrl, primaryEndpoint })).toEqual([
+			`  web: ${appUrl}`,
+		]);
 	});
 
-	it("is the primary component when its listener is HTTP-family", () => {
+	it("prints the supplied URL for a grpc primary a declared https-origin names", () => {
+		const launch = readLaunch(
+			DECLARED_WS.replace("protocol: ws", "protocol: grpc"),
+		);
+		expect(printedPrimaryEndpoint(launch, { web: 3000 })).toBe("web");
+	});
+
+	it("is undefined for a ws or grpc primary no https-origin names", () => {
+		const positional = DECLARED_WS.replace(
+			/ {6}- name: ui\n {8}port: 3000\n {8}protocol: http\n {8}exposed: true\n/,
+			"",
+		).replace(/ {4}supports:\n[\s\S]*$/, "");
+		expect(positional).not.toContain("https-origin");
+		expect(positional).not.toContain("protocol: http\n");
+		const ws = readLaunch(positional);
+		expect(printedPrimaryEndpoint(ws, { web: 3000 })).toBeUndefined();
+		expect(
+			statusLines(
+				{ web: 3000 },
+				{ appUrl, primaryEndpoint: printedPrimaryEndpoint(ws, { web: 3000 }) },
+			),
+		).toEqual(["  web: http://localhost:3000"]);
+		const grpc = readLaunch(
+			positional.replace("protocol: ws", "protocol: grpc"),
+		);
+		expect(printedPrimaryEndpoint(grpc, { web: 3000 })).toBeUndefined();
+	});
+
+	it("is the primary component when its listener is http or https", () => {
 		const launch = readLaunch(
 			TCP_PRIMARY.replace("protocol: tcp", "protocol: https"),
 		);

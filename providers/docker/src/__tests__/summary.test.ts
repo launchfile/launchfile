@@ -1,4 +1,7 @@
+import { readLaunch } from "@launchfile/sdk";
 import { describe, expect, it } from "vitest";
+import { printedPrimaryEndpoint } from "../app-url.js";
+import { launchToCompose } from "../compose-generator.js";
 import { endpointAddress, statusLines, summaryLines } from "../provider.js";
 import type { StateEndpoint } from "../state.js";
 
@@ -94,11 +97,16 @@ describe("printed addresses under a supplied publication URL (#386)", () => {
 		expect(endpointAddress(18025, undefined, "https://mail.example.com")).toBe("https://mail.example.com");
 	});
 
-	it("endpointAddress leaves ws, tcp, udp and grpc listeners alone even with a URL", () => {
-		expect(endpointAddress(18027, "ws", "https://mail.example.com")).toBe("ws://localhost:18027");
+	it("endpointAddress leaves tcp and udp listeners alone even with a URL — they have no origin", () => {
 		expect(endpointAddress(18026, "tcp", "https://mail.example.com")).toBe("localhost:18026 (tcp)");
 		expect(endpointAddress(53, "udp", "https://mail.example.com")).toBe("localhost:53 (udp)");
-		expect(endpointAddress(50051, "grpc", "https://mail.example.com")).toBe("localhost:50051 (grpc)");
+	});
+
+	it("endpointAddress prints a URL passed for a ws or grpc listener, and its own form without one", () => {
+		expect(endpointAddress(18027, "ws", "https://mail.example.com")).toBe("https://mail.example.com");
+		expect(endpointAddress(50051, "grpc", "https://mail.example.com")).toBe("https://mail.example.com");
+		expect(endpointAddress(18027, "ws")).toBe("ws://localhost:18027");
+		expect(endpointAddress(50051, "grpc")).toBe("localhost:50051 (grpc)");
 	});
 
 	it("summaryLines shows the URL on the primary key and localhost on every other", () => {
@@ -153,5 +161,98 @@ describe("printed addresses under a supplied publication URL (#386)", () => {
 		expect(summaryLines("mailpit", ports, new Set(["other"]), endpoints, publication)).toEqual([
 			"  other is running at https://localhost:18028",
 		]);
+	});
+});
+
+/**
+ * Which primary key `up` records for the printouts (§7): one a declared
+ * `https-origin` names, whatever HTTP-family listener it has (D-60 rule 4),
+ * else an `http`/`https` primary only.
+ */
+describe("printedPrimaryEndpoint — the key the printouts place the URL on (#386)", () => {
+	const DECLARED_WS = `
+name: socket
+image: socket-like
+provides:
+  - name: ui
+    protocol: http
+    port: 3000
+    exposed: true
+  - name: live
+    protocol: ws
+    port: 3001
+    exposed: true
+supports:
+  - type: https-origin
+    endpoint: live
+env:
+  APP_URL:
+    default: $app.url
+`;
+	const hostPorts = { default: 13000, "default:live": 13001 };
+	const appUrl = "https://socket.example.com";
+
+	function recorded(yaml: string, ports: Record<string, number> = hostPorts) {
+		const launch = readLaunch(yaml);
+		const result = launchToCompose(launch, { hostPorts: ports, appUrl });
+		const key = result.primaryEndpoint;
+		const primaryEndpoint = printedPrimaryEndpoint(
+			launch,
+			key,
+			key === undefined ? undefined : result.endpoints[key]?.protocol,
+		);
+		return { result, primaryEndpoint };
+	}
+
+	it("prints the supplied URL for a ws primary a declared https-origin names (D-60 rule 4)", () => {
+		const { result, primaryEndpoint } = recorded(DECLARED_WS);
+		expect(primaryEndpoint).toBe("default:live");
+		const publication = { appUrl, primaryEndpoint };
+		expect(summaryLines("socket", result.ports, undefined, result.endpoints, publication)).toEqual([
+			"  socket is running at http://localhost:13000",
+			`  socket (live) is running at ${appUrl}`,
+		]);
+		expect(statusLines(result.ports, result.endpoints, publication)).toEqual([
+			"  default: http://localhost:13000",
+			`  default:live: ${appUrl}`,
+		]);
+	});
+
+	it("prints the supplied URL for a grpc primary a declared https-origin names", () => {
+		const { result, primaryEndpoint } = recorded(DECLARED_WS.replace("protocol: ws", "protocol: grpc"));
+		expect(primaryEndpoint).toBe("default:live");
+		expect(statusLines(result.ports, result.endpoints, { appUrl, primaryEndpoint })).toEqual([
+			"  default: http://localhost:13000",
+			`  default:live: ${appUrl}`,
+		]);
+	});
+
+	it("records no key for a ws, grpc, tcp or udp primary no https-origin names", () => {
+		const positional = (protocol: string) => `
+name: socket
+image: socket-like
+provides:
+  - name: live
+    protocol: ${protocol}
+    port: 3001
+    exposed: true
+`;
+		for (const protocol of ["ws", "grpc", "tcp", "udp"]) {
+			const { result, primaryEndpoint } = recorded(positional(protocol), { default: 13001 });
+			expect(result.primaryEndpoint).toBe("default");
+			expect(primaryEndpoint).toBeUndefined();
+			expect(statusLines(result.ports, result.endpoints, { appUrl, primaryEndpoint })).toEqual([
+				`  default: ${endpointAddress(13001, protocol)}`,
+			]);
+		}
+	});
+
+	it("records the key for a positional http or https primary", () => {
+		const { primaryEndpoint } = recorded(DECLARED_WS.replace(/supports:[\s\S]*?endpoint: live\n/, ""));
+		expect(primaryEndpoint).toBe("default");
+	});
+
+	it("records nothing when nothing is published", () => {
+		expect(printedPrimaryEndpoint(readLaunch("name: bare\nimage: bare\n"), undefined, undefined)).toBeUndefined();
 	});
 });
