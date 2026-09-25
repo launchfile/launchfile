@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, renameSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readLaunch } from "@launchfile/sdk";
@@ -852,11 +852,18 @@ commands:
   start: "node server.js"
 `;
 
-	function withPrior(yaml: string, generators: Record<string, string>) {
+	function withPrior(
+		yaml: string,
+		generators: Record<string, string>,
+		source: PriorStack["source"] = {
+			kind: "state",
+			path: "/stack/terraform.tfstate",
+		},
+	) {
 		return translate(readLaunch(yaml), {
 			priorStack: {
 				generators: generators as PriorStack["generators"],
-				source: "terraform.tfstate",
+				source,
 			},
 		});
 	}
@@ -914,7 +921,25 @@ commands:
 		const gap = conformance.gaps.find((g) => g.field === "secrets.session");
 		expect(gap?.severity).toBe("workaround");
 		expect(gap?.reason).toContain("D-49");
-		expect(gap?.suggestion).toContain("terraform state rm");
+		expect(gap?.suggestion).toContain(
+			"terraform state rm 'random_password.lf_secret_session'",
+		);
+		expect(gap?.suggestion).not.toContain("main.tf");
+	});
+
+	it("tells the operator to move main.tf aside when that is where the record came from", () => {
+		// With no readable state file, `state rm` clears nothing translate reads;
+		// the advice has to name the file that would otherwise be read again.
+		const { conformance } = withPrior(
+			appSecret,
+			{ lf_secret_session: "random_password" },
+			{ kind: "hcl", path: "/stack/main.tf" },
+		);
+		const gap = conformance.gaps.find((g) => g.field === "secrets.session");
+		expect(gap?.suggestion).toContain(
+			"terraform state rm 'random_password.lf_secret_session'",
+		);
+		expect(gap?.suggestion).toContain("move /stack/main.tf aside");
 	});
 
 	it("maps the secret to the resource it actually emitted", () => {
@@ -978,7 +1003,13 @@ commands:
 			expect(e.message).toContain(
 				"terraform state rm 'random_password.lf_secret_session'",
 			);
+			expect(e.message).toContain("read from: /stack/terraform.tfstate");
+			expect(e.message).not.toContain("main.tf");
 			expect(e.message).toContain("Nothing was written.");
+			expect(e.source).toEqual({
+				kind: "state",
+				path: "/stack/terraform.tfstate",
+			});
 		}
 	});
 
@@ -1041,6 +1072,62 @@ components:
 		});
 		expect(hcl).toContain('resource "random_bytes" "lf_secret_session"');
 		expect(preservedSecrets).toEqual([]);
+	});
+
+	it("re-keys from main.tf alone: the refusal's own steps reach the D-47 output", () => {
+		// No readable state file — a remote backend, or apply run elsewhere — so
+		// the record comes from the main.tf written last time. `state rm` on the
+		// remote state changes nothing here; the printed steps must still finish.
+		const out = mkdtempSync(join(tmpdir(), "lf-aws-rekey-hcl-"));
+		const hcl = join(out, "main.tf");
+		writeFileSync(hcl, 'resource "random_uuid" "lf_secret_session" {\n}\n');
+		const launch = readLaunch(appSecret);
+
+		let refusal: SecretRotationError | undefined;
+		try {
+			translate(launch, { priorStack: readPriorStack(out) });
+			expect.unreachable("translate must refuse");
+		} catch (err) {
+			refusal = err as SecretRotationError;
+		}
+		expect(refusal?.source).toEqual({ kind: "hcl", path: hcl });
+		expect(refusal?.message).toContain(`read from: ${hcl}`);
+		expect(refusal?.message).toContain(
+			"1. terraform state rm 'random_uuid.lf_secret_session'",
+		);
+		expect(refusal?.message).toContain(`2. move ${hcl} aside`);
+		expect(refusal?.message).toContain("3. re-run `launchfile-aws translate`");
+
+		// Step 1 happens against a state file this directory does not hold.
+		// Step 2: the operator moves main.tf aside, as told.
+		renameSync(hcl, `${hcl}.pre-rekey`);
+		const fresh = translate(launch, { priorStack: readPriorStack(out) });
+		expect(fresh.hcl).toContain('resource "random_bytes" "lf_secret_session"');
+		expect(fresh.preservedSecrets).toEqual([]);
+	});
+
+	it("re-keys a preserved secret from main.tf alone by the gap's own steps", () => {
+		const out = mkdtempSync(join(tmpdir(), "lf-aws-rekey-hcl-"));
+		const hcl = join(out, "main.tf");
+		writeFileSync(
+			hcl,
+			'resource "random_password" "lf_secret_session" {\n  length = 32\n  special = false\n}\n',
+		);
+		const launch = readLaunch(appSecret);
+
+		const kept = translate(launch, { priorStack: readPriorStack(out) });
+		expect(kept.preservedSecrets).toEqual([
+			"random_password.lf_secret_session",
+		]);
+		const gap = kept.conformance.gaps.find(
+			(g) => g.field === "secrets.session",
+		);
+		expect(gap?.suggestion).toContain(`move ${hcl} aside`);
+
+		renameSync(hcl, `${hcl}.pre-rekey`);
+		const fresh = translate(launch, { priorStack: readPriorStack(out) });
+		expect(fresh.hcl).toContain('resource "random_bytes" "lf_secret_session"');
+		expect(fresh.preservedSecrets).toEqual([]);
 	});
 
 	it("lets a port change type — D-49 exempts an allocation", () => {

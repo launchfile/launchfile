@@ -31,6 +31,7 @@ export {
 export {
 	GENERATOR_RESOURCES,
 	type GeneratorResource,
+	type PriorSource,
 	type PriorStack,
 	readPriorStack,
 } from "./prior-stack.js";

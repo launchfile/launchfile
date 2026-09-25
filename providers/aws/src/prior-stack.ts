@@ -37,6 +37,18 @@ export const GENERATOR_RESOURCES = [
 
 export type GeneratorResource = (typeof GENERATOR_RESOURCES)[number];
 
+/**
+ * Where a prior-stack record was read from. It decides what clears the record:
+ * `terraform state rm` empties a state record but never touches `main.tf`, so
+ * an HCL record is cleared only by moving that file aside. The re-key steps a
+ * refusal prints are built from this.
+ */
+export interface PriorSource {
+	kind: "state" | "hcl";
+	/** The file the record was read from, resolved from the output directory. */
+	path: string;
+}
+
 export interface PriorStack {
 	/**
 	 * Terraform resource *name* → the `random_*` type it currently exists as.
@@ -45,8 +57,8 @@ export interface PriorStack {
 	 * resource.
 	 */
 	generators: Readonly<Record<string, GeneratorResource>>;
-	/** Where the record came from — named in a refusal so the operator can check it. */
-	source: string;
+	/** Named in a refusal, and selects the re-key steps it prints. */
+	source: PriorSource;
 }
 
 function isGeneratorResource(type: string): type is GeneratorResource {
@@ -108,7 +120,7 @@ export function readPriorStack(dir: string): PriorStack | undefined {
 		}
 		if (generators !== undefined) {
 			return Object.keys(generators).length > 0
-				? { generators, source: statePath }
+				? { generators, source: { kind: "state", path: statePath } }
 				: undefined;
 		}
 	}
@@ -116,7 +128,7 @@ export function readPriorStack(dir: string): PriorStack | undefined {
 	if (existsSync(hclPath)) {
 		const generators = fromHcl(readFileSync(hclPath, "utf8"));
 		if (Object.keys(generators).length > 0)
-			return { generators, source: hclPath };
+			return { generators, source: { kind: "hcl", path: hclPath } };
 	}
 	return undefined;
 }

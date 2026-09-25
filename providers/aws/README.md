@@ -74,7 +74,7 @@ why no secret is ever written into the generated HCL.
 | nothing — a fresh stack | mints under D-47: `random_bytes`, 32 bytes as 64 hex characters. Point `--out` at the directory that holds the stack's `terraform.tfstate`, or the `main.tf` last written for it: an empty directory reads as a fresh stack even when a live stack exists elsewhere, and the secret is re-minted |
 | the same resource type | emits it unchanged |
 | a pre-D-47 `random_password` under a `generator: secret` | **preserves** it — keeps emitting `random_password`, so `plan` shows no diff and the deployed value survives. Reported as a gap in `CONFORMANCE.md`: the value is the old 32 alphanumeric characters, not the D-47 output |
-| any other type change over a minted value | **refuses** — prints the app, the scope, the variable and the re-key steps, writes nothing, exits 1 |
+| any other type change over a minted value | **refuses** — prints the app, the scope, the variable, the file it read the record from and the re-key steps, writes nothing, exits 1 |
 
 `generator: port` is exempt, per D-49: a port is an allocation, not an identity.
 The RDS master password is not `generator:` output either — it is a resource
@@ -82,7 +82,12 @@ credential (D-7) and is untouched by this rule.
 
 To take the D-47 output on an existing stack, re-key deliberately: back up
 anything encrypted under the current value, `terraform state rm` the resource,
-re-translate, `apply`, then re-key the app.
+re-translate, `apply`, then re-key the app. When the record came from `main.tf`
+— no state file in the output directory parses, as with a remote backend — also
+move that `main.tf` aside before re-translating: `state rm` never touches it, and
+with no readable state it is what `translate` reads, so the same record would be
+found again. The refusal and the `CONFORMANCE.md` gap print the steps for the
+source they actually read.
 
 ## Conformance report
 

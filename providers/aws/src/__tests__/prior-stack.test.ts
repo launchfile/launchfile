@@ -35,7 +35,8 @@ describe("readPriorStack", () => {
 			lf_secret_session: "random_password",
 			lf_secret_node_id: "random_uuid",
 		});
-		expect(prior?.source).toContain("main.tf");
+		expect(prior?.source.kind).toBe("hcl");
+		expect(prior?.source.path).toBe(join(d, "main.tf"));
 	});
 
 	it("prefers terraform state — that is what apply diffs against", () => {
@@ -61,7 +62,8 @@ describe("readPriorStack", () => {
 		);
 		const prior = readPriorStack(d);
 		expect(prior?.generators).toEqual({ lf_secret_session: "random_password" });
-		expect(prior?.source).toContain("terraform.tfstate");
+		expect(prior?.source.kind).toBe("state");
+		expect(prior?.source.path).toBe(join(d, "terraform.tfstate"));
 	});
 
 	it("reads a parsed state that holds no generator as fresh, even beside an old main.tf", () => {
@@ -102,9 +104,11 @@ describe("readPriorStack", () => {
 			join(d, "main.tf"),
 			'resource "random_password" "lf_secret_session" {\n  length = 32\n}\n',
 		);
-		expect(readPriorStack(d)?.generators).toEqual({
+		const prior = readPriorStack(d);
+		expect(prior?.generators).toEqual({
 			lf_secret_session: "random_password",
 		});
+		expect(prior?.source.kind).toBe("hcl");
 	});
 
 	it("carries resource types only — never a minted value", () => {

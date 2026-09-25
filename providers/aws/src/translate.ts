@@ -42,7 +42,11 @@ import {
 	ref,
 	tfName,
 } from "./hcl.js";
-import type { GeneratorResource, PriorStack } from "./prior-stack.js";
+import type {
+	GeneratorResource,
+	PriorSource,
+	PriorStack,
+} from "./prior-stack.js";
 
 /** The backing-service type that declares the app's public HTTPS origin (D-60). */
 const HTTPS_ORIGIN = "https-origin";
@@ -121,16 +125,19 @@ export class SecretRotationError extends Error {
 	readonly address: string;
 	readonly had: GeneratorResource;
 	readonly wants: GeneratorResource;
+	readonly source: PriorSource;
 
 	constructor(
 		site: GeneratorSite,
 		tf: string,
 		had: GeneratorResource,
 		wants: GeneratorResource,
+		source: PriorSource,
 	) {
 		const scope = site.component
 			? `component ${site.component}`
 			: "app-wide `secrets:` entry";
+		const address = `${had}.${tf}`;
 		super(
 			[
 				`Refusing to translate ${site.app}: this would destroy a secret that already exists.`,
@@ -138,8 +145,9 @@ export class SecretRotationError extends Error {
 				`  app:       ${site.app}`,
 				`  scope:     ${scope}`,
 				`  variable:  ${site.variable}`,
-				`  minted as: ${had}.${tf}`,
+				`  minted as: ${address}`,
 				`  would be:  ${wants}.${tf}`,
+				`  read from: ${source.path}`,
 				"",
 				"Terraform cannot migrate state across a resource-type change — a `moved`",
 				"block only bridges renames of the same type — so the next `terraform apply`",
@@ -148,17 +156,36 @@ export class SecretRotationError extends Error {
 				"preserved (spec/DESIGN.md D-49). Nothing was written.",
 				"",
 				"To re-key deliberately, after backing up anything encrypted under it:",
-				`  1. terraform state rm '${had}.${tf}'`,
-				"  2. re-run `launchfile-aws translate`, then `terraform apply`",
-				"  3. re-key the app with the new value",
+				...rekeySteps(address, source).map((step, i) => `  ${i + 1}. ${step}`),
 			].join("\n"),
 		);
 		this.name = "SecretRotationError";
 		this.site = site;
-		this.address = `${had}.${tf}`;
+		this.address = address;
 		this.had = had;
 		this.wants = wants;
+		this.source = source;
 	}
+}
+
+/**
+ * The steps that take a minted value at `address` to a fresh D-47 mint. They
+ * depend on where the record was read: `terraform state rm` clears a state
+ * record, but when the record came from `main.tf` (no readable state file —
+ * a remote backend, or apply run from another directory) that file still
+ * names the removed resource and would be read again, so it has to go too.
+ */
+function rekeySteps(address: string, source: PriorSource): string[] {
+	return [
+		`terraform state rm '${address}'`,
+		...(source.kind === "hcl"
+			? [
+					`move ${source.path} aside — with no readable state file it is what \`translate\` reads, and it still names ${address}`,
+				]
+			: []),
+		"re-run `launchfile-aws translate`, then `terraform apply`",
+		"re-key the app with the new value",
+	];
 }
 
 // --- AWS sizing defaults (a probe never applies, so these are illustrative) ---
@@ -652,9 +679,10 @@ function emitGenerator(
 	m: MintContext,
 ): GeneratorEmission {
 	const wants = GENERATOR_RESOURCE[generator] ?? "random_bytes";
-	const had = m.prior?.generators[tf];
+	const prior = m.prior;
+	const had = prior?.generators[tf];
 
-	if (had !== undefined && had !== wants) {
+	if (prior !== undefined && had !== undefined && had !== wants) {
 		if (generator === "secret" && had === "random_password") {
 			// Byte-for-byte the pre-D-47 block, so `terraform plan` shows no diff
 			// for it. D-47's output governs secrets minted from here on.
@@ -670,7 +698,7 @@ function emitGenerator(
 				site.component ? `env.${site.variable}` : `secrets.${site.variable}`,
 				"workaround",
 				"already minted before D-47, so the deployed value is 32 alphanumeric characters, not 64 hex — preserved as `random_password` because a minted value must survive (D-49) and Terraform cannot migrate state across a resource-type change",
-				"re-key deliberately when the app can take it: back up anything encrypted under it, `terraform state rm` the resource, re-translate, apply, then re-key the app",
+				`re-key deliberately when the app can take it: back up anything encrypted under it, then ${rekeySteps(`random_password.${tf}`, prior.source).join("; ")}`,
 				site.component,
 			);
 			return {
@@ -679,7 +707,7 @@ function emitGenerator(
 			};
 		}
 		if (MINTED_RESOURCES.includes(had)) {
-			throw new SecretRotationError(site, tf, had, wants);
+			throw new SecretRotationError(site, tf, had, wants, prior.source);
 		}
 	}
 
