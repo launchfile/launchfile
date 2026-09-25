@@ -10,10 +10,14 @@ provides:
   - protocol: http
     port: 81
     exposed: true
-  - protocol: http
+  - name: http
+    protocol: http
     port: 80
-  - protocol: https
+    exposed: true
+  - name: https
+    protocol: https
     port: 443
+    exposed: true
 storage:
   data:
     path: /data
