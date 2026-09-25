@@ -53,6 +53,13 @@ export const BOOTSTRAP_SHELL = "/bin/sh";
  */
 export interface BootstrapResult {
 	component: string;
+	/**
+	 * The resolved command in redacted form — never the pre-scrub string
+	 * (D-18, D-next). `$secrets.*` and `$<resource>.password` resolve to live
+	 * credentials before the command runs, and this type is a public export:
+	 * a consumer in another process holds an empty redaction registry and
+	 * cannot scrub what it is handed.
+	 */
 	command: string;
 	ok: boolean;
 	exitCode: number;
@@ -310,7 +317,7 @@ export async function launchBootstrap(
 			console.error(`  \u2717 Bootstrap [${name}]: ${item.error}`);
 			results.push({
 				component: name,
-				command: item.command,
+				command: redactSecrets(item.command),
 				ok: false,
 				exitCode: 1,
 				captures: {},
@@ -365,7 +372,7 @@ export async function launchBootstrap(
 
 		results.push({
 			component: name,
-			command: item.command,
+			command: redactSecrets(item.command),
 			ok: exitCode === 0,
 			exitCode,
 			captures,
