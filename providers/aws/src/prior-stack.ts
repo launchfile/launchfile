@@ -20,7 +20,8 @@
  *      is no state file at all (remote backend, or the operator applies from
  *      another directory).
  *
- * A state file that exists but does not parse is neither: it proves the
+ * A state file that exists but is not readable as Terraform state — a JSON
+ * syntax error, or JSON without the state shape — is neither: it proves the
  * directory is not fresh and says nothing about what is minted, so translation
  * refuses. `main.tf` is not a substitute for it — the broken state may be newer.
  *
@@ -87,13 +88,34 @@ interface StateResource {
 	name?: unknown;
 }
 
-/** Managed `random_*` resources recorded in a Terraform state file. */
+/**
+ * Managed `random_*` resources recorded in a Terraform state file.
+ *
+ * Throws when the file is not Terraform state: a JSON syntax error, or a value
+ * that parses but lacks the state shape — an object with an integer `version`
+ * and a `resources` array. `{}`, `[]`, `{"version":4}` and a legacy v3 state
+ * (`modules`, no `resources`) all fall here. An empty record from any of them
+ * would read as "nothing minted" and silently rotate every secret the real
+ * state holds, so the shape is checked before anything is read out of it.
+ */
 function fromState(json: string): Record<string, GeneratorResource> {
 	const found: Record<string, GeneratorResource> = {};
 	const parsed: unknown = JSON.parse(json);
-	if (typeof parsed !== "object" || parsed === null) return found;
-	const resources = (parsed as { resources?: unknown }).resources;
-	if (!Array.isArray(resources)) return found;
+	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+		throw new Error("not a JSON object");
+	}
+	const { version, resources } = parsed as {
+		version?: unknown;
+		resources?: unknown;
+	};
+	if (!Number.isInteger(version)) {
+		throw new Error("no integer `version` — not Terraform state");
+	}
+	if (!Array.isArray(resources)) {
+		throw new Error(
+			`no \`resources\` array — not a Terraform v4 state (version ${String(version)})`,
+		);
+	}
 	for (const entry of resources as StateResource[]) {
 		if (entry.mode !== undefined && entry.mode !== "managed") continue;
 		const { type, name } = entry;
@@ -141,7 +163,8 @@ export class RekeyAddressError extends Error {
 }
 
 /**
- * A `terraform.tfstate` that exists but does not parse. The directory is not
+ * A `terraform.tfstate` that exists but does not parse as Terraform state —
+ * broken JSON, or JSON that lacks the state shape. The directory is not
  * fresh, and what it holds is unknown, so translating would mint over whatever
  * the state records — the silent rotation D-69 forbids. Refusing names the file
  * and the operator's way forward.

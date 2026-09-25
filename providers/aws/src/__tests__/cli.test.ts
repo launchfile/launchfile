@@ -4,6 +4,7 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	readdirSync,
+	readFileSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -69,6 +70,51 @@ describe("launchfile-aws translate (CLI)", () => {
 		expect(r.stderr).toContain("Nothing was written.");
 		expect(r.stderr).toContain("terraform.tfstate.backup");
 		expect(readdirSync(out)).toEqual(["terraform.tfstate"]);
+	});
+
+	it("refuses JSON that is not Terraform state beside a main.tf that names a minted secret, and rotates nothing", () => {
+		// `{}` parses. Read as an empty state it would win over main.tf, and
+		// the random_uuid recorded there would be re-minted as random_bytes.
+		const hcl = 'resource "random_uuid" "lf_secret_session" {\n}\n';
+		for (const json of ["{}", '{"foo":1}']) {
+			const { launchfile, out } = scratch();
+			mkdirSync(out);
+			const statePath = join(out, "terraform.tfstate");
+			writeFileSync(statePath, json);
+			writeFileSync(join(out, "main.tf"), hcl);
+			const r = translate([launchfile, "--out", out]);
+			expect(r.status, json).toBe(1);
+			expect(r.stderr, json).toContain(statePath);
+			expect(r.stderr, json).toContain("does not parse as Terraform state");
+			expect(r.stderr, json).toContain("Nothing was written.");
+			expect(readFileSync(join(out, "main.tf"), "utf8"), json).toBe(hcl);
+			expect(readdirSync(out).sort(), json).toEqual([
+				"main.tf",
+				"terraform.tfstate",
+			]);
+		}
+	});
+
+	it("mints under D-47 beside a valid empty state — a fresh stack", () => {
+		const { launchfile, out } = scratch();
+		mkdirSync(out);
+		writeFileSync(
+			join(out, "terraform.tfstate"),
+			JSON.stringify({
+				version: 4,
+				terraform_version: "1.9.0",
+				serial: 1,
+				lineage: "3f1c2a4e-0000-4000-8000-000000000000",
+				outputs: {},
+				resources: [],
+			}),
+		);
+		const r = translate([launchfile, "--out", out]);
+		expect(r.status).toBe(0);
+		expect(r.stdout).toContain("0 gap(s)");
+		expect(readFileSync(join(out, "main.tf"), "utf8")).toContain(
+			'resource "random_bytes" "lf_secret_session"',
+		);
 	});
 
 	it("refuses a --rekey with no value, and writes nothing", () => {

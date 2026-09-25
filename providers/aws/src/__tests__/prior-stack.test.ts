@@ -136,6 +136,60 @@ describe("readPriorStack", () => {
 		}
 	});
 
+	it("refuses JSON that is not Terraform state, and does not read main.tf in its place", () => {
+		// Each of these parses. None records what is minted. Reading any of them
+		// as an empty state would ignore the main.tf beside it and mint over
+		// the random_uuid it names.
+		const shapes: Record<string, string> = {
+			"empty object": "{}",
+			"unrelated object": '{"foo":1}',
+			"no resources array": '{"version":4}',
+			"resources not an array": '{"version":4,"resources":{}}',
+			"version not an integer": '{"version":"4","resources":[]}',
+			null: "null",
+			"top-level array": "[]",
+			"legacy v3 state":
+				'{"version":3,"serial":1,"modules":[{"path":["root"],"resources":{"random_uuid.lf_secret_session":{"type":"random_uuid"}}}]}',
+		};
+		for (const [label, json] of Object.entries(shapes)) {
+			const d = dir();
+			const statePath = join(d, "terraform.tfstate");
+			writeFileSync(statePath, json);
+			writeFileSync(
+				join(d, "main.tf"),
+				'resource "random_uuid" "lf_secret_session" {\n}\n',
+			);
+			try {
+				readPriorStack(d);
+				expect.unreachable(`must refuse: ${label}`);
+			} catch (err) {
+				expect(err, label).toBeInstanceOf(UnreadableStateError);
+				const e = err as UnreadableStateError;
+				expect(e.path, label).toBe(statePath);
+				expect(e.message, label).toContain("does not parse as Terraform state");
+				expect(e.message, label).toContain("Nothing was written.");
+			}
+		}
+	});
+
+	it("reads a valid empty state on a fresh stack as fresh", () => {
+		// The state `terraform apply` writes for a stack that holds nothing
+		// yet, and the one `terraform state rm` leaves behind. Both mint.
+		const d = dir();
+		writeFileSync(
+			join(d, "terraform.tfstate"),
+			JSON.stringify({
+				version: 4,
+				terraform_version: "1.9.0",
+				serial: 1,
+				lineage: "3f1c2a4e-0000-4000-8000-000000000000",
+				outputs: {},
+				resources: [],
+			}),
+		);
+		expect(readPriorStack(d)).toBeUndefined();
+	});
+
 	it("refuses an unparseable state file before honouring --rekey", () => {
 		const d = dir();
 		writeFileSync(join(d, "terraform.tfstate"), "");
@@ -217,6 +271,7 @@ describe("readPriorStack", () => {
 		writeFileSync(
 			join(d, "terraform.tfstate"),
 			JSON.stringify({
+				version: 4,
 				resources: [
 					{
 						mode: "managed",

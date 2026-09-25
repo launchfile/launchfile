@@ -69,8 +69,10 @@ leaves it empty — and only when there is no state file at all at the `main.tf`
 it wrote last time. It takes **only resource types and names** — never a value,
 which is why no secret is ever written into the generated HCL.
 
-A state file that exists but does not parse is refused outright, exit 1, nothing
-written: it proves the stack is not fresh and says nothing about what is minted,
+A state file that exists but does not parse as Terraform state — broken JSON, or
+JSON without an integer `version` and a `resources` array, such as `{}` or a
+legacy v3 state — is refused outright, exit 1, nothing written: it proves the
+stack is not fresh and says nothing about what is minted,
 and `main.tf` beside it may be older than it. The refusal names the file and the
 way forward — repair or restore it (`terraform.tfstate.backup`, or the remote
 backend's history), or remove it deliberately if the stack holds nothing.
