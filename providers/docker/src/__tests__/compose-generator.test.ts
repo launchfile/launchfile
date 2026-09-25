@@ -172,6 +172,10 @@ ${extra}`);
 		it("keeps an explicit restart on a schedule-bearing component", () => {
 			const result = launchToCompose(scheduled('restart: "always"'));
 			expect(parse(result.yaml).services["daily-sync"].restart).toBe("always");
+			// The author chose the policy, so the warning must not claim the provider did.
+			const warning = result.warnings.join(" ");
+			expect(warning).toContain("declares a schedule");
+			expect(warning).not.toContain("it runs once with");
 		});
 
 		it("names the chosen restart policy in the schedule warning", () => {
