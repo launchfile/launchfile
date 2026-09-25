@@ -400,6 +400,11 @@ function atReport(
  *
  * Each factory's `properties` map is this provider's answer to SPEC.md
  * § Resource Property Vocabulary; `resourcePropertyKeys()` reads it back.
+ *
+ * The map has a null prototype: it is looked up by a `requires[].type` read
+ * straight out of a Launchfile, so `constructor`, `toString` and every other
+ * `Object.prototype` key must resolve to nothing, never to an inherited
+ * function that is not a factory.
  */
 function createBackingServices(
 	savedPasswords: Record<string, string>,
@@ -414,7 +419,7 @@ function createBackingServices(
 		return pw;
 	};
 
-	return {
+	return Object.assign(Object.create(null), {
 		postgres: (name) => {
 			const pw = getPassword("postgres");
 			return {
@@ -774,7 +779,7 @@ function createBackingServices(
 				start_period: "20s",
 			},
 		}),
-	};
+	} satisfies Record<string, (name: string) => BackingService>);
 }
 
 /**
@@ -1378,7 +1383,7 @@ export function launchToCompose(
 		for (const req of component.requires ?? []) {
 			if (req.host || req.type === HTTPS_ORIGIN) continue;
 			if (opts.resources?.[req.name ?? req.type]) continue;
-			if (backingServices[req.type]) continue;
+			if (Object.hasOwn(backingServices, req.type)) continue;
 			unprovisionable.push(
 				req.name === undefined
 					? req.type
@@ -2054,7 +2059,11 @@ function addBackingService(
 	backingServices: Record<string, (name: string) => BackingService>,
 ): { serviceName: string; properties: Record<string, string> } | null {
 	const type = req.type;
-	const factory = backingServices[type];
+	// Own-key lookup: the map arrives as a parameter, so its prototype is not
+	// this function's to assume.
+	const factory = Object.hasOwn(backingServices, type)
+		? backingServices[type]
+		: undefined;
 
 	if (!factory) {
 		// The component loop refuses a component with an unprovisionable
