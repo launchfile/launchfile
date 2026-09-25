@@ -24,6 +24,7 @@ requires:
       DISCOURSE_REDIS_PORT: $port
 env:
   DISCOURSE_HOSTNAME:
+    default: $app.authority
     required: true
     description: "Public hostname for the Discourse instance"
 storage:
