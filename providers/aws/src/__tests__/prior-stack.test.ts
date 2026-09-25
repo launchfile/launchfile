@@ -12,6 +12,18 @@ function dir(): string {
 	return mkdtempSync(join(tmpdir(), "lf-aws-prior-"));
 }
 
+/** A state file in the shape `terraform apply` writes: the v4 header plus `resources`. */
+function state(resources: unknown[]): string {
+	return JSON.stringify({
+		version: 4,
+		terraform_version: "1.9.0",
+		serial: 1,
+		lineage: "3f1c2a4e-0000-4000-8000-000000000000",
+		outputs: {},
+		resources,
+	});
+}
+
 describe("readPriorStack", () => {
 	it("reports nothing for a directory with no prior translation", () => {
 		expect(readPriorStack(dir())).toBeUndefined();
@@ -51,18 +63,15 @@ describe("readPriorStack", () => {
 		);
 		writeFileSync(
 			join(d, "terraform.tfstate"),
-			JSON.stringify({
-				version: 4,
-				resources: [
-					{
-						mode: "managed",
-						type: "random_password",
-						name: "lf_secret_session",
-						instances: [{ attributes: { result: "should-never-be-read" } }],
-					},
-					{ mode: "data", type: "aws_ami", name: "al2023" },
-				],
-			}),
+			state([
+				{
+					mode: "managed",
+					type: "random_password",
+					name: "lf_secret_session",
+					instances: [{ attributes: { result: "should-never-be-read" } }],
+				},
+				{ mode: "data", type: "aws_ami", name: "al2023" },
+			]),
 		);
 		const prior = readPriorStack(d);
 		expect(prior?.generators).toEqual({ lf_secret_session: "random_password" });
@@ -78,10 +87,7 @@ describe("readPriorStack", () => {
 			join(d, "main.tf"),
 			'resource "random_password" "lf_secret_session" {\n  length = 32\n}\n',
 		);
-		writeFileSync(
-			join(d, "terraform.tfstate"),
-			JSON.stringify({ version: 4, resources: [] }),
-		);
+		writeFileSync(join(d, "terraform.tfstate"), state([]));
 		expect(readPriorStack(d)).toBeUndefined();
 	});
 
@@ -93,10 +99,7 @@ describe("readPriorStack", () => {
 		);
 		writeFileSync(
 			join(d, "terraform.tfstate"),
-			JSON.stringify({
-				version: 4,
-				resources: [{ mode: "managed", type: "aws_vpc", name: "main" }],
-			}),
+			state([{ mode: "managed", type: "aws_vpc", name: "main" }]),
 		);
 		expect(readPriorStack(d)).toBeUndefined();
 	});
@@ -143,9 +146,19 @@ describe("readPriorStack", () => {
 		const shapes: Record<string, string> = {
 			"empty object": "{}",
 			"unrelated object": '{"foo":1}',
-			"no resources array": '{"version":4}',
-			"resources not an array": '{"version":4,"resources":{}}',
-			"version not an integer": '{"version":"4","resources":[]}',
+			"no resources array": '{"version":4,"serial":1,"lineage":"x"}',
+			"resources not an array":
+				'{"version":4,"serial":1,"lineage":"x","resources":{}}',
+			"version not an integer":
+				'{"version":"4","serial":1,"lineage":"x","resources":[]}',
+			"version this reader does not understand":
+				'{"version":99,"serial":1,"lineage":"x","resources":[]}',
+			"no serial or lineage": '{"version":4,"resources":[]}',
+			"serial not an integer":
+				'{"version":4,"serial":"1","lineage":"x","resources":[]}',
+			"empty lineage": '{"version":4,"serial":1,"lineage":"","resources":[]}',
+			"resources holds a non-object":
+				'{"version":4,"serial":1,"lineage":"x","resources":["a"]}',
 			null: "null",
 			"top-level array": "[]",
 			"legacy v3 state":
@@ -270,17 +283,14 @@ describe("readPriorStack", () => {
 		const d = dir();
 		writeFileSync(
 			join(d, "terraform.tfstate"),
-			JSON.stringify({
-				version: 4,
-				resources: [
-					{
-						mode: "managed",
-						type: "random_password",
-						name: "lf_secret_session",
-						instances: [{ attributes: { result: "deadbeefdeadbeef" } }],
-					},
-				],
-			}),
+			state([
+				{
+					mode: "managed",
+					type: "random_password",
+					name: "lf_secret_session",
+					instances: [{ attributes: { result: "deadbeefdeadbeef" } }],
+				},
+			]),
 		);
 		const prior = readPriorStack(d);
 		expect(JSON.stringify(prior)).not.toContain("deadbeefdeadbeef");

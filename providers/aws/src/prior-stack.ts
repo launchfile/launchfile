@@ -88,15 +88,22 @@ interface StateResource {
 	name?: unknown;
 }
 
+/** The only state format version this reader understands. */
+const STATE_VERSION = 4;
+
 /**
  * Managed `random_*` resources recorded in a Terraform state file.
  *
  * Throws when the file is not Terraform state: a JSON syntax error, or a value
- * that parses but lacks the state shape — an object with an integer `version`
- * and a `resources` array. `{}`, `[]`, `{"version":4}` and a legacy v3 state
- * (`modules`, no `resources`) all fall here. An empty record from any of them
- * would read as "nothing minted" and silently rotate every secret the real
- * state holds, so the shape is checked before anything is read out of it.
+ * that parses but lacks the v4 state shape — an object with `version: 4`, an
+ * integer `serial`, a non-empty string `lineage`, and a `resources` array of
+ * objects. Terraform writes every one of those fields on every state it saves,
+ * including an empty one, so a file missing any of them is not state Terraform
+ * wrote. `{}`, `[]`, `{"version":4,"resources":[]}` and a legacy v3 state
+ * (`modules`, no `resources`) all fall here, as does a format version this
+ * reader was not written for. An empty record from any of them would read as
+ * "nothing minted" and silently rotate every secret the real state holds, so
+ * the shape is checked before anything is read out of it.
  */
 function fromState(json: string): Record<string, GeneratorResource> {
 	const found: Record<string, GeneratorResource> = {};
@@ -104,21 +111,37 @@ function fromState(json: string): Record<string, GeneratorResource> {
 	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
 		throw new Error("not a JSON object");
 	}
-	const { version, resources } = parsed as {
+	const { version, serial, lineage, resources } = parsed as {
 		version?: unknown;
+		serial?: unknown;
+		lineage?: unknown;
 		resources?: unknown;
 	};
 	if (!Number.isInteger(version)) {
 		throw new Error("no integer `version` — not Terraform state");
 	}
-	if (!Array.isArray(resources)) {
+	if (version !== STATE_VERSION) {
 		throw new Error(
-			`no \`resources\` array — not a Terraform v4 state (version ${String(version)})`,
+			`state format version ${String(version)} — only version ${STATE_VERSION} is readable`,
 		);
 	}
-	for (const entry of resources as StateResource[]) {
-		if (entry.mode !== undefined && entry.mode !== "managed") continue;
-		const { type, name } = entry;
+	if (!Number.isInteger(serial)) {
+		throw new Error("no integer `serial` — not Terraform state");
+	}
+	if (typeof lineage !== "string" || lineage.length === 0) {
+		throw new Error("no `lineage` string — not Terraform state");
+	}
+	if (!Array.isArray(resources)) {
+		throw new Error("no `resources` array — not a Terraform v4 state");
+	}
+	for (const entry of resources as unknown[]) {
+		if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+			throw new Error(
+				"`resources` holds a non-object entry — not Terraform state",
+			);
+		}
+		const { mode, type, name } = entry as StateResource;
+		if (mode !== undefined && mode !== "managed") continue;
 		if (typeof type !== "string" || typeof name !== "string") continue;
 		if (isGeneratorResource(type)) found[name] = type;
 	}

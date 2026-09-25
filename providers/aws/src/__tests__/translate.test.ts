@@ -1104,7 +1104,7 @@ components:
 		const state = (resources: Array<Record<string, string>>) =>
 			writeFileSync(
 				join(out, "terraform.tfstate"),
-				JSON.stringify({ version: 4, resources }),
+				JSON.stringify({ version: 4, serial: 1, lineage: "x", resources }),
 			);
 		const launch = readLaunch(appSecret);
 
@@ -1136,7 +1136,7 @@ components:
 		const state = (resources: Array<Record<string, string>>) =>
 			writeFileSync(
 				join(out, "terraform.tfstate"),
-				JSON.stringify({ version: 4, resources }),
+				JSON.stringify({ version: 4, serial: 1, lineage: "x", resources }),
 			);
 		const launch = readLaunch(twoSecrets);
 		const password = (name: string) => ({
