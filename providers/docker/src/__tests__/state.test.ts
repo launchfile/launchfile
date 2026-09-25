@@ -107,7 +107,7 @@ describe("docker state — publication context (#290)", () => {
 		await saveState("proxied", state);
 
 		const loaded = await loadState("proxied");
-		expect(loaded!.primaryEndpoint).toBe("default:web");
+		expect(loaded?.primaryEndpoint).toBe("default:web");
 	});
 
 	it("loads a state file without a primaryEndpoint key (every key prints localhost)", async () => {
@@ -116,7 +116,8 @@ describe("docker state — publication context (#290)", () => {
 		await saveState("plain", state);
 
 		const loaded = await loadState("plain");
-		expect(loaded!.primaryEndpoint).toBeUndefined();
+		expect(loaded).not.toBeNull();
+		expect(loaded?.primaryEndpoint).toBeUndefined();
 	});
 });
 

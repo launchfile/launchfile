@@ -240,16 +240,19 @@ describe("the primary's entry is $app.* byte for byte (rule 2)", () => {
 	});
 
 	it("names the primary's ports key, so the printout can place a supplied URL on it (#386)", () => {
-		expect(computeAppContext(readLaunch(GITEA), GITEA_PORTS).primaryEndpoint).toBe("default");
+		expect(
+			computeAppContext(readLaunch(GITEA), GITEA_PORTS).primaryEndpoint,
+		).toBe("default");
 		expect(
 			computeAppContext(readLaunch(NAMED_PRIMARY), {
 				default: 18789,
 				"default:bridge": 18790,
 			}).primaryEndpoint,
 		).toBe("default:bridge");
-		expect(launchToCompose(readLaunch(GITEA), { hostPorts: GITEA_PORTS }).primaryEndpoint).toBe(
-			"default",
-		);
+		expect(
+			launchToCompose(readLaunch(GITEA), { hostPorts: GITEA_PORTS })
+				.primaryEndpoint,
+		).toBe("default");
 	});
 
 	it("is the address the printout shows under a supplied URL too — and only for the primary (#386)", () => {
@@ -260,7 +263,15 @@ describe("the primary's entry is $app.* byte for byte (rule 2)", () => {
 		});
 		const env = envOf(result.yaml, "gitea");
 		const publication = { appUrl, primaryEndpoint: result.primaryEndpoint };
-		expect(summaryLines("gitea", result.ports, undefined, result.endpoints, publication)).toEqual([
+		expect(
+			summaryLines(
+				"gitea",
+				result.ports,
+				undefined,
+				result.endpoints,
+				publication,
+			),
+		).toEqual([
 			`  gitea is running at ${env.ROOT_URL}`,
 			"  gitea (ssh) is running at localhost:49222 (tcp)",
 		]);
