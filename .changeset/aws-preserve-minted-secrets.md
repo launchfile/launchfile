@@ -31,4 +31,7 @@ and the RDS master password is untouched: it is a resource credential (D-7), not
 
 To take the D-47 output on an existing stack, re-key deliberately: back up
 anything encrypted under the current value, `terraform state rm` the resource,
-re-translate, apply, then re-key the app.
+re-translate, apply, then re-key the app. When the record came from `main.tf`
+(no state file in the output directory parses), also move that `main.tf` aside
+before re-translating — `state rm` never touches it. The refusal and the
+`CONFORMANCE.md` gap name the file they read and print the steps for it.
