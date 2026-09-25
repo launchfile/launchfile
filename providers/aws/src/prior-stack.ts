@@ -16,9 +16,13 @@
  *      parses it is authoritative, including when it records no generator at
  *      all: that is exactly the state `terraform state rm` leaves behind, and
  *      the re-key steps depend on it reading as fresh.
- *   2. `main.tf` — what this provider last emitted. Consulted only when no
- *      state file is readable (remote backend, or the operator applies from
+ *   2. `main.tf` — what this provider last emitted. Consulted only when there
+ *      is no state file at all (remote backend, or the operator applies from
  *      another directory).
+ *
+ * A state file that exists but does not parse is neither: it proves the
+ * directory is not fresh and says nothing about what is minted, so translation
+ * refuses. `main.tf` is not a substitute for it — the broken state may be newer.
  *
  * Only resource **types and names** are read. Values are never read, never
  * logged, and never reach the emitted HCL.
@@ -137,6 +141,36 @@ export class RekeyAddressError extends Error {
 }
 
 /**
+ * A `terraform.tfstate` that exists but does not parse. The directory is not
+ * fresh, and what it holds is unknown, so translating would mint over whatever
+ * the state records — the silent rotation D-69 forbids. Refusing names the file
+ * and the operator's way forward.
+ */
+export class UnreadableStateError extends Error {
+	readonly path: string;
+
+	constructor(path: string, cause: unknown) {
+		const reason = cause instanceof Error ? cause.message : String(cause);
+		super(
+			[
+				`Refusing to translate: ${path} exists but does not parse as Terraform state (${reason}).`,
+				"",
+				"A state file that cannot be read proves the stack is not fresh and says",
+				"nothing about which secrets are already minted, so translating here would",
+				"re-mint every one of them. Nothing was written.",
+				"",
+				"Either:",
+				"  - repair the file, or restore it (Terraform keeps terraform.tfstate.backup",
+				"    beside it; a remote backend keeps its own history), then re-translate; or",
+				"  - if the stack holds nothing, remove the file deliberately and re-translate.",
+			].join("\n"),
+		);
+		this.name = "UnreadableStateError";
+		this.path = path;
+	}
+}
+
+/**
  * Read what `dir` says is already minted. Returns `undefined` when nothing is
  * minted — the fresh-stack case, where every generator is minted for the first
  * time.
@@ -144,8 +178,8 @@ export class RekeyAddressError extends Error {
  * A state file that parses decides the answer on its own, even when it holds no
  * generator: after `terraform state rm` the old `main.tf` still names the
  * removed resource, and reading it would put the re-key steps in a loop. A
- * malformed state file is not a reason to guess: it falls through to `main.tf`,
- * and if that is absent too the caller is told nothing is known.
+ * state file that does not parse is not a reason to guess either way: it throws
+ * `UnreadableStateError`, and `main.tf` is not consulted in its place.
  *
  * `opts.rekey` then drops exactly the named records — the only way to clear a
  * record that came from `main.tf`, since `state rm` never touches that file
@@ -180,17 +214,15 @@ export function readPriorStack(
 function readRecords(dir: string): PriorStack | undefined {
 	const statePath = join(dir, "terraform.tfstate");
 	if (existsSync(statePath)) {
-		let generators: Record<string, GeneratorResource> | undefined;
+		let generators: Record<string, GeneratorResource>;
 		try {
 			generators = fromState(readFileSync(statePath, "utf8"));
-		} catch {
-			// Unparseable state — fall through to the emitted HCL.
+		} catch (err) {
+			throw new UnreadableStateError(statePath, err);
 		}
-		if (generators !== undefined) {
-			return Object.keys(generators).length > 0
-				? { generators, source: { kind: "state", path: statePath } }
-				: undefined;
-		}
+		return Object.keys(generators).length > 0
+			? { generators, source: { kind: "state", path: statePath } }
+			: undefined;
 	}
 	const hclPath = join(dir, "main.tf");
 	if (existsSync(hclPath)) {

@@ -958,7 +958,7 @@ commands:
 	});
 
 	it("tells the operator to --rekey the one address when the record came from main.tf", () => {
-		// With no readable state file, `state rm` clears nothing translate reads.
+		// With no state file, `state rm` clears nothing translate reads.
 		// The advice names the file and the flag that skips only this record —
 		// never "move main.tf aside", which would erase every other record too.
 		const { conformance } = withPrior(
@@ -1163,7 +1163,7 @@ components:
 	});
 
 	it("re-keys from main.tf alone: the refusal's own steps reach the D-47 output", () => {
-		// No readable state file — a remote backend, or apply run elsewhere — so
+		// No state file — a remote backend, or apply run elsewhere — so
 		// the record comes from the main.tf written last time. `state rm` on the
 		// remote state changes nothing here; the printed steps must still finish.
 		const out = mkdtempSync(join(tmpdir(), "lf-aws-rekey-hcl-"));

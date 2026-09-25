@@ -179,8 +179,8 @@ export class SecretRotationError extends Error {
 /**
  * The steps that take the minted values at `addresses` to fresh D-47 mints.
  * They depend on where the record was read: `terraform state rm` clears a
- * state record, but when the record came from `main.tf` (no readable state
- * file — a remote backend, or apply run from another directory) that file
+ * state record, but when the record came from `main.tf` (no state file — a
+ * remote backend, or apply run from another directory) that file
  * still names the removed resource and would be read again. `--rekey` skips
  * exactly those addresses and keeps every other record, so no other minted
  * value in the stack is touched.
@@ -192,7 +192,7 @@ function rekeySteps(
 	const quoted = addresses.map((a) => `'${a}'`).join(" ");
 	const rerun =
 		source.kind === "hcl"
-			? `re-run \`launchfile-aws translate\` with ${addresses.map((a) => `--rekey '${a}'`).join(" ")} — with no readable state file, ${source.path} is the record, and \`--rekey\` drops only ${addresses.length > 1 ? "these" : "this one"} from it`
+			? `re-run \`launchfile-aws translate\` with ${addresses.map((a) => `--rekey '${a}'`).join(" ")} — with no state file, ${source.path} is the record, and \`--rekey\` drops only ${addresses.length > 1 ? "these" : "this one"} from it`
 			: "re-run `launchfile-aws translate`";
 	return [
 		`terraform state rm ${quoted}`,

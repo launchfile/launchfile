@@ -65,9 +65,15 @@ becomes unreadable.
 
 So `translate` reads the output directory before it emits. It looks at
 `terraform.tfstate` — authoritative whenever it parses, even after `state rm`
-leaves it empty — and only when no state is readable at the `main.tf` it wrote
-last time. It takes **only resource types and names** — never a value, which is
-why no secret is ever written into the generated HCL.
+leaves it empty — and only when there is no state file at all at the `main.tf`
+it wrote last time. It takes **only resource types and names** — never a value,
+which is why no secret is ever written into the generated HCL.
+
+A state file that exists but does not parse is refused outright, exit 1, nothing
+written: it proves the stack is not fresh and says nothing about what is minted,
+and `main.tf` beside it may be older than it. The refusal names the file and the
+way forward — repair or restore it (`terraform.tfstate.backup`, or the remote
+backend's history), or remove it deliberately if the stack holds nothing.
 
 | What it finds | What it does |
 |---|---|
@@ -83,12 +89,13 @@ credential (D-7) and is untouched by this rule.
 To take the D-47 output on an existing stack, re-key deliberately: back up
 anything encrypted under the current value, `terraform state rm` the resource,
 re-translate, `apply`, then re-key the app. When the record came from `main.tf`
-— no state file in the output directory parses, as with a remote backend —
+— no state file in the output directory, as with a remote backend —
 re-translate with `--rekey <random_type>.<name>` for that resource: `state rm`
-never touches `main.tf`, and with no readable state it is what `translate` reads,
+never touches `main.tf`, and with no state file it is what `translate` reads,
 so the same record would be found again. `--rekey` drops exactly the named
 record and keeps every other one, so no other minted secret in the stack is
-touched; an address the record does not hold is refused, not ignored. Moving
+touched; an address the record does not hold is refused, not ignored, and so is
+a `--rekey` with no value or in the `--rekey=<address>` form. Moving
 `main.tf` aside instead would erase every record with it and re-mint the lot.
 The refusal and the `CONFORMANCE.md` gap print the steps, with the addresses,
 for the source they actually read — a refusal names every conflicting secret at

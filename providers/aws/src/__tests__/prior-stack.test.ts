@@ -2,7 +2,11 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { RekeyAddressError, readPriorStack } from "../prior-stack.js";
+import {
+	RekeyAddressError,
+	readPriorStack,
+	UnreadableStateError,
+} from "../prior-stack.js";
 
 function dir(): string {
 	return mkdtempSync(join(tmpdir(), "lf-aws-prior-"));
@@ -97,18 +101,51 @@ describe("readPriorStack", () => {
 		expect(readPriorStack(d)).toBeUndefined();
 	});
 
-	it("falls back to main.tf when the state file is unparseable", () => {
+	it("refuses an unparseable state file, and does not read main.tf in its place", () => {
+		// The state may be newer than main.tf. Reading main.tf here would
+		// re-emit whatever it recorded last, over a state that says otherwise.
 		const d = dir();
 		writeFileSync(join(d, "terraform.tfstate"), "{ not json");
 		writeFileSync(
 			join(d, "main.tf"),
 			'resource "random_password" "lf_secret_session" {\n  length = 32\n}\n',
 		);
-		const prior = readPriorStack(d);
-		expect(prior?.generators).toEqual({
-			lf_secret_session: "random_password",
-		});
-		expect(prior?.source.kind).toBe("hcl");
+		expect(() => readPriorStack(d)).toThrow(UnreadableStateError);
+	});
+
+	it("refuses an unparseable state file with no main.tf — never reads it as fresh", () => {
+		// A truncated state that names a minted random_password: reading the
+		// directory as fresh would mint random_bytes over it, and the next apply
+		// after the state is repaired would destroy the secret.
+		const d = dir();
+		const statePath = join(d, "terraform.tfstate");
+		writeFileSync(
+			statePath,
+			'{ "version": 4, "resources": [ {"mode":"managed","type":"random_password","name":"lf_secret_session"',
+		);
+		try {
+			readPriorStack(d);
+			expect.unreachable("must refuse");
+		} catch (err) {
+			expect(err).toBeInstanceOf(UnreadableStateError);
+			const e = err as UnreadableStateError;
+			expect(e.path).toBe(statePath);
+			expect(e.message).toContain(statePath);
+			expect(e.message).toContain("Nothing was written.");
+			expect(e.message).toContain("terraform.tfstate.backup");
+		}
+	});
+
+	it("refuses an unparseable state file before honouring --rekey", () => {
+		const d = dir();
+		writeFileSync(join(d, "terraform.tfstate"), "");
+		writeFileSync(
+			join(d, "main.tf"),
+			'resource "random_uuid" "lf_secret_session" {\n}\n',
+		);
+		expect(() =>
+			readPriorStack(d, { rekey: ["random_uuid.lf_secret_session"] }),
+		).toThrow(UnreadableStateError);
 	});
 
 	it("drops exactly the --rekey address and keeps every other record", () => {

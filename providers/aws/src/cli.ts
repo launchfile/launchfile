@@ -19,7 +19,11 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { readLaunch } from "@launchfile/sdk";
 import { type ConformanceEntry, renderConformanceReport } from "./gaps.js";
-import { RekeyAddressError, readPriorStack } from "./prior-stack.js";
+import {
+	RekeyAddressError,
+	readPriorStack,
+	UnreadableStateError,
+} from "./prior-stack.js";
 import { SecretRotationError, translate } from "./translate.js";
 
 function flag(args: string[], name: string): string | undefined {
@@ -27,12 +31,34 @@ function flag(args: string[], name: string): string | undefined {
 	return i >= 0 ? args[i + 1] : undefined;
 }
 
-/** Every value given to a repeatable `--<name> <value>` flag, in order. */
+/** A flag written in a form this CLI does not read. Refused, never dropped. */
+class UsageError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "UsageError";
+	}
+}
+
+/**
+ * Every value given to a repeatable `--<name> <value>` flag, in order. A
+ * `--<name>` with no value, or the `--<name>=<value>` form, is refused: a
+ * `--rekey` that is silently dropped would leave the refusal it answers in
+ * place and read as if the re-key had been done.
+ */
 function flags(args: string[], name: string): string[] {
 	const values: string[] = [];
 	args.forEach((arg, i) => {
+		if (arg.startsWith(`--${name}=`)) {
+			throw new UsageError(
+				`${arg}: write it as \`--${name} <value>\` — the \`=\` form is not read.`,
+			);
+		}
+		if (arg !== `--${name}`) return;
 		const value = args[i + 1];
-		if (arg === `--${name}` && value !== undefined) values.push(value);
+		if (value === undefined || value.startsWith("--")) {
+			throw new UsageError(`--${name} needs a value: \`--${name} <value>\`.`);
+		}
+		values.push(value);
 	});
 	return values;
 }
@@ -60,7 +86,16 @@ function main(): void {
 	const file = rest[0];
 	const outDir = resolve(flag(rest, "out") ?? "aws-out");
 	const region = flag(rest, "region");
-	const rekey = flags(rest, "rekey");
+	let rekey: string[];
+	try {
+		rekey = flags(rest, "rekey");
+	} catch (err) {
+		if (err instanceof UsageError) {
+			process.stderr.write(`${err.message}\nNothing was written.\n`);
+			process.exit(1);
+		}
+		throw err;
+	}
 
 	const yaml = readFileSync(resolve(file), "utf8");
 	const launch = readLaunch(yaml);
@@ -79,7 +114,8 @@ function main(): void {
 	} catch (err) {
 		if (
 			err instanceof SecretRotationError ||
-			err instanceof RekeyAddressError
+			err instanceof RekeyAddressError ||
+			err instanceof UnreadableStateError
 		) {
 			// Refuse rather than emit HCL whose apply destroys a live secret.
 			process.stderr.write(`${err.message}\n`);
