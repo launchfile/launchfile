@@ -16,6 +16,9 @@ requires:
   - type: clickhouse
     set_env:
       CLICKHOUSE_DATABASE_URL: $url
+secrets:
+  totp-vault-key:
+    generator: secret
 env:
   BASE_URL:
     required: true
@@ -25,7 +28,7 @@ env:
     sensitive: true
     description: "Secret key for session encryption"
   TOTP_VAULT_KEY:
-    generator: secret
+    default: "$secrets.totp-vault-key|base64"
     sensitive: true
     description: "Encryption key for TOTP secrets"
   MAILER_EMAIL:

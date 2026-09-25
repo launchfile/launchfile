@@ -835,3 +835,25 @@ provides:
     expect(compose.services["wg-easy"]!.ports).not.toContain("0:51820");
   });
 });
+
+describe("catalog/drafts/plausible — TOTP_VAULT_KEY is base64 of 32 bytes (#416)", () => {
+  // Plausible's runtime.exs refuses to boot unless TOTP_VAULT_KEY Base64-decodes
+  // to exactly 32 bytes. `generator: secret` yields 64 hex characters, which
+  // decode to 48 bytes; `|base64` hex-decodes first (SPEC.md, `base64` encoding
+  // behavior), so the piped secret carries the 32 bytes the app wants.
+  const file = fileURLToPath(new URL("../../drafts/plausible/Launchfile", import.meta.url));
+  const launch = readLaunch(readFileSync(file, "utf-8"));
+  const { yaml } = launchToCompose(launch, { testEnv: { BASE_URL: "http://localhost:8000" } });
+  const env = (
+    parse(yaml) as { services: Record<string, { environment: Record<string, string> }> }
+  ).services.plausible!.environment;
+
+  it("resolves TOTP_VAULT_KEY to standard base64 that decodes to 32 bytes", () => {
+    expect(env.TOTP_VAULT_KEY).toMatch(/^[A-Za-z0-9+/]{43}=$/);
+    expect(Buffer.from(env.TOTP_VAULT_KEY!, "base64")).toHaveLength(32);
+  });
+
+  it("leaves SECRET_KEY_BASE as the generator's 64 hex characters", () => {
+    expect(env.SECRET_KEY_BASE).toMatch(HEX64);
+  });
+});
