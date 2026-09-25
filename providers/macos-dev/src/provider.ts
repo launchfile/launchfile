@@ -1130,8 +1130,9 @@ export type PrintedPublication = Pick<LaunchState, "appUrl" | "primaryEndpoint">
  * as stored (`normalizeAppUrl` ran when `up` recorded it; nothing runs again
  * here); this provider's own `http://localhost:<port>` on every other key,
  * and on every key when no URL is supplied — byte-identical to a run with
- * none. `up` records `primaryEndpoint` only for an HTTP-family primary, so a
- * `ws`/`tcp`/`udp`/`grpc` primary keeps this provider's own form (§7).
+ * none. `up` records `primaryEndpoint` only for an `http`/`https` primary or
+ * one a declared `https-origin` names, so a positional `ws`/`tcp`/`udp`/`grpc`
+ * primary keeps this provider's own form (§7, `printedPrimaryEndpoint`).
  */
 export function componentAddress(
 	key: string,

@@ -12,7 +12,11 @@ import {
 	selectionClosure,
 	UnboundOperatorStorageError,
 } from "@launchfile/sdk";
-import { normalizeAppUrl, publishedAddress } from "./app-url.js";
+import {
+	normalizeAppUrl,
+	printedPrimaryEndpoint,
+	publishedAddress,
+} from "./app-url.js";
 import { checkPrereqs, composeSupportsIgnoreBuildable } from "./prereqs.js";
 import { resolveSource } from "./source-resolver.js";
 import {
@@ -634,7 +638,13 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		state.generatedEnv = result.generatedEnv;
 		state.ports = result.ports;
 		state.endpoints = result.endpoints;
-		state.primaryEndpoint = result.primaryEndpoint;
+		state.primaryEndpoint = printedPrimaryEndpoint(
+			launch,
+			result.primaryEndpoint,
+			result.primaryEndpoint === undefined
+				? undefined
+				: result.endpoints[result.primaryEndpoint]?.protocol,
+		);
 
 		const upResult: DockerUpResult = {
 			slug,
@@ -1133,21 +1143,23 @@ export type PrintedPublication = Pick<DockerState, "appUrl" | "primaryEndpoint">
  * state (D-61 rule 2), which is why an active certificate needs no second
  * branch here.
  *
- * `appUrl` is the supplied publication URL, passed only for the primary
- * endpoint (the caller applies D-58 rule 4's fence by key). An HTTP listener
- * prints it as stored: `normalizeAppUrl` ran once, when `up` recorded it, and
- * `$app.url` is that same string, so nothing re-derives here. A `ws`, `tcp`,
- * `udp` or `grpc` listener keeps its own form even on the primary key: an
- * `http`/`https` URL asserts nothing about what those listeners speak.
+ * `appUrl` is the supplied publication URL, passed only for the key `up`
+ * recorded as `primaryEndpoint` — an `http`/`https` primary, or one a declared
+ * `https-origin` names (`printedPrimaryEndpoint`, §7). It prints as stored:
+ * `normalizeAppUrl` ran once, when `up` recorded it, and `$app.url` is that
+ * same string, so nothing re-derives here. A `tcp` or `udp` listener keeps
+ * its own form even then: it has no origin (D-60 rule 2), so an
+ * `http`/`https` URL asserts nothing about it.
  */
 export function endpointAddress(port: number, protocol?: string, appUrl?: string): string {
 	switch (protocol) {
-		case "ws":
-			return `ws://localhost:${port}`;
 		case "tcp":
 		case "udp":
-		case "grpc":
 			return `localhost:${port} (${protocol})`;
+		case "ws":
+			return appUrl ?? `ws://localhost:${port}`;
+		case "grpc":
+			return appUrl ?? `localhost:${port} (${protocol})`;
 		default:
 			return appUrl ?? publishedAddress(protocol, port).url;
 	}
