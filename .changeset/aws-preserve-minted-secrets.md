@@ -11,8 +11,9 @@ destroyed and recreated the secret — anything encrypted under the old value
 became unreadable. The release notes warned about it; nothing stopped it.
 
 `translate` now reads the output directory before it emits — `terraform.tfstate`
-first, then the `main.tf` it wrote last time — and takes **only resource types
-and names** from it, never a value.
+whenever it parses, even one that `terraform state rm` has emptied, and only when
+no state is readable the `main.tf` it wrote last time — and takes **only resource
+types and names** from it, never a value.
 
 - **Nothing there** (a fresh stack): mints under D-47, unchanged — `random_bytes`,
   32 bytes as 64 lowercase hex characters.
