@@ -58,6 +58,56 @@ describe("extractCaptures (D-34)", () => {
 		});
 	});
 
+	it("ends an OSC string at ST, keeping an OSC 8 hyperlink's link text", () => {
+		const esc = String.fromCharCode(27);
+		const captures: Record<string, CaptureEntry> = {
+			invite_link: { pattern: "https?://\\S+" },
+		};
+		// An OSC 8 hyperlink whose visible text is the URL itself. Both OSC
+		// strings end with ST (`ESC \\`), never BEL — the shape a pattern that
+		// only stops at BEL runs straight past (ECMA-48 § 8.3.89).
+		const url = "https://example.com/invite/abc123";
+		const stdout = `${esc}]8;;${url}${esc}\\${url}${esc}]8;;${esc}\\\n`;
+		expect(extractCaptures(stdout, captures)).toEqual({ invite_link: url });
+	});
+
+	it("strips a CSI that sets a truecolor foreground and background together", () => {
+		const esc = String.fromCharCode(27);
+		const captures: Record<string, CaptureEntry> = {
+			invite_link: { pattern: "https?://\\S+" },
+		};
+		// 33 parameter bytes — one past a 32-byte bound, comfortably under 64.
+		// A theme-aware CLI emits this whenever it sets both colours at once,
+		// and an unstripped CSI leaves its bytes inside the captured value.
+		const sgr = `${esc}[38;2;255;255;255;48;2;240;240;240m`;
+		const url = "https://example.com/invite/abc123";
+		const stdout = `Invite: ${sgr}${url}${sgr}\n`;
+		expect(extractCaptures(stdout, captures)).toEqual({ invite_link: url });
+	});
+
+	it("strips a BEL-terminated OSC title", () => {
+		const esc = String.fromCharCode(27);
+		const bel = String.fromCharCode(7);
+		const captures: Record<string, CaptureEntry> = {
+			token: { pattern: "token=(\\S+)" },
+		};
+		const stdout = `${esc}]0;window title${bel}token=s3cret\n`;
+		expect(extractCaptures(stdout, captures)).toEqual({ token: "s3cret" });
+	});
+
+	it("stays linear on a run of unterminated OSC starts (CWE-1333)", () => {
+		const esc = String.fromCharCode(27);
+		const captures: Record<string, CaptureEntry> = {
+			token: { pattern: "token=(\\S+)" },
+		};
+		// Every `ESC ]` opens an OSC string no BEL ever closes. Unbounded, each
+		// start rescanned the whole remainder — quadratic: 40 000 pairs took 366 ms.
+		const stdout = `${`${esc}]`.repeat(40_000)}token=s3cret`;
+		const t0 = performance.now();
+		expect(extractCaptures(stdout, captures)).toEqual({ token: "s3cret" });
+		expect(performance.now() - t0).toBeLessThan(250);
+	});
+
 	it("skips invalid regex without throwing", () => {
 		const captures: Record<string, CaptureEntry> = {
 			bad: { pattern: "(unclosed" },
