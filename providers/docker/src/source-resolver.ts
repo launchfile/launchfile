@@ -117,8 +117,9 @@ async function fetchFromCatalog(slug: string): Promise<ResolvedSource> {
 
 async function fetchFromUrl(url: string): Promise<ResolvedSource> {
 	// Every message below is built from `shown`, never `url`: the URL may carry
-	// userinfo credentials (D-58 rule 3). The returned `url` stays unmasked — it
-	// is the source identity a refetch and the foreign-source guard compare (D-55).
+	// userinfo credentials, and D-18 masks sensitive values wherever they are
+	// shown. The returned `url` stays unmasked — it is the source identity a
+	// refetch and the foreign-source guard compare (D-55).
 	const shown = redactSecrets(url);
 	let response: Response;
 	try {
