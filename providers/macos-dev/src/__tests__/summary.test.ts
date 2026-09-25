@@ -8,7 +8,11 @@
 
 import { readLaunch } from "@launchfile/sdk";
 import { describe, expect, it } from "vitest";
-import { computeAppProperties, primaryComponent } from "../env-writer.js";
+import {
+	computeAppProperties,
+	primaryComponent,
+	printedPrimaryEndpoint,
+} from "../env-writer.js";
 import { componentAddress, statusLines, summaryLines } from "../provider.js";
 
 const ports = { web: 31245, api: 31246 };
@@ -176,5 +180,91 @@ components:
 		expect(computeAppProperties(launch, p).url).toBe(
 			`http://localhost:${p[primary]}`,
 		);
+	});
+});
+
+describe("printedPrimaryEndpoint — the key the printouts place the URL on", () => {
+	const TCP_PRIMARY = `version: launch/v1
+name: mail
+components:
+  smtp:
+    image: smtp-like
+    provides:
+      - port: 2525
+        protocol: tcp
+        exposed: true
+  web:
+    image: web-like
+    provides:
+      - port: 3000
+        protocol: http
+        exposed: true
+`;
+
+	const DECLARED_WS = `version: launch/v1
+name: socket
+components:
+  web:
+    image: web-like
+    provides:
+      - name: ui
+        port: 3000
+        protocol: http
+        exposed: true
+      - name: live
+        port: 3001
+        protocol: ws
+        exposed: true
+    supports:
+      - type: https-origin
+        endpoint: live
+`;
+
+	const p = { smtp: 2525, web: 3000 };
+	const appUrl = "https://mail.example.com";
+
+	it("is undefined for a tcp-only primary, so up and status print its plain address", () => {
+		const launch = readLaunch(TCP_PRIMARY);
+		expect(primaryComponent(launch, p)).toBe("smtp");
+		expect(printedPrimaryEndpoint(launch, p)).toBeUndefined();
+		const publication = {
+			appUrl,
+			primaryEndpoint: printedPrimaryEndpoint(launch, p),
+		};
+		expect(summaryLines("mail", p, publication)).toEqual([
+			"  smtp is running at http://localhost:2525",
+			"  web is running at http://localhost:3000",
+		]);
+		expect(statusLines(p, publication)).toEqual([
+			"  smtp: http://localhost:2525",
+			"  web: http://localhost:3000",
+		]);
+	});
+
+	it("leaves $app.url on the supplied URL for a tcp-only primary", () => {
+		expect(computeAppProperties(readLaunch(TCP_PRIMARY), p, appUrl).url).toBe(
+			appUrl,
+		);
+	});
+
+	it("reads the endpoint a declared https-origin names, not the first exposed entry", () => {
+		const launch = readLaunch(DECLARED_WS);
+		expect(printedPrimaryEndpoint(launch, { web: 3000 })).toBeUndefined();
+	});
+
+	it("is the primary component when its listener is HTTP-family", () => {
+		const launch = readLaunch(
+			TCP_PRIMARY.replace("protocol: tcp", "protocol: https"),
+		);
+		expect(printedPrimaryEndpoint(launch, p)).toBe("smtp");
+		expect(statusLines(p, { appUrl, primaryEndpoint: "smtp" })).toEqual([
+			`  smtp: ${appUrl}`,
+			"  web: http://localhost:3000",
+		]);
+	});
+
+	it("is undefined when nothing is published", () => {
+		const launch = readLaunch(TCP_PRIMARY);
+		expect(printedPrimaryEndpoint(launch, {})).toBeUndefined();
 	});
 });

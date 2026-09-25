@@ -10,6 +10,7 @@ import { join } from "node:path";
 import {
 	type AppEndpointProperties,
 	deriveAppUrlProperties,
+	effectiveListener,
 	endpointProperties,
 	resolveExpression,
 	isExpression,
@@ -27,6 +28,7 @@ import {
 import {
 	type DeclaredPrimary,
 	declaredPrimary,
+	HTTPS_ORIGIN,
 	REFUSED_PRIMARY_ADDRESS,
 	wireHttpsOrigins,
 } from "./https-origin.js";
@@ -131,6 +133,37 @@ export function primaryComponent(
 		if (hasExposed && componentPorts[name]) return name;
 	}
 	return undefined;
+}
+
+/**
+ * The `ports` key `up` and `status` print the supplied publication URL on
+ * (§7): the primary component, when the entry that makes it primary — the
+ * endpoint a declared `https-origin` names, else its first `exposed: true`
+ * entry — has an HTTP-family effective listener. `undefined` for a `ws`,
+ * `tcp`, `udp` or `grpc` primary: a supplied URL is an `http`/`https`
+ * address and asserts nothing about what those listeners speak (D-58 rule 2),
+ * so that key keeps this provider's own printed form while `$app.url` still
+ * reads the supplied URL. This provider activates no certificate, so the
+ * effective protocol is the declared one.
+ */
+export function printedPrimaryEndpoint(
+	launch: NormalizedLaunch,
+	componentPorts: Record<string, number>,
+): string | undefined {
+	const primary = primaryComponent(launch, componentPorts);
+	if (primary === undefined) return undefined;
+	const component = launch.components[primary];
+	const declared = [
+		...(component?.requires ?? []),
+		...(component?.supports ?? []),
+	].find((e) => e.type === HTTPS_ORIGIN && e.endpoint !== undefined);
+	const entry =
+		declared === undefined
+			? component?.provides?.find((p) => p.exposed === true)
+			: component?.provides?.find((p) => p.name === declared.endpoint);
+	if (entry === undefined) return undefined;
+	const { protocol } = effectiveListener(entry);
+	return protocol === "http" || protocol === "https" ? primary : undefined;
 }
 
 /**
