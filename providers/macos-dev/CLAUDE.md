@@ -22,8 +22,11 @@ Budgets applied when a command declares no `timeout:`:
 | prepare (`install` ?? `build`) | 10m     |
 | `release`                      | 2m      |
 | `bootstrap`                    | 2m      |
+| health gate (per component)    | `retries × (interval + timeout)` when `retries:` is declared; otherwise 60s |
 
 An unparseable declared `timeout` is surfaced, never silently replaced: prepare/`release` fail the launch, `bootstrap` reports the failure to the invoker.
+
+A component that declares `health:` and never passes it within its budget fails `up` (SPEC.md § Failure semantics), whether or not anything depends on it. The budget is the file's own window when it declares `retries:` — `retries × (interval + timeout)`, with `interval` defaulting to 3s and `timeout` to 5s — and 60s otherwise; `start_period:` is waited in full first and is not part of it. Its process is left running and its pid recorded, so `status` and `down` still reach it. The process writes `.launchfile/logs/<component>.log` itself (raw stdout and stderr, no timestamps) and the foreground `up` prints a tail of that file; a pipe held by `up` would kill the process on its next write once `up` had exited.
 
 ## Commands
 

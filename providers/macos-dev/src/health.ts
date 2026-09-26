@@ -3,6 +3,7 @@
  */
 
 import { parseDurationMs, type NormalizedHealth } from "@launchfile/sdk";
+import { redactSecrets } from "./redact.js";
 import { shellScript } from "./shell.js";
 
 /**
@@ -17,8 +18,43 @@ export function parseDuration(duration: string): number {
 }
 
 /**
+ * Whether a check can run without a port: only a `command` check can. A
+ * `path` check and the no-check fallback both poll `http://localhost:<port>`.
+ */
+export function healthCheckNeedsPort(health: NormalizedHealth): boolean {
+	return !health.command;
+}
+
+/**
+ * What a check polls, for the failure message: the operator reading
+ * "did not become healthy" needs to know which probe was asked.
+ */
+export function describeHealthCheck(health: NormalizedHealth, port: number | undefined): string {
+	if (health.command) return `command \`${redactSecrets(health.command)}\``;
+	const host = port === undefined ? "localhost:<unallocated>" : `localhost:${port}`;
+	return `GET http://${host}${health.path ?? "/"}`;
+}
+
+/**
+ * How long a check gets before the component counts as never healthy. A
+ * declared `retries` is the file's own window — that many consecutive failures,
+ * each costing up to one `timeout` plus one `interval` (SPEC.md § health, the
+ * window docker's compose healthcheck gives it). The provider default fills in
+ * only when the file declares no `retries`: PROVIDERS.md §10 rule 10 keeps
+ * defaults for absent values, never over declared ones. `start_period` is
+ * waited in full before the window opens and is not part of it.
+ */
+export function healthBudgetMs(health: NormalizedHealth, fallbackMs: number): number {
+	if (health.retries === undefined) return fallbackMs;
+	const interval = parseDuration(health.interval ?? "3s");
+	const checkTimeout = parseDuration(health.timeout ?? "5s");
+	return health.retries * (interval + checkTimeout);
+}
+
+/**
  * Wait for a component to become healthy.
- * Returns true if healthy, false if timed out.
+ * Returns true if healthy, false if timed out. `overallTimeout` is the polling
+ * window after `start_period`; callers derive it with `healthBudgetMs`.
  */
 export async function waitForHealthy(
 	name: string,
