@@ -944,7 +944,14 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	state.ports = componentPorts;
 	// The key the printouts place a supplied publication URL on (§7, D-58
 	// rules 2 and 4), recorded so `status` places it without the Launchfile.
-	state.primaryEndpoint = printedPrimaryEndpoint(launch, componentPorts);
+	// `primary` is the declared primary as read before the refusals, so a
+	// refused one places the URL on no key rather than a sibling's (D-72).
+	state.primaryEndpoint = printedPrimaryEndpoint(
+		launch,
+		componentPorts,
+		state.appUrl,
+		primary,
+	);
 
 	// 8. Build resolver context (including $app.* properties from D-33). A
 	// satisfied `https-origin` registers `url` — the same string as `$app.url`

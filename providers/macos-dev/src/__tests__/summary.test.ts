@@ -13,7 +13,13 @@ import {
 	primaryComponent,
 	printedPrimaryEndpoint,
 } from "../env-writer.js";
-import { componentAddress, statusLines, summaryLines } from "../provider.js";
+import { declaredPrimary } from "../https-origin.js";
+import {
+	applyHttpsOriginRefusals,
+	componentAddress,
+	statusLines,
+	summaryLines,
+} from "../provider.js";
 
 const ports = { web: 31245, api: 31246 };
 const publication = {
@@ -303,5 +309,72 @@ components:
 	it("is undefined when nothing is published", () => {
 		const launch = readLaunch(TCP_PRIMARY);
 		expect(printedPrimaryEndpoint(launch, {})).toBeUndefined();
+	});
+});
+
+describe("printedPrimaryEndpoint — a refused declared primary (D-72)", () => {
+	const REFUSED = `version: launch/v1
+name: vault
+components:
+  web:
+    image: web-like
+    provides:
+      - name: ui
+        port: 3000
+        protocol: http
+        exposed: true
+    requires:
+      - type: https-origin
+        endpoint: ui
+  api:
+    image: api-like
+    provides:
+      - port: 4000
+        protocol: http
+        exposed: true
+`;
+
+	it("places the supplied URL on no key, not on a surviving sibling", () => {
+		const appUrl = "http://vault.example.com";
+		const launch = readLaunch(REFUSED);
+		// `up` reads the primary before its refusals remove the component.
+		const primary = declaredPrimary(launch, appUrl);
+		expect(primary).toEqual({ component: "web", refused: true });
+		expect(applyHttpsOriginRefusals(launch, appUrl)).toBe("ok");
+		expect(Object.keys(launch.components)).toEqual(["api"]);
+		const ports = { api: 4000 };
+		const primaryEndpoint = printedPrimaryEndpoint(
+			launch,
+			ports,
+			appUrl,
+			primary,
+		);
+		expect(primaryEndpoint).toBeUndefined();
+		expect(summaryLines("vault", ports, { appUrl, primaryEndpoint })).toEqual([
+			"  api is running at http://localhost:4000",
+		]);
+		expect(statusLines(ports, { appUrl, primaryEndpoint })).toEqual([
+			"  api: http://localhost:4000",
+		]);
+		expect(computeAppProperties(launch, ports, appUrl, primary).url).toBe("");
+	});
+
+	it("places the supplied URL on the declared primary when the entry is satisfied", () => {
+		const appUrl = "https://vault.example.com";
+		const launch = readLaunch(REFUSED);
+		const primary = declaredPrimary(launch, appUrl);
+		expect(applyHttpsOriginRefusals(launch, appUrl)).toBe("ok");
+		const ports = { web: 3000, api: 4000 };
+		const primaryEndpoint = printedPrimaryEndpoint(
+			launch,
+			ports,
+			appUrl,
+			primary,
+		);
+		expect(primaryEndpoint).toBe("web");
+		expect(statusLines(ports, { appUrl, primaryEndpoint })).toEqual([
+			`  web: ${appUrl}`,
+			"  api: http://localhost:4000",
+		]);
 	});
 });

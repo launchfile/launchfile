@@ -146,20 +146,28 @@ export function primaryComponent(
  * provider's own printed form while `$app.url` still reads the supplied URL.
  * This provider activates no certificate, so the effective protocol is the
  * declared one.
+ *
+ * `undefined` for a refused declared primary (D-72): it has no address and
+ * no `ports` key, and no surviving sibling takes its place. `up` passes
+ * `primary` as it read it before its refusals removed the component from
+ * `launch.components`, as for `computeAppProperties`.
  */
 export function printedPrimaryEndpoint(
 	launch: NormalizedLaunch,
 	componentPorts: Record<string, number>,
+	appUrl?: string,
+	primary: DeclaredPrimary | undefined = declaredPrimary(launch, appUrl),
 ): string | undefined {
-	const primary = primaryComponent(launch, componentPorts);
-	if (primary === undefined) return undefined;
-	if (declaredPrimary(launch) !== undefined) return primary;
-	const entry = launch.components[primary]?.provides?.find(
+	if (primary?.refused) return undefined;
+	const component = primaryComponent(launch, componentPorts, primary);
+	if (component === undefined) return undefined;
+	if (primary !== undefined) return component;
+	const entry = launch.components[component]?.provides?.find(
 		(p) => p.exposed === true,
 	);
 	if (entry === undefined) return undefined;
 	const { protocol } = effectiveListener(entry);
-	return protocol === "http" || protocol === "https" ? primary : undefined;
+	return protocol === "http" || protocol === "https" ? component : undefined;
 }
 
 /**
