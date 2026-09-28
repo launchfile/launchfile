@@ -46,8 +46,10 @@ components:
   admin:
     image: hoppscotch/hoppscotch-admin:2026.7.0
     provides:
-      - protocol: http
+      - name: admin
+        protocol: http
         port: 3100
+        exposed: true
     env:
       VITE_BACKEND_GQL_URL:
         default: "http://backend:3170/graphql"
