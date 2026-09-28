@@ -20,6 +20,8 @@ requires:
   - type: clickhouse
     set_env:
       CLICKHOUSE_HOST: $host
+      CLICKHOUSE_USER: $user
+      CLICKHOUSE_PASSWORD: $password
       CLICKHOUSE_DATABASE: $name
       CLICKHOUSE_SECURE: "false"
   - type: kafka
