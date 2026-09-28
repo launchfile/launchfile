@@ -46,8 +46,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Resolve the PR from the commit CI actually validated, so the merge
-          # can never land a revision newer than the one that passed. The sha
+          # Resolve the PR from the commit CI actually validated. If the branch
+          # moves after auto-merge is armed, the ruleset's required checks must
+          # pass again on the new head before GitHub merges it. The sha
           # reaches jq as a named argument, never spliced into the filter text.
           pr=$(gh pr list --repo "$REPO" --state open \
                  --json number,headRefOid,author \
