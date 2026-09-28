@@ -21,6 +21,7 @@ secrets:
     generator: secret
 env:
   BASE_URL:
+    default: $app.url
     required: true
     description: "Public-facing URL of the Plausible instance"
   SECRET_KEY_BASE:
