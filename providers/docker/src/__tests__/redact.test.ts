@@ -49,6 +49,25 @@ describe("redactSecrets", () => {
 		expect(redactSecrets(text)).toBe(text);
 	});
 
+	it("still redacts a scheme longer than the bound (unanchored match)", () => {
+		// 36 characters — the longest IANA provisional scheme registration. The
+		// bound is 32, so the match starts partway into the scheme; the password
+		// is still replaced.
+		const scheme = "microsoft.windows.camera.multipicker";
+		expect(redactSecrets(`${scheme}://alice:hunter2@example.com`)).toContain(
+			`:${REDACTED}@example.com`,
+		);
+	});
+
+	it("stays linear on a long run of scheme-legal characters (CWE-1333)", () => {
+		// No `://` ever arrives, so every starting offset is a candidate scheme.
+		// Unbounded, the scan was quadratic: 80 000 characters took 895 ms.
+		const hostile = `${"a".repeat(80_000)}!`;
+		const t0 = performance.now();
+		expect(redactSecrets(hostile)).toBe(hostile);
+		expect(performance.now() - t0).toBeLessThan(250);
+	});
+
 	it("ignores values too short to be registered safely", () => {
 		registerSecret("abc");
 		expect(redactSecrets("abc def")).toBe("abc def");
