@@ -333,7 +333,7 @@ components:
 	});
 });
 
-describe("runBootstraps — the returned command carries no live credential (D-18, D-next)", () => {
+describe("runBootstraps — the returned command carries no live credential (D-18, D-71)", () => {
 	// Hyphenated on purpose: `$secrets.api-key` is the form that resolves
 	// mid-string, so a live value reaches the command where a dotted-only
 	// resolver would have left an empty string.
