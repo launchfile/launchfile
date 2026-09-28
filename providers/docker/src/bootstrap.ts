@@ -41,7 +41,7 @@ export interface BootstrapResult {
 	service: string;
 	/**
 	 * The resolved command in redacted form — never the pre-scrub string
-	 * (D-18, D-next). `$secrets.*` and `$<resource>.password` resolve to live
+	 * (D-18, D-71). `$secrets.*` and `$<resource>.password` resolve to live
 	 * credentials before the command runs, and this type is a public export:
 	 * a consumer in another process holds an empty redaction registry and
 	 * cannot scrub what it is handed.
