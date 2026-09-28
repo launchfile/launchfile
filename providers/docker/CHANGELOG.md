@@ -1,5 +1,47 @@
 # @launchfile/docker
 
+## 0.13.0
+
+### Patch Changes
+
+- [#591](https://github.com/launchfile/launchfile/pull/591) [`c4a8761`](https://github.com/launchfile/launchfile/commit/c4a87617d0b80764afbe6815df1e5552263f24c3) Thanks [@launchfile-steward](https://github.com/apps/launchfile-steward)! - Redact `BootstrapResult.command` before returning it. Both providers echoed the bootstrap command through `redactSecrets` and then returned the same string unscrubbed on a public export, so a resolved `$secrets.*` value or resource password reached any consumer that printed or serialized a bootstrap result. The field now carries the redacted form on both the executed and the unrunnable path; the command the shell actually runs is unchanged, and `captures` is untouched.
+
+- [#560](https://github.com/launchfile/launchfile/pull/560) [`3418a57`](https://github.com/launchfile/launchfile/commit/3418a57d7fffd5a6a90b94f064795dae34913c72) Thanks [@launchfile-steward](https://github.com/apps/launchfile-steward)! - Start ClickHouse with a generated password ([#246](https://github.com/launchfile/launchfile/issues/246)).
+  
+  The `clickhouse` factory now mints a password under the `clickhouse` key in `resourcePasswords`, the same way the other credentialed backing services do. It sets `CLICKHOUSE_USER=default` and `CLICKHOUSE_PASSWORD` on the server, and reports `password` and a `url` of the form `http://default:<url-encoded password>@<host>:8123`. The image writes these into `users.d` on every start, so an existing ClickHouse volume picks up the password when its container is recreated.
+  
+  A Launchfile that connects to ClickHouse must now pass the credentials: bind `$user`/`$password`, or use `$url`, which carries them.
+
+- [#524](https://github.com/launchfile/launchfile/pull/524) [`45fba1a`](https://github.com/launchfile/launchfile/commit/45fba1ab9bb618f8336d7cf11107adef735c8ad6) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - `up` and `status` print the supplied publication URL for the primary endpoint ([#386](https://github.com/launchfile/launchfile/issues/386), D-58).
+  
+  With an `appUrl` set — on this run or recorded by an earlier one — the "is running at" summary and the `status` "Access URLs" list show that URL on the primary endpoint's key, as stored — the same string `$app.url` resolves to. The URL shows when the primary's effective listener is `http` or `https`, or when a declared `https-origin` names it — that entry's `url` is the `https` origin for `ws` and `grpc` listeners too (D-60 rule 4). Any other primary keeps its own form — an `http`/`https` URL asserts nothing about a `tcp` or `udp` listener, or an undeclared `ws`/`grpc` one. Every other key keeps this provider's own `localhost` address (D-58 rule 4). With no URL supplied, output is unchanged.
+  
+  `DockerState` gains `primaryEndpoint`, the `ports` key `$app.*` reads when the URL prints on it, recorded at `up` so `status` can place the URL without re-deriving the primary from a Launchfile it never loads. `endpointAddress` takes an optional `appUrl` third argument; `summaryLines` an optional fifth `publication` argument; `statusLines` and `printedPrimaryEndpoint` are new. State files without the field load as before.
+
+- [#563](https://github.com/launchfile/launchfile/pull/563) [`c27dfb9`](https://github.com/launchfile/launchfile/commit/c27dfb9f2be782e1116323816562ce71a86cd251) Thanks [@launchfile-steward](https://github.com/apps/launchfile-steward)! - Leave a `supports:` entry of type `https-origin` unfulfilled when it declares a use the supplied origin does not cover, instead of aborting generation ([#536](https://github.com/launchfile/launchfile/issues/536), D-65 rule 4).
+  
+  The component deploys, the entry's `set_env` bindings are omitted, and a warning names each uncovered use token. A `requires:` entry with the same shortfall still refuses its component (D-64). Output is byte-identical for every Launchfile whose `https-origin` entries declare no `uses:`.
+
+- [#345](https://github.com/launchfile/launchfile/pull/345) [`95df039`](https://github.com/launchfile/launchfile/commit/95df0392bdf474842cca95e6d9715c13a21e7c64) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Bound the repetitions in the ANSI-stripping and credential-URL patterns, so a long log line can no longer stall the provider that is reading it (CWE-1333).
+  
+  Two shapes were quadratic. `stripAnsi` in both providers' `bootstrap.ts` carried `\x1b\][^\x07]*\x07`: every `ESC ]` in captured stdout rescanned the whole remainder for a BEL a hostile log never supplies — 40 000 `ESC ]` pairs took 366 ms through `extractCaptures`. `CREDENTIAL_URL` in `@launchfile/macos-dev`'s redactor left the scheme repetition unbounded, so a long run of scheme-legal characters that never reaches `://` rescanned from every offset — 80 000 characters took 895 ms through `redactSecrets`. Both measured under Bun 1.4.0 on an Apple-silicon Mac; bounded, each takes under 1 ms. `@launchfile/docker`'s redactor was already bounded.
+  
+  The ANSI pattern now also ends an OSC string at ST (`ESC \`) as ECMA-48 requires, not only at BEL. The unbounded class ran past an ST into the next OSC, so an OSC 8 hyperlink lost its link text — and a `commands.*.capture` pattern looking for the URL in that text captured a string with escape bytes still in it. It now captures the URL.
+  
+  The CSI parameter bound is 64 rather than 32. One SGR that sets a truecolor foreground and background together — `ESC [ 38;2;255;255;255;48;2;240;240;240 m` — carries 33 parameter bytes, and a sequence past the bound is not stripped at all. `@launchfile/sdk` carries the same pattern and takes the same bound, so all three copies stay identical.
+  
+  The scheme bound excludes no URL: the pattern is unanchored, so against a scheme longer than the bound the match simply starts further into it and the password still redacts.
+
+- [#559](https://github.com/launchfile/launchfile/pull/559) [`2e8a8ab`](https://github.com/launchfile/launchfile/commit/2e8a8ab8018fb21c10cd882ab4f59688d0bd9626) Thanks [@launchfile-steward](https://github.com/apps/launchfile-steward)! - Resolve `$app.*` to the empty address when the component that declares the app's `https-origin` entry is refused ([#494](https://github.com/launchfile/launchfile/issues/494), D-72).
+  
+  The entry still names the primary after its component is refused (D-60 rule 3), and the primary has no address: `$app.url`, `host`, `port`, `authority` and `scheme` resolve `""` and `tls` resolves `false` — never `http://localhost:<port>` for a service this provider does not generate, and never the supplied URL that failed to satisfy the entry. `$app.endpoints.<primary>.*` reads the same value from the same derivation (D-63 rule 2), and the compose environment, `bootstrap` and `release` agree. Surviving siblings keep their own addresses; `$app.name` is unchanged.
+  
+  `computeAppContext` and `computeAppProperties` change value in that one case only. Output is byte-identical for every Launchfile whose declaring component launches.
+
+- [#554](https://github.com/launchfile/launchfile/pull/554) [`a2c4b18`](https://github.com/launchfile/launchfile/commit/a2c4b1882d97b3ddbc442d180fcc6e69512a585f) Thanks [@launchfile-steward](https://github.com/apps/launchfile-steward)! - `resolveSource` no longer echoes credentials from a Launchfile URL. When fetching `https://user:token@host/…` fails, the error names the URL with the password shown as `[REDACTED]`. This covers a non-OK response and a rejected fetch, including Node's own "URL includes credentials" error. The `url` returned on success is unchanged.
+- Updated dependencies [[`95df039`](https://github.com/launchfile/launchfile/commit/95df0392bdf474842cca95e6d9715c13a21e7c64)]:
+  - @launchfile/sdk@0.13.0
+
 ## 0.12.0
 
 ### Minor Changes
