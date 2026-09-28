@@ -47,7 +47,10 @@ interface ComposeHealthcheck {
   start_period?: string;
 }
 
-const BACKING_SERVICES: Record<string, (name: string) => BackingService> = {
+// Null prototype, like the docker provider's map: a `requires[].type` read out
+// of a Launchfile is looked up here, so `constructor` or `toString` must
+// resolve to nothing rather than an `Object.prototype` member.
+const BACKING_SERVICES: Record<string, (name: string) => BackingService> = Object.assign(Object.create(null), {
   postgres: (name) => ({
     image: "postgres:16-alpine",
     environment: {
@@ -204,7 +207,7 @@ const BACKING_SERVICES: Record<string, (name: string) => BackingService> = {
       ],
     },
   }),
-};
+} satisfies Record<string, (name: string) => BackingService>);
 
 // --- Generator helpers ---
 
@@ -442,7 +445,9 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
     // resource is exactly what let `health_check_passed: true` certify an
     // app the provider could not run.
     const resourceRefused = (component.requires ?? [])
-      .filter((r) => !r.host && r.type !== HTTPS_ORIGIN && !BACKING_SERVICES[r.type])
+      .filter(
+        (r) => !r.host && r.type !== HTTPS_ORIGIN && !Object.hasOwn(BACKING_SERVICES, r.type),
+      )
       .map((r) => ({
         component: componentName,
         entry: r.name === undefined ? r.type : `${r.name} (type "${r.type}")`,
@@ -804,7 +809,7 @@ function addBackingService(
   warnings: string[],
 ): { serviceName: string; properties: Record<string, string> } | null {
   const type = req.type;
-  const factory = BACKING_SERVICES[type];
+  const factory = Object.hasOwn(BACKING_SERVICES, type) ? BACKING_SERVICES[type] : undefined;
 
   if (!factory) {
     // The component loop refuses a component with such an entry before it

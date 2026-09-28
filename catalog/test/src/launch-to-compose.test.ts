@@ -779,6 +779,34 @@ components:
     expect(resourceRefusals.map((r) => r.component)).toEqual(["worker"]);
   });
 
+  it.each(["constructor", "toString", "valueOf"])(
+    "refuses `type: %s` rather than resolving an Object.prototype member as a factory",
+    (type) => {
+      // The map is looked up by a string read out of the Launchfile, so a
+      // prototype key must take the same refuse branch as any other type
+      // with no factory — the shipped provider refuses it the same way.
+      const { services, resourceRefusals } = compose(`
+version: launch/v1
+name: app
+components:
+  web:
+    image: acme/web:1
+  worker:
+    image: acme/worker:1
+    requires:
+      - type: ${type}
+`);
+      expect(services).toEqual(["app-web"]);
+      expect(resourceRefusals).toEqual([
+        {
+          component: "worker",
+          entry: type,
+          message: `this harness has no factory for type "${type}"`,
+        },
+      ]);
+    },
+  );
+
   it("does not refuse a `supports:` entry — optional resources are not preconditions", () => {
     const { services, resourceRefusals } = compose(`
 version: launch/v1

@@ -211,6 +211,24 @@ export class UnsuppliedRequiredEnvError extends Error {
 }
 
 /**
+ * A launch stopped because no selected component survived the generator's
+ * refusals and skips (D-44, D-60, D-61, D-64, D-65 — every kind alike). Each
+ * refusal has already printed its own reason, so this names only the outcome.
+ * Thrown before any compose file is written and before compose runs: given
+ * `services: {}`, `up` would fail with compose's error in place of the
+ * provider's, and `--dry-run` would print an empty plan as if it were valid.
+ */
+export class NothingToStartError extends Error {
+	/** An operator-fixable precondition, not a crash — see `ExpectedRefusal`. */
+	readonly expectedRefusal = true as const;
+
+	constructor() {
+		super("nothing to start: every selected component was refused or skipped");
+		this.name = "NothingToStartError";
+	}
+}
+
+/**
  * A deploy refused because the slug's existing state was created from a
  * different source (D-55): adopting it would hand another source's live
  * containers, volumes, and secrets to whatever is being launched now.
@@ -623,6 +641,13 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 			} else {
 				console.warn(`  Warning: ${w}`);
 			}
+		}
+
+		// Nothing left to start (D-64 rule 3): stop here, dry run included.
+		// Keyed on what the generator emitted for the start-set, never on a
+		// refusal kind, so every refusal above reaches it alike.
+		if (launching.size === 0) {
+			throw new NothingToStartError();
 		}
 
 		// Update state. The full ports map (composite keys included) is what
