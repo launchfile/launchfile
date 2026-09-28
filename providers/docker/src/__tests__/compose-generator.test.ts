@@ -151,7 +151,7 @@ provides:
 		expect(minResult.yaml).toContain("unless-stopped");
 	});
 
-	describe("restart default for a scheduled component (D-69)", () => {
+	describe("restart default for a scheduled component (D-70)", () => {
 		const scheduled = (extra = "") =>
 			readLaunch(`
 name: daily-sync
