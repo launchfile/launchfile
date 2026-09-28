@@ -11,6 +11,7 @@ import { readFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { existsSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { redactSecrets } from "./redact.js";
 
 export interface ResolvedSource {
 	yaml: string;
@@ -115,9 +116,26 @@ async function fetchFromCatalog(slug: string): Promise<ResolvedSource> {
 }
 
 async function fetchFromUrl(url: string): Promise<ResolvedSource> {
-	const response = await fetch(url);
+	// Every message below is built from `shown`, never `url`: the URL may carry
+	// userinfo credentials, and D-18 masks sensitive values wherever they are
+	// shown. The returned `url` stays unmasked — it is the source identity a
+	// refetch and the foreign-source guard compare (D-55).
+	const shown = redactSecrets(url);
+	let response: Response;
+	try {
+		response = await fetch(url);
+	} catch (err) {
+		// Node's fetch rejects a URL with userinfo and echoes the whole URL in
+		// its message, so the cause is re-worded rather than attached.
+		const reason = err instanceof Error ? err.message : String(err);
+		throw new Error(
+			`Failed to fetch Launchfile from ${shown}: ${redactSecrets(reason)}`,
+		);
+	}
 	if (!response.ok) {
-		throw new Error(`Failed to fetch Launchfile from ${url}: ${response.status} ${response.statusText}`);
+		throw new Error(
+			`Failed to fetch Launchfile from ${shown}: ${response.status} ${response.statusText}`,
+		);
 	}
 
 	const yaml = await response.text();
