@@ -1,0 +1,5 @@
+---
+"@launchfile/macos-dev": minor
+---
+
+Run the source-mode prepare command (`install ?? build`) on demand instead of on every `up`, as D-38 requires. The only gate was `--no-build`, an opt-out a person had to remember, so every `up` reinstalled dependencies. `up` now fingerprints the prepare inputs — the command string plus the dependency manifests and lockfiles in the directory the command runs in — and records the fingerprint of each component's last successful run under `prepared` in `.launchfile/state.json`. A component whose fingerprint is unchanged is skipped and reports `Prepare up to date`; a first launch, an edited lockfile or manifest, or a changed `install`/`build` command re-runs it. Components sharing a working directory and command share one prepare, so it runs once per `up`. A failed prepare records nothing and is retried on the next `up`, and `--no-build` still skips the slot entirely. Dependency files nested below the working directory (a monorepo's per-workspace manifests) do not move the fingerprint. State files written by earlier versions carry no record, so the first `up` after upgrading prepares every component once.
