@@ -178,6 +178,28 @@ ${extra}`);
 			expect(warning).not.toContain("it runs once with");
 		});
 
+		it("keeps a restart inherited from the top level on a schedule-bearing component", () => {
+			const launch = readLaunch(`
+name: stack
+restart: always
+components:
+  web:
+    image: alpine:3
+  sync:
+    image: alpine:3
+    schedule: "0 3 * * *"
+    commands:
+      start: "sh -c 'echo tick'"
+`);
+			const result = launchToCompose(launch);
+			const services = parse(result.yaml).services;
+			expect(services["stack-sync"].restart).toBe("always");
+			expect(services["stack-web"].restart).toBe("always");
+			const warning = result.warnings.join(" ");
+			expect(warning).toContain("declares a schedule");
+			expect(warning).not.toContain("it runs once with");
+		});
+
 		it("names the chosen restart policy in the schedule warning", () => {
 			expect(launchToCompose(scheduled()).warnings.join(" ")).toContain(
 				'it runs once with `restart: "no"`',
