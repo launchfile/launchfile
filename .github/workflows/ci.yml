@@ -99,6 +99,28 @@ jobs:
           mkdir -p "$TF_PLUGIN_CACHE_DIR"
           cd providers/aws && bun run validate:tf --examples
 
+  # Every VOLUME a docker-provider backing-service image declares must be
+  # mounted by the generated compose, or be listed with a reason in
+  # DECLARED_VOLUME_EXCEPTIONS (providers/docker/src/compose-generator.ts).
+  # Reads image configs from the public registries with `docker buildx
+  # imagetools inspect` — manifests and config blobs only, no layer pulls, no
+  # credentials. Its own job so the provider matrix stays offline, and a
+  # registry outage reddens this one named check. A read that fails after its
+  # retries fails the job; it never passes by skipping.
+  docker-declared-volumes:
+    name: "Docker provider — declared VOLUME gate"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+      - name: Build SDK (local dependency)
+        run: cd sdk && bun install --frozen-lockfile && bun run build
+      - run: cd providers/docker && bun install --frozen-lockfile
+      - name: Every declared VOLUME is mounted or excepted
+        run: cd providers/docker && bun run check:volumes
+
   cli:
     name: CLI
     runs-on: ubuntu-latest
@@ -359,6 +381,7 @@ jobs:
       - sdk
       - providers
       - aws-terraform-validate
+      - docker-declared-volumes
       - cli
       - catalog
       - websites
