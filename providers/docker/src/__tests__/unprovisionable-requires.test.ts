@@ -6,7 +6,7 @@
  * forbids, so every test here asserts the outcome (the service is absent),
  * never only the message.
  *
- * The `kafka` factory lands alongside the refusal so `catalog/apps/posthog`
+ * The `kafka` factory lands alongside the refusal so `catalog/drafts/posthog`
  * never goes red: its tests run the catalog entry itself through the generator.
  */
 
@@ -318,9 +318,9 @@ requires:
 		});
 	});
 
-	it("runs catalog/apps/posthog with KAFKA_HOSTS wired and nothing refused", () => {
+	it("runs catalog/drafts/posthog with KAFKA_HOSTS wired and nothing refused", () => {
 		const launchfile = readFileSync(
-			join(import.meta.dirname, "../../../../catalog/apps/posthog/Launchfile"),
+			join(import.meta.dirname, "../../../../catalog/drafts/posthog/Launchfile"),
 			"utf8",
 		);
 		const { doc, warnings } = compose(launchfile);

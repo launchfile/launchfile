@@ -153,13 +153,23 @@ const BACKING_SERVICES: Record<string, (name: string) => BackingService> = {
     },
   }),
 
+  // The image's entrypoint disables network access for `default` unless
+  // CLICKHOUSE_USER/CLICKHOUSE_PASSWORD are set, so a password is required for
+  // any app to reach it at all. Same user, password and url properties as
+  // `@launchfile/docker`'s factory; the fixed password matches the other
+  // factories here.
   clickhouse: (name) => ({
     image: "clickhouse/clickhouse-server:latest",
-    environment: {},
+    environment: {
+      CLICKHOUSE_USER: "default",
+      CLICKHOUSE_PASSWORD: "launchfile",
+    },
     properties: {
       host: `${name}-clickhouse`,
       port: "8123",
-      url: `http://${name}-clickhouse:8123`,
+      user: "default",
+      password: "launchfile",
+      url: `http://default:launchfile@${name}-clickhouse:8123`,
       name: name,
     },
     healthcheck: {
