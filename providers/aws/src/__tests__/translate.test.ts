@@ -1,6 +1,10 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { readLaunch } from "@launchfile/sdk";
 import { describe, expect, it } from "vitest";
-import { translate } from "../translate.js";
+import { type PriorStack, readPriorStack } from "../prior-stack.js";
+import { SecretRotationError, translate } from "../translate.js";
 
 function tf(yaml: string) {
 	return translate(readLaunch(yaml));
@@ -815,5 +819,519 @@ env:
 	it("stays silent for a file that references no per-endpoint property", () => {
 		const { conformance } = tf(GITEA.replace(/\$app\.endpoints\.\w+\.\w+/g, "$app.url"));
 		expect(conformance.gaps.some((g) => g.field.startsWith("$app.endpoints."))).toBe(false);
+	});
+});
+
+// D-49 requires a minted value to survive; Terraform cannot migrate state across
+// a resource-type change, so re-minting a pre-D-47 `random_password` secret as
+// `random_bytes` would destroy it. Preserve it, or refuse — never rotate silently.
+describe("translate — minted secrets survive a provider upgrade (D-49)", () => {
+	const appSecret = `
+version: launch/v1
+name: app
+runtime: node
+secrets:
+  session:
+    generator: secret
+env:
+  SESSION_SECRET:
+    default: $secrets.session
+commands:
+  start: "node server.js"
+`;
+
+	const envSecret = `
+version: launch/v1
+name: app
+runtime: node
+env:
+  SESSION_SECRET:
+    generator: secret
+    sensitive: true
+commands:
+  start: "node server.js"
+`;
+
+	// Two minted secrets in one stack: re-keying one must leave the other
+	// exactly as it was — preserved, or still refused — never re-minted.
+	const twoSecrets = `
+version: launch/v1
+name: app
+runtime: node
+secrets:
+  session:
+    generator: secret
+  cookie:
+    generator: secret
+env:
+  SESSION_SECRET:
+    default: $secrets.session
+  COOKIE_SECRET:
+    default: $secrets.cookie
+commands:
+  start: "node server.js"
+`;
+
+	function refusalOf(fn: () => unknown): SecretRotationError {
+		try {
+			fn();
+		} catch (err) {
+			if (err instanceof SecretRotationError) return err;
+			throw err;
+		}
+		return expect.unreachable("translate must refuse");
+	}
+
+	function withPrior(
+		yaml: string,
+		generators: Record<string, string>,
+		source: PriorStack["source"] = {
+			kind: "state",
+			path: "/stack/terraform.tfstate",
+		},
+	) {
+		return translate(readLaunch(yaml), {
+			priorStack: {
+				generators: generators as PriorStack["generators"],
+				source,
+			},
+		});
+	}
+
+	it("keeps an app-wide secret already minted as random_password", () => {
+		const { hcl, preservedSecrets } = withPrior(appSecret, {
+			lf_secret_session: "random_password",
+		});
+		expect(hcl).toContain('resource "random_password" "lf_secret_session"');
+		expect(hcl).not.toContain('resource "random_bytes" "lf_secret_session"');
+		expect(hcl).toContain(`\${random_password.lf_secret_session.result}`);
+		expect(preservedSecrets).toEqual(["random_password.lf_secret_session"]);
+	});
+
+	it("emits the preserved resource byte-for-byte as the pre-D-47 block", () => {
+		const { hcl } = withPrior(appSecret, {
+			lf_secret_session: "random_password",
+		});
+		expect(hcl).toContain(
+			'resource "random_password" "lf_secret_session" {\n  length = 32\n  special = false\n}',
+		);
+	});
+
+	it("never writes a preserved value as a literal into the HCL", () => {
+		// The resource stays and Terraform keeps the value in its own state; the
+		// generated .tf is committed to a repo and is not a secret store.
+		const { hcl } = withPrior(appSecret, {
+			lf_secret_session: "random_password",
+		});
+		const blockBody = hcl.slice(
+			hcl.indexOf('resource "random_password" "lf_secret_session"'),
+		);
+		expect(blockBody.slice(0, blockBody.indexOf("}"))).not.toMatch(
+			/result|value|override/,
+		);
+	});
+
+	it("keeps a component env secret already minted as random_password", () => {
+		const { hcl, preservedSecrets } = withPrior(envSecret, {
+			app_default_SESSION_SECRET_gen: "random_password",
+		});
+		expect(hcl).toContain(
+			'resource "random_password" "app_default_SESSION_SECRET_gen"',
+		);
+		expect(hcl).toContain(".result}");
+		expect(preservedSecrets).toEqual([
+			"random_password.app_default_SESSION_SECRET_gen",
+		]);
+	});
+
+	it("records the preserved secret as a gap — it is not the D-47 output", () => {
+		const { conformance } = withPrior(appSecret, {
+			lf_secret_session: "random_password",
+		});
+		const gap = conformance.gaps.find((g) => g.field === "secrets.session");
+		expect(gap?.severity).toBe("workaround");
+		expect(gap?.reason).toContain("D-49");
+		expect(gap?.suggestion).toContain(
+			"terraform state rm 'random_password.lf_secret_session'",
+		);
+		expect(gap?.suggestion).not.toContain("main.tf");
+	});
+
+	it("tells the operator to --rekey the one address when the record came from main.tf", () => {
+		// With no state file, `state rm` clears nothing translate reads.
+		// The advice names the file and the flag that skips only this record —
+		// never "move main.tf aside", which would erase every other record too.
+		const { conformance } = withPrior(
+			appSecret,
+			{ lf_secret_session: "random_password" },
+			{ kind: "hcl", path: "/stack/main.tf" },
+		);
+		const gap = conformance.gaps.find((g) => g.field === "secrets.session");
+		expect(gap?.suggestion).toContain(
+			"terraform state rm 'random_password.lf_secret_session'",
+		);
+		expect(gap?.suggestion).toContain(
+			"--rekey 'random_password.lf_secret_session'",
+		);
+		expect(gap?.suggestion).toContain("/stack/main.tf is the record");
+		expect(gap?.suggestion).not.toContain("aside");
+	});
+
+	it("maps the secret to the resource it actually emitted", () => {
+		const preserved = withPrior(appSecret, {
+			lf_secret_session: "random_password",
+		});
+		expect(
+			preserved.conformance.mapped.find((m) => m.field === "secrets.session")
+				?.target,
+		).toBe("random_password");
+		const fresh = translate(readLaunch(appSecret));
+		expect(
+			fresh.conformance.mapped.find((m) => m.field === "secrets.session")
+				?.target,
+		).toBe("random_bytes");
+	});
+
+	it("mints a new secret under D-47 — the fix is not retroactive to the shape", () => {
+		// A stack that exists but has never held this secret.
+		const { hcl, preservedSecrets } = withPrior(appSecret, {
+			lf_secret_other: "random_password",
+		});
+		expect(hcl).toMatch(
+			/resource "random_bytes" "lf_secret_session" \{\s*\n\s*length = 32/,
+		);
+		expect(preservedSecrets).toEqual([]);
+	});
+
+	it("leaves an already-conforming secret alone", () => {
+		const { hcl, preservedSecrets } = withPrior(appSecret, {
+			lf_secret_session: "random_bytes",
+		});
+		expect(hcl).toContain('resource "random_bytes" "lf_secret_session"');
+		expect(preservedSecrets).toEqual([]);
+	});
+
+	it("refuses when the minted value cannot be preserved, naming the variable", () => {
+		const uuidNow = `
+version: launch/v1
+name: app
+runtime: node
+secrets:
+  session:
+    generator: uuid
+commands:
+  start: "node server.js"
+`;
+		expect(() =>
+			withPrior(uuidNow, { lf_secret_session: "random_password" }),
+		).toThrow(SecretRotationError);
+
+		const e = refusalOf(() =>
+			withPrior(uuidNow, { lf_secret_session: "random_password" }),
+		);
+		expect(e.conflicts).toEqual([
+			{
+				site: { app: "app", variable: "session" },
+				name: "lf_secret_session",
+				address: "random_password.lf_secret_session",
+				had: "random_password",
+				wants: "random_uuid",
+			},
+		]);
+		expect(e.message).toContain("Refusing to translate app");
+		expect(e.message).toContain("session");
+		expect(e.message).toContain(
+			"terraform state rm 'random_password.lf_secret_session'",
+		);
+		expect(e.message).toContain("read from: /stack/terraform.tfstate");
+		expect(e.message).not.toContain("main.tf");
+		expect(e.message).not.toContain("--rekey");
+		expect(e.message).toContain("Nothing was written.");
+		expect(e.source).toEqual({
+			kind: "state",
+			path: "/stack/terraform.tfstate",
+		});
+	});
+
+	it("names the component when the refusal is a component env var", () => {
+		const uuidEnv = `
+version: launch/v1
+name: app
+runtime: node
+components:
+  web:
+    runtime: node
+    env:
+      NODE_ID:
+        generator: uuid
+    commands:
+      start: "node server.js"
+`;
+		const e = refusalOf(() =>
+			withPrior(uuidEnv, { app_web_NODE_ID_gen: "random_bytes" }),
+		);
+		expect(e.conflicts.map((c) => c.site)).toEqual([
+			{ app: "app", component: "web", variable: "NODE_ID" },
+		]);
+		expect(e.message).toContain("component web");
+		expect(e.message).toContain("NODE_ID");
+	});
+
+	it("names every conflicting secret in the one refusal, not only the first", () => {
+		// Both were minted as uuids and both now declare generator: secret. A
+		// refusal that named only session would leave cookie to be rotated
+		// silently once session was dealt with.
+		const e = refusalOf(() =>
+			withPrior(twoSecrets, {
+				lf_secret_session: "random_uuid",
+				lf_secret_cookie: "random_uuid",
+			}),
+		);
+		expect(e.conflicts.map((c) => c.address).sort()).toEqual([
+			"random_uuid.lf_secret_cookie",
+			"random_uuid.lf_secret_session",
+		]);
+		expect(e.message).toContain("destroy 2 secrets");
+		expect(e.message).toContain("variable:  session");
+		expect(e.message).toContain("variable:  cookie");
+		expect(e.message).toContain(
+			"terraform state rm 'random_uuid.lf_secret_session' 'random_uuid.lf_secret_cookie'",
+		);
+	});
+
+	it("re-keys after `terraform state rm`: the refusal's own steps reach the D-47 output", () => {
+		const out = mkdtempSync(join(tmpdir(), "lf-aws-rekey-"));
+		const state = (resources: Array<Record<string, string>>) =>
+			writeFileSync(
+				join(out, "terraform.tfstate"),
+				JSON.stringify({ version: 4, serial: 1, lineage: "x", resources }),
+			);
+		const launch = readLaunch(appSecret);
+
+		// Step 0: the stack minted this secret as a uuid; `generator: secret`
+		// would change its type, so translate refuses and writes nothing.
+		state([
+			{ mode: "managed", type: "random_uuid", name: "lf_secret_session" },
+		]);
+		writeFileSync(
+			join(out, "main.tf"),
+			'resource "random_uuid" "lf_secret_session" {\n}\n',
+		);
+		expect(() =>
+			translate(launch, { priorStack: readPriorStack(out) }),
+		).toThrow(SecretRotationError);
+
+		// Step 1: the operator removes the resource from state. The old main.tf
+		// is still there, and must not make the refusal repeat.
+		state([]);
+		const { hcl, preservedSecrets } = translate(launch, {
+			priorStack: readPriorStack(out),
+		});
+		expect(hcl).toContain('resource "random_bytes" "lf_secret_session"');
+		expect(preservedSecrets).toEqual([]);
+	});
+
+	it("re-keys one of two preserved secrets after `terraform state rm` and keeps the other", () => {
+		const out = mkdtempSync(join(tmpdir(), "lf-aws-rekey-two-"));
+		const state = (resources: Array<Record<string, string>>) =>
+			writeFileSync(
+				join(out, "terraform.tfstate"),
+				JSON.stringify({ version: 4, serial: 1, lineage: "x", resources }),
+			);
+		const launch = readLaunch(twoSecrets);
+		const password = (name: string) => ({
+			mode: "managed",
+			type: "random_password",
+			name,
+		});
+
+		state([password("lf_secret_session"), password("lf_secret_cookie")]);
+		const kept = translate(launch, { priorStack: readPriorStack(out) });
+		expect(kept.preservedSecrets.sort()).toEqual([
+			"random_password.lf_secret_cookie",
+			"random_password.lf_secret_session",
+		]);
+
+		// The operator follows the steps for session only.
+		state([password("lf_secret_cookie")]);
+		const { hcl, preservedSecrets } = translate(launch, {
+			priorStack: readPriorStack(out),
+		});
+		expect(hcl).toContain('resource "random_bytes" "lf_secret_session"');
+		expect(hcl).toContain('resource "random_password" "lf_secret_cookie"');
+		expect(preservedSecrets).toEqual(["random_password.lf_secret_cookie"]);
+	});
+
+	it("re-keys from main.tf alone: the refusal's own steps reach the D-47 output", () => {
+		// No state file — a remote backend, or apply run elsewhere — so
+		// the record comes from the main.tf written last time. `state rm` on the
+		// remote state changes nothing here; the printed steps must still finish.
+		const out = mkdtempSync(join(tmpdir(), "lf-aws-rekey-hcl-"));
+		const hcl = join(out, "main.tf");
+		writeFileSync(hcl, 'resource "random_uuid" "lf_secret_session" {\n}\n');
+		const launch = readLaunch(appSecret);
+
+		const refusal = refusalOf(() =>
+			translate(launch, { priorStack: readPriorStack(out) }),
+		);
+		expect(refusal.source).toEqual({ kind: "hcl", path: hcl });
+		expect(refusal.message).toContain(`read from: ${hcl}`);
+		expect(refusal.message).toContain(
+			"1. terraform state rm 'random_uuid.lf_secret_session'",
+		);
+		expect(refusal.message).toContain(
+			"2. re-run `launchfile-aws translate` with --rekey 'random_uuid.lf_secret_session'",
+		);
+		expect(refusal.message).toContain(`${hcl} is the record`);
+		expect(refusal.message).not.toContain("aside");
+
+		// Step 1 happens against a state file this directory does not hold.
+		// Step 2: the operator re-runs with --rekey, as told. main.tf stays.
+		const fresh = translate(launch, {
+			priorStack: readPriorStack(out, {
+				rekey: ["random_uuid.lf_secret_session"],
+			}),
+		});
+		expect(fresh.hcl).toContain('resource "random_bytes" "lf_secret_session"');
+		expect(fresh.preservedSecrets).toEqual([]);
+	});
+
+	it("re-keys a preserved secret from main.tf alone by the gap's own steps", () => {
+		const out = mkdtempSync(join(tmpdir(), "lf-aws-rekey-hcl-"));
+		const hcl = join(out, "main.tf");
+		writeFileSync(
+			hcl,
+			'resource "random_password" "lf_secret_session" {\n  length = 32\n  special = false\n}\n',
+		);
+		const launch = readLaunch(appSecret);
+
+		const kept = translate(launch, { priorStack: readPriorStack(out) });
+		expect(kept.preservedSecrets).toEqual([
+			"random_password.lf_secret_session",
+		]);
+		const gap = kept.conformance.gaps.find(
+			(g) => g.field === "secrets.session",
+		);
+		expect(gap?.suggestion).toContain(
+			"--rekey 'random_password.lf_secret_session'",
+		);
+
+		const fresh = translate(launch, {
+			priorStack: readPriorStack(out, {
+				rekey: ["random_password.lf_secret_session"],
+			}),
+		});
+		expect(fresh.hcl).toContain('resource "random_bytes" "lf_secret_session"');
+		expect(fresh.preservedSecrets).toEqual([]);
+	});
+
+	it("re-keys one preserved secret from main.tf and keeps the other preserved", () => {
+		// main.tf is the only record of both. The steps for session must not
+		// clear cookie's record with it.
+		const out = mkdtempSync(join(tmpdir(), "lf-aws-rekey-hcl-two-"));
+		const hcl = join(out, "main.tf");
+		const passwordBlock = (name: string) =>
+			`resource "random_password" "${name}" {\n  length = 32\n  special = false\n}\n`;
+		writeFileSync(
+			hcl,
+			passwordBlock("lf_secret_session") + passwordBlock("lf_secret_cookie"),
+		);
+		const launch = readLaunch(twoSecrets);
+
+		const kept = translate(launch, { priorStack: readPriorStack(out) });
+		expect(kept.preservedSecrets.sort()).toEqual([
+			"random_password.lf_secret_cookie",
+			"random_password.lf_secret_session",
+		]);
+		const gap = kept.conformance.gaps.find(
+			(g) => g.field === "secrets.session",
+		);
+		expect(gap?.suggestion).toContain(
+			"--rekey 'random_password.lf_secret_session'",
+		);
+		expect(gap?.suggestion).not.toContain("cookie");
+
+		const next = translate(launch, {
+			priorStack: readPriorStack(out, {
+				rekey: ["random_password.lf_secret_session"],
+			}),
+		});
+		expect(next.hcl).toContain('resource "random_bytes" "lf_secret_session"');
+		expect(next.hcl).toContain('resource "random_password" "lf_secret_cookie"');
+		expect(next.preservedSecrets).toEqual(["random_password.lf_secret_cookie"]);
+	});
+
+	it("re-keys one of two refused secrets from main.tf and still refuses the other", () => {
+		const out = mkdtempSync(join(tmpdir(), "lf-aws-rekey-hcl-two-"));
+		const hcl = join(out, "main.tf");
+		writeFileSync(
+			hcl,
+			'resource "random_uuid" "lf_secret_session" {\n}\nresource "random_uuid" "lf_secret_cookie" {\n}\n',
+		);
+		const launch = readLaunch(twoSecrets);
+
+		const both = refusalOf(() =>
+			translate(launch, { priorStack: readPriorStack(out) }),
+		);
+		expect(both.conflicts.map((c) => c.address).sort()).toEqual([
+			"random_uuid.lf_secret_cookie",
+			"random_uuid.lf_secret_session",
+		]);
+		expect(both.message).toContain(
+			"--rekey 'random_uuid.lf_secret_session' --rekey 'random_uuid.lf_secret_cookie'",
+		);
+
+		// The operator re-keys session only: cookie is still refused, by name.
+		const remaining = refusalOf(() =>
+			translate(launch, {
+				priorStack: readPriorStack(out, {
+					rekey: ["random_uuid.lf_secret_session"],
+				}),
+			}),
+		);
+		expect(remaining.conflicts.map((c) => c.address)).toEqual([
+			"random_uuid.lf_secret_cookie",
+		]);
+
+		// Both named, as the first refusal printed them: a fresh D-47 mint.
+		const fresh = translate(launch, {
+			priorStack: readPriorStack(out, {
+				rekey: ["random_uuid.lf_secret_session", "random_uuid.lf_secret_cookie"],
+			}),
+		});
+		expect(fresh.hcl).toContain('resource "random_bytes" "lf_secret_session"');
+		expect(fresh.hcl).toContain('resource "random_bytes" "lf_secret_cookie"');
+		expect(fresh.preservedSecrets).toEqual([]);
+	});
+
+	it("lets a port change type — D-49 exempts an allocation", () => {
+		const { hcl } = withPrior(appSecret, {
+			lf_secret_session: "random_integer",
+		});
+		expect(hcl).toContain('resource "random_bytes" "lf_secret_session"');
+	});
+
+	it("leaves the RDS master password alone — a resource credential, not D-47 output", () => {
+		const withDb = `
+version: launch/v1
+name: app
+runtime: node
+requires:
+  - type: postgres
+env:
+  SESSION_SECRET:
+    generator: secret
+commands:
+  start: "node server.js"
+`;
+		// The RDS password is itself a random_password in the prior stack; it is not
+		// a generator: value, so the preserve/refuse rule must not touch it.
+		const { hcl, preservedSecrets } = withPrior(withDb, {
+			app_postgres_pw: "random_password",
+			app_default_SESSION_SECRET_gen: "random_bytes",
+		});
+		expect(hcl).toContain('resource "random_password" "app_postgres_pw"');
+		expect(hcl).toContain("length = 24");
+		expect(preservedSecrets).toEqual([]);
 	});
 });
