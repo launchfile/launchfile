@@ -77,7 +77,7 @@ describe("selectorRefusal", () => {
 			"x",
 		);
 		expect(plural?.[0]).toMatch(/^--components selects/);
-		expect(singular?.[0]).toMatch(/^--component selects/);
+		expect(singular?.[0]).toMatch(/^--component is not a `launch` flag/);
 	});
 
 	it("names --components when both spellings appear, whatever the argv order", () => {

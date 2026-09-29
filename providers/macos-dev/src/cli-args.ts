@@ -42,6 +42,12 @@ export function parseComponentsFlag(
  */
 const SELECTOR_SPELLINGS = ["--components", "--component"] as const;
 
+const SELECTOR_MEANING = {
+	"--components": "selects which components `up` starts",
+	"--component":
+		"is not a `launch` flag (`up` selects components with `--components`)",
+} as const satisfies Record<(typeof SELECTOR_SPELLINGS)[number], string>;
+
 /**
  * The refusal a verb owes when a selector spelling appears on it but nothing
  * reads the value. `down` and `status` act on the whole deployment and have no
@@ -59,7 +65,7 @@ export function selectorRefusal(
 	);
 	if (spelled === undefined) return undefined;
 	return [
-		`${spelled} selects which components \`up\` starts; \`${verb}\` ${action}.`,
+		`${spelled} ${SELECTOR_MEANING[spelled]}; \`${verb}\` ${action}.`,
 		`Run \`${verb}\` with no selector.`,
 	] as const;
 }
