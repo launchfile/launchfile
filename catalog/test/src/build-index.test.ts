@@ -205,6 +205,12 @@ describe("buildReadme", () => {
 		expect(buildReadme(first, entries, gaps).readme).toBe(first);
 	});
 
+	it("escapes backslashes so a literal \\| cannot end the cell", () => {
+		const entries = [entry({ slug: "blog", description: "a \\| b" })];
+		const { readme } = buildReadme(README, entries, "");
+		expect(readme).toContain("| [blog](apps/blog/) | — | a \\\\\\| b | — | |");
+	});
+
 	it("throws when a section's markers are missing", () => {
 		expect(() => replaceSection("# no markers\n", "apps", "x")).toThrow(/apps/);
 	});

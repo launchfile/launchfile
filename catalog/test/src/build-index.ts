@@ -233,7 +233,7 @@ export function parseGaps(gapsMd: string, slugs: string[]): GapIndex {
 // --- README tables ---
 
 function cell(text: string | undefined): string {
-	return text ? text.replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " ") : "—";
+	return text ? text.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " ") : "—";
 }
 
 export function renderTable(entries: CatalogEntry[], gaps: Map<string, string[]>): string {
