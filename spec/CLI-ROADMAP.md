@@ -10,10 +10,14 @@ launchfile <verb> [target] [flags]
 
 ## Command Table
 
-The phase 1 rows mirror the shipped CLI (`launchfile --help`, flags declared in
-`packages/launchfile/src/cli-args.ts`). A PR that adds or changes a verb or flag
-updates its row in the same PR. Checking the table mechanically is tracked in
-[#412](https://github.com/launchfile/launchfile/issues/412).
+The phase 1 rows marked ✓ mirror the shipped CLI (`launchfile --help`, flags
+declared in `packages/launchfile/src/cli-args.ts`). A phase 1 row without ✓ is
+planned and not yet shipped. A PR that adds or changes a verb or flag updates
+its row in the same PR. The globals `--help`, `--version` and `--no-color`
+apply to every verb and are not repeated per row. Whether to generate or
+CI-check this table is the same question
+[#412](https://github.com/launchfile/launchfile/issues/412) asks for
+`catalog/README.md`; one ruling will cover both.
 
 ```
 VERB          TARGET              FLAGS                                    PHASE
@@ -28,7 +32,7 @@ logs          [id|slug|name]      --follow                                 1 ✓
 diagnose      [id|slug|name]      --json                                   1 ✓
 bootstrap     [id|slug|name]      --component --reveal                     1 ✓
 list / ls     —                                                            1 ✓
-env           [id|slug|name]      [component]                              1
+env           [id|slug|name]      [component]                              1 (not shipped)
 validate      [path]              --json --quiet --detached                1 ✓
 inspect       [path]                                                       1 ✓
 schema        —                   --schema-path                            1 ✓
