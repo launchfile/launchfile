@@ -1426,11 +1426,18 @@ export function launchToCompose(
 		// properties, a use no factory here can hand over, or a token this
 		// provider does not recognise — it cannot claim to cover a use it does
 		// not know. Never a warning that hands the app less than it declared.
+		// An `https-origin` entry is graded against the map its wiring below
+		// reads, `httpsOriginProperties` — the publication-context channel
+		// satisfies this type (D-60 rule 5), so a same-keyed entry in
+		// `opts.resources` is not what the app gets.
 		const uncoveredUses: string[] = [];
 		for (const req of component.requires ?? []) {
 			if (req.host || !req.uses) continue;
 			const resourceName = req.name ?? req.type;
-			const supplied = opts.resources?.[resourceName];
+			const supplied =
+				req.type === HTTPS_ORIGIN
+					? { properties: httpsOriginProperties }
+					: opts.resources?.[resourceName];
 			const uncovered = supplied
 				? uncoveredSuppliedUses(req.type, useKeys(req.uses), supplied.properties)
 				: uncoveredProvisionedUses(req.type, useKeys(req.uses));
