@@ -318,8 +318,8 @@ function escapeRegExp(s: string): string {
  * Parse the parameters of `export function <localName>(…)` in a source
  * module. Throws, naming what it found, on any signature it cannot map to a
  * parameter list: no `export function` declaration (a const, class, or
- * further re-export), overloads, rest parameters, or a `this` parameter.
- * A destructured parameter counts as one positional parameter.
+ * further re-export), overloads, rest parameters, a `this` parameter, or a
+ * destructured (`{ … }` / `[ … ]`) parameter.
  */
 export function parseDeclarationParams(
 	source: string,
@@ -365,6 +365,11 @@ export function parseDeclarationParams(
 		if (/^this\s*[:?]/.test(text)) {
 			throw new Error(
 				`\`${localName}\` declares a \`this\` parameter (${text}), which the arity check cannot map`,
+			);
+		}
+		if (text.startsWith("{") || text.startsWith("[")) {
+			throw new Error(
+				`\`${localName}\` has a destructured parameter (${text}), which the arity check cannot map`,
 			);
 		}
 		return { text, optional: isOptionalDeclaredParam(text) };

@@ -201,14 +201,22 @@ describe("parseDeclarationParams", () => {
 		expect(params[0]!.text).toBe("a: (x: string, y: number) => void");
 	});
 
-	it("counts a destructured parameter as one positional parameter", () => {
-		const { params } = parseDeclarationParams(
-			"export function useKeyOf({ use, name }: DeclaredUse): string {}",
-			"useKeyOf",
-		);
-		expect(params).toEqual([
-			{ text: "{ use, name }: DeclaredUse", optional: false },
-		]);
+	it("throws on a destructured object parameter, naming the export", () => {
+		expect(() =>
+			parseDeclarationParams(
+				"export function useKeyOf({ use, name }: DeclaredUse): string {}",
+				"useKeyOf",
+			),
+		).toThrow(/`useKeyOf` has a destructured parameter/);
+	});
+
+	it("throws on a destructured array parameter, naming the export", () => {
+		expect(() =>
+			parseDeclarationParams(
+				"export function first(a: string, [b, c]: [number, number]): void {}",
+				"first",
+			),
+		).toThrow(/`first` has a destructured parameter/);
 	});
 
 	it("does not match a longer name that shares the prefix", () => {
