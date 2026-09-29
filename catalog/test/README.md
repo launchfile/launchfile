@@ -68,13 +68,23 @@ test_results:
   last_tested: 2026-04-06
   pull_time_seconds: 15
   startup_time_seconds: 1
-  total_disk_mb: 57
+  total_download_mb: 22
   health_check_passed: true
 images:
   - name: corentinth/it-tools:latest
-    size_mb: 57
+    size_mb: 22
     platform: [linux/arm64]
 ```
+
+`images[].size_mb` is the compressed download size for the recorded platform: the sum
+of `layers[].size` in the registry manifest, in MiB. The harness reads it with
+`docker manifest inspect`, not from the local image store, and stops the run if the
+lookup fails. `test_results.total_download_mb` is the sum of `images[].size_mb`.
+
+`bun run backfill-sizes [app ...]` rewrites both fields in every `apps/` and `drafts/`
+`metadata.yaml` from manifests, without running a container. It leaves images whose
+platform is `unknown` for a harness rerun. Docker Hub rate-limits manifest reads, so
+name the apps a rate-limited run left to rerun only those.
 
 ### `test_env:` — the harness's operator channel
 
