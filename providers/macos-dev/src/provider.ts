@@ -65,6 +65,7 @@ import {
 	allocateDbIndexes,
 	getProvisioner,
 	namedDatabases,
+	ResourceRefusedError,
 	uncoveredUses,
 	type ResourceProperties,
 } from "./resources/index.js";
@@ -933,6 +934,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		projectDir,
 		databases: namedDatabases(uses[resourceName] ?? []),
 	});
+	const refusedResources: ResourceRefusedError[] = [];
 
 	for (const [_compName, component] of Object.entries(launch.components)) {
 		for (const req of component.requires ?? []) {
@@ -968,7 +970,19 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 
 			process.stdout.write(`  \u2193 Provisioning ${req.type}...`);
 			const existing = state.resources[resourceName];
-			const result = await provisioner.provision(req, provisionOpts(resourceName), existing);
+			let result: Awaited<ReturnType<typeof provisioner.provision>>;
+			try {
+				result = await provisioner.provision(req, provisionOpts(resourceName), existing);
+			} catch (err) {
+				// A refusal is printed by the provisioner. The resource is
+				// skipped so the remaining ones still provision, and the run
+				// exits non-zero below: a required resource that vanishes under
+				// a zero exit code is the silent success this guards against.
+				if (!(err instanceof ResourceRefusedError)) throw err;
+				console.log(" refused");
+				refusedResources.push(err);
+				continue;
+			}
 			resourceMap[resourceName] = registerResource(req.type, resourceName, uses, result.properties, indexes);
 			// The indexes ride along in state so `env` answers `db.*` with the
 			// databases the running app was given.
@@ -1026,6 +1040,17 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 				}
 			}
 		}
+	}
+
+	// A required resource the provisioner refused leaves its component with
+	// nothing to run against, so the run stops here, after every other
+	// resource has had its turn, and names each refusal.
+	if (refusedResources.length > 0) {
+		console.error(
+			`Refused to provision ${refusedResources.length === 1 ? "a required resource" : "required resources"}: ` +
+				refusedResources.map((r) => `${r.resourceName} (${r.reason})`).join("; "),
+		);
+		process.exit(1);
 	}
 
 	// 7. Allocate ports
