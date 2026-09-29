@@ -39,7 +39,7 @@ Each gap includes the apps that exposed it and a severity rating.
 ## Protocol & Networking
 
 ### G-9: No multicast / link-local network capability declaration 🟡
-**Apps**: Home Assistant
+**Apps**: Home Assistant, Syncthing
 **Issue**: Home Assistant uses mDNS and SSDP for local device discovery. Both protocols rely on multicast, which Docker's default bridge network does not forward between containers and the host LAN segment. There is no way in Launchfile to declare that an app requires multicast or link-local network access. The spec should express the capability needed, not a Docker-specific implementation mechanism like `network_mode: host`.
 **Approaches**:
 - **Declare required protocols** — `network.protocols: [multicast, link-local]`; orchestrator satisfies it however fits the platform. Most portable.
@@ -151,7 +151,7 @@ Each gap includes the apps that exposed it and a severity rating.
 | G-9 | Home Assistant, Syncthing |
 | G-9b | Home Assistant |
 | G-10 | Ollama, Jellyfin, Plex, Immich |
-| G-11 | Jellyfin, Home Assistant, Diun, Calibre Web |
+| G-11 | Jellyfin, Home Assistant, Diun |
 | G-12 | Diun, Home Assistant, Calibre Web |
 | G-13 | Changedetection, Nextcloud |
 | G-14 | Plex |
