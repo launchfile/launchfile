@@ -28,6 +28,8 @@ launchfile               ← depends on SDK + docker
 
 All packages use [linked versioning](https://github.com/changesets/changesets/blob/main/docs/linked-packages.md) — they share the same version number.
 
+Each published package declares an `exports` map (`"."`, with `types` listed before `import`), so consumers import the package entry point, never `dist/*` paths; `sdk/scripts/check-linked-exports.ts` fails `bun run test` in `sdk/` when a package in `.changeset/config.json`'s `linked` array has none.
+
 > `@launchfile/aws` is intentionally **`private: true`** and **not** published — it's an alpha, translation-only conformance probe. When it's ready to ship, configure its npm trusted publisher (Workflow: `release.yml`) **before** removing the `private` flag, or the publish run will 404 and fail the whole release.
 
 ## Daily Workflow
