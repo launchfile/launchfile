@@ -25,10 +25,11 @@ Each gap includes the apps that exposed it and a severity rating.
 **Workaround**: Works as-is; just undocumented.
 **Suggestion**: Add `mariadb` to the resource type enum, aliased to MySQL's property set.
 
-### G-4: No `clickhouse` in well-known resource types 🟡
+### G-4: No `clickhouse` in well-known resource types — CLOSED
 **Apps**: Plausible
 **Issue**: Same as G-3 but for ClickHouse. Properties would differ (different URL scheme, no user/password by default).
 **Workaround**: `type: clickhouse` with `set_env: { CLICKHOUSE_DATABASE_URL: $url }` works structurally.
+**Status**: Closed. `clickhouse` is in the well-known resource types with `url`, `host`, `port`, `user`, `password` and `name` (commit edee630, 2026-04-09; see "Resource Property Vocabulary" in SPEC.md).
 
 ### G-5: MongoDB replica set config not expressible 🟡
 **Apps**: Rocket.Chat
@@ -137,7 +138,7 @@ Each gap includes the apps that exposed it and a severity rating.
 | Severity | Count | Gaps |
 |----------|-------|------|
 | 🔴 Blocks real apps | 0 | *(G-2 shared secrets and G-8 UDP now addressed in spec)* |
-| 🟡 Workaround exists | 12 | G-1, G-3, G-4, G-5, G-9, G-9b, G-10, G-11, G-12, G-13, G-17, G-19, G-20 *(G-6 property registry now addressed in spec — D-46)* |
+| 🟡 Workaround exists | 11 | G-1, G-3, G-5, G-9, G-9b, G-10, G-11, G-12, G-13, G-17, G-19, G-20 *(G-4 `clickhouse` type now in the well-known types — edee630; G-6 property registry now addressed in spec — D-46)* |
 | 🟢 Nice-to-have | 4 | G-14, G-15, G-16, G-18 |
 
 ## Apps per Gap
@@ -146,7 +147,6 @@ Each gap includes the apps that exposed it and a severity rating.
 |-----|--------------|
 | G-1 | Ollama+OpenWebUI, Dify, Changedetection, HedgeDoc, Hoppscotch |
 | G-3 | Appwrite |
-| G-4 | Plausible |
 | G-5 | Rocket.Chat |
 | G-9 | Home Assistant, Syncthing |
 | G-9b | Home Assistant |
