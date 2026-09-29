@@ -107,7 +107,11 @@ components:
 			main: { db: 3, "db.cache": 4, "db.sessions": 5 },
 		});
 		expect(Object.keys(allocation)).toEqual(["queue", "optional", "main"]);
-		expect(Object.keys(allocation.main ?? {})).toEqual(["db", "db.cache", "db.sessions"]);
+		expect(Object.keys(allocation.main ?? {})).toEqual([
+			"db",
+			"db.cache",
+			"db.sessions",
+		]);
 	});
 
 	it("has no entry for a resource that declares no db use, nor for a non-redis one", () => {
@@ -130,10 +134,36 @@ describe("namedDatabase / withDatabasePath", () => {
 	});
 
 	it("replaces the URL path, keeping the query and fragment, and leaves a non-URL alone", () => {
-		expect(withDatabasePath("postgres://u:p@h:5432/app?sslmode=disable", "app_x")).toBe(
-			"postgres://u:p@h:5432/app_x?sslmode=disable",
+		expect(
+			withDatabasePath("postgres://u:p@h:5432/app?sslmode=disable", "app_x"),
+		).toBe("postgres://u:p@h:5432/app_x?sslmode=disable");
+		expect(withDatabasePath("mysql://u:p@h:3306", "app_x")).toBe(
+			"mysql://u:p@h:3306/app_x",
 		);
-		expect(withDatabasePath("mysql://u:p@h:3306", "app_x")).toBe("mysql://u:p@h:3306/app_x");
 		expect(withDatabasePath("not a url", "app_x")).toBe("not a url");
+	});
+
+	it("keeps a fragment, and a path with no query, and a bare authority with a query", () => {
+		expect(withDatabasePath("postgres://h/app#frag", "app_x")).toBe(
+			"postgres://h/app_x#frag",
+		);
+		expect(withDatabasePath("postgres://h/a/b", "app_x")).toBe(
+			"postgres://h/app_x",
+		);
+		expect(withDatabasePath("postgres://h?x=1", "app_x")).toBe(
+			"postgres://h/app_x?x=1",
+		);
+		expect(withDatabasePath("postgres://h/", "app_x")).toBe(
+			"postgres://h/app_x",
+		);
+	});
+
+	it("runs in linear time on a long authority followed by a newline", () => {
+		const url = `a://${'"'.repeat(200_000)}?\n`;
+		const started = performance.now();
+		expect(withDatabasePath(url, "app_x")).toBe(
+			`a://${'"'.repeat(200_000)}/app_x?\n`,
+		);
+		expect(performance.now() - started).toBeLessThan(500);
 	});
 });

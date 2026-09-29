@@ -52,9 +52,7 @@ export function useKey(item: UseDeclaration): string {
 }
 
 /** The use keys of a `uses` list, in declaration order; empty for an entry that declares none. */
-export function useKeys(
-	uses: readonly UseDeclaration[] | undefined,
-): string[] {
+export function useKeys(uses: readonly UseDeclaration[] | undefined): string[] {
 	return (uses ?? []).map(useKey);
 }
 
@@ -94,9 +92,25 @@ export function namedDatabase(instance: string, name: string): string {
  * its own. A string that is not a URL comes back unchanged.
  */
 export function withDatabasePath(url: string, database: string): string {
-	const match = /^([a-z][a-z0-9+.-]*:\/\/[^/?#]*)(?:\/[^?#]*)?(.*)$/i.exec(url);
-	if (!match) return url;
-	return `${match[1]}/${database}${match[2]}`;
+	const scheme = /^[a-z][a-z0-9+.-]*:\/\//i.exec(url);
+	if (!scheme) return url;
+	// A single forward scan, no regex over the authority and path: a
+	// backtracking pattern there is quadratic on a long authority the
+	// Launchfile author controls.
+	const authorityEnd = indexOfAny(url, "/?#", scheme[0].length);
+	const pathEnd =
+		url[authorityEnd] === "/"
+			? indexOfAny(url, "?#", authorityEnd + 1)
+			: authorityEnd;
+	return `${url.slice(0, authorityEnd)}/${database}${url.slice(pathEnd)}`;
+}
+
+/** Index of the first character of `stops` in `s` at or after `from`, or `s.length`. */
+function indexOfAny(s: string, stops: string, from: number): number {
+	for (let i = from; i < s.length; i++) {
+		if (stops.includes(s.charAt(i))) return i;
+	}
+	return s.length;
 }
 
 /**
