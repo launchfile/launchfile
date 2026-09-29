@@ -207,16 +207,27 @@ export class PostgresProvisioner implements ResourceProvisioner {
 	}
 
 	async destroy(state: ResourceState, _opts: DestroyOpts): Promise<void> {
-		// Security: state values come from disk (state.json) — validate before SQL interpolation
+		// Security: state values come from disk (state.json) — validate before SQL
+		// interpolation. A rejected value is never echoed: it is attacker-controlled.
 		for (const database of [state.dbName, ...(state.databases ?? [])]) {
-			if (!database || !SAFE_IDENTIFIER.test(database)) continue;
+			if (!database) continue;
+			if (!SAFE_IDENTIFIER.test(database)) {
+				console.warn(
+					"  ! postgres: left a database in place — its name in state.json is not a safe identifier",
+				);
+				continue;
+			}
 			await this.#shell(
 				"dropdb",
 				["-h", DEFAULT_HOST, "--if-exists", database],
 				{ allowFailure: true },
 			);
 		}
-		if (state.user && SAFE_IDENTIFIER.test(state.user)) {
+		if (state.user && !SAFE_IDENTIFIER.test(state.user)) {
+			console.warn(
+				"  ! postgres: left the database role in place — its name in state.json is not a safe identifier",
+			);
+		} else if (state.user) {
 			await this.#shell(
 				"psql",
 				[
