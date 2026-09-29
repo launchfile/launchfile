@@ -2,7 +2,7 @@
  * SQLite resource provisioner — just creates a directory for the DB file.
  */
 
-import { mkdir } from "node:fs/promises";
+import { chmod, mkdir } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import type { NormalizedRequirement } from "@launchfile/sdk";
 import type { ResourceState } from "../state.js";
@@ -27,7 +27,11 @@ export class SqliteProvisioner implements ResourceProvisioner {
 		const resourceName = req.name ?? req.type;
 		const safeName = opts.appName.replace(/-/g, "_");
 		const dataDir = join(opts.projectDir, ".launchfile", "data", "sqlite");
-		await mkdir(dataDir, { recursive: true });
+		// Owner-only like the rest of .launchfile/ (state.ts ensureDirs): the
+		// mode is applied on creation only, so chmod also covers a directory
+		// left by an earlier version (CWE-276).
+		await mkdir(dataDir, { recursive: true, mode: 0o700 });
+		await chmod(dataDir, 0o700);
 
 		const dbPath = join(dataDir, `${safeName}.db`);
 

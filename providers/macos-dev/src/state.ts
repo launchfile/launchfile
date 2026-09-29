@@ -219,8 +219,11 @@ export function initState(appName: string, launchfileContent: string): LaunchSta
 export async function saveState(projectDir: string, state: LaunchState): Promise<void> {
 	state.updatedAt = new Date().toISOString();
 	// Security: restrict directory/file permissions — state.json contains
-	// database passwords and generated secrets in plaintext.
+	// database passwords and generated secrets in plaintext. mkdir applies the
+	// mode only when it creates the directory, so chmod unconditionally
+	// (CWE-276, as in ensureDirs).
 	await mkdir(stateDir(projectDir), { recursive: true, mode: 0o700 });
+	await chmod(stateDir(projectDir), 0o700);
 	await writeFile(statePath(projectDir), JSON.stringify(state, null, 2) + "\n", { mode: 0o600 });
 }
 
