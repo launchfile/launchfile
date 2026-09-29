@@ -105,6 +105,8 @@ once.
 
 ## Conformance report
 
+Build the SDK first — this script imports `@launchfile/sdk`, and `sdk/dist/` is not checked in: `(cd ../../sdk && bun install && bun run build)`
+
 ```bash
 bun run conformance          # regenerate CONFORMANCE.md across spec examples + catalog
 bun run conformance --check  # CI guard: fail if the report is stale
