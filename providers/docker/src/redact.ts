@@ -5,11 +5,13 @@
  * the two reference providers handle credentials the same way (P-5) and the
  * D-18 obligation ("mask it in logs and UI") is met on both:
  *
- * 1. A registry of exact secret values. Every generated password/secret and
- *    every persisted `state.secrets` entry registers itself at
- *    creation/load time, and every `secrets` map handed to the release
- *    planner registers its values; `redactSecrets` then scrubs those
- *    literals out of any string on its way to stdout/stderr or an Error.
+ * 1. A registry of exact secret values. Every generated password/secret
+ *    registers itself at creation time, and `loadState` re-registers every
+ *    persisted map it reads back — `state.secrets`, `state.resourcePasswords`,
+ *    and `state.generatedEnv` — at load time. Every `secrets` and
+ *    `resourcePasswords` map handed to the release planner registers its
+ *    values too. `redactSecrets` then scrubs those literals out of any string
+ *    on its way to stdout/stderr or an Error.
  * 2. A pattern scrub for credentials embedded in URLs
  *    (`scheme://user:pass@host`), which catches secrets that never passed
  *    through this provider — e.g. a connection string written literally in a

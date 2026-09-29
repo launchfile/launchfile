@@ -50,6 +50,15 @@ export type ResourcePasswordKey = (typeof RESOURCE_PASSWORD_KEYS)[number];
  * the two meanings currently share one value, and separating them now would
  * either lock the database out or hand the app a secret it never stored. The
  * warning names the app and the key so the operator can rotate deliberately.
+ *
+ * A key already recorded in `resourcePasswords` with a different value keeps
+ * the recorded one — that map is what the running service was initialized
+ * from. The carried value is not moved, and on the non-declared path it is
+ * deleted with the rest, so the mismatch warns instead of dropping silently
+ * (D-56 rule 4 applied to provider state, D-20). `createBackingServices` is
+ * the only other writer of `resourcePasswords` and runs after this migration,
+ * so the provider's own sequence cannot reach the branch today; it turns a
+ * future reordering into a named failure instead of a lost password.
  */
 export function migrateResourcePasswords(
 	secrets: Record<string, string>,
@@ -61,7 +70,15 @@ export function migrateResourcePasswords(
 	for (const key of RESOURCE_PASSWORD_KEYS) {
 		const carried = secrets[key];
 		if (carried === undefined) continue;
-		if (resourcePasswords[key] === undefined) resourcePasswords[key] = carried;
+		const recorded = resourcePasswords[key];
+		if (recorded === undefined) {
+			resourcePasswords[key] = carried;
+		} else if (recorded !== carried) {
+			warnings.push(
+				`${appName}: secret "${key}" differs from the ${key} backing-service password already ` +
+					`recorded — the recorded password is kept and the carried value is not moved.`,
+			);
+		}
 		if (declaredSecretNames.has(key)) {
 			warnings.push(
 				`${appName}: secret "${key}" shares its value with the ${key} backing service — ` +
