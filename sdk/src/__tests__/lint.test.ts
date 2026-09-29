@@ -242,7 +242,7 @@ components:
 		const warnings = lintLaunch(launch, { suppressPortabilityWarnings: true });
 		expect(warnings).toHaveLength(1);
 		expect(warnings[0]).toBe(
-			'"$hoost" is not in the standard vocabulary for postgres ' +
+			'api: postgres: DB_HOST: "$hoost" is not in the standard vocabulary ' +
 				"(known: url, host, port, user, password, name)",
 		);
 	});
@@ -315,12 +315,50 @@ components:
 		const warnings = lintLaunch(launch, { suppressPortabilityWarnings: true });
 		expect(warnings).toHaveLength(2);
 		expect(warnings.join("\n")).toContain(
-			'"$hoost" is not in the standard vocabulary for postgres',
+			'api: postgres: DB_HOST: "$hoost" is not in the standard vocabulary',
 		);
 		expect(warnings.join("\n")).toContain(
-			'"$uri" is not in the standard vocabulary for redis ' +
+			'worker: redis: REDIS_URL: "$uri" is not in the standard vocabulary ' +
 				"(known: url, host, port, password)",
 		);
+	});
+
+	it("names the component, resource and env key so sibling resources stay distinct", () => {
+		const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    requires:
+      - type: redis
+        name: cache
+        set_env:
+          CACHE_URI: $uri
+      - type: redis
+        name: sessions
+        set_env:
+          SESSION_URI: $uri
+          SESSION_DSN: $dsn
+          SESSION_BOTH: $dsn $dsn
+`);
+		const warnings = lintLaunch(launch, { suppressPortabilityWarnings: true });
+		expect(warnings).toEqual([
+			'api: cache (redis): CACHE_URI: "$uri" is not in the standard vocabulary (known: url, host, port, password)',
+			'api: sessions (redis): SESSION_URI: "$uri" is not in the standard vocabulary (known: url, host, port, password)',
+			'api: sessions (redis): SESSION_DSN: "$dsn" is not in the standard vocabulary (known: url, host, port, password)',
+			'api: sessions (redis): SESSION_BOTH: "$dsn" is not in the standard vocabulary (known: url, host, port, password)',
+		]);
+		expect(new Set(warnings).size).toBe(warnings.length);
+	});
+
+	it("labels a top-level requirement as (top-level)", () => {
+		const warnings = lintLaunch(
+			readLaunch("name: acme\nimage: a:1\nrequires:\n  - type: redis\n    set_env:\n      R: $uri\n"),
+			{ suppressPortabilityWarnings: true },
+		);
+		expect(warnings).toEqual([
+			'(top-level): redis: R: "$uri" is not in the standard vocabulary (known: url, host, port, password)',
+		]);
 	});
 
 	it("warns inside template expressions on a supports entry", () => {
