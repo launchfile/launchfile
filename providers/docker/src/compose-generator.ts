@@ -1805,6 +1805,10 @@ export function launchToCompose(
 		)) {
 			const supplied = opts.operatorEnv?.[key];
 			if (supplied !== undefined) {
+				// Registered on arrival, sensitive or not: the operator channel is
+				// credential material this provider never minted, so nothing else
+				// can have registered it before a capture sees it (D-52, D-18).
+				registerSuppliedEnv({ [key]: supplied });
 				env[key] = supplied;
 				continue;
 			}
@@ -1825,10 +1829,10 @@ export function launchToCompose(
 			}
 		}
 
-		// Register the credential-bearing values this provider did not mint —
-		// author-declared `sensitive: true` literals (D-18) and anything the
-		// operator supplied (D-52) — before any of them can reach a log line, an
-		// echoed command, or a captured failure record (CWE-532).
+		// Register the author-declared `sensitive: true` literals this provider
+		// did not mint (D-18) before any of them can reach a log line, an echoed
+		// command, or a captured failure record (CWE-532). Operator-supplied
+		// values were registered above, as they arrived (D-52).
 		registerSensitiveEnv(component.env, env);
 
 		if (Object.keys(env).length > 0) {

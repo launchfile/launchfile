@@ -7,6 +7,8 @@ import { writeFile } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
 import { createInterface } from "node:readline";
 import {
+	buildLaunchErrorContext,
+	LaunchError,
 	MissingOperatorStoragePathError,
 	readLaunch,
 	selectionClosure,
@@ -41,12 +43,14 @@ import {
 	type StorageBind,
 	type UnsuppliedRequiredVar,
 } from "./compose-generator.js";
+import { redactSecrets } from "./redact.js";
 import { planReleases, runReleases } from "./release.js";
 import { shell, shellStream } from "./shell.js";
 import { getLogger, withSpan } from "./logger.js";
 import {
 	captureComposeLogs,
 	declaredEnvKeys,
+	DOCKER_PROVIDER,
 	dockerErrorKey,
 	dockerLaunchError,
 	inPhase,
@@ -191,24 +195,46 @@ export interface DockerUpOpts {
  * The message names every offending component and variable in one go, and never
  * prints a value — for a `sensitive: true` var it would be a credential, and for
  * the rest it would be noise the operator already knows.
+ *
+ * It is a `LaunchError` so the CLI persists it as a failure record with
+ * `unsupplied[]` filled in, which `launchfile diagnose` renders — otherwise a
+ * refusal would leave the previous, unrelated failure on disk as if it were
+ * current. The record carries names only: no value ever enters this class. The
+ * phase is `resolve`, the pre-deploy slot the refusal fires in — nothing has
+ * been provisioned when it throws — and the `expectedRefusal` marker still keeps
+ * the CLI's print-and-exit UX and keeps the span log at debug.
  */
-export class UnsuppliedRequiredEnvError extends Error {
+export class UnsuppliedRequiredEnvError extends LaunchError {
 	/** An operator-fixable precondition, not a crash — see `ExpectedRefusal`. */
 	readonly expectedRefusal = true as const;
 	readonly vars: UnsuppliedRequiredVar[];
 
-	constructor(vars: UnsuppliedRequiredVar[]) {
+	constructor(vars: UnsuppliedRequiredVar[], record: PhaseContext) {
 		const lines = vars.map(
 			({ component, key, sensitive }) =>
 				`  - ${component}: ${key}${sensitive ? " (sensitive)" : ""}`,
 		);
-		super(
+		const message =
 			`Cannot launch: ${vars.length} required environment variable${vars.length === 1 ? "" : "s"} ` +
-				"had no value.\n" +
-				`${lines.join("\n")}\n` +
-				"The Launchfile declares them `required:` with no `default:`, `generator:`, or resource\n" +
-				"binding, so you supply them. Set them in the environment and run `up` again, e.g.\n" +
-				`  ${vars[0]!.key}=<value> launchfile up`,
+			"had no value.\n" +
+			`${lines.join("\n")}\n` +
+			"The Launchfile declares them `required:` with no `default:`, `generator:`, or resource\n" +
+			"binding, so you supply them. Set them in the environment and run `up` again, e.g.\n" +
+			`  ${vars[0]!.key}=<value> launchfile up`;
+		super(
+			buildLaunchErrorContext(
+				{
+					phase: "resolve",
+					provider: DOCKER_PROVIDER,
+					key: record.key,
+					slug: record.slug,
+					app: record.app,
+					message,
+					env: record.env,
+					unsupplied: vars.map(({ component, key }) => ({ component, variable: key })),
+				},
+				redactSecrets,
+			),
 		);
 		this.name = "UnsuppliedRequiredEnvError";
 		this.vars = vars;
@@ -577,7 +603,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		);
 		const blocking = result.unsuppliedRequired.filter((v) => launching.has(v.component));
 		if (blocking.length > 0) {
-			throw new UnsuppliedRequiredEnvError(blocking);
+			throw new UnsuppliedRequiredEnvError(blocking, failure());
 		}
 
 		// D-50 rule 2, rows 2 and 3 — refused before the compose file is
