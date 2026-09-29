@@ -35,22 +35,31 @@ export function parseComponentsFlag(
 }
 
 /**
- * The refusal a verb owes when the selector appears on it but nothing reads
- * the value. `down` and `status` act on the whole deployment and have no set
- * to narrow, so accepting the flag and ignoring it would stop or report every
- * component while the operator named one.
+ * The selector spellings a verb refuses, in tie-break order: the plural is
+ * listed first, so when both appear the message names `--components`
+ * whatever order they were typed in — the same rule as `SELECTOR_OWNERS` in
+ * `packages/launchfile/src/cli-args.ts`.
+ */
+const SELECTOR_SPELLINGS = ["--components", "--component"] as const;
+
+/**
+ * The refusal a verb owes when a selector spelling appears on it but nothing
+ * reads the value. `down` and `status` act on the whole deployment and have no
+ * set to narrow, so accepting the flag and ignoring it would stop or report
+ * every component while the operator named one. The singular is refused too:
+ * the unified CLI refuses it, and this entry point must agree (P-5).
  */
 export function selectorRefusal(
 	args: readonly string[],
 	verb: string,
 	action: string,
 ): readonly [string, string] | undefined {
-	const present = args.some(
-		(arg) => arg === "--components" || arg.startsWith("--components="),
+	const spelled = SELECTOR_SPELLINGS.find((flag) =>
+		args.some((arg) => arg === flag || arg.startsWith(`${flag}=`)),
 	);
-	if (!present) return undefined;
+	if (spelled === undefined) return undefined;
 	return [
-		`--components selects which components \`up\` starts; \`${verb}\` ${action}.`,
+		`${spelled} selects which components \`up\` starts; \`${verb}\` ${action}.`,
 		`Run \`${verb}\` with no selector.`,
 	] as const;
 }
