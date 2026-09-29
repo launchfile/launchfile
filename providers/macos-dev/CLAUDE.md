@@ -24,10 +24,13 @@ Budgets applied when a command declares no `timeout:`:
 | `release`                      | 2m      |
 | `bootstrap`                    | 2m      |
 | health gate (per component)    | `retries × (interval + timeout)` when `retries:` is declared; otherwise 60s |
+| exit watch (component with no `health:`) | 2s after spawn (`EXIT_WATCH_MS`) |
 
 An unparseable declared `timeout` is surfaced, never silently replaced: prepare/`release` fail the launch, `bootstrap` reports the failure to the invoker.
 
 A component that declares `health:` and never passes it within its budget fails `up` (SPEC.md § Failure semantics), whether or not anything depends on it. The budget is the file's own window when it declares `retries:` — `retries × (interval + timeout)`, with `interval` defaulting to 3s and `timeout` to 5s — and 60s otherwise; `start_period:` is waited in full first and is not part of it. Its process is left running and its pid recorded, so `status` and `down` still reach it. The process writes `.launchfile/logs/<component>.log` itself (raw stdout and stderr, no timestamps) and the foreground `up` prints a tail of that file; a pipe held by `up` would kill the process on its next write once `up` had exited.
+
+A component whose process exits non-zero (or dies to a signal) before `up` returns has not come up, and fails `up` with the run slot's disposition (SPEC.md § Failure semantics), naming the component and its exit code. A component with `health:` is watched for as long as its check is polled, and the poll stops the moment the process exits rather than running out the budget. A component with no `health:` is watched for `EXIT_WATCH_MS` (2s) after spawn: an exit inside that window fails `up`; a process that outlives it counts as up, since without a check there is nothing else to ask. Exit 0 inside the window is not a failure. Components that did start are left running and named on stderr, with their pids recorded, so `status` and `down` reach them; the CLI records the deployment with status `unknown`.
 
 ## Commands
 

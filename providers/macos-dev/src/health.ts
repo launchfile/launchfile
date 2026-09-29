@@ -53,14 +53,18 @@ export function healthBudgetMs(health: NormalizedHealth, fallbackMs: number): nu
 
 /**
  * Wait for a component to become healthy.
- * Returns true if healthy, false if timed out. `overallTimeout` is the polling
- * window after `start_period`; callers derive it with `healthBudgetMs`.
+ * Returns true if healthy, false if timed out or if `exited` aborts first.
+ * `overallTimeout` is the polling window after `start_period`; callers derive
+ * it with `healthBudgetMs`. `exited` is aborted when the component's process
+ * exits: a process that is gone will never answer, so the poll stops there
+ * instead of spending the rest of the window on a port nothing listens on.
  */
 export async function waitForHealthy(
 	name: string,
 	health: NormalizedHealth,
 	port: number,
 	overallTimeout: number = 60_000,
+	exited?: AbortSignal,
 ): Promise<boolean> {
 	const startPeriod = parseDuration(health.start_period ?? "0s");
 	const interval = parseDuration(health.interval ?? "3s");
@@ -69,12 +73,13 @@ export async function waitForHealthy(
 	// Wait for start period
 	if (startPeriod > 0) {
 		console.log(`  [${name}] Waiting ${health.start_period} start period...`);
-		await sleep(startPeriod);
+		if (!(await sleep(startPeriod, exited))) return gaveUp(name);
 	}
 
 	const deadline = Date.now() + overallTimeout;
 
 	while (Date.now() < deadline) {
+		if (exited?.aborted) return gaveUp(name);
 		try {
 			if (health.path) {
 				const resp = await fetch(`http://localhost:${port}${health.path}`, {
@@ -98,13 +103,33 @@ export async function waitForHealthy(
 		} catch {
 			// Expected — service not ready yet
 		}
-		await sleep(interval);
+		if (!(await sleep(interval, exited))) return gaveUp(name);
 	}
 
 	console.error(`  [${name}] Health check timed out after ${overallTimeout}ms`);
 	return false;
 }
 
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
+/** The poll's answer once the process it polls is gone. */
+function gaveUp(name: string): false {
+	console.error(`  [${name}] Process exited before its health check passed`);
+	return false;
+}
+
+/** Resolves true after `ms`, or false as soon as `abort` fires. */
+function sleep(ms: number, abort?: AbortSignal): Promise<boolean> {
+	return new Promise((resolve) => {
+		if (abort?.aborted) {
+			resolve(false);
+			return;
+		}
+		const done = (slept: boolean): void => {
+			clearTimeout(timer);
+			abort?.removeEventListener("abort", onAbort);
+			resolve(slept);
+		};
+		const onAbort = (): void => done(false);
+		const timer = setTimeout(() => done(true), ms);
+		abort?.addEventListener("abort", onAbort);
+	});
 }
