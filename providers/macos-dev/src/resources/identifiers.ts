@@ -4,9 +4,11 @@
  * On a first run these values are safe by construction: the database and user
  * names derive from a schema-validated app name, and `generatePassword()`
  * emits base64url. Every later run reuses whatever `.launchfile/state.json`
- * holds, and `loadState()` (state.ts) `JSON.parse`s that file with no
- * validation. The file sits inside the cloned repo, so on the reuse path every
- * value below is attacker-controlled.
+ * holds. The file sits inside the cloned repo, so on the reuse path every
+ * value below is attacker-controlled. `loadState()` (state.ts) applies these
+ * same asserts at the load boundary and drops an entry that fails; the sinks
+ * keep asserting because a boundary check and a use-site check answer
+ * different questions.
  *
  * Argv execution keeps the shell out of these commands; these checks keep the
  * SQL parser out of them. Both are needed: `mysql -e` runs `;`-separated
