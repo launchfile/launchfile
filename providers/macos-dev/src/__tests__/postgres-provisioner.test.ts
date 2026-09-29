@@ -4,6 +4,7 @@ import type { NormalizedRequirement } from "@launchfile/sdk";
 import type { ProvisionOpts } from "../resources/types.js";
 import type { ShellResult } from "../shell.js";
 import type { ResourceState } from "../state.js";
+import { clearRegisteredSecrets, registerSecret } from "../redact.js";
 
 const REQ = { type: "postgres" } as NormalizedRequirement;
 const OPTS = { appName: "my-app" } as ProvisionOpts;
@@ -291,6 +292,33 @@ describe("PostgresProvisioner fails `up` when the existence query cannot be answ
 		await expect(provisioner.provision(REQ, OPTS)).rejects.toThrow();
 
 		expect(commands.filter((c) => c.startsWith("createdb"))).toEqual([]);
+	});
+
+	it("redacts a registered secret out of psql's stderr before it reaches the message", async () => {
+		registerSecret("s3cretpassw0rd");
+		try {
+			const { deps } = recorder(undefined, undefined, (cmd) =>
+				cmd === EXISTS_QUERY
+					? {
+							exitCode: 2,
+							stderr:
+								"psql: error: connection to postgres://me:s3cretpassw0rd@localhost:5432 failed (password s3cretpassw0rd)\n",
+						}
+					: undefined,
+			);
+			const provisioner = new PostgresProvisioner(deps);
+
+			let message = "";
+			await provisioner.provision(REQ, OPTS).catch((error: Error) => {
+				message = error.message;
+			});
+			expect(message).toContain(
+				"psql exited 2: psql: error: connection to postgres://me:[REDACTED]@localhost:5432 failed (password [REDACTED])",
+			);
+			expect(message).not.toContain("s3cretpassw0rd");
+		} finally {
+			clearRegisteredSecrets();
+		}
 	});
 
 	it("fails the same way when a named database's query cannot be answered", async () => {

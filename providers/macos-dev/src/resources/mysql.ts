@@ -106,9 +106,9 @@ export class MysqlProvisioner implements ResourceProvisioner {
 
 		// Named `database` uses (SPEC.md § Resource uses): one more database per
 		// name, `<instance>_<name>`, created and granted the same way as the
-		// app's own. A CREATE DATABASE that fails refuses the entry (D-65 rule
-		// 3), naming the entry, the token and the name: a use the provider could
-		// not cover is never handed to the app as a URL.
+		// app's own. A CREATE DATABASE that fails aborts `up`, naming the entry,
+		// the token and the name, the way any provisioning failure here does: a
+		// use the provider could not create is never handed to the app as a URL.
 		// Security: a use name is schema-validated (^[a-z][a-z0-9-]*$) and the
 		// hyphens become underscores, so the identifier check cannot fail on a
 		// name that reached here through the parser; it guards the SQL below

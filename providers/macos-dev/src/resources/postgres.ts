@@ -10,6 +10,7 @@
 
 import type { NormalizedRequirement } from "@launchfile/sdk";
 import { shell, shellOk } from "../shell.js";
+import { redactSecrets } from "../redact.js";
 import { generatePassword } from "../secret-generator.js";
 import {
 	assertSafeIdentifier,
@@ -73,7 +74,7 @@ export class PostgresProvisioner implements ResourceProvisioner {
 		if (result.exitCode !== 0) {
 			throw new Error(
 				`Could not check whether database "${database}" exists: psql exited ${result.exitCode}` +
-					`${result.stderr.trim() ? `: ${result.stderr.trim()}` : ""}`,
+					`${result.stderr.trim() ? `: ${redactSecrets(result.stderr.trim())}` : ""}`,
 			);
 		}
 		return result.stdout.trim() === "1";
@@ -174,9 +175,9 @@ export class PostgresProvisioner implements ResourceProvisioner {
 
 		// Named `database` uses (SPEC.md § Resource uses): one more database per
 		// name, `<instance>_<name>`, created the same way as the app's own. A
-		// createdb that fails refuses the entry (D-65 rule 3), naming the entry,
-		// the token and the name: a use the provider could not cover is never
-		// handed to the app as a URL.
+		// createdb that fails aborts `up`, naming the entry, the token and the
+		// name, the way any provisioning failure here does: a use the provider
+		// could not create is never handed to the app as a URL.
 		// Security: a use name is schema-validated (^[a-z][a-z0-9-]*$) and the
 		// hyphens become underscores, so the identifier check cannot fail on a
 		// name that reached here through the parser; it guards the SQL below
