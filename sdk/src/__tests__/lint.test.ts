@@ -1,4 +1,8 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { cmdValidate } from "../commands.js";
 import { lintDeprecations, lintLaunch, lintUnknownStorageKeys } from "../lint.js";
 import { parseLaunchYaml, readLaunch } from "../reader.js";
 
@@ -971,5 +975,161 @@ storage:
 			{ suppressPortabilityWarnings: true },
 		);
 		expect(clean).toEqual([]);
+	});
+});
+
+describe("lintLaunch — env var minted by a generator in 2+ components (D-49)", () => {
+	const lint = (yaml: string): string[] =>
+		lintLaunch(readLaunch(yaml), { suppressPortabilityWarnings: true }).filter(
+			(w) => w.includes("minted by a generator"),
+		);
+
+	it("warns on the chatwoot shape: generator: secret in web and sidekiq", () => {
+		const warnings = lint(`
+name: chatwoot
+components:
+  web:
+    image: chatwoot/chatwoot:latest
+    env:
+      SECRET_KEY_BASE: { generator: secret, sensitive: true }
+  sidekiq:
+    image: chatwoot/chatwoot:latest
+    env:
+      SECRET_KEY_BASE: { generator: secret, sensitive: true }
+`);
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toContain('"SECRET_KEY_BASE"');
+		expect(warnings[0]).toContain("(sidekiq, web)");
+		expect(warnings[0]).toContain("`secrets:`");
+		expect(warnings[0]).toContain("`$secrets.<name>`");
+	});
+
+	it("warns on the dify shape even when the descriptions differ", () => {
+		const warnings = lint(`
+name: dify
+components:
+  api:
+    image: langgenius/dify-api:latest
+    env:
+      SECRET_KEY: { generator: secret, description: "Application secret key" }
+  worker:
+    image: langgenius/dify-api:latest
+    env:
+      SECRET_KEY: { generator: secret, description: "Application secret key (must match api)" }
+  web:
+    image: langgenius/dify-web:latest
+`);
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toContain('"SECRET_KEY"');
+		expect(warnings[0]).toContain("(api, worker)");
+	});
+
+	it("warns on generator: uuid, and on a secret/uuid mix, naming every component", () => {
+		const warnings = lint(`
+name: acme
+components:
+  a:
+    image: a:1
+    env:
+      INSTANCE_ID: { generator: uuid }
+  b:
+    image: b:1
+    env:
+      INSTANCE_ID: { generator: secret }
+  c:
+    image: c:1
+    env:
+      INSTANCE_ID: { generator: uuid }
+`);
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toContain("in 3 components (a, b, c)");
+	});
+
+	it("does not warn on the $secrets shape", () => {
+		const warnings = lint(`
+name: chatwoot
+secrets:
+  secret-key-base: { generator: secret }
+components:
+  web:
+    image: chatwoot/chatwoot:latest
+    env:
+      SECRET_KEY_BASE: { default: "$secrets.secret-key-base", sensitive: true }
+  sidekiq:
+    image: chatwoot/chatwoot:latest
+    env:
+      SECRET_KEY_BASE: { default: "$secrets.secret-key-base", sensitive: true }
+`);
+		expect(warnings).toEqual([]);
+	});
+
+	it("does not warn on a name repeated with generator: port", () => {
+		const warnings = lint(`
+name: acme
+components:
+  api:
+    image: api:1
+    env:
+      PORT: { generator: port }
+  worker:
+    image: worker:1
+    env:
+      PORT: { generator: port }
+`);
+		expect(warnings).toEqual([]);
+	});
+
+	it("does not warn when only one component mints the name", () => {
+		const warnings = lint(`
+name: acme
+components:
+  api:
+    image: api:1
+    env:
+      SECRET_KEY: { generator: secret }
+  worker:
+    image: worker:1
+    env:
+      SECRET_KEY: { default: "fixed" }
+`);
+		expect(warnings).toEqual([]);
+	});
+
+	it("does not warn on a single-component app", () => {
+		const warnings = lint(`
+name: acme
+image: app:1
+env:
+  SECRET_KEY: { generator: secret }
+  SESSION_ID: { generator: uuid }
+`);
+		expect(warnings).toEqual([]);
+	});
+
+	it("keeps valid true when the warning fires", () => {
+		const dir = mkdtempSync(join(tmpdir(), "sdk-lint-mint-"));
+		const path = join(dir, "Launchfile");
+		writeFileSync(
+			path,
+			`version: launch/v1
+name: dify
+components:
+  api:
+    image: langgenius/dify-api:latest
+    env:
+      SECRET_KEY: { generator: secret }
+  worker:
+    image: langgenius/dify-api:latest
+    env:
+      SECRET_KEY: { generator: secret }
+`,
+			"utf-8",
+		);
+		const result = cmdValidate(path, { quiet: true, noColor: true });
+		expect(result.valid).toBe(true);
+		expect(result.errors ?? []).toEqual([]);
+		expect(
+			result.warnings?.some((w) => w.includes('env "SECRET_KEY" is minted')),
+		).toBe(true);
 	});
 });
