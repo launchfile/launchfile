@@ -206,6 +206,25 @@ describe("ProcessManager exit gate (issue #526)", () => {
 		}
 	});
 
+	it("fails a health: component that exits 0 before its check passes", async () => {
+		pm.register("api", {
+			command: "sleep 0.2; exit 0",
+			env: {},
+			cwd: projectDir,
+			health: NEVER,
+			port: 3000,
+		});
+
+		const err = await pm.startAll().catch((e: unknown) => e as Error);
+		expect(err).toBeInstanceOf(ComponentExitError);
+		expect((err as Error).message).toBe(
+			exitFailureMessage([{ name: "api", exit: "exit code 0" }]),
+		);
+		expect(pm.getStatus().find((s) => s.name === "api")?.status).toBe(
+			"stopped",
+		);
+	});
+
 	it("fails a condition: healthy gate whose target exits, naming the exit, and never starts the dependent", async () => {
 		pm.register("api", {
 			command: "sleep 0.1; exit 4",

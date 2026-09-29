@@ -215,6 +215,8 @@ interface ManagedProcess {
 	exited?: AbortController;
 	/** Set by the exit handler; absent while the process is alive. */
 	exit?: ProcessExit;
+	/** Set once the declared check passed. The exit handler overwrites `status`, so this is what remembers the component came up. */
+	healthPassed?: boolean;
 	status: "pending" | "starting" | "running" | "healthy" | "failed" | "stopped";
 }
 
@@ -296,6 +298,8 @@ export class ProcessManager {
 					await this.watchExit(proc);
 					return;
 				}
+				// A poll that stopped because the process exited is an exit failure,
+				// whatever the code; `exitedComponents` below names it.
 				if (!(await this.pollHealthy(proc, health)) && !proc.exit) {
 					stuck.push(this.stuck(proc, health));
 				}
@@ -325,11 +329,20 @@ export class ProcessManager {
 		});
 	}
 
-	/** Every spawned component whose process has already failed, in registration order. */
+	/**
+	 * Every spawned component whose process exited before it came up, in
+	 * registration order. Without `health:`, exit 0 is a process that chose to
+	 * stop. With `health:`, the component came up only once its check passed,
+	 * so an exit before that is a failure whatever the code: the check it
+	 * declared can no longer be answered.
+	 */
 	private exitedComponents(): ExitedComponent[] {
 		const out: ExitedComponent[] = [];
 		for (const proc of this.processes.values()) {
-			if (proc.exit && exitIsFailure(proc.exit)) out.push(this.exited(proc));
+			if (!proc.exit) continue;
+			if (exitIsFailure(proc.exit) || (proc.health && !proc.healthPassed)) {
+				out.push(this.exited(proc));
+			}
 		}
 		return out;
 	}
@@ -396,7 +409,10 @@ export class ProcessManager {
 		// A command check never reads the port; 0 only fills the parameter.
 		const budget = healthBudgetMs(health, this.healthTimeoutMs);
 		const ok = await waitForHealthy(proc.name, health, proc.port ?? 0, budget, proc.exited?.signal);
-		if (ok) proc.status = "healthy";
+		if (ok) {
+			proc.status = "healthy";
+			proc.healthPassed = true;
+		}
 		return ok;
 	}
 
