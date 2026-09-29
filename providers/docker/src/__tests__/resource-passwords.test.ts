@@ -234,14 +234,15 @@ describe("migrateResourcePasswords", () => {
 		expect(warnings).toHaveLength(1);
 		expect(warnings[0]).toContain("acme");
 		expect(warnings[0]).toContain('"postgres"');
+		expect(warnings[0]).toContain("deleted");
 		// The discard is named, never silent — the carried value is gone
 		// from both maps.
 		expect(resourcePasswords.postgres).toBe("authoritative");
 		expect(secrets.postgres).toBeUndefined();
 	});
 
-	it("still warns about a differing recorded password when the Launchfile declares the name", () => {
-		const secrets = { postgres: "declared-value" };
+	it("stays silent on the declared path when the declared secret was rotated away from the recorded password", () => {
+		const secrets = { postgres: "rotated-app-secret" };
 		const resourcePasswords = { postgres: "authoritative" };
 		const warnings = migrateResourcePasswords(
 			secrets,
@@ -249,12 +250,9 @@ describe("migrateResourcePasswords", () => {
 			new Set(["postgres"]),
 			"acme",
 		);
-		expect(warnings.filter((w) => w.includes("differs"))).toHaveLength(1);
-		expect(warnings.filter((w) => w.includes("shares its value"))).toHaveLength(
-			1,
-		);
+		expect(warnings).toEqual([]);
 		expect(resourcePasswords.postgres).toBe("authoritative");
-		expect(secrets.postgres).toBe("declared-value");
+		expect(secrets.postgres).toBe("rotated-app-secret");
 	});
 
 	it("stays silent when the recorded password equals the carried one", () => {
