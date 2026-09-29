@@ -8,15 +8,18 @@
 
 import { resolve as resolvePath } from "node:path";
 import {
+	allocateDbIndexes,
 	AT_APP_HOST,
 	type AtDeclaration,
 	atDeclarations,
 	atEntryLabel,
+	type DbIndexes,
 	effectiveListener,
 	endpointProperties,
 	indexOperatorStoragePaths,
 	isExpression,
 	appEndpointReferences,
+	namedDatabase,
 	type NormalizedEnvVar,
 	type NormalizedHealth,
 	type NormalizedLaunch,
@@ -33,10 +36,7 @@ import {
 } from "@launchfile/sdk";
 import { intersects, subset, validRange } from "semver";
 import {
-	allocateDbIndexes,
 	coverUse,
-	type DbIndexes,
-	namedDatabase,
 	namedDatabases,
 	uncoveredProvisionedUses,
 	uncoveredSuppliedUses,
