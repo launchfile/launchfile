@@ -2,15 +2,15 @@ test_results:
   last_tested: 2026-09-24
   pull_time_seconds: 66
   startup_time_seconds: 19
-  total_disk_mb: 1959
+  total_download_mb: 385
   health_check_passed: true
   notes: ""
 images:
   - name: amruthpillai/reactive-resume:v5
-    size_mb: 1567
+    size_mb: 276
     platform:
       - linux/arm64
   - name: postgres:16-alpine
-    size_mb: 392
+    size_mb: 109
     platform:
       - linux/arm64

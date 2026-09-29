@@ -5,11 +5,11 @@ test_results:
   last_tested: 2026-04-09
   pull_time_seconds: 17
   startup_time_seconds: 17
-  total_disk_mb: 624
+  total_download_mb: 237
   health_check_passed: true
   notes: ""
 images:
   - name: jvmilazz0/kavita:latest
-    size_mb: 624
+    size_mb: 237
     platform:
       - linux/arm64

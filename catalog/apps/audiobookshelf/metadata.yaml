@@ -5,11 +5,11 @@ test_results:
   last_tested: 2026-04-06
   pull_time_seconds: 2
   startup_time_seconds: 6
-  total_disk_mb: 280
+  total_download_mb: 122
   health_check_passed: true
   notes: ""
 images:
   - name: ghcr.io/advplyr/audiobookshelf:latest
-    size_mb: 280
+    size_mb: 122
     platform:
       - linux/arm64
