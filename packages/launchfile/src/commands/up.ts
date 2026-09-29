@@ -120,6 +120,27 @@ export function failedDeploymentStatus(
 	}
 }
 
+/**
+ * The index row a failed native launch earns, if any. `health` leaves every
+ * process running and unverified: `unhealthy`. `run` means one component
+ * exited and the rest were left running, so the row exists for `down` to
+ * reach them; the provider reports which is which on stderr, so the index
+ * says only that the deployment is in an unknown state. Every earlier phase
+ * of this provider stops before a process exists and earns no row.
+ */
+export function macosFailedDeploymentStatus(
+	phase: LaunchPhase,
+): DeploymentEntry["status"] | null {
+	switch (phase) {
+		case "health":
+			return "unhealthy";
+		case "run":
+			return "unknown";
+		default:
+			return null;
+	}
+}
+
 export async function handleUp(
 	target: string | undefined,
 	flags: UpFlags,
@@ -304,23 +325,27 @@ export async function handleUp(
 				console.error(`\n${err.message}`);
 				process.exit(1);
 			}
-			// A failed health gate leaves the app processes running (SPEC.md
-			// § Failure semantics fails the invocation, not the processes), so
-			// the deployment is registered before re-throwing — the same row
-			// the docker branch writes — and `status`/`logs`/`down` reach it.
-			// Every earlier phase of this provider stops before a process
-			// exists, so only `health` earns a row.
-			if (!flags.dryRun && isLaunchError(err) && err.context.phase === "health") {
-				await record({
-					appName: inferAppName(upTarget.value),
-					provider: "macos",
-					source: sourceKey,
-					sourceType: upTarget.type,
-					status: "unhealthy",
-				});
-				console.error(
-					`  Deployment ${deployId} is recorded as unhealthy — \`launchfile down\` stops it.`,
-				);
+			// A failed health gate, or a component that exited before coming
+			// up, leaves the other app processes running (SPEC.md § Failure
+			// semantics fails the invocation, not the processes), so the
+			// deployment is registered before re-throwing — the same row the
+			// docker branch writes — and `status`/`logs`/`down` reach it. Every
+			// earlier phase of this provider stops before a process exists, so
+			// only `health` and `run` earn a row.
+			if (!flags.dryRun && isLaunchError(err)) {
+				const status = macosFailedDeploymentStatus(err.context.phase);
+				if (status !== null) {
+					await record({
+						appName: inferAppName(upTarget.value),
+						provider: "macos",
+						source: sourceKey,
+						sourceType: upTarget.type,
+						status,
+					});
+					console.error(
+						`  Deployment ${deployId} is recorded as ${status} — \`launchfile down\` stops it.`,
+					);
+				}
 			}
 			throw err;
 		}
