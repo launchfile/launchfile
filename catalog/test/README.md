@@ -76,6 +76,29 @@ images:
     platform: [linux/arm64]
 ```
 
+### Top-level keys
+
+These are the top-level keys the catalog and this harness read. Any other key
+prints a warning when `bun run src/test-app.ts <app>` or the unit suite reads the
+file, and is otherwise ignored — a typo does not fail a run, but it is no longer
+silent. The set lives in `src/lint-metadata.ts`, and a test keeps it equal to
+this table.
+
+| Key            | Written by                                                 |
+|----------------|------------------------------------------------------------|
+| `tagline`      | hand                                                       |
+| `homepage`     | hand                                                       |
+| `category`     | hand                                                       |
+| `publisher`    | hand ([CONTRIBUTING](../CONTRIBUTING.md#image-references)) |
+| `known_issues` | hand (below)                                               |
+| `test_env`     | hand (below)                                               |
+| `test_storage` | hand (below)                                               |
+| `test_results` | the harness, rebuilt on every run                          |
+| `images`       | the harness, rebuilt on every run                          |
+
+The harness rewrites the file after a run. It replaces `test_results:` and
+`images:` and keeps every other top-level key, unknown ones included.
+
 ### `test_env:` — the harness's operator channel
 
 An `env.<NAME>: { required: true }` with no `default:`, no `generator:`, and no
@@ -93,6 +116,17 @@ guesses a value from a variable's name; a required variable with no `test_env:`
 entry **fails the app's test run by name**, before any image is pulled. If a
 value belongs in the Launchfile rather than in a fixture, give it a `default:`
 or a `generator:` instead.
+
+### `test_storage:` — fixtures for operator-supplied volumes
+
+A storage volume marked `content: operator` (D-50) needs a host directory the
+operator provides. The harness takes it from a `test_storage:` block that maps the
+volume key to a path relative to the app's directory:
+
+```yaml
+test_storage:
+  config: test/config
+```
 
 ### `known_issues:` — why an app still does not come up
 

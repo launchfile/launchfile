@@ -21,6 +21,7 @@ import { parse } from "yaml";
 import { readLaunch } from "../../../sdk/src/reader.ts";
 import { resourcePropertyKeys } from "../../../providers/docker/src/compose-generator.ts";
 import { harnessBackingServiceTypes, launchToCompose } from "./launch-to-compose.ts";
+import { lintUnknownMetadataKeys } from "./lint-metadata.ts";
 
 /** Compose a Launchfile YAML and return the resolved `environment` for a service. */
 function envOf(yaml: string, serviceName: string): Record<string, string> {
@@ -454,6 +455,10 @@ env:
       const meta = existsSync(metaPath)
         ? ((parse(readFileSync(metaPath, "utf-8")) ?? {}) as Record<string, unknown>)
         : {};
+      // Warn only: an unknown key never fails this test (#422).
+      for (const warning of lintUnknownMetadataKeys(meta, `catalog/apps/${app}/metadata.yaml`)) {
+        console.warn(warning);
+      }
       const testEnv = Object.fromEntries(
         Object.entries((meta.test_env as Record<string, unknown>) ?? {}).map(([k, v]) => [
           k,
