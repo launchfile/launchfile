@@ -158,8 +158,9 @@ function normalizeBuild(build: string | Build | undefined): NormalizedBuild | un
 
 /**
  * Copies the provides array and each entry so components that inherit the
- * top-level `provides` do not share objects. Nested values (such as
- * `set_env`) stay shared: this is a shallow copy, not a deep clone.
+ * top-level `provides` do not share entry objects. This is a shallow copy:
+ * nested values (`spec`, `at`, and the object form of `tls`) stay shared
+ * across inheriting components. Do not mutate them in place.
  */
 function normalizeProvides(provides: Provides[] | undefined): Provides[] | undefined {
 	return provides?.map((p) => ({ ...p }));
