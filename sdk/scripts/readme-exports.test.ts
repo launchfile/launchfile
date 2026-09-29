@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+	compareArity,
 	getReadmeApiTableNames,
+	getReadmeApiTableRows,
+	getValueExportSources,
 	getValueExports,
+	parseDeclarationParams,
 	parseExportStatements,
+	parseReadmeParams,
 	resolveSpecifier,
+	sourcePathForSpecifier,
 } from "./readme-exports.ts";
 
 const INDEX = `
@@ -30,12 +36,14 @@ describe("resolveSpecifier", () => {
 	it("classifies value, type-keyword and aliased specifiers", () => {
 		expect(resolveSpecifier("parse", false)).toEqual({
 			name: "parse",
+			localName: "parse",
 			isValue: true,
 		});
 		expect(resolveSpecifier("type Foo", false).isValue).toBe(false);
 		expect(resolveSpecifier("Foo", true).isValue).toBe(false);
 		expect(resolveSpecifier("a as b", false)).toEqual({
 			name: "b",
+			localName: "a",
 			isValue: true,
 		});
 	});
@@ -88,5 +96,217 @@ describe("parseExportStatements", () => {
 
 	it("accepts a type-only wildcard re-export", () => {
 		expect(parseExportStatements('export type * from "./a.ts";')).toEqual([]);
+	});
+});
+
+describe("getValueExportSources", () => {
+	it("keeps each value export's source specifier and local name", () => {
+		const sources = getValueExportSources(INDEX);
+		expect(sources.get("parse")).toEqual({
+			localName: "parse",
+			from: "./reader.ts",
+		});
+		expect(sources.get("write")).toEqual({
+			localName: "serialize",
+			from: "./reader.ts",
+		});
+		expect(sources.has("ParseOptions")).toBe(false);
+	});
+});
+
+describe("sourcePathForSpecifier", () => {
+	it("maps a ./<module>.js specifier to its src/ file", () => {
+		expect(sourcePathForSpecifier("./captures.js")).toBe("src/captures.ts");
+		expect(sourcePathForSpecifier("./app-url.js")).toBe("src/app-url.ts");
+	});
+
+	it.each(["../outside.js", "some-package", "./nested/dir.js", "./a.ts"])(
+		"throws for a specifier it cannot follow: %s",
+		(from) => {
+			expect(() => sourcePathForSpecifier(from)).toThrow(from);
+		},
+	);
+});
+
+describe("getReadmeApiTableRows", () => {
+	it("maps each documented name to its first cell", () => {
+		expect(getReadmeApiTableRows(README).get("parse")).toBe("parse(text)");
+	});
+});
+
+describe("parseReadmeParams", () => {
+	it("returns null for a row with no parameter list", () => {
+		expect(parseReadmeParams("CAPTURE_MASK")).toBeNull();
+	});
+
+	it("reads required and optional parameters in order", () => {
+		expect(
+			parseReadmeParams(
+				"formatCaptures(captures, captureMeta, reveal, options?)",
+			),
+		).toEqual([
+			{ text: "captures", optional: false },
+			{ text: "captureMeta", optional: false },
+			{ text: "reveal", optional: false },
+			{ text: "options?", optional: true },
+		]);
+		expect(parseReadmeParams("now()")).toEqual([]);
+	});
+
+	it.each(["f(a, ...rest)", "f({ a })", "f(a"])(
+		"throws on a cell it cannot read: %s",
+		(cell) => {
+			expect(() => parseReadmeParams(cell)).toThrow();
+		},
+	);
+});
+
+const CAPTURES_TS = `
+/** Formats captures. */
+export function formatCaptures(
+	captures: Record<string, string>,
+	captureMeta: Record<string, CaptureEntry>,
+	reveal: boolean,
+	options: FormatCapturesOptions = {},
+): string[] {
+	return [];
+}
+`;
+
+describe("parseDeclarationParams", () => {
+	it("reads required, `?` and defaulted parameters", () => {
+		const { params, signature } = parseDeclarationParams(
+			CAPTURES_TS,
+			"formatCaptures",
+		);
+		expect(params.map((p) => p.optional)).toEqual([false, false, false, true]);
+		expect(signature).toBe(
+			"formatCaptures(captures: Record<string, string>, captureMeta: Record<string, CaptureEntry>, reveal: boolean, options: FormatCapturesOptions = {})",
+		);
+		const reduce = parseDeclarationParams(
+			"export function reduce(state: S, event: E, at?: string): S {}",
+			"reduce",
+		);
+		expect(reduce.params.map((p) => p.optional)).toEqual([false, false, true]);
+	});
+
+	it("keeps commas inside types, defaults, strings and comments inside one parameter", () => {
+		const source = `export async function f<T extends Map<string, number>>(
+	a: (x: string, y: number) => void, // callback, called once
+	b: { c?: string; d: [number, number] } = { d: [1, 2] },
+	e = "x,y",
+): Promise<void> {}`;
+		const { params } = parseDeclarationParams(source, "f");
+		expect(params.map((p) => p.optional)).toEqual([false, true, true]);
+		expect(params[0]!.text).toBe("a: (x: string, y: number) => void");
+	});
+
+	it("counts a destructured parameter as one positional parameter", () => {
+		const { params } = parseDeclarationParams(
+			"export function useKeyOf({ use, name }: DeclaredUse): string {}",
+			"useKeyOf",
+		);
+		expect(params).toEqual([
+			{ text: "{ use, name }: DeclaredUse", optional: false },
+		]);
+	});
+
+	it("does not match a longer name that shares the prefix", () => {
+		const source =
+			"export function useKeys(a: A): void {}\nexport function useKey(item: I): void {}";
+		expect(parseDeclarationParams(source, "useKey").params).toHaveLength(1);
+	});
+
+	it.each([
+		["a const", "export const f = (a: string) => a;", /no `export function f`/],
+		["a class", "export class f {}", /no `export function f`/],
+		[
+			"a further re-export",
+			'export { f } from "../elsewhere.js";',
+			/no `export function f`/,
+		],
+		[
+			"overloads",
+			"export function f(a: string): string;\nexport function f(a: number): number;\nexport function f(a: unknown) { return a; }",
+			/overloads/,
+		],
+		[
+			"a rest parameter",
+			"export function f(a: string, ...rest: string[]) {}",
+			/rest parameter/,
+		],
+		[
+			"a default it cannot bracket-match",
+			"export function f(a: number, b = a > 1 ? 1 : 0, c?: string) {}",
+			/unbalanced/,
+		],
+		[
+			"a this parameter",
+			"export function f(this: Foo, a: string) {}",
+			/`this` parameter/,
+		],
+	])("throws, naming the export, on %s", (_label, source, message) => {
+		expect(() => parseDeclarationParams(source, "f")).toThrow(message);
+	});
+});
+
+describe("compareArity", () => {
+	const decl = parseDeclarationParams(CAPTURES_TS, "formatCaptures");
+
+	it("passes when count and optional positions agree", () => {
+		const cell = "formatCaptures(captures, captureMeta, reveal, options?)";
+		expect(
+			compareArity(
+				"formatCaptures",
+				cell,
+				parseReadmeParams(cell)!,
+				"src/captures.ts",
+				decl,
+			),
+		).toBeNull();
+	});
+
+	it("fails a row that drops a required parameter, printing both lists", () => {
+		const cell = "formatCaptures(captures, captureMeta, options?)";
+		const message = compareArity(
+			"formatCaptures",
+			cell,
+			parseReadmeParams(cell)!,
+			"src/captures.ts",
+			decl,
+		);
+		expect(message).toContain('"formatCaptures"');
+		expect(message).toContain(
+			"`formatCaptures(captures, captureMeta, options?)`",
+		);
+		expect(message).toContain("2 required, 1 optional at position 3");
+		expect(message).toContain("reveal: boolean");
+		expect(message).toContain("3 required, 1 optional at position 4");
+	});
+
+	it("fails a row with the right count but an optional in the wrong position", () => {
+		const cell = "formatCaptures(captures, captureMeta?, reveal, options)";
+		expect(
+			compareArity(
+				"formatCaptures",
+				cell,
+				parseReadmeParams(cell)!,
+				"src/captures.ts",
+				decl,
+			),
+		).toContain("optional at position 2");
+	});
+
+	it("fails a row that marks a required parameter optional", () => {
+		const cell = "formatCaptures(captures, captureMeta, reveal?, options?)";
+		expect(
+			compareArity(
+				"formatCaptures",
+				cell,
+				parseReadmeParams(cell)!,
+				"src/captures.ts",
+				decl,
+			),
+		).not.toBeNull();
 	});
 });

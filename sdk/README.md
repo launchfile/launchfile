@@ -137,7 +137,16 @@ Every value export of `src/index.ts` is either a row below or an entry in
 mostly CLI-command implementations and the provider error-context vocabulary).
 `bun run check:exports` (wired as a `pretest` hook) fails `bun run test` — and
 CI's `sdk` job — if a value export is undocumented, or if a row/exclusion goes
-stale.
+stale. For a row that lists parameters, it also checks the list against the
+`export function` declaration: the same number of parameters, optional (`?` or
+a default) in the same positions. A signature it cannot map — overloads, rest
+parameters, a const or class — fails the check rather than being skipped.
+
+The check reads names and parameter counts only. It does not read the
+Description column, parameter names, or what a non-function export such as
+`CERTIFICATE` means. A row that names a real export, lists the right
+parameters, and still describes it wrongly is caught only by a person reading
+the source.
 
 ### Parse, validate, serialize
 
