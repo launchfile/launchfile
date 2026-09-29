@@ -14,6 +14,7 @@ import {
 	atEntryLabel,
 	effectiveListener,
 	endpointProperties,
+	httpsOriginSatisfied,
 	indexOperatorStoragePaths,
 	isExpression,
 	appEndpointReferences,
@@ -47,7 +48,6 @@ import { stringify } from "yaml";
 import {
 	computeAppContext,
 	HTTPS_ORIGIN,
-	httpsOriginSatisfied,
 	publishedEndpointAddresses,
 } from "./app-url.js";
 import {
