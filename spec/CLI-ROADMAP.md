@@ -10,8 +10,11 @@ launchfile <verb> [target] [flags]
 
 ## Command Table
 
-The phase 1 rows marked ✓ mirror the shipped CLI (`launchfile --help`, flags
-declared in `packages/launchfile/src/cli-args.ts`). A phase 1 row without ✓ is
+The phase 1 rows marked ✓ mirror the verbs `packages/launchfile/src/cli.ts`
+dispatches and the flags each verb reads from
+`packages/launchfile/src/cli-args.ts`. `launchfile --help` omits some of these
+flags until [#597](https://github.com/launchfile/launchfile/issues/597) lands.
+A phase 1 row without ✓ is
 planned and not yet shipped. A PR that adds or changes a verb or flag updates
 its row in the same PR. The globals `--help`, `--version` and `--no-color`
 apply to every verb and are not repeated per row. Whether to generate or
