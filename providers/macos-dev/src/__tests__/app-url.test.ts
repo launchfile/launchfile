@@ -550,6 +550,42 @@ describe("launchUp https-origin through the publication context (D-60 rule 5)", 
 		expect(commands).toEqual(["echo "]);
 	});
 
+	it("empties $app.* for the survivor when the primary is refused for an uncovered use under an https URL (#588)", async () => {
+		// The issue's shape: the scheme is satisfied, so only the refusal set —
+		// not the scheme check — can keep the supplied URL from the survivor.
+		const uncovered = ORIGIN_REQUIRED_SIBLING.replace(
+			"        endpoint: ui\n",
+			"        endpoint: ui\n        uses:\n          - anything: x\n",
+		);
+		writeFileSync(join(projectDir, "Launchfile"), uncovered);
+		await launchUp({ projectDir, appUrl: "https://origin.example.com" });
+
+		expect(registered("web")).toBeUndefined();
+		expect(consoleErrors.join("\n")).toContain(
+			"Refused: web requires a use of a resource this provider cannot cover",
+		);
+		const admin = registered("admin");
+		expect(admin?.PUBLIC_URL).toBe("");
+		expect(admin?.USE_TLS).toBe("false");
+		expect(admin?.APP_NAME).toBe("origintest");
+
+		// `env` and `bootstrap` decide the same set from the file and the
+		// recorded publication context.
+		consoleLogs.length = 0;
+		await launchEnv({ projectDir, component: "admin" });
+		expect(consoleLogs.join("\n")).toMatch(/^PUBLIC_URL=$/m);
+		expect(consoleLogs.join("\n")).not.toContain("origin.example.com");
+		const commands: string[] = [];
+		await launchBootstrap({
+			projectDir,
+			exec: async (_cmd: string, args: string[]) => {
+				commands.push(args.at(-1) ?? "");
+				return { exitCode: 0, stdout: "", stderr: "" };
+			},
+		});
+		expect(commands).toEqual(["echo "]);
+	});
+
 	it("wires a satisfied `supports:` entry and leaves an unsatisfied one absent with a note", async () => {
 		writeFileSync(join(projectDir, "Launchfile"), ORIGIN_OPTIONAL);
 		await launchUp({ projectDir, appUrl: "https://vw.example.com" });

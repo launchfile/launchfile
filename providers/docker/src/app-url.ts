@@ -33,20 +33,26 @@ import {
 	UNPUBLISHED_APP_ENDPOINT,
 } from "@launchfile/sdk";
 import { type PublishedEndpoint, publishedEndpoints } from "./port-allocator.js";
+import { HTTPS_ORIGIN, refusedComponents } from "./refusals.js";
 
 // Re-exported so callers of this provider keep catching the refusal,
 // normalizing values, testing `https-origin` satisfaction and reading the
 // refused primary's address through `@launchfile/docker` (the SDK owns all
 // four, so this provider and `@launchfile/macos-dev` answer alike — P-5).
 export {
+	HTTPS_ORIGIN,
 	httpsOriginSatisfied,
 	InvalidAppUrlError,
 	normalizeAppUrl,
 	REFUSED_PRIMARY_ADDRESS,
 };
 
-/** The backing-service type that declares the app's public HTTPS origin (D-60). */
-export const HTTPS_ORIGIN = "https-origin";
+/**
+ * The refusal set as {@link declaredPrimaryEndpoint} reads it: anything that
+ * answers `has(componentName)` — the `Map` {@link refusedComponents} returns,
+ * or a plain `Set` of names.
+ */
+export type RefusedComponents = Pick<ReadonlySet<string>, "has">;
 
 /** The published endpoint an `https-origin` entry names as the app's primary. */
 export interface DeclaredPrimaryEndpoint {
@@ -59,10 +65,10 @@ export interface DeclaredPrimaryEndpoint {
 	/** Container port the endpoint listens on. */
 	port: number;
 	/**
-	 * The entry is `requires:` and the publication context does not satisfy
-	 * it, so the compose generator refuses the component and emits no service
-	 * for this endpoint (D-60 rule 5). It stays the primary; it has no address
-	 * (D-72).
+	 * The component that declares the entry is in the refusal set, for any
+	 * of the five causes {@link refusedComponents} grades, so the compose
+	 * generator emits no service for this endpoint. It stays the primary; it
+	 * has no address (D-72).
 	 */
 	refused: boolean;
 }
@@ -72,8 +78,8 @@ export interface DeclaredPrimaryEndpoint {
  * (D-60 rule 3), else `undefined`.
  *
  * **Declaration** fixes the primary, not fulfillment: a `supports:` entry this
- * provider cannot satisfy still names the primary, and so does a `requires:`
- * entry whose component this provider refuses — `refused` says which, and
+ * provider cannot satisfy still names the primary, and so does an entry whose
+ * component this provider refuses — `refused` says which, and
  * {@link computeAppContext} then resolves the empty address rather than a
  * sibling's or one for a service it never emits (D-72). Either way `$app.*`
  * does not move with the provider's capability, and `requires` and `supports`
@@ -82,20 +88,17 @@ export interface DeclaredPrimaryEndpoint {
  * match found is the only one; a file that somehow carries more is read in
  * declaration order rather than refused here.
  *
- * `appUrl` is the effective publication context; without it every `requires`
- * entry reads as refused, which is what a launch with no URL does to it.
+ * `refused` is the refusal set ({@link refusedComponents}) — every cause, not
+ * only the entry's own scheme check, and under `supports:` as under
+ * `requires:`. Omitted, nothing is refused: that reading is for selection
+ * only (which endpoint, which key), never for resolving an address.
  */
 export function declaredPrimaryEndpoint(
 	launch: NormalizedLaunch,
-	appUrl?: string,
+	refused?: RefusedComponents,
 ): DeclaredPrimaryEndpoint | undefined {
-	const satisfied = httpsOriginSatisfied(appUrl);
 	for (const [componentName, component] of Object.entries(launch.components)) {
-		const entries = [
-			...(component.requires ?? []).map((entry) => ({ entry, required: true })),
-			...(component.supports ?? []).map((entry) => ({ entry, required: false })),
-		];
-		for (const { entry, required } of entries) {
+		for (const entry of [...(component.requires ?? []), ...(component.supports ?? [])]) {
 			if (entry.type !== HTTPS_ORIGIN || entry.endpoint === undefined) continue;
 			const match = publishedEndpoints(componentName, component.provides).find(
 				(e) => e.name === entry.endpoint,
@@ -106,7 +109,7 @@ export function declaredPrimaryEndpoint(
 				name: match.name ?? entry.endpoint,
 				key: match.key,
 				port: match.port,
-				refused: required && !satisfied,
+				refused: refused?.has(componentName) ?? false,
 			};
 		}
 	}
@@ -289,7 +292,8 @@ export function primaryPublishedEndpoint(
  * the same call the `status`/`up` printout makes for that endpoint, so the two
  * surfaces always agree (#473). Apps with no exposed component get `port: 0`
  * and `url: ""` (and empty authority/scheme/tls). An app whose declared
- * primary is refused gets {@link REFUSED_PRIMARY_ADDRESS} (D-72).
+ * primary is refused — for any cause in the refusal set — gets
+ * {@link REFUSED_PRIMARY_ADDRESS} (D-72).
  *
  * With an `appUrl` — the orchestrator-supplied publication context (D-58) —
  * the routing strategy has moved upstream and the supplied URL answers
@@ -306,8 +310,9 @@ export function computeAppProperties(
 	hostPorts: Record<string, number> | undefined,
 	appUrl?: string,
 	activeCertificates?: ReadonlySet<string>,
+	refused?: RefusedComponents,
 ): Record<string, string | number> {
-	return computeAppContext(launch, hostPorts, appUrl, activeCertificates).app;
+	return computeAppContext(launch, hostPorts, appUrl, activeCertificates, refused).app;
 }
 
 /** Listener protocols that have an origin; a `tcp`/`udp` listener has none (D-60 rule 2). */
@@ -375,6 +380,11 @@ export interface AppContext {
  * {@link REFUSED_PRIMARY_ADDRESS} `$app.*` carries (D-63 rule 2 holds);
  * surviving siblings keep their own published addresses.
  *
+ * `refused` is the refusal set the caller applies — the compose generator
+ * passes the one it decided the services on, so the two never disagree.
+ * Omitted, it is computed here from `launch` and `appUrl` alone, which is
+ * the set a caller with no supplied resources gets.
+ *
  * Unnamed endpoints are not addressable (D-6) and get no entry. A name the
  * SDK's validation lets through twice keeps its first declaration.
  */
@@ -383,14 +393,16 @@ export function computeAppContext(
 	hostPorts: Record<string, number> | undefined,
 	appUrl?: string,
 	activeCertificates?: ReadonlySet<string>,
+	refused: RefusedComponents = refusedComponents(launch, { appUrl }),
 ): AppContext {
 	const primary = primaryPublishedEndpoint(launch, hostPorts, activeCertificates);
-	// A refused primary keeps its place and has no address (D-72). The
-	// generator emits no service for it, so `localhost:<hostPort>` here would
-	// name an address nothing answers, and the supplied URL — when there is
-	// one — is the value that failed to satisfy the entry. Read here, on the
-	// one derivation, so `up`, `bootstrap` and `release` agree.
-	const primaryAddress: AppEndpointProperties = declaredPrimaryEndpoint(launch, appUrl)
+	// A refused primary keeps its place and has no address (D-72), whatever
+	// refused it. The generator emits no service for it, so
+	// `localhost:<hostPort>` here would name an address nothing answers, and
+	// the supplied URL — when there is one — is an origin for a component that
+	// never launches. Read here, on the one derivation, so `up`, `bootstrap`
+	// and `release` agree.
+	const primaryAddress: AppEndpointProperties = declaredPrimaryEndpoint(launch, refused)
 		?.refused
 		? REFUSED_PRIMARY_ADDRESS
 		: publishedAddress(primary?.effectiveProtocol, primary?.hostPort ?? 0, appUrl);

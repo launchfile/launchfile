@@ -31,6 +31,7 @@ import {
 	declaredPrimary,
 	wireHttpsOrigins,
 } from "./https-origin.js";
+import { refusedComponents } from "./refusals.js";
 import { getProvisioner } from "./resources/index.js";
 import type { ResourceProperties } from "./resources/types.js";
 import { coveredUses, type DbIndexes, namedDatabases, withCoveredUses } from "./resources/uses.js";
@@ -52,13 +53,17 @@ export type { ResolverContext, UnsuppliedRequiredEnv };
  * Apps with no exposed component get `port: 0` and `url: ""` (and empty
  * authority/scheme/tls).
  *
- * A declared primary whose component `up` refuses — a `requires:` entry the
+ * A declared primary whose component `up` refuses — for any cause in the
+ * refusal set (`refusedComponents`), not only an `https-origin` entry the
  * publication context does not satisfy — keeps its place and has no address:
  * every property is `REFUSED_PRIMARY_ADDRESS` (D-72), never a surviving
- * sibling's port and never the URL that failed to satisfy the entry. `up`
- * passes `primary` as it read it before the refusal removed the component
- * from `launch.components`; `env` and `bootstrap` read the file whole and let
- * the default compute it, so the three answer alike.
+ * sibling's port and never a supplied URL for a component that does not
+ * launch. `up` passes `primary` as it read it before the refusal removed the
+ * component from `launch.components`; `env` and `bootstrap` read the file
+ * whole and let the default compute it from the same file and the recorded
+ * publication context, so the three answer alike. The one input those two
+ * verbs cannot see is `--with-optional`, so a certificate refusal (D-61 rule
+ * 5) is decided by `up` alone.
  *
  * With an `appUrl` — the orchestrator-supplied publication context (D-58) —
  * routing has moved upstream and the supplied URL answers instead, via the
@@ -81,7 +86,10 @@ export function computeAppProperties(
 	launch: NormalizedLaunch,
 	componentPorts: Record<string, number>,
 	appUrl?: string,
-	primary: DeclaredPrimary | undefined = declaredPrimary(launch, appUrl),
+	primary: DeclaredPrimary | undefined = declaredPrimary(
+		launch,
+		refusedComponents(launch, { appUrl }),
+	),
 ): Record<string, string | number> {
 	if (primary?.refused) return { name: launch.name, ...REFUSED_PRIMARY_ADDRESS };
 	if (appUrl !== undefined) return suppliedAppProperties(launch.name, appUrl);
@@ -156,7 +164,10 @@ export function printedPrimaryEndpoint(
 	launch: NormalizedLaunch,
 	componentPorts: Record<string, number>,
 	appUrl?: string,
-	primary: DeclaredPrimary | undefined = declaredPrimary(launch, appUrl),
+	primary: DeclaredPrimary | undefined = declaredPrimary(
+		launch,
+		refusedComponents(launch, { appUrl }),
+	),
 ): string | undefined {
 	if (primary?.refused) return undefined;
 	const component = primaryComponent(launch, componentPorts, primary);

@@ -35,6 +35,13 @@ export {
 	dockerLaunchError,
 } from "./errors.js";
 export { registerSensitiveEnv, registerSuppliedEnv } from "./env-secrets.js";
+// The one refusal set (PROVIDERS.md §10 item 5): what the compose generator
+// emits nothing for and what empties a refused primary's `$app.*` (D-72).
+export {
+	type RefusalInputs,
+	refusedComponents,
+	type SuppliedResources,
+} from "./refusals.js";
 // Redaction is exported so a caller running IN THIS PROCESS (the unified CLI's
 // bootstrap path) can scrub against the live registry. A separate process gets
 // an empty registry and can scrub nothing — capture there is already too late.

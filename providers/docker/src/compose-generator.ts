@@ -39,7 +39,6 @@ import {
 	type DbIndexes,
 	namedDatabase,
 	namedDatabases,
-	uncoveredProvisionedUses,
 	uncoveredSuppliedUses,
 	usePropertyKeys,
 	withCoveredUses,
@@ -50,10 +49,8 @@ import {
 	HTTPS_ORIGIN,
 	publishedEndpointAddresses,
 } from "./app-url.js";
-import {
-	certificateRefusalMessage,
-	planCertificates,
-} from "./certificates.js";
+import { planCertificates } from "./certificates.js";
+import { refusedComponents } from "./refusals.js";
 import {
 	registerSensitiveEnv,
 	registerSuppliedEnv,
@@ -318,43 +315,6 @@ function checkVersionConstraint(
 	);
 }
 
-/**
- * The surfaced refusal for a component with a `requires` entry this provider
- * has no factory for and nothing supplied (PROVIDERS.md §10 item 5, D-64).
- * Names the component, each entry, and both ways out. It states what this
- * provider does and asserts nothing about the app or another provider.
- */
-function unprovisionableResourceRefusal(
-	componentName: string,
-	entries: readonly string[],
-): string {
-	const noun = entries.length === 1 ? "a resource" : "resources";
-	return (
-		`refused: ${componentName} requires ${noun} this provider cannot provision ` +
-		`(${entries.join("; ")}) — this provider has no provisioner for the type; supply it ` +
-		"through the provider's supplied-resource channel (D-56) or use a provider that " +
-		"provisions it — component skipped"
-	);
-}
-
-/**
- * The surfaced refusal for a component with a `requires` entry declaring a
- * use this provider cannot cover (SPEC.md § Resource uses, D-56 rule 1, D-64).
- * Names the component, each entry and use, and the way out.
- */
-function uncoveredUseRefusal(
-	componentName: string,
-	entries: readonly string[],
-): string {
-	const noun = entries.length === 1 ? "a use" : "uses";
-	return (
-		`refused: ${componentName} requires ${noun} of a resource this provider cannot cover ` +
-		`(${entries.join("; ")}) — a provider covers every declared use or refuses; declare only ` +
-		"what the app uses, supply a resource that covers it through the provider's " +
-		"supplied-resource channel (D-56), or use a provider that covers it — component skipped"
-	);
-}
-
 /** The name one `at:` value stands for under `host` (D-68 rule 2). */
 function atName(value: string, host: string): string {
 	return value === AT_APP_HOST ? host : `${value}.${host}`;
@@ -392,6 +352,15 @@ function atReport(
 		`that reaches ${target} reaches the listener with its \`Host\` intact, so map each name ` +
 		"that does not resolve to this machine (hosts file or DNS), or use a provider that routes host names"
 	);
+}
+
+/**
+ * The resource types this generator holds a factory for — what the refusal
+ * set's `PROVISIONED_TYPES` must equal, so a factory added here is refused
+ * nowhere and a type listed there is always provisionable.
+ */
+export function provisionedTypes(): string[] {
+	return Object.keys(createBackingServices({}));
 }
 
 /**
@@ -1219,13 +1188,29 @@ export function launchToCompose(
 	// because `$app.*` is: the app's public URL is derived below and has to
 	// know whether the primary endpoint's listener speaks https.
 	const certificates = planCertificates(launch, opts.resources);
+	// The refusal set (PROVIDERS.md §10 item 5), decided once, here, from the
+	// same inputs for every cause: `$app.*` reads it so a refused declared
+	// primary resolves the empty address whatever refused it (D-72), and the
+	// component loop applies it, so the services emitted and the address
+	// resolved can never disagree.
+	const refusals = refusedComponents(launch, {
+		appUrl: opts.appUrl,
+		resources: opts.resources,
+		certificates,
+	});
 
 	const {
 		app: appProperties,
 		appEndpoints,
 		fenced,
 		primaryEndpoint,
-	} = computeAppContext(launch, opts.hostPorts, opts.appUrl, certificates.active);
+	} = computeAppContext(
+		launch,
+		opts.hostPorts,
+		opts.appUrl,
+		certificates.active,
+		refusals,
+	);
 
 	// `$app.endpoints.<name>.*` (D-63). Under a supplied publication URL the
 	// D-58 rule 4 fence holds: every non-primary named endpoint resolves ""
@@ -1304,45 +1289,26 @@ export function launchToCompose(
 				? launch.name
 				: `${launch.name}-${componentName}`;
 
+		// Refused, for any of the five causes the refusal set grades (host
+		// capability D-44, `https-origin` scheme D-60 rule 5, certificate D-61
+		// rule 5, unprovisionable type D-64, uncovered use D-65 rule 3): the
+		// surfaced message names the component and the entry, and nothing of
+		// the component is emitted. The same set already emptied the primary's
+		// address above when this is the declaring component (D-72).
+		const refusal = refusals.get(componentName);
+		if (refusal !== undefined) {
+			warnings.push(refusal);
+			continue;
+		}
+
 		if (!component.image && !component.build) {
 			warnings.push(`${componentName}: no image or build — skipped`);
 			continue;
 		}
 
-		// Host capabilities — grant or refuse (D-44, PROVIDERS.md §11). This
-		// provider grants none: handing an app the host's runtime socket, host
-		// network, or privileged mode from inside a managed compose project
-		// defeats its isolation model (and Docker-in-Docker is unreliable). A
-		// required capability therefore REFUSES the component with a surfaced
-		// message — never a silent drop. Both spellings are honored
-		// equivalently: `host:`-marked requires entries and the legacy host
-		// block. Optional (supports) capabilities are left ungranted with a
-		// note so the degradation is visible.
-		const refusedCapabilities: string[] = [];
-		for (const req of component.requires ?? []) {
-			if (!req.host) continue;
-			for (const [capability, value] of Object.entries(req.host)) {
-				refusedCapabilities.push(`${capability}=${String(value)}`);
-			}
-		}
-		if (component.host?.docker === "required") {
-			refusedCapabilities.push(
-				"container_runtime=docker (host.docker: required)",
-			);
-		}
-		if (component.host?.network === "host") {
-			refusedCapabilities.push("network=host (host.network: host)");
-		}
-		if (component.host?.privileged) {
-			refusedCapabilities.push("privileged=true (host.privileged)");
-		}
-		if (refusedCapabilities.length > 0) {
-			warnings.push(
-				`refused: ${componentName} requires host capabilities this provider cannot grant ` +
-					`(${refusedCapabilities.join("; ")}) — component skipped`,
-			);
-			continue;
-		}
+		// An optional (supports) host capability is left ungranted with a
+		// note so the degradation is visible (D-44, PROVIDERS.md §11); this
+		// provider grants none.
 		for (const sup of component.supports ?? []) {
 			if (!sup.host) continue;
 			for (const [capability, value] of Object.entries(sup.host)) {
@@ -1351,96 +1317,6 @@ export function launchToCompose(
 						"not granted — its set_env vars are omitted and the app runs degraded",
 				);
 			}
-		}
-
-		// A required `https-origin` this provider cannot satisfy REFUSES the
-		// component, exactly as an unprovisionable postgres would (PROVIDERS.md
-		// §10 item 5). Deploying it anyway is the silent success the type exists
-		// to remove: the container starts, the healthcheck passes, and the app is
-		// unusable through its own web client.
-		const refusedOrigins: string[] = [];
-		if (!originSatisfied) {
-			for (const req of component.requires ?? []) {
-				if (req.type !== HTTPS_ORIGIN) continue;
-				const entry = `${req.name ?? req.type} (endpoint "${req.endpoint ?? "?"}")`;
-				// The scheme is read off the supplied URL itself: `$app.scheme`
-				// is `""` once this refusal empties the primary's address.
-				refusedOrigins.push(
-					opts.appUrl === undefined
-						? `${entry}: no publication URL was supplied, and this provider has no edge of its own`
-						: `${entry}: the supplied publication URL's scheme is "${suppliedAppAddress(opts.appUrl).scheme}", not https`,
-				);
-			}
-		}
-		if (refusedOrigins.length > 0) {
-			warnings.push(
-				`refused: ${componentName} requires a public HTTPS origin this provider cannot supply ` +
-					`(${refusedOrigins.join("; ")}) — component skipped`,
-			);
-			continue;
-		}
-
-		// A selected certificate this provider cannot satisfy REFUSES the
-		// component (D-61 rule 5). Never a fall back to HTTP: the operator
-		// asked for TLS on this listener, and a cleartext one that every
-		// sibling URL addresses as `https://` is the silent success the
-		// decision exists to forbid. Not selected is a different state
-		// entirely and never reaches here — the baseline is correct.
-		const certificateRefusals = certificates.refusals.get(componentName);
-		if (certificateRefusals) {
-			warnings.push(
-				certificateRefusalMessage(componentName, certificateRefusals),
-			);
-			continue;
-		}
-
-		// A `requires` entry whose type this provider has no factory for, and
-		// that nothing supplied through the D-56 channel satisfies, REFUSES the
-		// component (D-64, PROVIDERS.md §10 item 5) — the ordinary case of
-		// the refusal the two branches above already perform. The vocabulary
-		// is open (L-4), so a type with no factory is a normal, permanent
-		// state; what is never acceptable is starting the component without
-		// the resource its file says it cannot run without. Decided here, with
-		// the other refusals, so nothing of the component is emitted.
-		const unprovisionable: string[] = [];
-		for (const req of component.requires ?? []) {
-			if (req.host || req.type === HTTPS_ORIGIN) continue;
-			if (opts.resources?.[req.name ?? req.type]) continue;
-			if (Object.hasOwn(backingServices, req.type)) continue;
-			unprovisionable.push(
-				req.name === undefined
-					? req.type
-					: `${req.name} (type "${req.type}")`,
-			);
-		}
-		if (unprovisionable.length > 0) {
-			warnings.push(
-				unprovisionableResourceRefusal(componentName, unprovisionable),
-			);
-			continue;
-		}
-
-		// A `requires` entry declaring a use this provider cannot cover REFUSES
-		// the component the same way (SPEC.md § Resource uses, D-56 rule 1):
-		// a supplied resource whose map lacks a declared use's registered
-		// properties, a use no factory here can hand over, or a token this
-		// provider does not recognise — it cannot claim to cover a use it does
-		// not know. Never a warning that hands the app less than it declared.
-		const uncoveredUses: string[] = [];
-		for (const req of component.requires ?? []) {
-			if (req.host || !req.uses) continue;
-			const resourceName = req.name ?? req.type;
-			const supplied = opts.resources?.[resourceName];
-			const uncovered = supplied
-				? uncoveredSuppliedUses(req.type, useKeys(req.uses), supplied.properties)
-				: uncoveredProvisionedUses(req.type, useKeys(req.uses));
-			for (const detail of uncovered) {
-				uncoveredUses.push(`${resourceName}: ${detail}`);
-			}
-		}
-		if (uncoveredUses.length > 0) {
-			warnings.push(uncoveredUseRefusal(componentName, uncoveredUses));
-			continue;
 		}
 
 		if (component.schedule) {

@@ -29,11 +29,13 @@ import {
 } from "@launchfile/sdk";
 import { computeAppContext } from "./app-url.js";
 import { extractCaptures } from "./bootstrap.js";
+import { planCertificates } from "./certificates.js";
 import {
 	redactSecrets,
 	registerDeclaredSecret,
 	registerSecrets,
 } from "./redact.js";
+import { refusedComponents, type SuppliedResources } from "./refusals.js";
 import { declaredSecrets } from "./secrets-namespace.js";
 import { shell } from "./shell.js";
 
@@ -115,6 +117,12 @@ export function planReleases(
 		 * `$app.*`. Unset = localhost routing.
 		 */
 		appUrl?: string;
+		/**
+		 * Resources supplied through the D-56 channel on `up`, when the caller
+		 * holds them: the refusal set that empties a refused primary's `$app.*`
+		 * (D-72) is decided on them.
+		 */
+		resources?: SuppliedResources;
 		/** Restrict to these components (the D-41 start-set); undefined = all. */
 		only?: ReadonlySet<string>;
 	},
@@ -128,7 +136,22 @@ export function planReleases(
 	registerSecrets(Object.values(opts.secrets));
 	registerSecrets(Object.values(opts.resourcePasswords ?? {}));
 
-	const { app, appEndpoints } = computeAppContext(launch, opts.hostPorts, opts.appUrl);
+	// The same refusal set `up` decided the services on, from the same
+	// inputs, so a refused declared primary resolves the empty address here
+	// too, whatever refused it (D-72).
+	const certificates = planCertificates(launch, opts.resources);
+	const refused = refusedComponents(launch, {
+		appUrl: opts.appUrl,
+		resources: opts.resources,
+		certificates,
+	});
+	const { app, appEndpoints } = computeAppContext(
+		launch,
+		opts.hostPorts,
+		opts.appUrl,
+		certificates.active,
+		refused,
+	);
 	const resolverContext: ResolverContext = {
 		secrets: declaredSecrets(launch.secrets, opts.secrets),
 		app,
