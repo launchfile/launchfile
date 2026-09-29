@@ -10,27 +10,37 @@ launchfile <verb> [target] [flags]
 
 ## Command Table
 
+The phase 1 rows mirror the shipped CLI (`launchfile --help`, flags declared in
+`packages/launchfile/src/cli-args.ts`). A PR that adds or changes a verb or flag
+updates its row in the same PR. Checking the table mechanically is tracked in
+[#412](https://github.com/launchfile/launchfile/issues/412).
+
 ```
-VERB          TARGET              FLAGS                         PHASE
-────────────────────────────────────────────────────────────────────
-up            [slug|path]         --docker/--native/-d/--dry-run/--name/--storage/--url  1 ✓
-down          [id|slug|name]      --destroy                       1 ✓
-status        [id|slug|name]                                      1 ✓
-logs          [id|slug|name]      --follow                        1 ✓
-list / ls     —                                                   1 ✓
-env           [id|slug|name]      [component]                     1
-validate      [path]              --json --quiet                  1 ✓
-inspect       [path]                                              1 ✓
-schema        —                   --schema-path                   1 ✓
+VERB          TARGET              FLAGS                                    PHASE
+──────────────────────────────────────────────────────────────────────────────────
+up            [slug|path]         --docker --native --detach --dry-run
+                                  --name --storage --url --components      1 ✓
+dev           [path]              --detach --dry-run --name --storage
+                                  --url --components                       1 ✓
+down          [id|slug|name]      --destroy                                1 ✓
+status        [id|slug|name]                                               1 ✓
+logs          [id|slug|name]      --follow                                 1 ✓
+diagnose      [id|slug|name]      --json                                   1 ✓
+bootstrap     [id|slug|name]      --component --reveal                     1 ✓
+list / ls     —                                                            1 ✓
+env           [id|slug|name]      [component]                              1
+validate      [path]              --json --quiet --detached                1 ✓
+inspect       [path]                                                       1 ✓
+schema        —                   --schema-path                            1 ✓
 
-deploy        <slug|path>         --provider --name --target      2
-deployments   —                   --provider --app                2
-destroy       <id|name>           --force                         2
-init          —                   (interactive)                   2
-catalog       [search]                                            2
+deploy        <slug|path>         --provider --name --target               2
+deployments   —                   --provider --app                         2
+destroy       <id|name>           --force                                  2
+init          —                   (interactive)                            2
+catalog       [search]                                                     2
 
-scale         <id|name>           --count                         3
-resources     [id|name]                                           3
+scale         <id|name>           --count                                  3
+resources     [id|name]                                                    3
 ```
 
 ## Flag Validation
