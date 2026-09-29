@@ -267,6 +267,43 @@ function checkEnvBareReferences(
 }
 
 /**
+ * D-49 cross-component mint check: `generator:` mints once per declaration, so
+ * one env var name declared with `generator: secret` or `generator: uuid` in
+ * two or more components gets a different value in each. Groups `env:`
+ * declarations by name across components, the same way {@link lintLaunch}
+ * groups D-24 resources, and warns on every name minted in 2+ components.
+ * `generator: port` is exempt: a port is an allocation, not an identity
+ * (D-49). Warn-only — never affects `valid`.
+ */
+function checkRepeatedEnvGenerators(
+	launch: NormalizedLaunch,
+	warnings: string[],
+): void {
+	const byName = new Map<string, string[]>();
+	for (const [componentName, component] of Object.entries(launch.components)) {
+		for (const [key, envVar] of Object.entries(component.env ?? {})) {
+			if (envVar.generator !== "secret" && envVar.generator !== "uuid")
+				continue;
+			const places = byName.get(key) ?? [];
+			places.push(componentName);
+			byName.set(key, places);
+		}
+	}
+
+	for (const [key, places] of [...byName.entries()].sort((a, b) =>
+		a[0].localeCompare(b[0]),
+	)) {
+		if (places.length < 2) continue;
+		warnings.push(
+			`env "${key}" is minted by a generator in ${places.length} components ` +
+				`(${[...places].sort().join(", ")}); each declaration mints its own value (D-49), ` +
+				"so the components get different values — declare it once under top-level " +
+				"`secrets:` and reference `$secrets.<name>` from each component",
+		);
+	}
+}
+
+/**
  * Storage keys the schema recognizes, derived from the schema itself so a
  * future ratified field can never produce a stale false warning.
  */
@@ -559,6 +596,8 @@ function checkPrimaryWithoutAppHost(
  * - Non-standard resource properties (D-46): see {@link checkResourceProperties}.
  * - Bare references in `env:` values that can never resolve (#184): see
  *   {@link checkEnvBareReferences}.
+ * - The same env var minted by `generator: secret`/`uuid` in 2+ components
+ *   (D-49): see {@link checkRepeatedEnvGenerators}.
  * - Reduced-portability build path and source reachability (D-40, D-43): see
  *   {@link checkPortability}. Suppressible via `opts.suppressPortabilityWarnings`.
  *
@@ -628,6 +667,7 @@ export function lintLaunch(
 	checkResourceProperties(launch, warnings);
 	checkResourceUses(launch, warnings);
 	checkEnvBareReferences(launch, warnings);
+	checkRepeatedEnvGenerators(launch, warnings);
 	checkAppEndpointReferences(launch, warnings);
 	checkPrimaryWithoutAppHost(launch, warnings);
 	checkOperatorStorageContradiction(launch, warnings);
