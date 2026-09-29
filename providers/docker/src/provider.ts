@@ -41,6 +41,7 @@ import {
 	type StorageBind,
 	type UnsuppliedRequiredVar,
 } from "./compose-generator.js";
+import { redactSecrets } from "./redact.js";
 import { planReleases, runReleases } from "./release.js";
 import { shell, shellStream } from "./shell.js";
 import { getLogger, withSpan } from "./logger.js";
@@ -263,7 +264,12 @@ export interface ForeignSourceDetails {
 	existingIsLocal: boolean;
 }
 
-/** Shared by the refusal and the dry-run warning, so both say the same thing. */
+/**
+ * Shared by the refusal and the dry-run warning, so both say the same thing.
+ * Either source may be a URL carrying credentials; they are masked here, where
+ * the message is built (D-18, D-71). The raw `sourceUrl` the D-55 comparison
+ * and the state file use is not touched.
+ */
 export function foreignSourceMessage(details: ForeignSourceDetails): string {
 	const remedies = [
 		"  - launch a separate instance from here: launchfile up --name <label>",
@@ -276,8 +282,8 @@ export function foreignSourceMessage(details: ForeignSourceDetails): string {
 	];
 	return (
 		`"${details.slug}" (compose project ${details.project}) is already deployed from a different source.\n` +
-		`  Existing source: ${details.existingSource}\n` +
-		`  This source:     ${details.currentSource}\n` +
+		`  Existing source: ${redactSecrets(details.existingSource)}\n` +
+		`  This source:     ${redactSecrets(details.currentSource)}\n` +
 		`Refusing to adopt that deployment's containers, volumes, and secrets. Either:\n` +
 		remedies.join("\n")
 	);
