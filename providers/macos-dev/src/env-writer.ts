@@ -17,6 +17,7 @@ import {
 	type NormalizedComponent,
 	type NormalizedLaunch,
 	parseUseKey,
+	REFUSED_PRIMARY_ADDRESS,
 	type ResolverContext,
 	type Secret,
 	suppliedAppProperties,
@@ -28,7 +29,6 @@ import {
 import {
 	type DeclaredPrimary,
 	declaredPrimary,
-	REFUSED_PRIMARY_ADDRESS,
 	wireHttpsOrigins,
 } from "./https-origin.js";
 import { getProvisioner } from "./resources/index.js";
