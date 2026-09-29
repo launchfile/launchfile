@@ -66,6 +66,23 @@ export interface DestroyOpts {
 	projectDir: string;
 }
 
+/**
+ * Thrown by `provision()` when the resource cannot be handed out safely — a
+ * repo-controlled path the provisioner refuses to write through, for one.
+ * The provisioner prints the reason before throwing, so the caller records
+ * the refusal, provisions what remains, and exits non-zero naming every
+ * refused resource. Any other error still aborts the run.
+ */
+export class ResourceRefusedError extends Error {
+	constructor(
+		readonly resourceName: string,
+		readonly reason: string,
+	) {
+		super(`${resourceName}: ${reason}`);
+		this.name = "ResourceRefusedError";
+	}
+}
+
 export interface ResourceProvisioner {
 	readonly type: string;
 
