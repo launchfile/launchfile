@@ -172,6 +172,7 @@ inside the deployment.
 | `appEndpointReferences(launch)` | Every `$app.endpoints…` reference in the file's `env:` defaults and `set_env:` values, in declaration order — so a provider can warn only about the endpoints the app actually asks for |
 | `APP_ENDPOINT_PROPERTIES` | The properties `$app.endpoints.<name>.*` addresses: the standard `$app.*` set (D-33, D-35) less `name` |
 | `UNPUBLISHED_APP_ENDPOINT` | The answer for an endpoint the provider publishes no address for (D-63 rule 4) — every property `""`, degrading as an unknown `$app.*` property does (L-4) |
+| `REFUSED_PRIMARY_ADDRESS` | The `$app.*` address of a primary whose component is refused (D-72): `UNPUBLISHED_APP_ENDPOINT` with `tls` reading `"false"`, so a literal on/off flag still receives a boolean. One object for every provider (P-5) |
 
 ### Publication context (D-58)
 
@@ -183,6 +184,7 @@ routing is owned upstream. A malformed value is refused, never degraded.
 | `normalizeAppUrl(value)` | Validate and normalize a supplied publication URL → the WHATWG serialization with a lone root path dropped. Idempotent; throws `InvalidAppUrlError` on anything but an absolute `http`/`https` URL with no userinfo, query, or fragment |
 | `suppliedAppAddress(appUrl)` | The address a supplied URL determines (D-58 rule 2): `{ host, port, url, authority, scheme, tls }` — the `$app.*` set less `name` |
 | `suppliedAppProperties(name, appUrl)` | `name` plus `suppliedAppAddress`, for a provider resolving the whole `$app.*` set in one step |
+| `httpsOriginSatisfied(appUrl)` | Whether a supplied URL satisfies an `https-origin` entry (D-60 rule 5): its scheme is `https`. Syntactic only — `undefined` and an `http` URL both fail; a malformed URL throws `InvalidAppUrlError`. One predicate for every provider (P-5) |
 | `InvalidAppUrlError` | Thrown for a refused `appUrl` (D-58 rule 3). The constructor masks userinfo in the displayed value, so no refusal path can echo an embedded credential (D-18, CWE-532) |
 
 ### Listeners and certificates (D-61)

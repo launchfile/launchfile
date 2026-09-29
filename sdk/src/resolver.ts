@@ -142,6 +142,17 @@ export const UNPUBLISHED_APP_ENDPOINT: Readonly<AppEndpointProperties> =
 	Object.freeze({ url: "", host: "", port: "", scheme: "", authority: "", tls: "" });
 
 /**
+ * The `$app.*` address of a primary whose component is refused (D-72):
+ * every field `""` — the answer D-63 rule 4 gives an endpoint the provider
+ * publishes no address for — with `tls` reading `false`, as D-63 rule 3 has
+ * a listener with no origin read it, so a literal on/off flag
+ * (`USE_SSL: $app.tls`) still receives a boolean. One object for every
+ * provider, so a refused file resolves the same `$app.*` under each (P-5).
+ */
+export const REFUSED_PRIMARY_ADDRESS: Readonly<AppEndpointProperties> =
+	Object.freeze({ ...UNPUBLISHED_APP_ENDPOINT, tls: "false" });
+
+/**
  * Derive the URL-shaped members of the standard `$app.*` set (D-35) from a
  * resolved public URL: `authority` (WHATWG URL `host` — hostname plus port,
  * port omitted when it's the default for the scheme), `scheme` (`http`/`https`),
