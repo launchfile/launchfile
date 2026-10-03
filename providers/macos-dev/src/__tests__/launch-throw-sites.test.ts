@@ -101,8 +101,7 @@ describe("launchUp — the two failures that throw rather than exit", () => {
 	});
 
 	it("still prints the itemized prerequisite list, and does not exit", async () => {
-		// The throw replaced a `process.exit(1)`. The itemized list is the
-		// actionable half of the diagnosis and has to survive that swap; the CLI's
+		// The itemized list is the actionable half of the diagnosis; the CLI's
 		// top-level handler supplies the non-zero exit.
 		mocks.prereq = {
 			ok: false,
