@@ -5,11 +5,11 @@ test_results:
   last_tested: 2026-04-06
   pull_time_seconds: 3
   startup_time_seconds: 21
-  total_disk_mb: 2095
+  total_download_mb: 1051
   health_check_passed: true
   notes: ""
 images:
   - name: frooodle/s-pdf:latest
-    size_mb: 2095
+    size_mb: 1051
     platform:
       - linux/arm64

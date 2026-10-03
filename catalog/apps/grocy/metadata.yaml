@@ -5,11 +5,11 @@ test_results:
   last_tested: 2026-04-09
   pull_time_seconds: 20
   startup_time_seconds: 1
-  total_disk_mb: 256
+  total_download_mb: 83
   health_check_passed: true
   notes: ""
 images:
   - name: linuxserver/grocy:latest
-    size_mb: 256
+    size_mb: 83
     platform:
       - linux/arm64

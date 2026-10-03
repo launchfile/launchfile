@@ -5,15 +5,15 @@ test_results:
   last_tested: 2026-04-06
   pull_time_seconds: 3
   startup_time_seconds: 11
-  total_disk_mb: 1481
+  total_download_mb: 478
   health_check_passed: true
   notes: ""
 images:
   - name: wordpress:latest
-    size_mb: 725
+    size_mb: 255
     platform:
       - linux/arm64
   - name: mysql:8
-    size_mb: 756
+    size_mb: 223
     platform:
       - linux/arm64

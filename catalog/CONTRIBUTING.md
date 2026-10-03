@@ -104,8 +104,10 @@ provides as operator — see [`catalog/test/README.md`](test/README.md).
 **Do not pin by `@sha256` digest.** A digest freezes an app at the moment its entry
 landed, and this catalog has no mechanism to re-pin. Bumping an image is not a one-line
 edit: `metadata.yaml` records `images[].size_mb` and `test_results.last_tested`, so a
-bump means re-running the app locally and re-measuring. A digest nobody refreshes is a
-permanently unpatched image — worse than following upstream.
+bump means re-running the app locally and re-measuring. `size_mb` is the compressed
+download size from the registry manifest for the recorded platform. It does not depend
+on the local Docker setup, so a change means the image changed. A digest nobody
+refreshes is a permanently unpatched image — worse than following upstream.
 
 Rung 2 freezes an app the same way, which is exactly why it ranks below rung 1 and
 applies only where upstream maintains no channel to follow. A digest freezes every

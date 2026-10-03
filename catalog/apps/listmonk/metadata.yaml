@@ -5,7 +5,7 @@ test_results:
   last_tested: 2026-08-28
   pull_time_seconds: 2
   startup_time_seconds: 7
-  total_disk_mb: 123
+  total_download_mb: 123
   health_check_passed: false
   notes: Harness result only. The harness does not execute commands.release, so listmonk starts over an uninstalled schema and never serves. Verified passing with the reference Docker provider, which does run release (D-48).
 images:

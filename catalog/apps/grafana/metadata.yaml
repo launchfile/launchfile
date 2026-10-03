@@ -5,11 +5,11 @@ test_results:
   last_tested: 2026-04-11
   pull_time_seconds: 23
   startup_time_seconds: 6
-  total_disk_mb: 681
+  total_download_mb: 418
   health_check_passed: true
   notes: ""
 images:
   - name: grafana/grafana:latest
-    size_mb: 681
+    size_mb: 418
     platform:
       - linux/arm64

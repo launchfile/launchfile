@@ -2,15 +2,15 @@ test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 7
   startup_time_seconds: 7
-  total_disk_mb: 107
+  total_download_mb: 41
   health_check_passed: false
   notes: Containers running but health check timed out
 images:
   - name: authelia/authelia:latest
-    size_mb: 67
+    size_mb: 25
     platform:
       - linux/arm64
   - name: redis:7-alpine
-    size_mb: 40
+    size_mb: 16
     platform:
       - linux/arm64

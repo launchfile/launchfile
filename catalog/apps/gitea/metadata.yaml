@@ -5,7 +5,7 @@ test_results:
   last_tested: 2026-09-24
   pull_time_seconds: 17
   startup_time_seconds: 9
-  total_disk_mb: 646
+  total_download_mb: 175
   health_check_passed: true
   notes: >-
     2026-09-25, catalog/test harness at 6705c17: GITEA__database__HOST resolved to gitea-postgres:5432.
@@ -15,10 +15,10 @@ test_results:
     116 tables and idle sessions from the gitea container.
 images:
   - name: gitea/gitea:latest
-    size_mb: 254
+    size_mb: 66
     platform:
       - linux/arm64
   - name: postgres:16-alpine
-    size_mb: 392
+    size_mb: 109
     platform:
       - linux/arm64

@@ -5,15 +5,15 @@ test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 41
   startup_time_seconds: 17
-  total_disk_mb: 1149
+  total_download_mb: 435
   health_check_passed: true
   notes: ""
 images:
   - name: fireflyiii/core:latest
-    size_mb: 890
+    size_mb: 326
     platform:
       - linux/arm64
   - name: postgres:16-alpine
-    size_mb: 259
+    size_mb: 109
     platform:
       - linux/arm64

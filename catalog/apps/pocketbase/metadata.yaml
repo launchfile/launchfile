@@ -5,11 +5,11 @@ test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 5
   startup_time_seconds: 6
-  total_disk_mb: 40
+  total_download_mb: 16
   health_check_passed: true
   notes: ""
 images:
   - name: ghcr.io/muchobien/pocketbase:latest
-    size_mb: 40
+    size_mb: 16
     platform:
       - linux/arm64
