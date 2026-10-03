@@ -1,32 +1,26 @@
 category: Feedback
-tagline: Open-source community feedback platform
+tagline: "Open-source community feedback platform"
 homepage: https://fider.io
 test_env:
-  EMAIL_NOREPLY: noreply@fider.test
-  EMAIL_SMTP_HOST: smtp.fider.test
+  EMAIL_NOREPLY: "noreply@fider.test"
+  EMAIL_SMTP_HOST: "smtp.fider.test"
 test_results:
-  last_tested: 2026-10-03
-  pull_time_seconds: 24
-  startup_time_seconds: 106
-  total_disk_mb: 891
+  last_tested: 2026-04-06
+  pull_time_seconds: 3
+  startup_time_seconds: 107
+  total_disk_mb: 433
   health_check_passed: false
   notes: >-
-    Upstream fider defect, not a Postgres version issue: fider's SQL logger inserts
-    into logs(created_at) while its own migrations name the column created_on until
-    migration 201809262108_rename_datetime_fields renames it, so Postgres logs
-    'column "created_at" of relation "logs" does not exist' during the first boot's
-    migrations. In 2026-09-24 runs the errors stopped within a second, all 95
-    migrations applied and fider served GET /_health with 200. The health check
-    still fails: the Launchfile probes /api/health (404 on fider), and the image
-    ships neither wget nor curl for the harness probe. The harness supplies
-    BASE_URL, EMAIL_NOREPLY and EMAIL_SMTP_HOST from test_env, starts the stack
-    and times out on the health check (2026-10-03 run).
+    Blocked by an upstream fider defect: its SQL logger inserts into logs(created_at)
+    while its migration creates the column as created_on, so Postgres logs
+    'column "created_at" of relation "logs" does not exist'. The defect does not depend
+    on the Postgres major version or on the required env vars (#231).
 images:
   - name: getfider/fider:stable
-    size_mb: 499
+    size_mb: 174
     platform:
       - linux/arm64
   - name: postgres:16-alpine
-    size_mb: 392
+    size_mb: 259
     platform:
       - linux/arm64
