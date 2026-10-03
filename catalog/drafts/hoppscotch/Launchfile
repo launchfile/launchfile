@@ -3,6 +3,12 @@ version: launch/v1
 name: hoppscotch
 description: "Open-source API development ecosystem"
 
+# DATA_ENCRYPTION_KEY has no generator. The backend encrypts stored data with
+# aes-256-cbc and uses the key's raw UTF-8 bytes, so the key must be exactly 32
+# characters. `generator: secret` emits 64 hex characters (D-47) and `|base64`
+# emits 44 (D-32); both fail with "Invalid key length". The operator supplies
+# it (D-52). A `length:` generator option is tracked in #FOLLOWUP-1.
+
 components:
   frontend:
     image: hoppscotch/hoppscotch-frontend:2026.7.0
@@ -64,8 +70,21 @@ components:
       SESSION_SECRET:
         generator: secret
         sensitive: true
+      DATA_ENCRYPTION_KEY:
+        required: true
+        sensitive: true
+        description: "Key that encrypts data stored in the database. Exactly 32 characters. Never change it after first start: data encrypted with the old key becomes unreadable"
+      VITE_BASE_URL:
+        default: $app.url
+        description: "Public URL of the frontend; the backend derives secure-cookie behavior from it"
+      VITE_ADMIN_URL:
+        default: "${app.endpoints.admin.url}"
+        description: "Public URL of the admin dashboard"
       WHITELISTED_ORIGINS:
         default: "${app.url},${app.endpoints.admin.url},${app.endpoints.backend.url}"
         description: "Browser origins allowed to call the backend"
+    # `prisma migrate deploy` is idempotent, so it runs on every deploy.
+    commands:
+      release: "cd /dist/backend && pnpm exec prisma migrate deploy"
     health: /ping
     restart: always
