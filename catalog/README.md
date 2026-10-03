@@ -20,9 +20,10 @@ drafts/     Proposed — Launchfile written, not yet verified
 ```
 
 Every entry is a directory holding a `Launchfile`. Entries the test harness has run also
-hold a `metadata.yaml` with the results; some also hold a `screenshot.png`. The directories
-are the source of truth: the two tables below are generated from them by
-`catalog/test/src/build-index.ts`.
+hold a `metadata.yaml` with the results (`test/src/test-app.ts` writes it). Some also hold a
+`screenshot.png`, captured separately with `test/src/screenshot-all.ts`. Screenshots are
+optional. The directories are the source of truth: the two tables below are generated from
+them by `catalog/test/src/build-index.ts`.
 
 ## Tested Apps
 
@@ -160,7 +161,7 @@ Draft Launchfiles in [`drafts/`](drafts/) — not yet verified end-to-end. PRs w
 
 1. Test the draft: `cd test && bun run src/test-app.ts <app-name>`
 2. If it passes, move it: `git mv catalog/drafts/<app> catalog/apps/<app>`
-3. The test harness writes `metadata.yaml` with test results and a screenshot
+3. The test harness writes `metadata.yaml` with test results. A screenshot is optional: `bun run src/screenshot-all.ts <app-name>` launches the app and saves `screenshot.png` to its directory. `test-app.ts` does not take screenshots.
 4. Regenerate the tables above and commit the result:
    `cd test && bun run build-index`. The batch run (`src/test-all.ts`) derives its
    tiers from the directories, so it picks the app up without an edit.
