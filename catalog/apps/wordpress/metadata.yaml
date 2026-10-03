@@ -7,7 +7,7 @@ test_results:
   startup_time_seconds: 11
   total_disk_mb: 1481
   health_check_passed: true
-  notes: ""
+  notes: "2026-10-03: launched with mysql:8 on the default port 3306. WORDPRESS_DB_HOST=wordpress-mysql:3306 in the container; /wp-admin/install.php served the language step after the database connected. Non-default port not tested (needs #568)."
 images:
   - name: wordpress:latest
     size_mb: 725
