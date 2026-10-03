@@ -10,8 +10,14 @@ provides:
   - protocol: http
     port: 3000
     exposed: true
-  - protocol: tcp
+  - name: dns
+    protocol: tcp
     port: 53
+    exposed: true
+  - name: dns-udp
+    protocol: udp
+    port: 53
+    exposed: true
 storage:
   work:
     path: /opt/adguardhome/work

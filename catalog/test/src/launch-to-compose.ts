@@ -12,8 +12,12 @@ import {
   isExpression,
   type ResolverContext,
 } from "../../../sdk/src/resolver.ts";
+import { suppliedAppAddress } from "../../../sdk/src/app-url.ts";
 import { indexOperatorStoragePaths } from "../../../sdk/src/operator-storage.ts";
-import { computeAppProperties } from "../../../providers/docker/src/app-url.ts";
+import {
+  computeAppProperties,
+  httpsOriginSatisfied,
+} from "../../../providers/docker/src/app-url.ts";
 import { unsuppliedRequiredEnv } from "../../../sdk/src/env.ts";
 import type {
   NormalizedLaunch,
@@ -43,7 +47,10 @@ interface ComposeHealthcheck {
   start_period?: string;
 }
 
-const BACKING_SERVICES: Record<string, (name: string) => BackingService> = {
+// Null prototype, like the docker provider's map: a `requires[].type` read out
+// of a Launchfile is looked up here, so `constructor` or `toString` must
+// resolve to nothing rather than an `Object.prototype` member.
+const BACKING_SERVICES: Record<string, (name: string) => BackingService> = Object.assign(Object.create(null), {
   postgres: (name) => ({
     image: "postgres:16-alpine",
     environment: {
@@ -200,7 +207,7 @@ const BACKING_SERVICES: Record<string, (name: string) => BackingService> = {
       ],
     },
   }),
-};
+} satisfies Record<string, (name: string) => BackingService>);
 
 // --- Generator helpers ---
 
@@ -364,11 +371,9 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
 
   // Whether an `https-origin` entry can be satisfied at all on this run
   // (D-60 rule 5). The harness runs no edge, so the only satisfaction is an
-  // `https://` URL the caller supplied; the probe is computed once, from the
-  // same derivation every component's $app.* uses.
-  const appPropertiesProbe = computeAppProperties(launch, undefined, opts.appUrl);
-  const httpsOriginSatisfied =
-    opts.appUrl !== undefined && appPropertiesProbe.scheme === "https";
+  // `https://` URL the caller supplied — the shipped Docker provider's own
+  // predicate, read once for the whole run.
+  const originSatisfied = httpsOriginSatisfied(opts.appUrl);
 
   // App-wide resource properties for $<resource>.prop set_env resolution, shared
   // across components like the Docker provider's resourceMap (compose-generator).
@@ -415,16 +420,18 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
     // component, as the shipped Docker provider does. The harness has no edge
     // of its own; the only satisfaction it can offer is an `https://` appUrl
     // the caller supplied. No probe — the check is on the scheme alone.
+    // The scheme is read off the supplied URL itself: `$app.scheme` is `""`
+    // once this refusal empties the primary's address (D-72).
     const originRefused = (component.requires ?? [])
       .filter((r) => r.type === HTTPS_ORIGIN)
-      .filter(() => !httpsOriginSatisfied)
+      .filter(() => !originSatisfied)
       .map((r) => ({
         component: componentName,
         entry: `${r.name ?? r.type} (endpoint "${r.endpoint ?? "?"}")`,
         message:
           opts.appUrl === undefined
             ? "no publication URL supplied — pass --url https://<host>"
-            : `the supplied publication URL's scheme is "${String(appPropertiesProbe.scheme)}", not https`,
+            : `the supplied publication URL's scheme is "${suppliedAppAddress(opts.appUrl).scheme}", not https`,
       }));
     if (originRefused.length > 0) {
       originRefusals.push(...originRefused);
@@ -438,7 +445,9 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
     // resource is exactly what let `health_check_passed: true` certify an
     // app the provider could not run.
     const resourceRefused = (component.requires ?? [])
-      .filter((r) => !r.host && r.type !== HTTPS_ORIGIN && !BACKING_SERVICES[r.type])
+      .filter(
+        (r) => !r.host && r.type !== HTTPS_ORIGIN && !Object.hasOwn(BACKING_SERVICES, r.type),
+      )
       .map((r) => ({
         component: componentName,
         entry: r.name === undefined ? r.type : `${r.name} (type "${r.type}")`,
@@ -600,7 +609,7 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
     // and its set_env bindings are simply absent.
     for (const sup of component.supports ?? []) {
       if (sup.type !== HTTPS_ORIGIN) continue;
-      if (httpsOriginSatisfied) {
+      if (originSatisfied) {
         applyHttpsOrigin(sup, env, baseCtx, resources, appCtx);
       } else {
         warnings.push(
@@ -800,7 +809,7 @@ function addBackingService(
   warnings: string[],
 ): { serviceName: string; properties: Record<string, string> } | null {
   const type = req.type;
-  const factory = BACKING_SERVICES[type];
+  const factory = Object.hasOwn(BACKING_SERVICES, type) ? BACKING_SERVICES[type] : undefined;
 
   if (!factory) {
     // The component loop refuses a component with such an entry before it

@@ -90,7 +90,7 @@ Draft Launchfiles in [`drafts/`](drafts/) — not yet verified end-to-end. PRs w
 | [Opengist](drafts/opengist/) | Git | |
 | [Penpot](drafts/penpot/) | Design | |
 | [Pi-hole](drafts/pihole/) | DNS | |
-| [Plausible](drafts/plausible/) | Analytics | Gap: no clickhouse type (G-4) |
+| [Plausible](drafts/plausible/) | Analytics | |
 | [Plex](drafts/plex/) | Media | Gap: GPU (G-10) |
 | [PostHog](drafts/posthog/) | Analytics | |
 | [Rocket.Chat](drafts/rocketchat/) | Communication | Gap: replica set (G-5) |

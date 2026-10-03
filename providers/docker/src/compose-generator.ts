@@ -26,6 +26,7 @@ import {
 	type ResolverContext,
 	resolveExpression,
 	type StorageBind,
+	suppliedAppAddress,
 	type UnboundOperatorVolume,
 	unsuppliedRequiredEnv,
 	useKeys,
@@ -46,6 +47,7 @@ import { stringify } from "yaml";
 import {
 	computeAppContext,
 	HTTPS_ORIGIN,
+	httpsOriginSatisfied,
 	publishedEndpointAddresses,
 } from "./app-url.js";
 import {
@@ -400,6 +402,11 @@ function atReport(
  *
  * Each factory's `properties` map is this provider's answer to SPEC.md
  * § Resource Property Vocabulary; `resourcePropertyKeys()` reads it back.
+ *
+ * The map has a null prototype: it is looked up by a `requires[].type` read
+ * straight out of a Launchfile, so `constructor`, `toString` and every other
+ * `Object.prototype` key must resolve to nothing, never to an inherited
+ * function that is not a factory.
  */
 function createBackingServices(
 	savedPasswords: Record<string, string>,
@@ -414,7 +421,7 @@ function createBackingServices(
 		return pw;
 	};
 
-	return {
+	return Object.assign(Object.create(null), {
 		postgres: (name) => {
 			const pw = getPassword("postgres");
 			return {
@@ -552,27 +559,35 @@ function createBackingServices(
 			};
 		},
 
-		clickhouse: (name) => ({
-			image: "clickhouse/clickhouse-server:latest",
-			dataPath: "/var/lib/clickhouse",
-			environment: {},
-			properties: {
-				// The image's shipped defaults: the `default` user with an empty
-				// password. Reported as-is so the values match the deployment.
-				user: "default",
-				password: "",
-				host: `${name}-clickhouse`,
-				port: "8123",
-				url: `http://${name}-clickhouse:8123`,
-				name: name,
-			},
-			healthcheck: {
-				test: ["CMD-SHELL", "wget --spider -q http://localhost:8123/ping"],
-				interval: "5s",
-				timeout: "5s",
-				retries: 5,
-			},
-		}),
+		clickhouse: (name) => {
+			// The image's entrypoint writes CLICKHOUSE_USER/CLICKHOUSE_PASSWORD into
+			// users.d on every start, so the password applies to an existing data
+			// volume too. It stays on `default`: that user already has full rights,
+			// and a second user beside it would leave the open one in place.
+			const pw = getPassword("clickhouse");
+			return {
+				image: "clickhouse/clickhouse-server:latest",
+				dataPath: "/var/lib/clickhouse",
+				environment: {
+					CLICKHOUSE_USER: "default",
+					CLICKHOUSE_PASSWORD: pw,
+				},
+				properties: {
+					user: "default",
+					password: pw,
+					host: `${name}-clickhouse`,
+					port: "8123",
+					url: `http://default:${encodeURIComponent(pw)}@${name}-clickhouse:8123`,
+					name: name,
+				},
+				healthcheck: {
+					test: ["CMD-SHELL", "wget --spider -q http://localhost:8123/ping"],
+					interval: "5s",
+					timeout: "5s",
+					retries: 5,
+				},
+			};
+		},
 
 		elasticsearch: (name) => {
 			// Security: enable xpack security with generated credentials.
@@ -774,7 +789,7 @@ function createBackingServices(
 				start_period: "20s",
 			},
 		}),
-	};
+	} satisfies Record<string, (name: string) => BackingService>);
 }
 
 /**
@@ -973,6 +988,12 @@ export interface ComposeResult {
 	ports: Record<string, number>;
 	/** Endpoint metadata for each `ports` key (component, name, protocol) */
 	endpoints: Record<string, StateEndpoint>;
+	/**
+	 * The `ports` key of the app's primary published endpoint, from the same
+	 * derivation as `$app.*` (persist to state — `status` reads it back).
+	 * Absent when the app publishes nothing.
+	 */
+	primaryEndpoint?: string;
 	/** Map of component name → generated compose service name (skipped components absent) */
 	services: Record<string, string>;
 	/**
@@ -999,13 +1020,16 @@ export interface ComposeResult {
 	 * *Rejected* block forbids. A deploying verb reads this field and fails.
 	 * `launchToCompose` itself never degrades Launchfile content into a wrong
 	 * value — it is exported public API and a pure generator, and it throws in
-	 * exactly two cases, both "refuse, never degrade". A malformed
+	 * exactly three cases, all "refuse, never degrade". A malformed
 	 * `opts.appUrl`, an orchestrator input no `$app.*` can be correctly
 	 * derived from, throws `InvalidAppUrlError` before any generation (#290).
 	 * A `$<resource>.<use>.<property>` reference on an entry that declares
 	 * `uses` but resolves to nothing throws `UnresolvedUseError` (D-65): the
 	 * alternative is the instance URL under a per-use name, which is the
 	 * silent cross-tenant failure `uses` exists to prevent.
+	 * An expression path `parseDotPath` splits into more than 10 dot or
+	 * bracket segments throws a plain `Error`, not an SDK error class, so a
+	 * caller that catches by type must also catch `Error`.
 	 */
 	unsuppliedRequired: UnsuppliedRequiredVar[];
 	/**
@@ -1182,13 +1206,15 @@ export function launchToCompose(
 	const resourceMap: Record<string, Record<string, string | number>> = {};
 	const componentMap: Record<string, Record<string, string | number>> = {};
 
-	// Compute $app.* properties (D-33) from the first component (in declaration
-	// order) that has at least one `exposed: true` provides entry. The "primary"
-	// component's host port is the app's externally-reachable port; the public
-	// URL is http://localhost:<hostPort> — unless the orchestrator supplied the
-	// publication context (`opts.appUrl`, #290), which answers instead. For
-	// multi-exposed-component apps that need a specific component's URL, use
-	// $components.<name>.url instead.
+	// Compute $app.* properties (D-33) from the app's primary endpoint: the
+	// one an `https-origin` entry names (D-60 rule 3), else the first
+	// `exposed: true` entry in declaration order. The primary's host port is
+	// the app's externally-reachable port; the public URL is
+	// http://localhost:<hostPort> — unless the orchestrator supplied the
+	// publication context (`opts.appUrl`, #290), which answers instead. A
+	// named primary whose component is refused below keeps its place and
+	// resolves the empty address (D-72). For multi-exposed-component apps
+	// that need a specific component's URL, use $components.<name>.url.
 	// Certificate bindings (D-61). Decided before anything is generated,
 	// because `$app.*` is: the app's public URL is derived below and has to
 	// know whether the primary endpoint's listener speaks https.
@@ -1198,6 +1224,7 @@ export function launchToCompose(
 		app: appProperties,
 		appEndpoints,
 		fenced,
+		primaryEndpoint,
 	} = computeAppContext(launch, opts.hostPorts, opts.appUrl, certificates.active);
 
 	// `$app.endpoints.<name>.*` (D-63). Under a supplied publication URL the
@@ -1230,8 +1257,7 @@ export function launchToCompose(
 	// exists or is ready. A built-in Caddy/Traefik/tunnel provisioner would be
 	// the provision branch; it is future work, and refusing is conformant
 	// until it exists (PROVIDERS.md §10 item 5).
-	const httpsOriginSatisfied =
-		opts.appUrl !== undefined && appProperties.scheme === "https";
+	const originSatisfied = httpsOriginSatisfied(opts.appUrl);
 	const httpsOriginProperties = { url: String(appProperties.url) };
 
 	const resolverContext: ResolverContext = {
@@ -1333,14 +1359,16 @@ export function launchToCompose(
 		// to remove: the container starts, the healthcheck passes, and the app is
 		// unusable through its own web client.
 		const refusedOrigins: string[] = [];
-		if (!httpsOriginSatisfied) {
+		if (!originSatisfied) {
 			for (const req of component.requires ?? []) {
 				if (req.type !== HTTPS_ORIGIN) continue;
 				const entry = `${req.name ?? req.type} (endpoint "${req.endpoint ?? "?"}")`;
+				// The scheme is read off the supplied URL itself: `$app.scheme`
+				// is `""` once this refusal empties the primary's address.
 				refusedOrigins.push(
 					opts.appUrl === undefined
 						? `${entry}: no publication URL was supplied, and this provider has no edge of its own`
-						: `${entry}: the supplied publication URL's scheme is "${String(appProperties.scheme)}", not https`,
+						: `${entry}: the supplied publication URL's scheme is "${suppliedAppAddress(opts.appUrl).scheme}", not https`,
 				);
 			}
 		}
@@ -1378,7 +1406,7 @@ export function launchToCompose(
 		for (const req of component.requires ?? []) {
 			if (req.host || req.type === HTTPS_ORIGIN) continue;
 			if (opts.resources?.[req.name ?? req.type]) continue;
-			if (backingServices[req.type]) continue;
+			if (Object.hasOwn(backingServices, req.type)) continue;
 			unprovisionable.push(
 				req.name === undefined
 					? req.type
@@ -1721,13 +1749,23 @@ export function launchToCompose(
 				// The optional mood (D-60 rule 6): satisfied, it wires like any
 				// other resource; unsatisfied, the component still deploys, its
 				// set_env is absent, and the un-granted dependency is noted.
-				if (httpsOriginSatisfied) {
+				// A declared use the origin's properties do not cover leaves it
+				// unfulfilled the same way (D-65 rule 4).
+				const uncovered =
+					originSatisfied && sup.uses
+						? uncoveredSuppliedUses(sup.type, useKeys(sup.uses), httpsOriginProperties)
+						: [];
+				if (uncovered.length > 0) {
+					warnings.push(
+						`${componentName}: optional public HTTPS origin ${resourceName} is not satisfied — the supplied origin does not cover every declared use (${uncovered.join("; ")}); its set_env bindings are omitted and the app runs degraded`,
+					);
+				} else if (originSatisfied) {
 					applySuppliedResource(sup, resourceName, httpsOriginProperties);
 				} else {
 					warnings.push(
 						`${componentName}: optional public HTTPS origin ${resourceName} (endpoint ` +
 							`"${sup.endpoint ?? "?"}") is not satisfied — this provider has no edge of its own and ` +
-							`${opts.appUrl === undefined ? "no publication URL was supplied" : `the supplied publication URL's scheme is "${String(appProperties.scheme)}", not https`}; ` +
+							`${opts.appUrl === undefined ? "no publication URL was supplied" : `the supplied publication URL's scheme is "${suppliedAppAddress(opts.appUrl).scheme}", not https`}; ` +
 							"its set_env bindings are omitted and the app runs degraded",
 					);
 				}
@@ -1924,6 +1962,7 @@ export function launchToCompose(
 		generatedEnv,
 		ports,
 		endpoints,
+		primaryEndpoint,
 		services: componentServices,
 		healthchecks: Object.fromEntries(
 			Object.entries(services).map(([name, service]) => [
@@ -2054,7 +2093,11 @@ function addBackingService(
 	backingServices: Record<string, (name: string) => BackingService>,
 ): { serviceName: string; properties: Record<string, string> } | null {
 	const type = req.type;
-	const factory = backingServices[type];
+	// Own-key lookup: the map arrives as a parameter, so its prototype is not
+	// this function's to assume.
+	const factory = Object.hasOwn(backingServices, type)
+		? backingServices[type]
+		: undefined;
 
 	if (!factory) {
 		// The component loop refuses a component with an unprovisionable

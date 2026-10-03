@@ -4,11 +4,55 @@ name: hoppscotch
 description: "Open-source API development ecosystem"
 
 components:
+  frontend:
+    image: hoppscotch/hoppscotch-frontend:2026.7.0
+    provides:
+      - protocol: http
+        port: 3000
+        exposed: true
+    # The browser, not the container, calls these URLs, so they use the backend's
+    # published host-side address. ws:// assumes a plain-HTTP launch. Under a
+    # supplied --url, or on providers that publish no per-endpoint address, they
+    # resolve empty (D-63 rules 4-5).
+    env:
+      VITE_BACKEND_GQL_URL:
+        default: "${app.endpoints.backend.url}/graphql"
+        description: "Backend GraphQL endpoint"
+      VITE_BACKEND_WS_URL:
+        default: "ws://${app.endpoints.backend.authority}/graphql"
+        description: "Backend WebSocket endpoint"
+      VITE_BACKEND_API_URL:
+        default: "${app.endpoints.backend.url}/v1"
+        description: "Backend REST API endpoint"
+    depends_on:
+      - "backend"
+    restart: always
+
+  admin:
+    image: hoppscotch/hoppscotch-admin:2026.7.0
+    provides:
+      - name: admin
+        protocol: http
+        port: 3100
+        exposed: true
+    env:
+      VITE_BACKEND_GQL_URL:
+        default: "${app.endpoints.backend.url}/graphql"
+        description: "Backend GraphQL endpoint"
+      VITE_BACKEND_API_URL:
+        default: "${app.endpoints.backend.url}/v1"
+        description: "Backend REST API endpoint"
+    depends_on:
+      - "backend"
+    restart: always
+
   backend:
     image: hoppscotch/hoppscotch-backend:2026.7.0
     provides:
-      - protocol: http
+      - name: backend
+        protocol: http
         port: 3170
+        exposed: true
     requires:
       - type: postgres
         set_env:
@@ -20,41 +64,8 @@ components:
       SESSION_SECRET:
         generator: secret
         sensitive: true
+      WHITELISTED_ORIGINS:
+        default: "${app.url},${app.endpoints.admin.url},${app.endpoints.backend.url}"
+        description: "Browser origins allowed to call the backend"
     health: /ping
-    restart: always
-
-  frontend:
-    image: hoppscotch/hoppscotch-frontend:2026.7.0
-    provides:
-      - protocol: http
-        port: 3000
-        exposed: true
-    env:
-      VITE_BACKEND_GQL_URL:
-        default: "http://backend:3170/graphql"
-        description: "Backend GraphQL endpoint"
-      VITE_BACKEND_WS_URL:
-        default: "ws://backend:3170/graphql"
-        description: "Backend WebSocket endpoint"
-      VITE_BACKEND_API_URL:
-        default: "http://backend:3170/v1"
-        description: "Backend REST API endpoint"
-    depends_on:
-      - "backend"
-    restart: always
-
-  admin:
-    image: hoppscotch/hoppscotch-admin:2026.7.0
-    provides:
-      - protocol: http
-        port: 3100
-    env:
-      VITE_BACKEND_GQL_URL:
-        default: "http://backend:3170/graphql"
-        description: "Backend GraphQL endpoint"
-      VITE_BACKEND_API_URL:
-        default: "http://backend:3170/v1"
-        description: "Backend REST API endpoint"
-    depends_on:
-      - "backend"
     restart: always

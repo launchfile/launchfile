@@ -779,6 +779,34 @@ components:
     expect(resourceRefusals.map((r) => r.component)).toEqual(["worker"]);
   });
 
+  it.each(["constructor", "toString", "valueOf"])(
+    "refuses `type: %s` rather than resolving an Object.prototype member as a factory",
+    (type) => {
+      // The map is looked up by a string read out of the Launchfile, so a
+      // prototype key must take the same refuse branch as any other type
+      // with no factory — the shipped provider refuses it the same way.
+      const { services, resourceRefusals } = compose(`
+version: launch/v1
+name: app
+components:
+  web:
+    image: acme/web:1
+  worker:
+    image: acme/worker:1
+    requires:
+      - type: ${type}
+`);
+      expect(services).toEqual(["app-web"]);
+      expect(resourceRefusals).toEqual([
+        {
+          component: "worker",
+          entry: type,
+          message: `this harness has no factory for type "${type}"`,
+        },
+      ]);
+    },
+  );
+
   it("does not refuse a `supports:` entry — optional resources are not preconditions", () => {
     const { services, resourceRefusals } = compose(`
 version: launch/v1
@@ -833,5 +861,27 @@ provides:
       expect.arrayContaining(["0:51820/udp", "0:51821"]),
     );
     expect(compose.services["wg-easy"]!.ports).not.toContain("0:51820");
+  });
+});
+
+describe("catalog/drafts/plausible — TOTP_VAULT_KEY is base64 of 32 bytes (#416)", () => {
+  // Plausible's runtime.exs refuses to boot unless TOTP_VAULT_KEY Base64-decodes
+  // to exactly 32 bytes. `generator: secret` yields 64 hex characters, which
+  // decode to 48 bytes; `|base64` hex-decodes first (SPEC.md, `base64` encoding
+  // behavior), so the piped secret carries the 32 bytes the app wants.
+  const file = fileURLToPath(new URL("../../drafts/plausible/Launchfile", import.meta.url));
+  const launch = readLaunch(readFileSync(file, "utf-8"));
+  const { yaml } = launchToCompose(launch, { testEnv: { BASE_URL: "http://localhost:8000" } });
+  const env = (
+    parse(yaml) as { services: Record<string, { environment: Record<string, string> }> }
+  ).services.plausible!.environment;
+
+  it("resolves TOTP_VAULT_KEY to standard base64 that decodes to 32 bytes", () => {
+    expect(env.TOTP_VAULT_KEY).toMatch(/^[A-Za-z0-9+/]{43}=$/);
+    expect(Buffer.from(env.TOTP_VAULT_KEY!, "base64")).toHaveLength(32);
+  });
+
+  it("leaves SECRET_KEY_BASE as the generator's 64 hex characters", () => {
+    expect(env.SECRET_KEY_BASE).toMatch(HEX64);
   });
 });

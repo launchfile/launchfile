@@ -10,6 +10,7 @@ import { join } from "node:path";
 import {
 	type AppEndpointProperties,
 	deriveAppUrlProperties,
+	effectiveListener,
 	endpointProperties,
 	resolveExpression,
 	isExpression,
@@ -24,7 +25,12 @@ import {
 	unsuppliedRequiredEnv,
 	useKeys,
 } from "@launchfile/sdk";
-import { declaredPrimaryComponent, wireHttpsOrigins } from "./https-origin.js";
+import {
+	type DeclaredPrimary,
+	declaredPrimary,
+	REFUSED_PRIMARY_ADDRESS,
+	wireHttpsOrigins,
+} from "./https-origin.js";
 import { getProvisioner } from "./resources/index.js";
 import type { ResourceProperties } from "./resources/types.js";
 import { coveredUses, type DbIndexes, namedDatabases, withCoveredUses } from "./resources/uses.js";
@@ -45,6 +51,14 @@ export type { ResolverContext, UnsuppliedRequiredEnv };
  * `exposed: true` provides entry, and `http://localhost:<port>` is the address.
  * Apps with no exposed component get `port: 0` and `url: ""` (and empty
  * authority/scheme/tls).
+ *
+ * A declared primary whose component `up` refuses — a `requires:` entry the
+ * publication context does not satisfy — keeps its place and has no address:
+ * every property is `REFUSED_PRIMARY_ADDRESS` (D-72), never a surviving
+ * sibling's port and never the URL that failed to satisfy the entry. `up`
+ * passes `primary` as it read it before the refusal removed the component
+ * from `launch.components`; `env` and `bootstrap` read the file whole and let
+ * the default compute it, so the three answer alike.
  *
  * With an `appUrl` — the orchestrator-supplied publication context (D-58) —
  * routing has moved upstream and the supplied URL answers instead, via the
@@ -67,27 +81,13 @@ export function computeAppProperties(
 	launch: NormalizedLaunch,
 	componentPorts: Record<string, number>,
 	appUrl?: string,
+	primary: DeclaredPrimary | undefined = declaredPrimary(launch, appUrl),
 ): Record<string, string | number> {
+	if (primary?.refused) return { name: launch.name, ...REFUSED_PRIMARY_ADDRESS };
 	if (appUrl !== undefined) return suppliedAppProperties(launch.name, appUrl);
 
-	let primaryPort = 0;
-	const declared = declaredPrimaryComponent(launch);
-	if (declared !== undefined) {
-		// A declared `https-origin` names the primary explicitly, so the
-		// positional answer below does not run — the point of D-60 rule 3. The
-		// SDK requires the named endpoint to be `exposed: true` on this component.
-		primaryPort = componentPorts[declared] ?? 0;
-	} else {
-		for (const [name, component] of Object.entries(launch.components)) {
-			// Only endpoints explicitly marked `exposed: true` are reachable from
-			// outside the host (D-27), so only they can be the app's public address.
-			const hasExposed = component.provides?.some((p) => p.exposed === true) ?? false;
-			if (hasExposed && componentPorts[name]) {
-				primaryPort = componentPorts[name]!;
-				break;
-			}
-		}
-	}
+	const component = primaryComponent(launch, componentPorts, primary);
+	const primaryPort = component === undefined ? 0 : (componentPorts[component] ?? 0);
 
 	const url = primaryPort > 0 ? `http://localhost:${primaryPort}` : "";
 	return {
@@ -97,6 +97,77 @@ export function computeAppProperties(
 		url,
 		...deriveAppUrlProperties(url),
 	};
+}
+
+/**
+ * The component whose port is the app's primary endpoint — the one `$app.*`
+ * reads and the one a supplied publication URL asserts (D-58 rule 4): the
+ * component that declares an `https-origin` entry (D-60 rule 3 — declaration
+ * fixes the primary, fulfilled or not), else the first component in
+ * declaration order that has an `exposed: true` provides entry and an
+ * allocated port. `undefined` when the app publishes nothing, and when the
+ * declared component has no allocated port (the answer is always a
+ * `componentPorts` key or nothing). `up` records
+ * the answer in state so `status`, which never reads the Launchfile, places
+ * the supplied URL on the same component.
+ */
+export function primaryComponent(
+	launch: NormalizedLaunch,
+	componentPorts: Record<string, number>,
+	primary: DeclaredPrimary | undefined = declaredPrimary(launch),
+): string | undefined {
+	if (primary !== undefined) {
+		// A declared `https-origin` names the primary explicitly, so the
+		// positional answer below does not run — the point of D-60 rule 3. The
+		// SDK requires the named endpoint to be `exposed: true` on this component.
+		// Without an allocated port it is still the primary, so the search stays
+		// off — but it is not a `ports` key, and `primaryEndpoint` must name one
+		// or nothing, so answer `undefined` rather than a key `state.ports` lacks.
+		return componentPorts[primary.component] ? primary.component : undefined;
+	}
+	for (const [name, component] of Object.entries(launch.components)) {
+		// Only endpoints explicitly marked `exposed: true` are reachable from
+		// outside the host (D-27), so only they can be the app's public address.
+		const hasExposed = component.provides?.some((p) => p.exposed === true) ?? false;
+		if (hasExposed && componentPorts[name]) return name;
+	}
+	return undefined;
+}
+
+/**
+ * The `ports` key `up` and `status` print the supplied publication URL on
+ * (§7): the primary component, when a declared `https-origin` names its
+ * endpoint — that entry's `url` is the `https` origin for every listener it
+ * admits, `ws` and `grpc` included (D-60 rule 4) — or, with no such entry,
+ * when its first `exposed: true` entry's effective listener is `http` or
+ * `https`. `undefined` for a positional `ws`, `tcp`, `udp` or `grpc`
+ * primary: a supplied URL is an `http`/`https` address and asserts nothing
+ * about what those listeners speak (D-58 rule 2), so that key keeps this
+ * provider's own printed form while `$app.url` still reads the supplied URL.
+ * This provider activates no certificate, so the effective protocol is the
+ * declared one.
+ *
+ * `undefined` for a refused declared primary (D-72): it has no address and
+ * no `ports` key, and no surviving sibling takes its place. `up` passes
+ * `primary` as it read it before its refusals removed the component from
+ * `launch.components`, as for `computeAppProperties`.
+ */
+export function printedPrimaryEndpoint(
+	launch: NormalizedLaunch,
+	componentPorts: Record<string, number>,
+	appUrl?: string,
+	primary: DeclaredPrimary | undefined = declaredPrimary(launch, appUrl),
+): string | undefined {
+	if (primary?.refused) return undefined;
+	const component = primaryComponent(launch, componentPorts, primary);
+	if (component === undefined) return undefined;
+	if (primary !== undefined) return component;
+	const entry = launch.components[component]?.provides?.find(
+		(p) => p.exposed === true,
+	);
+	if (entry === undefined) return undefined;
+	const { protocol } = effectiveListener(entry);
+	return protocol === "http" || protocol === "https" ? component : undefined;
 }
 
 /**
@@ -279,14 +350,17 @@ export async function resourceMapFromState(
  * inputs: the registered resources, the recorded ports and secrets, `$app.*`
  * from the recorded publication context (D-58) with a satisfied
  * `https-origin` wired to the same string (D-60 rule 4), and the declared
- * uses the resolver applies strictly.
+ * uses the resolver applies strictly. `primary` is the declared primary as
+ * `up` read it before its refusals; the other two verbs omit it and read the
+ * whole file.
  */
 export function resolverContextFor(
 	launch: NormalizedLaunch,
 	resourceMap: Record<string, ResourceProperties>,
 	state: LaunchState,
+	primary?: DeclaredPrimary,
 ): ResolverContext {
-	const appProperties = computeAppProperties(launch, state.ports, state.appUrl);
+	const appProperties = computeAppProperties(launch, state.ports, state.appUrl, primary);
 	wireHttpsOrigins(launch, resourceMap, state.appUrl);
 	return buildResolverContext(
 		resourceMap,

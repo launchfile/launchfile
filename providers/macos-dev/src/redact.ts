@@ -79,7 +79,20 @@ export function clearRegisteredSecrets(): void {
 // `scheme://user:password@host` — the password group is everything between the
 // first `:` after the userinfo and the `@`. Userinfo cannot contain `/`, `@`,
 // or whitespace, which bounds the match to a single URL.
-const CREDENTIAL_URL = /([a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^\s/:@]+:)([^\s/@]+)(@)/g;
+//
+// The scheme repetition is bounded rather than `*`: unbounded, every starting
+// offset in a long run of scheme-legal characters rescans that whole run
+// looking for `://`, which is quadratic in the input and lets a log line DoS
+// the redactor that is supposed to protect it (CWE-1333).
+//
+// The bound excludes no URL, and not because schemes are short — RFC 3986 sets
+// no ceiling, and `microsoft.windows.camera.multipicker` is 36 characters. It
+// is because the pattern is unanchored: against a longer scheme the match
+// simply starts further into it and the password still redacts. Raising the
+// bound to "fit the longest scheme" would restore the quadratic scan for no
+// gain.
+const CREDENTIAL_URL =
+	/([a-zA-Z][a-zA-Z0-9+.-]{0,31}:\/\/[^\s/:@]+:)([^\s/@]+)(@)/g;
 
 /**
  * Scrub registered secrets and URL-embedded credentials out of `text`.

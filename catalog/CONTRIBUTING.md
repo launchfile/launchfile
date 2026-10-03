@@ -8,6 +8,12 @@
    - The Launchfile
    - A brief description of the app and what services it needs
    - Confirmation that you tested it validates against the schema
+4. Regenerate the AWS conformance report and commit `providers/aws/CONFORMANCE.md` — the report covers every `catalog/apps/**/Launchfile`, and CI fails when it is stale. From a fresh clone the provider needs the SDK built first:
+
+   ```bash
+   cd sdk && bun install && bun run build
+   cd ../providers/aws && bun install && bun run conformance
+   ```
 
 ## Launchfile Template
 
@@ -92,6 +98,9 @@ Keep it top level. `catalog/test/src/test-app.ts` rebuilds the `images:` and
 A per-image field or a YAML comment does not survive the next
 `bun run src/test-app.ts <app>`. Top-level keys do.
 
+`test_env:` and `test_storage:` supply the values and directories the harness
+provides as operator — see [`catalog/test/README.md`](test/README.md).
+
 **Do not pin by `@sha256` digest.** A digest freezes an app at the moment its entry
 landed, and this catalog has no mechanism to re-pin. Bumping an image is not a one-line
 edit: `metadata.yaml` records `images[].size_mb` and `test_results.last_tested`, so a
@@ -121,7 +130,7 @@ run. Run the same checks locally with `cd catalog/test && bun run validate-catal
 
 ## Updating an Existing App
 
-If an app's configuration changes (new env vars, different ports, etc.), update the Launchfile and note what changed in the PR description.
+If an app's configuration changes (new env vars, different ports, etc.), update the Launchfile and note what changed in the PR description. Regenerate `providers/aws/CONFORMANCE.md` the same way as for a new app.
 
 ## Reporting Gaps
 

@@ -2,13 +2,11 @@
 version: launch/v1
 name: pihole
 description: "Network-wide ad blocking via DNS"
+repository: https://github.com/pi-hole/pi-hole
 
-# GAP: Pi-hole needs DNS on port 53 over both TCP and UDP (upstream compose
-# publishes 53:53/tcp and 53:53/udp). Both are declared below — `udp` is in
-# the protocol enum (G-8 in ../../GAPS.md is addressed). Pi-hole also often
-# requires host network mode or specific port bindings for DNS to function
-# correctly on the host: clients expect the resolver on host port 53 exactly,
-# and on a bridge network upstream sets FTLCONF_dns_listeningMode=all.
+# DNS is served on port 53 over both TCP and UDP (upstream compose publishes
+# 53:53/tcp and 53:53/udp). Resolver clients expect host port 53 exactly, and
+# on a bridge network upstream sets FTLCONF_dns_listeningMode=all.
 
 image: pihole/pihole:latest
 provides:
@@ -19,9 +17,11 @@ provides:
   - name: dns
     protocol: tcp
     port: 53
+    exposed: true
   - name: dns-udp
     protocol: udp
     port: 53
+    exposed: true
 env:
   WEBPASSWORD:
     generator: secret

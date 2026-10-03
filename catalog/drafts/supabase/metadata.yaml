@@ -1,3 +1,13 @@
 category: Backend
 tagline: "Open-source Firebase alternative"
 homepage: https://supabase.com
+known_issues:
+  - "Does not deploy. `auth.GOTRUE_DB_DATABASE_URL`, `rest.PGRST_DB_URI` and
+    `studio.STUDIO_PG_META_URL` are declared `required:` with no value source, so
+    the harness refuses the app before it starts. All three are Postgres DSNs
+    addressing the hand-authored `postgres` sibling component rather than a
+    provider-provisioned resource: `requires:` (D-7) has nothing to bind to, and
+    cross-component reference (D-6) reaches a sibling's `provides:` endpoint
+    properties only. A literal DSN embedding `${secrets.postgres-password}` would
+    resolve, at the cost of hardcoding the sibling's hostname, port and database
+    name in three places. The format has no declarative binding for them."

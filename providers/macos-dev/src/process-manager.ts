@@ -6,11 +6,49 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { createWriteStream, mkdirSync } from "node:fs";
+import { closeSync, fchmodSync, mkdirSync, openSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { NormalizedHealth, NormalizedDependsOnEntry } from "@launchfile/sdk";
-import { waitForHealthy } from "./health.js";
+import { describeHealthCheck, healthBudgetMs, healthCheckNeedsPort, waitForHealthy } from "./health.js";
 import { redactSecrets } from "./redact.js";
+
+/**
+ * How long a component gets to report healthy before `up` fails. A
+ * provider-side budget: SPEC.md § Failure semantics binds the disposition of
+ * the failure, not the number of seconds (P-11). Documented in CLAUDE.md as
+ * PROVIDERS.md §10 rule 10 requires.
+ */
+export const HEALTH_TIMEOUT_MS = 60_000;
+
+/**
+ * A component's declared `health:` never passed, or could not be checked at all.
+ * The invocation fails (SPEC.md § Failure semantics); `launchUp` tags it with
+ * the `health` phase so the CLI records the deployment the processes belong to.
+ */
+export class HealthGateError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "HealthGateError";
+	}
+}
+
+/** One component the health gate gave up on: the probe asked and the window it got. */
+export interface StuckComponent {
+	name: string;
+	check: string;
+	budgetMs: number;
+}
+
+/**
+ * What a health-gate failure says. Every stuck component is named with the
+ * probe that was asked of it and the budget it actually got — budgets differ
+ * per component once a file declares `retries` — so "did not become healthy"
+ * is actionable.
+ */
+export function healthFailureMessage(stuck: ReadonlyArray<StuckComponent>): string {
+	const named = stuck.map((s) => `${s.name} (${s.check}) within ${s.budgetMs / 1000}s`).join(", ");
+	return `component(s) did not become healthy: ${named}`;
+}
 
 // ANSI colors for log prefixing
 const COLORS = [
@@ -48,6 +86,69 @@ function killGroupOrSelf(
 	}
 }
 
+const TAIL_INTERVAL_MS = 200;
+
+/**
+ * Prints a component's log file as it grows. The component writes the file
+ * itself; this only reads what it appends, so the console view holds nothing
+ * the writer depends on. Polled, from the size the file had at `start`.
+ */
+class LogTail {
+	private offset = 0;
+	private partial = "";
+	private timer?: NodeJS.Timeout;
+
+	constructor(
+		private readonly path: string,
+		private readonly onLine: (line: string) => void,
+	) {}
+
+	start(): void {
+		this.offset = this.size();
+		this.timer = setInterval(() => this.drain(), TAIL_INTERVAL_MS);
+		// The child handle keeps the session alive; the tail never should.
+		this.timer.unref();
+	}
+
+	/** Print the rest of the file and stop polling. */
+	stop(): void {
+		if (this.timer) clearInterval(this.timer);
+		this.timer = undefined;
+		this.drain();
+		if (this.partial) {
+			this.onLine(this.partial);
+			this.partial = "";
+		}
+	}
+
+	private size(): number {
+		try {
+			return statSync(this.path).size;
+		} catch {
+			return 0;
+		}
+	}
+
+	private drain(): void {
+		const size = this.size();
+		if (size <= this.offset) return;
+		const buf = Buffer.alloc(size - this.offset);
+		const fd = openSync(this.path, "r");
+		try {
+			const read = readSync(fd, buf, 0, buf.length, this.offset);
+			this.offset += read;
+			this.partial += buf.subarray(0, read).toString();
+		} finally {
+			closeSync(fd);
+		}
+		const lines = this.partial.split("\n");
+		this.partial = lines.pop() ?? "";
+		for (const line of lines) {
+			if (line) this.onLine(line);
+		}
+	}
+}
+
 interface ManagedProcess {
 	name: string;
 	command: string;
@@ -73,9 +174,11 @@ export interface RecordedProcessInfo {
 export class ProcessManager {
 	private processes = new Map<string, ManagedProcess>();
 	private logDir: string;
+	private healthTimeoutMs: number;
 
-	constructor(projectDir: string) {
+	constructor(projectDir: string, opts: { healthTimeoutMs?: number } = {}) {
 		this.logDir = join(projectDir, ".launchfile", "logs");
+		this.healthTimeoutMs = opts.healthTimeoutMs ?? HEALTH_TIMEOUT_MS;
 		// Security: restrict permissions — logs may contain sensitive output
 		mkdirSync(this.logDir, { recursive: true, mode: 0o700 });
 	}
@@ -104,7 +207,13 @@ export class ProcessManager {
 	}
 
 	/**
-	 * Start all registered processes respecting dependency order.
+	 * Start all registered processes respecting dependency order, then verify
+	 * every component that declares `health:` actually became healthy.
+	 *
+	 * SPEC.md § Failure semantics: a component that never becomes healthy
+	 * FAILS THE INVOCATION. The rejection names each stuck component and the
+	 * probe it was asked. Processes that did start are left running and stay
+	 * registered, so the caller can record their pids for `status`/`logs`/`down`.
 	 */
 	async startAll(): Promise<void> {
 		const batches = this.topologicalSort();
@@ -114,22 +223,81 @@ export class ProcessManager {
 			await Promise.all(batch.map((name) => this.startOne(name)));
 		}
 
-		console.log("\n  All components started.");
+		// A dependency gate above already verified some components; the sweep
+		// covers the rest — including every component nothing depends on.
+		const stuck: StuckComponent[] = [];
+		await Promise.all(
+			[...this.processes.values()].map(async (proc) => {
+				const health = proc.health;
+				if (!health || !proc.process || proc.status === "healthy") return;
+				if (!(await this.pollHealthy(proc, health))) {
+					stuck.push(this.stuck(proc, health));
+				}
+			}),
+		);
+		if (stuck.length > 0) {
+			throw this.healthFailure(healthFailureMessage(stuck));
+		}
+	}
+
+	/** The failure-message entry for a component whose check never passed. */
+	private stuck(proc: ManagedProcess, health: NormalizedHealth): StuckComponent {
+		return {
+			name: proc.name,
+			check: describeHealthCheck(health, proc.port),
+			budgetMs: healthBudgetMs(health, this.healthTimeoutMs),
+		};
+	}
+
+	/** Report a health-gate failure on stderr and build the error `up` rejects with. */
+	private healthFailure(message: string): HealthGateError {
+		console.error(`  ! ${message}`);
+		console.error(
+			"    Processes are left running: `launchfile status` lists them, .launchfile/logs/<component>.log has their output, `launchfile down` stops them.",
+		);
+		return new HealthGateError(message);
+	}
+
+	/**
+	 * Poll one component's declared check until it passes or the budget runs
+	 * out. Throws when the check cannot run at all: a `path` check with no
+	 * allocated port has nothing to poll, and treating that as healthy would be
+	 * a silent pass of a check the file declared.
+	 */
+	private async pollHealthy(proc: ManagedProcess, health: NormalizedHealth): Promise<boolean> {
+		if (healthCheckNeedsPort(health) && proc.port === undefined) {
+			throw this.healthFailure(
+				`component ${proc.name} declares a health check (${describeHealthCheck(health, undefined)}) but no port was allocated to poll`,
+			);
+		}
+		// A command check never reads the port; 0 only fills the parameter.
+		const budget = healthBudgetMs(health, this.healthTimeoutMs);
+		const ok = await waitForHealthy(proc.name, health, proc.port ?? 0, budget);
+		if (ok) proc.status = "healthy";
+		return ok;
 	}
 
 	private async startOne(name: string): Promise<void> {
 		const proc = this.processes.get(name);
 		if (!proc) throw new Error(`Unknown component: ${name}`);
 
-		// Wait for dependencies
+		// Wait for dependencies. A `condition: healthy` gate fails closed: the
+		// dependent never starts when the dependency cannot be verified, and the
+		// whole invocation fails — the same answer compose gives `service_healthy`.
 		for (const dep of proc.dependsOn) {
 			const depProc = this.processes.get(dep.component);
 			if (!depProc) continue;
 
 			if (dep.condition === "healthy") {
 				console.log(`  [${name}] Waiting for ${dep.component} to be healthy...`);
-				if (depProc.health && depProc.port) {
-					await waitForHealthy(dep.component, depProc.health, depProc.port);
+				if (!depProc.health) {
+					throw this.healthFailure(
+						`component ${name} depends on ${dep.component} with condition: healthy, but ${dep.component} declares no health check`,
+					);
+				}
+				if (depProc.status !== "healthy" && !(await this.pollHealthy(depProc, depProc.health))) {
+					const message = healthFailureMessage([this.stuck(depProc, depProc.health)]);
+					throw this.healthFailure(`${message}; ${name} was not started`);
 				}
 			}
 			// For "started" condition, the process is already spawned by the time we get here
@@ -138,55 +306,52 @@ export class ProcessManager {
 		proc.status = "starting";
 		console.log(`  [${name}] Starting: ${redactSecrets(proc.command)}`);
 
-		const logFile = createWriteStream(join(this.logDir, `${name}.log`), { flags: "a" });
 		const colorIdx = [...this.processes.keys()].indexOf(name) % COLORS.length;
 		const color = COLORS[colorIdx]!;
 		const maxNameLen = Math.max(...[...this.processes.keys()].map((n) => n.length));
 		const paddedName = name.padEnd(maxNameLen);
 
-		// `detached: true` makes the child the leader of a new process group
-		// (pgid === pid). That lets `launch down` signal the whole group later via
-		// a negative pid, killing the app AND any children it spawned — matching
-		// the foreground SIGINT behavior across sessions. We still keep the handle
-		// so the foreground session can kill it directly on Ctrl+C.
-		proc.process = spawn("sh", ["-c", proc.command], {
-			env: { ...process.env, ...proc.env },
-			cwd: proc.cwd,
-			stdio: ["ignore", "pipe", "pipe"],
-			detached: true,
+		// The child writes its stdout and stderr straight to its log file. A pipe
+		// held by this process would die with it, and a component left running
+		// after `up` fails (SPEC.md § Failure semantics) must survive its next
+		// write. The console view is a tail of that file.
+		const logPath = join(this.logDir, `${name}.log`);
+		const tail = new LogTail(logPath, (line) => {
+			process.stdout.write(`${color}[${paddedName}]${RESET} ${line}\n`);
 		});
+		tail.start();
+
+		// The log holds the component's raw output, which can include a secret an
+		// app prints on first boot. The open mode covers a new file only, so a log
+		// left by an earlier run is tightened too.
+		const logFd = openSync(logPath, "a", 0o600);
+		try {
+			fchmodSync(logFd, 0o600);
+			// `detached: true` makes the child the leader of a new process group
+			// (pgid === pid). That lets `launch down` signal the whole group later via
+			// a negative pid, killing the app AND any children it spawned — matching
+			// the foreground SIGINT behavior across sessions. We still keep the handle
+			// so the foreground session can kill it directly on Ctrl+C.
+			proc.process = spawn("sh", ["-c", proc.command], {
+				env: { ...process.env, ...proc.env },
+				cwd: proc.cwd,
+				stdio: ["ignore", logFd, logFd],
+				detached: true,
+			});
+		} finally {
+			// The child holds its own copy of the descriptor.
+			closeSync(logFd);
+		}
 		if (proc.process.pid !== undefined) {
 			proc.startedAt = new Date().toISOString();
 		}
 
-		// Pipe stdout with prefix
-		proc.process.stdout?.on("data", (data: Buffer) => {
-			const lines = data.toString().split("\n");
-			for (const line of lines) {
-				if (line) {
-					process.stdout.write(`${color}[${paddedName}]${RESET} ${line}\n`);
-					logFile.write(`${new Date().toISOString()} ${line}\n`);
-				}
-			}
-		});
-
-		// Pipe stderr with prefix
-		proc.process.stderr?.on("data", (data: Buffer) => {
-			const lines = data.toString().split("\n");
-			for (const line of lines) {
-				if (line) {
-					process.stderr.write(`${color}[${paddedName}]${RESET} \x1b[2m${line}${RESET}\n`);
-					logFile.write(`${new Date().toISOString()} ERR ${line}\n`);
-				}
-			}
-		});
-
 		proc.process.on("exit", (code) => {
 			proc.status = code === 0 ? "stopped" : "failed";
+			tail.stop();
 			console.log(
 				`${color}[${paddedName}]${RESET} Process exited with code ${code}`,
 			);
-			logFile.end();
 		});
 
 		proc.status = "running";

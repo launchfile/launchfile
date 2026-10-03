@@ -17,10 +17,12 @@ provides:
     port: 22
     exposed: true
 requires:
+  # Gitea reads [database] HOST as host and port in one value
+  # (custom/conf/app.example.ini:376, `HOST = 127.0.0.1:5432`).
   - type: postgres
     set_env:
       GITEA__database__DB_TYPE: postgres
-      GITEA__database__HOST: $host
+      GITEA__database__HOST: "${host}:${port}"
       GITEA__database__NAME: $name
       GITEA__database__USER: $user
       GITEA__database__PASSWD: $password
