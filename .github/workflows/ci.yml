@@ -356,10 +356,10 @@ jobs:
   # repo, and fails if it exits non-zero.
   #
   # @launchfile/macos-dev is not probed: importing it runs a top-level check in
-  # up.ts that deliberately exits 1 off macOS. The `launchfile` CLI is not
-  # probed: cli.ts reads ../package.json from disk at startup, so its compiled
-  # binary cannot run `--version` yet. @launchfile/aws is private and not
-  # published.
+  # up.ts that deliberately exits 1 off macOS. The `launchfile` package's
+  # library entry (src/index.ts) is probed, but not the CLI binary: cli.ts
+  # reads ../package.json from disk at startup, so a compiled CLI cannot run
+  # `--version` yet. @launchfile/aws is private and not published.
   #
   # No `needs:` edge, for the reason recorded on aws-terraform-validate: this
   # job builds what it imports from source.
@@ -375,6 +375,7 @@ jobs:
         run: |
           cd sdk && bun install --frozen-lockfile && bun run build
           cd ../providers/docker && bun install --frozen-lockfile && bun run build
+      - run: cd packages/launchfile && bun install --frozen-lockfile
       - name: Compile and run the probe outside the repo
         run: |
           set -euo pipefail
@@ -385,8 +386,9 @@ jobs:
           cat > "$scratch/probe.ts" <<EOF
           import { readLaunch } from "$repo/sdk/src/index.ts";
           import { dockerUp } from "$repo/providers/docker/src/index.ts";
+          import { handleUp } from "$repo/packages/launchfile/src/index.ts";
 
-          const exports: Record<string, unknown> = { readLaunch, dockerUp };
+          const exports: Record<string, unknown> = { readLaunch, dockerUp, handleUp };
           for (const [name, value] of Object.entries(exports)) {
             if (typeof value !== "function") {
               console.error(name + " is not a function");
