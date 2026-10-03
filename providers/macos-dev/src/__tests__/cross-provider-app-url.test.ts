@@ -12,9 +12,9 @@
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { computeAppProperties as dockerAppProperties } from "@launchfile/docker";
 import { readLaunch, resolveExpression } from "@launchfile/sdk";
 import { describe, expect, it } from "vitest";
-import { computeAppProperties as dockerAppProperties } from "../../../docker/src/app-url.js";
 import {
 	buildResolverContext,
 	computeAppProperties,
