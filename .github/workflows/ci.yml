@@ -51,6 +51,9 @@ jobs:
           bun-version: 1.4.2
       - name: Build SDK (local dependency)
         run: cd sdk && bun install --frozen-lockfile && bun run build
+      - name: Build docker provider (macos-dev's test imports it)
+        if: matrix.provider == 'macos-dev'
+        run: cd providers/docker && bun install --frozen-lockfile && bun run build
       - run: cd providers/${{ matrix.provider }} && bun install --frozen-lockfile
       - run: cd providers/${{ matrix.provider }} && bun run typecheck
       - run: cd providers/${{ matrix.provider }} && bun run test
