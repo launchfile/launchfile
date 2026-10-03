@@ -3,8 +3,8 @@
  * or a deployment entry (for `down`, `status`, `logs`).
  */
 
-import { resolve } from "node:path";
-import { existsSync } from "node:fs";
+import { basename, resolve } from "node:path";
+import { existsSync, statSync } from "node:fs";
 import {
 	loadIndex,
 	findDeployment,
@@ -49,10 +49,18 @@ export function resolveUpTarget(target: string | undefined): UpTarget {
 	// Path (contains slash/dot or file exists)
 	if (target.includes("/") || target.includes(".") || existsSync(resolve(target))) {
 		const resolved = resolve(target);
-		const dir = existsSync(resolved) && !resolved.endsWith("Launchfile")
-			? resolved
-			: resolve(resolved, "..");
-		return { type: "local", value: resolved, dir };
+		if (!existsSync(resolved)) {
+			console.error(`No such file or directory: ${target}`);
+			process.exit(1);
+		}
+		if (statSync(resolved).isDirectory()) {
+			return { type: "local", value: resolved, dir: resolved };
+		}
+		if (basename(resolved) !== "Launchfile") {
+			console.error(`Not a directory or a file named Launchfile: ${target}`);
+			process.exit(1);
+		}
+		return { type: "local", value: resolved, dir: resolve(resolved, "..") };
 	}
 
 	// Catalog slug
