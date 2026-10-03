@@ -9,6 +9,10 @@ import { readFile, writeFile, mkdir, chmod } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { registerSecrets } from "./redact.js";
+import {
+	assertSafeIdentifier,
+	assertSafePassword,
+} from "./resources/identifiers.js";
 import type { DbIndexes } from "./resources/uses.js";
 
 export interface ResourceState {
@@ -180,24 +184,258 @@ export function hashLaunchfile(content: string): string {
 	return createHash("sha256").update(content).digest("hex").slice(0, 16);
 }
 
-/** Load state from disk, or return null if none exists */
-export async function loadState(projectDir: string): Promise<LaunchState | null> {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isPort(value: unknown): boolean {
+	return (
+		Number.isInteger(value) &&
+		(value as number) >= 1 &&
+		(value as number) <= 65535
+	);
+}
+
+function isPositiveInteger(value: unknown): boolean {
+	return Number.isInteger(value) && (value as number) > 0;
+}
+
+function isNonNegativeInteger(value: unknown): boolean {
+	return Number.isInteger(value) && (value as number) >= 0;
+}
+
+function isStringMap(value: unknown): value is Record<string, string> {
+	return (
+		isPlainObject(value) &&
+		Object.values(value).every((v) => typeof v === "string")
+	);
+}
+
+/** True when a use-site assert accepts the value: boundary and sink share one rule. */
+function passes(assert: () => void): boolean {
 	try {
-		const raw = await readFile(statePath(projectDir), "utf8");
-		const state = JSON.parse(raw) as LaunchState;
-		// Persisted credentials are reused verbatim in provisioning commands and
-		// in `$secrets.*` / `$<resource>.*` expressions, so they must be known to
-		// the redactor before anything can echo them.
-		registerSecrets(Object.values(state.secrets ?? {}));
-		registerSecrets(Object.values(state.resources ?? {}).map((r) => r.password));
-		// A value minted in an earlier run and merely reused in this one never
-		// passes through generateValue()'s registration, so the loader is the
-		// only place it can become scrubbable (D-18).
-		registerSecrets(Object.values(state.generatedEnv ?? {}));
-		return state;
+		assert();
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * One line per dropped field, naming the file so an operator can find and
+ * repair it. `console.warn` writes to stderr: a load happens under every verb,
+ * including the ones whose stdout is the answer (`status`, `env`).
+ */
+function warnDropped(file: string, field: string, reason: string): void {
+	console.warn(`  Warning: ${file}: ignoring ${field} (${reason})`);
+}
+
+/**
+ * Why a `resources` entry cannot be loaded, or null when it can. `dbName`,
+ * `user` and `password` reach SQL by interpolation on the reuse path, so they
+ * pass the same asserts the provisioners apply at the point of use (#258).
+ */
+function resourceProblem(value: unknown): string | null {
+	if (!isPlainObject(value)) return "not an object";
+	if (typeof value.type !== "string") return "type is not a string";
+	if (typeof value.name !== "string") return "name is not a string";
+	if (!isPort(value.port)) return "port is not an integer in 1-65535";
+	if (
+		value.brewService !== undefined &&
+		typeof value.brewService !== "string"
+	) {
+		return "brewService is not a string";
+	}
+	for (const key of ["dbName", "user"] as const) {
+		const identifier = value[key];
+		if (identifier === undefined) continue;
+		if (
+			typeof identifier !== "string" ||
+			!passes(() => assertSafeIdentifier(identifier, key))
+		) {
+			return `${key} is not a safe SQL identifier`;
+		}
+	}
+	const password = value.password;
+	if (
+		password !== undefined &&
+		(typeof password !== "string" ||
+			!passes(() => assertSafePassword(password)))
+	) {
+		return "password is not base64url";
+	}
+	if (value.dbIndex !== undefined && !isNonNegativeInteger(value.dbIndex)) {
+		return "dbIndex is not a non-negative integer";
+	}
+	const named = value.namedDbIndexes;
+	if (
+		named !== undefined &&
+		!(isPlainObject(named) && Object.values(named).every(isNonNegativeInteger))
+	) {
+		return "namedDbIndexes is not a map of non-negative integers";
+	}
+	const databases = value.databases;
+	if (
+		databases !== undefined &&
+		!(Array.isArray(databases) && databases.every((d) => typeof d === "string"))
+	) {
+		return "databases is not a list of strings";
+	}
+	return null;
+}
+
+/**
+ * Why a `processes` entry cannot be loaded, or null when it can. `down`
+ * signals the recorded group after `checkIdentity` compares `startedAt` with
+ * the live process's start time, so a record that claims to have started more
+ * than a minute in the future describes no process this provider spawned and
+ * is never handed to the signalling path.
+ */
+function processProblem(value: unknown, now: number): string | null {
+	if (!isPlainObject(value)) return "not an object";
+	if (!isPositiveInteger(value.pid)) return "pid is not a positive integer";
+	if (!isPositiveInteger(value.pgid)) return "pgid is not a positive integer";
+	if (typeof value.command !== "string") return "command is not a string";
+	if (typeof value.startedAt !== "string") return "startedAt is not a string";
+	const startedAt = Date.parse(value.startedAt);
+	if (Number.isNaN(startedAt)) return "startedAt is not a parseable timestamp";
+	// A backwards clock step between spawn and load must not orphan a live
+	// group; checkIdentity still compares against the real start time.
+	if (startedAt > now + 60_000)
+		return "startedAt is more than a minute in the future";
+	return null;
+}
+
+/** Top-level fields holding a string when present; no reader needs them to load. */
+const OPTIONAL_STRING_FIELDS = [
+	"launchfileHash",
+	"createdAt",
+	"updatedAt",
+	"appUrl",
+	"primaryEndpoint",
+] as const;
+
+/** Top-level `Record<string, string>` fields. */
+const STRING_MAP_FIELDS = ["secrets", "generatedEnv", "prepared"] as const;
+
+/**
+ * Drop the entries of a keyed field whose values fail `problem`, and the whole
+ * field when it is not an object. Every surviving sibling stays.
+ */
+function checkEntries(
+	parsed: Record<string, unknown>,
+	key: string,
+	file: string,
+	problem: (value: unknown) => string | null,
+): void {
+	const map = parsed[key];
+	if (map === undefined) return;
+	if (!isPlainObject(map)) {
+		warnDropped(file, key, "not an object");
+		delete parsed[key];
+		return;
+	}
+	for (const [entryKey, entryValue] of Object.entries(map)) {
+		const reason = problem(entryValue);
+		if (reason !== null) {
+			warnDropped(file, `${key}.${entryKey}`, reason);
+			delete map[entryKey];
+		}
+	}
+}
+
+/**
+ * Check a parsed state file field by field, in place, and hand back what
+ * survived. The file sits inside the project directory, so a cloned
+ * repository can ship one: nothing in it is trusted until it has passed here.
+ *
+ * A field or entry that fails its check is dropped with a warning and every
+ * other one is kept — discarding the whole file over one bad `resources`
+ * entry would take `processes` with it, and `down` would leave the app's
+ * processes running. Only an envelope no reader can use (`appName`,
+ * `resources`, `secrets` or `ports` missing or of the wrong type) returns
+ * null, with one warning naming the field.
+ *
+ * Keys this function does not know are left untouched, at the top level and
+ * inside entries, so a field written by a newer provider version survives a
+ * load-and-save round trip through an older one (P-13). Bootstrap saves
+ * mid-run from the object this returns, which is why bad entries are removed
+ * from the parsed object rather than a clean one rebuilt from a key list.
+ */
+function validateState(
+	parsed: Record<string, unknown>,
+	file: string,
+): LaunchState | null {
+	if (typeof parsed.appName !== "string") {
+		warnDropped(file, "state", "appName is not a string");
+		return null;
+	}
+	for (const key of ["resources", "secrets", "ports"] as const) {
+		if (!isPlainObject(parsed[key])) {
+			warnDropped(file, "state", `${key} is not an object`);
+			return null;
+		}
+	}
+
+	if (parsed.version !== undefined && typeof parsed.version !== "number") {
+		warnDropped(file, "version", "not a number");
+		delete parsed.version;
+	}
+	for (const key of OPTIONAL_STRING_FIELDS) {
+		if (parsed[key] !== undefined && typeof parsed[key] !== "string") {
+			warnDropped(file, key, "not a string");
+			delete parsed[key];
+		}
+	}
+	for (const key of STRING_MAP_FIELDS) {
+		checkEntries(parsed, key, file, (v) =>
+			typeof v === "string" ? null : "not a string",
+		);
+	}
+	checkEntries(parsed, "ports", file, (v) =>
+		isPort(v) ? null : "not an integer in 1-65535",
+	);
+	checkEntries(parsed, "operatorStorage", file, (v) =>
+		isStringMap(v) ? null : "not a map of paths",
+	);
+	checkEntries(parsed, "resources", file, resourceProblem);
+	const now = Date.now();
+	checkEntries(parsed, "processes", file, (v) => processProblem(v, now));
+
+	return parsed as unknown as LaunchState;
+}
+
+/**
+ * Load state from disk, or return null if none exists or the file holds
+ * nothing a reader can use. Never throws: a malformed file is a warning on
+ * stderr, not a crash under `status` or `down`.
+ */
+export async function loadState(
+	projectDir: string,
+): Promise<LaunchState | null> {
+	const file = statePath(projectDir);
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(await readFile(file, "utf8"));
 	} catch {
 		return null;
 	}
+	if (!isPlainObject(parsed)) {
+		warnDropped(file, "state", "not a JSON object");
+		return null;
+	}
+	const state = validateState(parsed, file);
+	if (state === null) return null;
+	// Persisted credentials are reused verbatim in provisioning commands and
+	// in `$secrets.*` / `$<resource>.*` expressions, so they must be known to
+	// the redactor before anything can echo them.
+	registerSecrets(Object.values(state.secrets));
+	registerSecrets(Object.values(state.resources).map((r) => r.password));
+	// A value minted in an earlier run and merely reused in this one never
+	// passes through generateValue()'s registration, so the loader is the
+	// only place it can become scrubbable (D-18).
+	registerSecrets(Object.values(state.generatedEnv ?? {}));
+	return state;
 }
 
 /** Create a fresh state object */
