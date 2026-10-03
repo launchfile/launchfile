@@ -35,12 +35,20 @@ function hashToRange(input: string, rangeSize: number): number {
 	return Math.abs(hash) % rangeSize;
 }
 
-async function isPortFree(port: number, proto: WireProtocol): Promise<boolean> {
+/**
+ * Docker publishes a container port on the wildcard address (0.0.0.0), and a
+ * wildcard holder does not necessarily conflict with a bind to 127.0.0.1.
+ * A port counts as free only when both the loopback and the wildcard address
+ * accept a bind.
+ */
+const PROBE_ADDRESSES = ["127.0.0.1", "0.0.0.0"] as const;
+
+function canBind(port: number, proto: WireProtocol, address: string): Promise<boolean> {
 	if (proto === "udp") {
 		return new Promise((resolve) => {
 			const socket = createSocket("udp4");
 			socket.once("error", () => resolve(false));
-			socket.bind(port, "127.0.0.1", () => {
+			socket.bind(port, address, () => {
 				socket.close(() => resolve(true));
 			});
 		});
@@ -51,8 +59,15 @@ async function isPortFree(port: number, proto: WireProtocol): Promise<boolean> {
 		server.once("listening", () => {
 			server.close(() => resolve(true));
 		});
-		server.listen(port, "127.0.0.1");
+		server.listen(port, address);
 	});
+}
+
+async function isPortFree(port: number, proto: WireProtocol): Promise<boolean> {
+	for (const address of PROBE_ADDRESSES) {
+		if (!(await canBind(port, proto, address))) return false;
+	}
+	return true;
 }
 
 async function allocatePort(key: string, taken: Set<string>, proto: WireProtocol): Promise<number> {
@@ -145,11 +160,16 @@ export function publishedEndpoints(
  * only the UDP side of a port and is probed with a UDP socket, so a tcp/udp
  * pair on one container port (the DNS shape) shares its host port and
  * round-trips saved state identically.
+ *
+ * `ownPorts` holds the `<port>/<tcp|udp>` slots the deployment's running
+ * containers already publish. A saved port in that set is reused without
+ * probing, because the probe would see the deployment's own bind as taken.
  */
 export async function allocatePorts(
 	components: Record<string, { provides?: ProvidesEntry[] }>,
 	appName: string,
 	savedPorts?: Record<string, number>,
+	ownPorts?: ReadonlySet<string>,
 ): Promise<Record<string, number>> {
 	const taken = new Set<string>();
 	const result: Record<string, number> = {};
@@ -159,9 +179,15 @@ export async function allocatePorts(
 			const { key, port: containerPort } = endpoint;
 			const proto = wireProtocol(endpoint.protocol);
 
-			// Reuse saved port if still free, so a restart keeps its URLs.
+			// Reuse a saved port when this deployment's own containers hold it
+			// (a re-up of a live deployment) or when it is still free, so a
+			// restart keeps its URLs.
 			const saved = savedPorts?.[key];
-			if (saved && !taken.has(portSlot(saved, proto)) && (await isPortFree(saved, proto))) {
+			if (
+				saved &&
+				!taken.has(portSlot(saved, proto)) &&
+				(ownPorts?.has(portSlot(saved, proto)) || (await isPortFree(saved, proto)))
+			) {
 				result[key] = saved;
 				taken.add(portSlot(saved, proto));
 				continue;
