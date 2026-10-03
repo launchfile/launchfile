@@ -94,6 +94,45 @@ entry **fails the app's test run by name**, before any image is pulled. If a
 value belongs in the Launchfile rather than in a fixture, give it a `default:`
 or a `generator:` instead.
 
+### `test_storage:` — the harness's operator channel for volumes
+
+A volume marked `content: operator` (D-50) holds content only a person can
+supply, so the provider binds a directory the operator passes at launch or
+refuses the component — it never starts the app over an empty directory. The
+harness is an operator, so it supplies that directory from a `test_storage:`
+block you write by hand:
+
+```yaml
+test_storage:
+  config: test/config
+```
+
+The key is the volume name (`<component>.<volume>` when the bare name is
+ambiguous). The value is a path **relative to the app's directory**; the
+harness resolves it to an absolute host path before the translator sees it, so
+no host path ever enters the `Launchfile` or `metadata.yaml`. Commit the
+fixture. A marked volume with no `test_storage:` entry — or one whose path is
+not readable — **fails the app's test run by name**, before any image is
+pulled, and the same check runs across every app in `catalog/apps/` in
+`launch-to-compose.test.ts`. A `test_storage:` key that matches no
+`content: operator` volume is ignored with a warning, so a misspelled volume
+name surfaces as the unbound volume it left behind, not as a silent success.
+
+### `known_issues:` — why an app still does not come up
+
+A draft can be declaration-correct and still fail to deploy, for a reason the
+Launchfile cannot express. Record that in a top-level `known_issues:` list:
+
+```yaml
+known_issues:
+  - "Does not deploy. The three Postgres DSNs point at a hand-authored sibling
+    component, which `requires:` cannot bind to. Tracked by #236."
+```
+
+It is top level on purpose. `test_results:` and `images:` are rebuilt from
+scratch on every run, so a note written inside `test_results.notes` does not
+survive the next `bun run src/test-app.ts <app>`.
+
 ## Known Limitations
 
 - `build:` components are skipped (no source code to build)

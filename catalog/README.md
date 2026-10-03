@@ -19,7 +19,7 @@ apps/       Tested and verified — launches successfully
 drafts/     Proposed — Launchfile written, not yet verified
 ```
 
-Tested apps have screenshots, test results, and metadata in their directory. The source of truth is the `apps/` directory itself.
+Tested apps have passed `test/src/test-app.ts`, which writes their test results to `metadata.yaml`. Some also have a `screenshot.png`, captured separately with `test/src/screenshot-all.ts`. Screenshots are optional. The source of truth is the `apps/` directory itself.
 
 ## Tested Apps
 
@@ -90,7 +90,7 @@ Draft Launchfiles in [`drafts/`](drafts/) — not yet verified end-to-end. PRs w
 | [Opengist](drafts/opengist/) | Git | |
 | [Penpot](drafts/penpot/) | Design | |
 | [Pi-hole](drafts/pihole/) | DNS | |
-| [Plausible](drafts/plausible/) | Analytics | Gap: no clickhouse type (G-4) |
+| [Plausible](drafts/plausible/) | Analytics | |
 | [Plex](drafts/plex/) | Media | Gap: GPU (G-10) |
 | [PostHog](drafts/posthog/) | Analytics | |
 | [Rocket.Chat](drafts/rocketchat/) | Communication | Gap: replica set (G-5) |
@@ -103,7 +103,7 @@ Draft Launchfiles in [`drafts/`](drafts/) — not yet verified end-to-end. PRs w
 
 1. Test the draft: `cd test && bun run src/test-app.ts <app-name>`
 2. If it passes, move it: `git mv catalog/drafts/<app> catalog/apps/<app>`
-3. The test harness writes `metadata.yaml` with test results and a screenshot
+3. The test harness writes `metadata.yaml` with test results. A screenshot is optional: `bun run src/screenshot-all.ts <app-name>` launches the app and saves `screenshot.png` to its directory. `test-app.ts` does not take screenshots.
 
 ## Contributing
 

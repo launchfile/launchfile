@@ -228,6 +228,21 @@ describe("err serializer", () => {
 		expect(Buffer.isBuffer(serialized.buf)).toBe(true);
 	});
 
+	it("never prints the userinfo of a URL attached to the error", () => {
+		const { logger: testLogger, getLogs } = createTestLogger({
+			serializers: { err: serializeErr },
+		});
+		const err = Object.assign(new Error("clone failed"), {
+			url: new URL("https://deploy:hunter2pass@git.example.com/repo.git"),
+		});
+
+		testLogger.error({ err }, "clone failed");
+
+		const [entry] = getLogs();
+		expect(JSON.stringify(entry)).not.toContain("hunter2pass");
+		expect((entry?.err as Record<string, unknown>).url).toEqual({});
+	});
+
 	it("is wired into the root logger for the `err` field", () => {
 		const lines: string[] = [];
 		const stream = new Writable({

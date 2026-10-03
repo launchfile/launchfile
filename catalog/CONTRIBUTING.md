@@ -98,6 +98,9 @@ Keep it top level. `catalog/test/src/test-app.ts` rebuilds the `images:` and
 A per-image field or a YAML comment does not survive the next
 `bun run src/test-app.ts <app>`. Top-level keys do.
 
+`test_env:` and `test_storage:` supply the values and directories the harness
+provides as operator — see [`catalog/test/README.md`](test/README.md).
+
 **Do not pin by `@sha256` digest.** A digest freezes an app at the moment its entry
 landed, and this catalog has no mechanism to re-pin. Bumping an image is not a one-line
 edit: `metadata.yaml` records `images[].size_mb` and `test_results.last_tested`, so a

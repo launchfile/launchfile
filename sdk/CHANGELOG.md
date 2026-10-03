@@ -1,5 +1,19 @@
 # @launchfile/sdk
 
+## 0.13.0
+
+### Patch Changes
+
+- [#345](https://github.com/launchfile/launchfile/pull/345) [`95df039`](https://github.com/launchfile/launchfile/commit/95df0392bdf474842cca95e6d9715c13a21e7c64) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Bound the repetitions in the ANSI-stripping and credential-URL patterns, so a long log line can no longer stall the provider that is reading it (CWE-1333).
+  
+  Two shapes were quadratic. `stripAnsi` in both providers' `bootstrap.ts` carried `\x1b\][^\x07]*\x07`: every `ESC ]` in captured stdout rescanned the whole remainder for a BEL a hostile log never supplies — 40 000 `ESC ]` pairs took 366 ms through `extractCaptures`. `CREDENTIAL_URL` in `@launchfile/macos-dev`'s redactor left the scheme repetition unbounded, so a long run of scheme-legal characters that never reaches `://` rescanned from every offset — 80 000 characters took 895 ms through `redactSecrets`. Both measured under Bun 1.4.0 on an Apple-silicon Mac; bounded, each takes under 1 ms. `@launchfile/docker`'s redactor was already bounded.
+  
+  The ANSI pattern now also ends an OSC string at ST (`ESC \`) as ECMA-48 requires, not only at BEL. The unbounded class ran past an ST into the next OSC, so an OSC 8 hyperlink lost its link text — and a `commands.*.capture` pattern looking for the URL in that text captured a string with escape bytes still in it. It now captures the URL.
+  
+  The CSI parameter bound is 64 rather than 32. One SGR that sets a truecolor foreground and background together — `ESC [ 38;2;255;255;255;48;2;240;240;240 m` — carries 33 parameter bytes, and a sequence past the bound is not stripped at all. `@launchfile/sdk` carries the same pattern and takes the same bound, so all three copies stay identical.
+  
+  The scheme bound excludes no URL: the pattern is unanchored, so against a scheme longer than the bound the match simply starts further into it and the password still redacts.
+
 ## 0.12.0
 
 ### Minor Changes
@@ -69,6 +83,8 @@
   unchanged.
 
 - [#519](https://github.com/launchfile/launchfile/pull/519) [`d2039b2`](https://github.com/launchfile/launchfile/commit/d2039b22ce1ed3fb5fc2fb7f2cb427d3582e4269) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Added named repeatable uses ([#516](https://github.com/launchfile/launchfile/issues/516), SPEC.md § Resource uses): a use the vocabulary marks repeatable (`db` on redis, `database` on postgres and mysql) may occur more than once on one entry, each occurrence a single-key map naming it — `uses: [{db: cache}, {db: sessions}, pubsub]` — and addressed as `$<resource>.<use>.<name>.<property>` (`$redis.db.cache.url`, `$redis.db.sessions.index`). `readLaunch` rejects the same name twice on one token, a token declared both bare and named on one entry, a map naming two uses in one item, and a name on a non-repeatable use (`pubsub`, `server`); `writeLaunch` round-trips the map form. `Requirement.uses` is now `UseDeclaration[]` (`string | Record<string, string>`); `declaredUse`, `useKey`, `useKeys`, `parseUseKey` and `formatUseKey` decode it, and `isRepeatableUse` reports the registry's Repeatable column. `ResolverContext.uses` lists use keys (`db`, `db.cache`): on an entry that names its `db` uses, `$redis.db.url` and `$redis.db.nosuch.url` throw `UnresolvedUseError` — never the instance url. `lintLaunch` checks the token of a named use and treats `db` and `db: cache` as divergent across same-name entries.
+
+- `useKeyOf(use)` keys an already-decoded `DeclaredUse` (`{ use, name? }`) and `useKey(item)` keys a `uses` item by its spelling, so a token literally named `use` is not mistaken for a decoded use: `- use: a` keys as `use.a`. `useKeyOf` and `DeclaredUse` are exported from `@launchfile/sdk` since 0.10.0 ([#522](https://github.com/launchfile/launchfile/issues/522)).
 
 - [#515](https://github.com/launchfile/launchfile/pull/515) [`1796de9`](https://github.com/launchfile/launchfile/commit/1796de9ae8d42f920cca6a4326de9e2ed981fe2f) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Added `uses` on `requires`/`supports` entries ([#509](https://github.com/launchfile/launchfile/issues/509), SPEC.md § Resource uses): a list declaring which features of the resource the app uses — `db`, `pubsub`, `server` for redis; `database`, `server` for postgres and mysql. Undeclared keeps today's meaning (what the property vocabulary promises); a declared use registers its own `$<resource>.<use>.<property>` fields (`$redis.db.url` is `redis://host:port/<index>`, `$redis.db.index` the integer). The field round-trips through `readLaunch`/`writeLaunch`, is rejected on a host-capability entry, and is published under `$defs/requirement` of the JSON Schema. The use vocabulary ships under the `uses` key of `schema/resource-properties.json` and as `RESOURCE_USE_VOCABULARY`; `lintLaunch` warns on a token outside it (open vocabulary, never a validation error) and on same-name entries whose `uses` diverge.
   

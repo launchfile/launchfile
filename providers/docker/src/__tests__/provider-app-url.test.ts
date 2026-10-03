@@ -35,6 +35,29 @@ components:
         default: $app.authority
 `;
 
+/** A declared `https-origin` naming a `ws` endpoint that is not the first. */
+const DECLARED_WS = `version: launch/v1
+name: livetest
+components:
+  web:
+    image: nginx:1.27
+    provides:
+      - name: ui
+        port: 8080
+        protocol: http
+        exposed: true
+      - name: live
+        port: 8081
+        protocol: ws
+        exposed: true
+    supports:
+      - type: https-origin
+        endpoint: live
+    env:
+      APP_URL:
+        default: $app.url
+`;
+
 describe("dockerUp --dry-run appUrl (#290)", () => {
 	let prevHome: string | undefined;
 	let prevDockerConfig: string | undefined;
@@ -128,6 +151,64 @@ describe("dockerUp --dry-run appUrl (#290)", () => {
 	it("falls back to localhost routing when nothing is recorded or supplied", async () => {
 		await dockerUp(projectDir, { dryRun: true });
 		expect(output.join("\n")).toMatch(/PUBLIC_URL: http:\/\/localhost:\d+/);
+	});
+
+	it("prints the supplied URL in the up summary — the same value $app.url resolved to (#386)", async () => {
+		await dockerUp(projectDir, {
+			dryRun: true,
+			appUrl: "https://notes.example.com",
+		});
+		const text = output.join("\n");
+		expect(text).toContain("PUBLIC_URL: https://notes.example.com");
+		expect(text).toContain("  web is running at https://notes.example.com");
+		expect(text).not.toMatch(/web is running at http:\/\/localhost/);
+	});
+
+	it("prints the recorded URL on a later run that omits the option (#386)", async () => {
+		await seedState("https://notes.example.com");
+		await dockerUp(projectDir, { dryRun: true });
+		expect(output.join("\n")).toContain(
+			"  web is running at https://notes.example.com",
+		);
+	});
+
+	it("prints the supplied URL on a ws endpoint a declared https-origin names (#386, D-60 rule 4)", async () => {
+		writeFileSync(join(projectDir, "Launchfile"), DECLARED_WS);
+		await dockerUp(projectDir, {
+			dryRun: true,
+			appUrl: "https://live.example.com",
+		});
+		const text = output.join("\n");
+		expect(text).toContain("APP_URL: https://live.example.com");
+		expect(text).toContain(
+			"  web (live) is running at https://live.example.com",
+		);
+		expect(text).toMatch(/ {2}web is running at http:\/\/localhost:\d+/);
+	});
+
+	it("keeps ws://localhost on a ws primary no https-origin names (#386)", async () => {
+		writeFileSync(
+			join(projectDir, "Launchfile"),
+			DECLARED_WS.replace(/ {4}supports:[\s\S]*?endpoint: live\n/, "").replace(
+				/ {6}- name: ui\n {8}port: 8080\n {8}protocol: http\n {8}exposed: true\n/,
+				"",
+			),
+		);
+		await dockerUp(projectDir, {
+			dryRun: true,
+			appUrl: "https://live.example.com",
+		});
+		const text = output.join("\n");
+		expect(text).toContain("APP_URL: https://live.example.com");
+		expect(text).toMatch(/ {2}web is running at ws:\/\/localhost:\d+/);
+		expect(text).not.toContain("is running at https://live.example.com");
+	});
+
+	it("prints localhost in the up summary when no URL is recorded or supplied", async () => {
+		await dockerUp(projectDir, { dryRun: true });
+		expect(output.join("\n")).toMatch(
+			/ {2}web is running at http:\/\/localhost:\d+/,
+		);
 	});
 
 	it("refuses a malformed appUrl before anything exists — never a localhost fallback", async () => {

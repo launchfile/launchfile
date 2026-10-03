@@ -12,7 +12,11 @@ import {
 	selectionClosure,
 	UnboundOperatorStorageError,
 } from "@launchfile/sdk";
-import { normalizeAppUrl, publishedAddress } from "./app-url.js";
+import {
+	normalizeAppUrl,
+	printedPrimaryEndpoint,
+	publishedAddress,
+} from "./app-url.js";
 import { checkPrereqs, composeSupportsIgnoreBuildable } from "./prereqs.js";
 import { resolveSource } from "./source-resolver.js";
 import {
@@ -26,6 +30,7 @@ import {
 	stateDir,
 	stateBaseDir,
 	hashLaunchfile,
+	type DockerState,
 	type StateEndpoint,
 } from "./state.js";
 import { allocatePorts } from "./port-allocator.js";
@@ -207,6 +212,24 @@ export class UnsuppliedRequiredEnvError extends Error {
 		);
 		this.name = "UnsuppliedRequiredEnvError";
 		this.vars = vars;
+	}
+}
+
+/**
+ * A launch stopped because no selected component survived the generator's
+ * refusals and skips (D-44, D-60, D-61, D-64, D-65 — every kind alike). Each
+ * refusal has already printed its own reason, so this names only the outcome.
+ * Thrown before any compose file is written and before compose runs: given
+ * `services: {}`, `up` would fail with compose's error in place of the
+ * provider's, and `--dry-run` would print an empty plan as if it were valid.
+ */
+export class NothingToStartError extends Error {
+	/** An operator-fixable precondition, not a crash — see `ExpectedRefusal`. */
+	readonly expectedRefusal = true as const;
+
+	constructor() {
+		super("nothing to start: every selected component was refused or skipped");
+		this.name = "NothingToStartError";
 	}
 }
 
@@ -625,6 +648,13 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 			}
 		}
 
+		// Nothing left to start (D-64 rule 3): stop here, dry run included.
+		// Keyed on what the generator emitted for the start-set, never on a
+		// refusal kind, so every refusal above reaches it alike.
+		if (launching.size === 0) {
+			throw new NothingToStartError();
+		}
+
 		// Update state. The full ports map (composite keys included) is what
 		// the allocator reads back on the next `up` — persisting only the
 		// primary would let every secondary endpoint move across restarts.
@@ -633,6 +663,13 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		state.generatedEnv = result.generatedEnv;
 		state.ports = result.ports;
 		state.endpoints = result.endpoints;
+		state.primaryEndpoint = printedPrimaryEndpoint(
+			launch,
+			result.primaryEndpoint,
+			result.primaryEndpoint === undefined
+				? undefined
+				: result.endpoints[result.primaryEndpoint]?.protocol,
+		);
 
 		const upResult: DockerUpResult = {
 			slug,
@@ -645,7 +682,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		if (opts.dryRun) {
 			console.log("\n--- docker-compose.yml ---\n");
 			console.log(result.yaml);
-			printSummary(launch.name, result.ports, summaryOnly, result.endpoints);
+			printSummary(launch.name, result.ports, summaryOnly, result.endpoints, state);
 			return upResult;
 		}
 
@@ -795,7 +832,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		);
 
 		// Print summary
-		printSummary(launch.name, result.ports, summaryOnly, result.endpoints);
+		printSummary(launch.name, result.ports, summaryOnly, result.endpoints, state);
 
 		return upResult;
 	}),
@@ -864,8 +901,8 @@ export async function dockerStatus(slug?: string): Promise<void> {
 
 		if (Object.keys(state.ports).length > 0) {
 			console.log("\nAccess URLs:");
-			for (const [key, port] of Object.entries(state.ports)) {
-				console.log(`  ${key}: ${endpointAddress(port, state.endpoints?.[key]?.protocol)}`);
+			for (const line of statusLines(state.ports, state.endpoints, state)) {
+				console.log(line);
 			}
 		}
 	});
@@ -1110,6 +1147,14 @@ export function componentOfPortKey(
 }
 
 /**
+ * What a printout reads to place the orchestrator-supplied publication URL
+ * (D-58): the URL, and the `ports` key it asserts. One URL asserts the
+ * primary endpoint only (D-58 rule 4), so every other key keeps this
+ * provider's own address; with no URL every key does.
+ */
+export type PrintedPublication = Pick<DockerState, "appUrl" | "primaryEndpoint">;
+
+/**
  * Human-readable address for a published endpoint. HTTP-family protocols get
  * a browsable URL; raw tcp/udp/grpc endpoints get `localhost:<port> (<proto>)`
  * because an `http://` link to an SMTP or DNS port would be wrong. Keys with
@@ -1122,18 +1167,61 @@ export function componentOfPortKey(
  * (#473). `protocol` is the endpoint's EFFECTIVE protocol as persisted in
  * state (D-61 rule 2), which is why an active certificate needs no second
  * branch here.
+ *
+ * `appUrl` is the supplied publication URL, passed only for the key `up`
+ * recorded as `primaryEndpoint` — an `http`/`https` primary, or one a declared
+ * `https-origin` names (`printedPrimaryEndpoint`, §7). It prints as stored:
+ * `normalizeAppUrl` ran once, when `up` recorded it, and `$app.url` is that
+ * same string, so nothing re-derives here. A `tcp` or `udp` listener keeps
+ * its own form even then: it has no origin (D-60 rule 2), so an
+ * `http`/`https` URL asserts nothing about it.
  */
-export function endpointAddress(port: number, protocol?: string): string {
+export function endpointAddress(port: number, protocol?: string, appUrl?: string): string {
 	switch (protocol) {
-		case "ws":
-			return `ws://localhost:${port}`;
 		case "tcp":
 		case "udp":
-		case "grpc":
 			return `localhost:${port} (${protocol})`;
+		case "ws":
+			return appUrl ?? `ws://localhost:${port}`;
+		case "grpc":
+			return appUrl ?? `localhost:${port} (${protocol})`;
 		default:
-			return publishedAddress(protocol, port).url;
+			return appUrl ?? publishedAddress(protocol, port).url;
 	}
+}
+
+/**
+ * The address to print for one `ports` key: the supplied publication URL on
+ * the primary endpoint's key, this provider's own address on every other
+ * (D-58 rule 4). With no publication context, the provider's own address
+ * throughout — byte-identical to a run with no URL supplied.
+ */
+function printedAddress(
+	key: string,
+	port: number,
+	endpoints: Record<string, StateEndpoint> | undefined,
+	publication: PrintedPublication | undefined,
+): string {
+	const appUrl =
+		publication?.primaryEndpoint !== undefined && key === publication.primaryEndpoint
+			? publication.appUrl
+			: undefined;
+	return endpointAddress(port, endpoints?.[key]?.protocol, appUrl);
+}
+
+/**
+ * The "Access URLs" lines `status` prints, one per `ports` key. Pure, so the
+ * placement of the supplied URL can be tested without state on disk or a
+ * compose project.
+ */
+export function statusLines(
+	ports: Record<string, number>,
+	endpoints?: Record<string, StateEndpoint>,
+	publication?: PrintedPublication,
+): string[] {
+	return Object.entries(ports).map(
+		([key, port]) => `  ${key}: ${printedAddress(key, port, endpoints, publication)}`,
+	);
 }
 
 /**
@@ -1153,6 +1241,7 @@ export function summaryLines(
 	ports: Record<string, number>,
 	only?: ReadonlySet<string>,
 	endpoints?: Record<string, StateEndpoint>,
+	publication?: PrintedPublication,
 ): string[] {
 	const lines: string[] = [];
 	for (const [key, port] of Object.entries(ports)) {
@@ -1162,7 +1251,9 @@ export function summaryLines(
 		// Secondary endpoints carry their endpoint name (D-6) or container
 		// port as a qualifier so multi-endpoint components stay tellable apart.
 		const qualifier = key === component ? "" : ` (${endpoints?.[key]?.name ?? key.slice(component.length + 1)})`;
-		lines.push(`  ${base}${qualifier} is running at ${endpointAddress(port, endpoints?.[key]?.protocol)}`);
+		lines.push(
+			`  ${base}${qualifier} is running at ${printedAddress(key, port, endpoints, publication)}`,
+		);
 	}
 	return lines;
 }
@@ -1172,9 +1263,10 @@ function printSummary(
 	ports: Record<string, number>,
 	only?: ReadonlySet<string>,
 	endpoints?: Record<string, StateEndpoint>,
+	publication?: PrintedPublication,
 ): void {
 	console.log("");
-	for (const line of summaryLines(appName, ports, only, endpoints)) {
+	for (const line of summaryLines(appName, ports, only, endpoints, publication)) {
 		console.log(line);
 	}
 }

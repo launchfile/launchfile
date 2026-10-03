@@ -1,14 +1,18 @@
-import { readFileSync } from "node:fs";
-import { describe, it, expect } from "vitest";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { parseDuration as parseHealthDuration } from "../health.js";
 import {
 	BOOTSTRAP_SHELL,
 	DEFAULT_BOOTSTRAP_TIMEOUT_MS,
 	extractCaptures,
 	parseDuration,
+	launchBootstrap,
 	planBootstraps,
 } from "../bootstrap.js";
 import { buildResolverContext, computeAppProperties } from "../env-writer.js";
+import { clearRegisteredSecrets, REDACTED } from "../redact.js";
 import { type CaptureEntry, readLaunch, type ResolverContext } from "@launchfile/sdk";
 
 describe("extractCaptures (D-34)", () => {
@@ -56,6 +60,56 @@ describe("extractCaptures (D-34)", () => {
 		expect(extractCaptures(stdout, captures)).toEqual({
 			url: "https://example.com/admin",
 		});
+	});
+
+	it("ends an OSC string at ST, keeping an OSC 8 hyperlink's link text", () => {
+		const esc = String.fromCharCode(27);
+		const captures: Record<string, CaptureEntry> = {
+			invite_link: { pattern: "https?://\\S+" },
+		};
+		// An OSC 8 hyperlink whose visible text is the URL itself. Both OSC
+		// strings end with ST (`ESC \\`), never BEL — the shape a pattern that
+		// only stops at BEL runs straight past (ECMA-48 § 8.3.89).
+		const url = "https://example.com/invite/abc123";
+		const stdout = `${esc}]8;;${url}${esc}\\${url}${esc}]8;;${esc}\\\n`;
+		expect(extractCaptures(stdout, captures)).toEqual({ invite_link: url });
+	});
+
+	it("strips a CSI that sets a truecolor foreground and background together", () => {
+		const esc = String.fromCharCode(27);
+		const captures: Record<string, CaptureEntry> = {
+			invite_link: { pattern: "https?://\\S+" },
+		};
+		// 33 parameter bytes — one past a 32-byte bound, comfortably under 64.
+		// A theme-aware CLI emits this whenever it sets both colours at once,
+		// and an unstripped CSI leaves its bytes inside the captured value.
+		const sgr = `${esc}[38;2;255;255;255;48;2;240;240;240m`;
+		const url = "https://example.com/invite/abc123";
+		const stdout = `Invite: ${sgr}${url}${sgr}\n`;
+		expect(extractCaptures(stdout, captures)).toEqual({ invite_link: url });
+	});
+
+	it("strips a BEL-terminated OSC title", () => {
+		const esc = String.fromCharCode(27);
+		const bel = String.fromCharCode(7);
+		const captures: Record<string, CaptureEntry> = {
+			token: { pattern: "token=(\\S+)" },
+		};
+		const stdout = `${esc}]0;window title${bel}token=s3cret\n`;
+		expect(extractCaptures(stdout, captures)).toEqual({ token: "s3cret" });
+	});
+
+	it("stays linear on a run of unterminated OSC starts (CWE-1333)", () => {
+		const esc = String.fromCharCode(27);
+		const captures: Record<string, CaptureEntry> = {
+			token: { pattern: "token=(\\S+)" },
+		};
+		// Every `ESC ]` opens an OSC string no BEL ever closes. Unbounded, each
+		// start rescanned the whole remainder — quadratic: 40 000 pairs took 366 ms.
+		const stdout = `${`${esc}]`.repeat(40_000)}token=s3cret`;
+		const t0 = performance.now();
+		expect(extractCaptures(stdout, captures)).toEqual({ token: "s3cret" });
+		expect(performance.now() - t0).toBeLessThan(250);
 	});
 
 	it("skips invalid regex without throwing", () => {
@@ -229,5 +283,80 @@ describe("paperclip bootstrap regression (issue #185)", () => {
 		expect(item.command).toBe(PAPERCLIP_BOOTSTRAP);
 		expect(item.argv).toEqual([BOOTSTRAP_SHELL, "-c", PAPERCLIP_BOOTSTRAP]);
 		expect(item.error).toBeUndefined();
+	});
+});
+
+describe("launchBootstrap — the returned command carries no live credential (D-18, D-71)", () => {
+	// Hyphenated on purpose: `$secrets.api-key` is the form that resolves
+	// mid-string, so a live value reaches the command where a dotted-only
+	// resolver would have left an empty string.
+	const API_KEY = "sk-live-9f3c1d7a5b2e4086";
+	const LAUNCHFILE = `name: acme
+version: "1.0"
+components:
+  api:
+    commands:
+      start: "node server.js"
+      bootstrap:
+        command: "acme-cli register --key $secrets.api-key"
+  worker:
+    commands:
+      start: "node worker.js"
+      bootstrap:
+        command: "acme-cli seed --key $secrets.api-key"
+        timeout: "5 minutes"
+`;
+
+	let projectDir: string;
+
+	beforeEach(() => {
+		projectDir = mkdtempSync(join(tmpdir(), "lf-bootstrap-redaction-"));
+		writeFileSync(join(projectDir, "Launchfile"), LAUNCHFILE);
+		mkdirSync(join(projectDir, ".launchfile"), { recursive: true });
+		const now = new Date().toISOString();
+		writeFileSync(
+			join(projectDir, ".launchfile", "state.json"),
+			JSON.stringify({
+				version: 1,
+				appName: "acme",
+				launchfileHash: "0".repeat(16),
+				createdAt: now,
+				updatedAt: now,
+				resources: {},
+				secrets: { "api-key": API_KEY },
+				ports: { api: 3000, worker: 3001 },
+			}),
+		);
+	});
+
+	afterEach(() => {
+		rmSync(projectDir, { recursive: true, force: true });
+		clearRegisteredSecrets();
+		vi.restoreAllMocks();
+	});
+
+	it("redacts the resolved secret on both the executed and the unrunnable path", async () => {
+		vi.spyOn(console, "log").mockImplementation(() => {});
+		vi.spyOn(console, "error").mockImplementation(() => {});
+
+		const ran: string[][] = [];
+		const results = await launchBootstrap({
+			projectDir,
+			exec: async (cmd, args) => {
+				ran.push([cmd, ...args]);
+				return { exitCode: 0, stdout: "", stderr: "" };
+			},
+		});
+
+		// The command that actually ran still carries the live value.
+		expect(ran).toEqual([["/bin/sh", "-c", `acme-cli register --key ${API_KEY}`]]);
+
+		expect(results).toHaveLength(2);
+		for (const result of results) {
+			expect(result.command).not.toContain(API_KEY);
+			expect(result.command).toContain(REDACTED);
+		}
+		// One executed, one reported as unrunnable — both push sites covered.
+		expect(results.map((r) => r.ok)).toEqual([true, false]);
 	});
 });

@@ -17,8 +17,8 @@
  * `migrateResourcePasswords` cannot miss one when moving an old state file's
  * values across.
  *
- * `redis`, `clickhouse` and `memcache` are absent on purpose: those images ship
- * with no generated credential, so nothing is minted for them.
+ * `redis` and `memcache` are absent on purpose: those images ship with no
+ * generated credential, so nothing is minted for them.
  */
 export const RESOURCE_PASSWORD_KEYS = [
 	"postgres",
@@ -31,6 +31,7 @@ export const RESOURCE_PASSWORD_KEYS = [
 	"s3-access",
 	"s3-secret",
 	"rabbitmq",
+	"clickhouse",
 ] as const;
 
 export type ResourcePasswordKey = (typeof RESOURCE_PASSWORD_KEYS)[number];

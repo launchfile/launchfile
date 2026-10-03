@@ -21,6 +21,7 @@ requires:
       MONGO_OPLOG_URL: $url
 env:
   ROOT_URL:
+    default: $app.url
     required: true
     description: "Public URL for Rocket.Chat (e.g., https://chat.example.com)"
   DEPLOY_METHOD:
