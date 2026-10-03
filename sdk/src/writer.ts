@@ -217,11 +217,11 @@ function denormalizeCommands(
 function denormalizeHealth(health: NormalizedHealth | undefined): string | Record<string, unknown> | undefined {
 	if (!health) return undefined;
 	// Collapse to string if only path is set
-	if (health.path && !health.command && !health.interval && !health.timeout && !health.retries && !health.start_period) {
+	if (health.path !== undefined && !health.command && !health.interval && !health.timeout && !health.retries && !health.start_period) {
 		return health.path;
 	}
 	const result: Record<string, unknown> = {};
-	if (health.path) result.path = health.path;
+	if (health.path !== undefined) result.path = health.path;
 	if (health.command) result.command = health.command;
 	if (health.interval) result.interval = health.interval;
 	if (health.timeout) result.timeout = health.timeout;
