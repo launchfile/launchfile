@@ -8,9 +8,10 @@
  *    itself at creation/load time; `redactSecrets` then scrubs those literals
  *    out of any string on its way to stdout/stderr or an Error message.
  * 2. A pattern scrub for credentials embedded in URLs
- *    (`scheme://user:pass@host`), which catches secrets that never passed
- *    through this provider — e.g. a connection string written literally in a
- *    Launchfile `env:` value and interpolated into a bootstrap command.
+ *    (`scheme://user:pass@host`, `scheme://token@host`, `?key=value`), which
+ *    catches secrets that never passed through this provider — e.g. a
+ *    connection string written literally in a Launchfile `env:` value and
+ *    interpolated into a bootstrap command.
  *
  * The registry is process-global on purpose: a command string is assembled in
  * one module and printed in another, so the scrub has to be reachable from the
@@ -94,6 +95,46 @@ export function clearRegisteredSecrets(): void {
 const CREDENTIAL_URL =
 	/([a-zA-Z][a-zA-Z0-9+.-]{0,31}:\/\/[^\s/:@]+:)([^\s/@]+)(@)/g;
 
+// `scheme://token@host` — userinfo with no `:` is a bare credential (a GitHub
+// token in the username slot is the usual form), so the whole of it is masked.
+// It runs after CREDENTIAL_URL and cannot re-match that output: the userinfo
+// group excludes `:`, and `user:[REDACTED]@` has one. A plain username such as
+// `ssh://git@host` is masked too — that costs a little diagnostic detail,
+// where the alternative leaks a token. The scheme anchor leaves scp-style
+// `git@github.com:a/b` alone. Same bounded scheme, same reason as above; the
+// userinfo group stops at `/` and `:`, so each `://` scans at most one
+// authority.
+const USERINFO_URL = /([a-zA-Z][a-zA-Z0-9+.-]{0,31}:\/\/)([^\s/:@]+)(@)/g;
+
+// `?name=value&name=value` — a query string, from its `?` to whitespace, `#`,
+// or the next `?`. Every value is masked and every name kept: a list of
+// credential parameter names would let the next unlisted one (`sas`,
+// `X-Goog-Signature`) through, and a masked value leaks nothing. A parameter
+// with no `=` is left as it is, and a fragment is not a query.
+//
+// The body excludes `?` so the scan stays linear: a run of `?` would otherwise
+// let each one rescan the rest of the line (CWE-1333). A query that carries a
+// literal `?` is treated as two queries, which masks at least as much. The
+// body runs to whitespace, so punctuation that follows a URL in prose is
+// masked with the last value rather than risk a value that ends in it.
+const URL_QUERY = /\?([^\s#?]*)/g;
+
+// A value that already starts with the marker is left alone, so a second
+// pass over the same text (an error message re-scrubbed at a later sink) is a
+// no-op. The first pass consumed everything up to whitespace, so whatever
+// follows the marker was appended after masking, by the code that composed
+// the message — the `: 404 Not Found` after a shown URL — and is not the value.
+function redactQueryValues(query: string): string {
+	return query
+		.split("&")
+		.map((param) => {
+			const eq = param.indexOf("=");
+			if (eq === -1 || param.startsWith(REDACTED, eq + 1)) return param;
+			return `${param.slice(0, eq)}=${REDACTED}`;
+		})
+		.join("&");
+}
+
 /**
  * Scrub registered secrets and URL-embedded credentials out of `text`.
  *
@@ -107,5 +148,10 @@ export function redactSecrets(text: string): string {
 	for (const value of values) {
 		out = out.split(value).join(REDACTED);
 	}
-	return out.replace(CREDENTIAL_URL, `$1${REDACTED}$3`);
+	out = out.replace(CREDENTIAL_URL, `$1${REDACTED}$3`);
+	out = out.replace(USERINFO_URL, `$1${REDACTED}$3`);
+	return out.replace(
+		URL_QUERY,
+		(_match, query: string) => `?${redactQueryValues(query)}`,
+	);
 }
