@@ -218,11 +218,15 @@ describe("buildReadme", () => {
 	it("matches the committed catalog/README.md", () => {
 		const catalogRoot = resolve(import.meta.dirname, "..", "..");
 		const current = readFileSync(join(catalogRoot, "README.md"), "utf-8");
-		const { readme } = buildReadme(
+		const { readme, unmatched } = buildReadme(
 			current,
 			loadEntries(catalogRoot),
 			readFileSync(join(catalogRoot, "GAPS.md"), "utf-8"),
 		);
 		expect(readme, "catalog/README.md is stale — run `bun run build-index` in catalog/test").toBe(current);
+		expect(
+			unmatched,
+			"GAPS.md names an app that matches no catalog slug, or matches more than one — use the exact slug in its **Apps**: line",
+		).toEqual([]);
 	});
 });
