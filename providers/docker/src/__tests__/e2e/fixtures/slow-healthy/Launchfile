@@ -1,0 +1,13 @@
+# Fails its check for its first ~5s of uptime, then passes for good.
+version: launch/v1
+name: lf-e2e-slow-healthy
+image: busybox:1.37.0
+restart: always
+commands:
+  start: sh -c 'sleep 5; touch /tmp/ready; exec sleep 3600'
+health:
+  command: test -f /tmp/ready
+  interval: 1s
+  timeout: 2s
+  retries: 3
+  start_period: 30s
