@@ -680,9 +680,32 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		};
 
 		if (opts.dryRun) {
-			console.log("\n--- docker-compose.yml ---\n");
+			// The YAML is always the whole project: `down` and `logs` read the
+			// persisted copy later, so a selector never narrows it. Under a
+			// selector the header says so, and the start-set is named beside it
+			// (D-41) — from the closure, not the ports map, so a closure member
+			// with no published port is still listed.
+			console.log(
+				selectorActive
+					? "\n--- docker-compose.yml (full project file) ---\n"
+					: "\n--- docker-compose.yml ---\n",
+			);
 			console.log(result.yaml);
-			printSummary(launch.name, result.ports, summaryOnly, result.endpoints, state);
+			if (selectorActive) {
+				console.log("");
+				const wouldStart = selection.start.filter((name) => launching.has(name));
+				for (const line of selectionLines(opts.components ?? [], wouldStart, componentNames)) {
+					console.log(line);
+				}
+			}
+			printSummary(
+				launch.name,
+				result.ports,
+				summaryOnly,
+				result.endpoints,
+				state,
+				"would be reachable at",
+			);
 			return upResult;
 		}
 
@@ -1233,8 +1256,9 @@ export function statusLines(
  * components it never started are running. Composite keys (`caddy:https`)
  * match through their component (`caddy`), so a selected component reports
  * every endpoint it publishes. An undefined `only` means "report everything"
- * (the all-components default). Pure and side-effect-free so it can be
- * unit-tested without spinning Docker.
+ * (the all-components default). `verb` is the tense: a dry run has started
+ * nothing, so it reports what "would be reachable at" an address. Pure and
+ * side-effect-free so it can be unit-tested without spinning Docker.
  */
 export function summaryLines(
 	appName: string,
@@ -1242,6 +1266,7 @@ export function summaryLines(
 	only?: ReadonlySet<string>,
 	endpoints?: Record<string, StateEndpoint>,
 	publication?: PrintedPublication,
+	verb: SummaryVerb = "is running at",
 ): string[] {
 	const lines: string[] = [];
 	for (const [key, port] of Object.entries(ports)) {
@@ -1252,10 +1277,34 @@ export function summaryLines(
 		// port as a qualifier so multi-endpoint components stay tellable apart.
 		const qualifier = key === component ? "" : ` (${endpoints?.[key]?.name ?? key.slice(component.length + 1)})`;
 		lines.push(
-			`  ${base}${qualifier} is running at ${printedAddress(key, port, endpoints, publication)}`,
+			`  ${base}${qualifier} ${verb} ${printedAddress(key, port, endpoints, publication)}`,
 		);
 	}
 	return lines;
+}
+
+export type SummaryVerb = "is running at" | "would be reachable at";
+
+/**
+ * The start-set lines a dry run prints under an active selector: the
+ * components the selector named, the ones the run would start — the D-41
+ * closure, minus any member refused earlier in the run — and the ones that
+ * stay down. The summary lines only cover published ports, so this is the
+ * one place a port-less closure member is named. Pure so it can be
+ * unit-tested without spinning Docker.
+ */
+export function selectionLines(
+	selector: readonly string[],
+	wouldStart: readonly string[],
+	all: readonly string[],
+): string[] {
+	const starting = new Set(wouldStart);
+	const rest = all.filter((name) => !starting.has(name));
+	return [
+		`Selector: ${selector.join(", ")}`,
+		`Would start: ${wouldStart.join(", ")}`,
+		`Not started: ${rest.length > 0 ? rest.join(", ") : "none"}`,
+	];
 }
 
 function printSummary(
@@ -1264,9 +1313,10 @@ function printSummary(
 	only?: ReadonlySet<string>,
 	endpoints?: Record<string, StateEndpoint>,
 	publication?: PrintedPublication,
+	verb?: SummaryVerb,
 ): void {
 	console.log("");
-	for (const line of summaryLines(appName, ports, only, endpoints, publication)) {
+	for (const line of summaryLines(appName, ports, only, endpoints, publication, verb)) {
 		console.log(line);
 	}
 }
