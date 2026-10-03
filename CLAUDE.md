@@ -104,6 +104,9 @@ Catalog (build SDK + providers/docker first, then typecheck → test → validat
 Websites (need Node >= 22 for Astro 6, need wrangler.toml with pinned compat_date)
 ```
 
+The bun version CI uses is pinned in the root `.bun-version`. Every `oven-sh/setup-bun`
+step reads it through `bun-version-file`; change the version there only.
+
 `catalog/test` is not a workspace member, so it carries its own committed
 `bun.lock` (like `smoke-tests/`) and installs `--frozen-lockfile`. Its suite runs
 under Vitest via `bun run test` — `bun test` hits the guard in
