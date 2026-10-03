@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
+import { chmod, mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
 	initState,
 	saveState,
+	ensureStateDir,
 	loadState,
 	loadDockerSource,
 	hashLaunchfile,
@@ -503,5 +505,39 @@ commands:
 	it("stays silent on a first deployment, which has no recorded hash", async () => {
 		await dockerUp(projectDir, { dryRun: true });
 		expect(warnings.join("\n")).not.toContain("differs from the one");
+	});
+});
+
+describe("state directory mode (#408, CWE-276)", () => {
+	// Loose modes are set with an explicit chmod, never mkdir's mode: that one
+	// is masked by the umask, so under a restrictive umask the fixture would
+	// be born 0o700 and the assertion would pass without the retrofit running.
+	async function mode(path: string): Promise<number> {
+		return (await stat(path)).mode & 0o777;
+	}
+
+	async function looseStateDir(slug: string): Promise<string> {
+		const dir = stateDir(slug);
+		await mkdir(dir, { recursive: true });
+		await chmod(dir, 0o755);
+		return dir;
+	}
+
+	it("saveState creates the state dir at 0o700 and state.json at 0o600", async () => {
+		await saveState("cool-app", initState("cool-app", "cool-app", "name: cool-app\n"));
+		expect(await mode(stateDir("cool-app"))).toBe(0o700);
+		expect(await mode(join(stateDir("cool-app"), "state.json"))).toBe(0o600);
+	});
+
+	it("saveState tightens a pre-existing state dir left at 0o755", async () => {
+		const dir = await looseStateDir("cool-app");
+		await saveState("cool-app", initState("cool-app", "cool-app", "name: cool-app\n"));
+		expect(await mode(dir)).toBe(0o700);
+	});
+
+	it("ensureStateDir tightens a pre-existing state dir left at 0o755", async () => {
+		const dir = await looseStateDir("cool-app");
+		await ensureStateDir("cool-app");
+		expect(await mode(dir)).toBe(0o700);
 	});
 });

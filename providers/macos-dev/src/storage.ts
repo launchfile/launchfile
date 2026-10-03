@@ -11,7 +11,7 @@
  * path, or has one that is not there.
  */
 
-import { mkdir, rm } from "node:fs/promises";
+import { chmod, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { StorageVolume } from "@launchfile/sdk";
 
@@ -74,7 +74,11 @@ export async function provisionStorage(
 		// failure the marker exists to catch, and minting one here would
 		// reintroduce it through the channel's own flag.
 		if (storage?.[name]?.content === "operator") continue;
-		await mkdir(localPath, { recursive: true });
+		// Owner-only like the rest of .launchfile/ (state.ts ensureDirs): the
+		// mode is applied on creation only, so chmod also covers a directory
+		// left by an earlier version (CWE-276).
+		await mkdir(localPath, { recursive: true, mode: 0o700 });
+		await chmod(localPath, 0o700);
 	}
 	return volumeMap;
 }
