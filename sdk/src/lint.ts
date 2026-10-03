@@ -203,6 +203,8 @@ function checkResourceProperties(
 function checkResourceUses(launch: NormalizedLaunch, warnings: string[]): void {
 	for (const [componentName, component] of Object.entries(launch.components)) {
 		const where = componentName === "default" ? "(top-level)" : componentName;
+		// Same-name entries are one shared resource (D-24), so each can repeat a use.
+		const emitted = new Set<string>();
 		for (const [field, entries] of [
 			["requires", component.requires ?? []],
 			["supports", component.supports ?? []],
@@ -222,10 +224,12 @@ function checkResourceUses(launch: NormalizedLaunch, warnings: string[]): void {
 						field === "requires"
 							? "a provider refuses the component rather than cover a use it does not recognise"
 							: "a provider leaves the entry unfulfilled rather than cover a use it does not recognise";
-					warnings.push(
+					const message =
 						`${where}: use "${token}" is not in the standard use vocabulary for ${req.type} ` +
-							`(known: ${known.join(", ")}) — ${outcome}`,
-					);
+						`(known: ${known.join(", ")}) — ${outcome}`;
+					if (emitted.has(message)) continue;
+					emitted.add(message);
+					warnings.push(message);
 				}
 			}
 		}
