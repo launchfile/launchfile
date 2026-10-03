@@ -149,6 +149,8 @@ Provider flags:
 
 Options:
   --dry-run        Preview without starting anything
+  --detach         Return after launch. Native apps keep running in the
+                    background; Docker always detaches (with up, dev)
   --destroy        Remove all containers and data (with down)
   --follow, -f     Stream logs continuously
   --name <label>   Launch a separate named instance of the app — its own
@@ -170,8 +172,13 @@ Options:
   --component <n>  Limit bootstrap to a single component
   --reveal         (bootstrap) Print captures marked \`sensitive\` instead of
                     masking them — they never reach logs or state either way
+  --quiet          (validate) No output, only the exit code
   --detached       (validate) Evaluate as fetched standalone, not read from the
                     app's own checkout — enables the D-43 reduced-portability check
+  --no-color       Print without ANSI colour (with validate, inspect, schema;
+                    also set by NO_COLOR)
+  --schema-path <path>
+                   (schema) Print this JSON Schema file instead of the bundled one
   --json           Machine-readable output (with diagnose, validate)
   --help           Show this help
   --version        Show version

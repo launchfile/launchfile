@@ -3,7 +3,7 @@
  * CLI entry point for the macOS dev provider.
  *
  * Usage:
- *   launch up [--with-optional] [--no-build] [--dry-run] [--components <a,b>]
+ *   launch up [--with-optional] [--no-build] [--dry-run] [--detach] [--components <a,b>]
  *   launch down [--destroy]
  *   launch status
  *   launch env [component]

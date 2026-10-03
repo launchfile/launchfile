@@ -12,8 +12,9 @@ launchfile <verb> [target] [flags]
 
 The phase 1 rows marked ✓ mirror the verbs `packages/launchfile/src/cli.ts`
 dispatches and the flags each verb reads from
-`packages/launchfile/src/cli-args.ts`. `launchfile --help` omits some of these
-flags until [#597](https://github.com/launchfile/launchfile/issues/597) lands.
+`packages/launchfile/src/cli-args.ts`. `launchfile --help` names every one of
+these flags, and a test fails when a declared flag is missing from it
+([#597](https://github.com/launchfile/launchfile/issues/597)).
 A phase 1 row without ✓ is
 planned and not yet shipped. A PR that adds or changes a verb or flag updates
 its row in the same PR. The globals `--help`, `--version` and `--no-color`
@@ -49,6 +50,13 @@ catalog       [search]                                                     2
 scale         <id|name>           --count                                  3
 resources     [id|name]                                                    3
 ```
+
+`--detach` on `up` and `dev` returns once the app has started. The native
+provider leaves its processes running in the background and records their
+pids, so `launchfile down` stops them from any shell. The Docker provider
+always runs `docker compose up -d`, so `up --docker` returns after launch with
+or without the flag. `--detach` has no short alias: single-dash aliases are
+[#529](https://github.com/launchfile/launchfile/issues/529)'s question.
 
 ## Flag Validation
 
