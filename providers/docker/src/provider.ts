@@ -816,7 +816,9 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// the deployment on this path so `status`/`logs`/`down` reach them.
 		await inPhase("health", withLogs(), () =>
 			withSpan("up:health", { project }, async () => {
-				const health = await waitForHealth(project, composeFile, result.healthchecks);
+				const health = await waitForHealth(project, composeFile, result.healthchecks, {
+					oneShot: result.oneShot,
+				});
 				if (!health.ok) {
 					const message = healthFailureMessage(
 						health.stuck,
@@ -1002,6 +1004,7 @@ export interface PsContainer {
 	Health: string;
 	Name?: string;
 	Service?: string;
+	ExitCode?: number;
 }
 
 /**
@@ -1023,15 +1026,23 @@ export interface PsContainer {
  * services ({@link healthPsArgs}), so an orphan left behind by a rename never
  * reaches here; a row that still does is a gap to report, not one to absorb
  * into a pass (the D-51/D-52 posture).
+ *
+ * A one-shot service (`ComposeResult.oneShot`, restart `no`) is a job that is
+ * meant to end, so it passes once it has exited 0. A one-shot that exited
+ * non-zero fails, and one that is still running gates like any other service.
  */
 export function isContainerHealthy(
 	container: PsContainer,
 	healthchecks: Readonly<Record<string, boolean>>,
+	oneShot: ReadonlySet<string> = new Set(),
 ): boolean {
-	if (container.State !== "running") return false;
-
 	const service = container.Service;
 	if (service === undefined || !Object.hasOwn(healthchecks, service)) return false;
+
+	if (container.State === "exited" && oneShot.has(service)) {
+		return container.ExitCode === 0;
+	}
+	if (container.State !== "running") return false;
 
 	return healthchecks[service] ? container.Health === "healthy" : true;
 }
@@ -1050,6 +1061,10 @@ export type ComposePs = () => Promise<{ exitCode: number; stdout: string }>;
  * component the app no longer has. Naming the generated services keeps the poll
  * to what this `up` wrote.
  *
+ * `--all` keeps exited containers in the list. Without it a one-shot job that
+ * has already finished drops out of the rows, and a project whose only service
+ * is that job reports no container at all for the whole budget.
+ *
  * With no generated services there is nothing the gate can accept, so the bare
  * poll it returns then costs nothing: every row fails closed either way.
  */
@@ -1065,6 +1080,7 @@ export function healthPsArgs(
 		"-f",
 		composeFile,
 		"ps",
+		"--all",
 		"--format",
 		"json",
 		...Object.keys(healthchecks),
@@ -1078,6 +1094,8 @@ export interface WaitForHealthOpts {
 	pollIntervalMs?: number;
 	/** How to read container status. Defaults to `docker compose ps`. */
 	ps?: ComposePs;
+	/** Services that pass by exiting 0 (`ComposeResult.oneShot`). */
+	oneShot?: readonly string[];
 }
 
 export async function waitForHealth(
@@ -1096,6 +1114,7 @@ export async function waitForHealth(
 				allowFailure: true,
 				silent: true,
 			}));
+	const oneShot = new Set(opts.oneShot ?? []);
 	const start = Date.now();
 	let stuck: string[] = [];
 
@@ -1119,7 +1138,7 @@ export async function waitForHealth(
 			try {
 				const container = JSON.parse(line) as PsContainer;
 				hasContainers = true;
-				if (!isContainerHealthy(container, healthchecks)) {
+				if (!isContainerHealthy(container, healthchecks, oneShot)) {
 					unhealthy.push(container.Service || container.Name || "(unnamed container)");
 				}
 			} catch {

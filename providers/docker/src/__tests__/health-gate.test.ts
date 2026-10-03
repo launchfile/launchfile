@@ -120,10 +120,64 @@ describe("isContainerHealthy", () => {
 	});
 });
 
+describe("isContainerHealthy for a one-shot service", () => {
+	const oneShot = new Set(["job"]);
+
+	it("accepts a one-shot that exited 0", () => {
+		expect(
+			isContainerHealthy(
+				{ State: "exited", Health: "", Service: "job", ExitCode: 0 },
+				{ job: false },
+				oneShot,
+			),
+		).toBe(true);
+	});
+
+	it("rejects a one-shot that exited non-zero", () => {
+		expect(
+			isContainerHealthy(
+				{ State: "exited", Health: "", Service: "job", ExitCode: 1 },
+				{ job: false },
+				oneShot,
+			),
+		).toBe(false);
+	});
+
+	it("rejects an exited row with no exit code", () => {
+		expect(
+			isContainerHealthy({ State: "exited", Health: "", Service: "job" }, { job: false }, oneShot),
+		).toBe(false);
+	});
+
+	it("gates a one-shot that is still running like any other service", () => {
+		expect(
+			isContainerHealthy({ State: "running", Health: "", Service: "job" }, { job: true }, oneShot),
+		).toBe(false);
+		expect(
+			isContainerHealthy(
+				{ State: "running", Health: "healthy", Service: "job" },
+				{ job: true },
+				oneShot,
+			),
+		).toBe(true);
+	});
+
+	it("rejects a long-running service that exited 0", () => {
+		// Only a service whose restart resolves to `no` is allowed to end.
+		expect(
+			isContainerHealthy(
+				{ State: "exited", Health: "", Service: "web", ExitCode: 0 },
+				{ web: false, job: false },
+				oneShot,
+			),
+		).toBe(false);
+	});
+});
+
 describe("healthPsArgs", () => {
 	it("scopes the poll to the generated services", () => {
 		expect(healthPsArgs("proj", "/tmp/compose.yaml", { web: true, db: false })).toEqual([
-			"compose", "-p", "proj", "-f", "/tmp/compose.yaml", "ps", "--format", "json", "web", "db",
+			"compose", "-p", "proj", "-f", "/tmp/compose.yaml", "ps", "--all", "--format", "json", "web", "db",
 		]);
 	});
 
@@ -144,17 +198,23 @@ describe("healthPsArgs", () => {
 		expect(args.slice(-3)).toEqual(["--format", "json", "web"]);
 	});
 
+	it("keeps exited containers in the poll", () => {
+		// A one-shot job that finished before the first poll is only visible
+		// with --all; without it the gate sees no container at all.
+		expect(healthPsArgs("proj", "/tmp/compose.yaml", { job: false })).toContain("--all");
+	});
+
 	it("polls bare when the generator emitted no services", () => {
 		// Nothing was generated, so there is nothing the gate can accept: every
 		// row the bare poll returns fails closed anyway.
 		expect(healthPsArgs("proj", "/tmp/compose.yaml", {})).toEqual([
-			"compose", "-p", "proj", "-f", "/tmp/compose.yaml", "ps", "--format", "json",
+			"compose", "-p", "proj", "-f", "/tmp/compose.yaml", "ps", "--all", "--format", "json",
 		]);
 	});
 });
 
 /** `docker compose ps --format json` output for the given rows. */
-function psLines(...rows: Record<string, string>[]): string {
+function psLines(...rows: Record<string, string | number>[]): string {
 	return rows.map((r) => JSON.stringify(r)).join("\n");
 }
 
@@ -221,6 +281,68 @@ describe("waitForHealth", () => {
 		expect(outcome).toEqual({ ok: false, stuck: [] });
 	});
 
+	it("passes a one-shot job that exited 0", async () => {
+		const outcome = await waitForHealth("proj", "/tmp/compose.yaml", { job: false }, {
+			...fast,
+			oneShot: ["job"],
+			ps: async () => ({
+				exitCode: 0,
+				stdout: psLines({ State: "exited", Health: "", Service: "job", ExitCode: 0 }),
+			}),
+		});
+
+		expect(outcome).toEqual({ ok: true, stuck: [] });
+	});
+
+	it("fails and names a one-shot job that exited non-zero", async () => {
+		const outcome = await waitForHealth("proj", "/tmp/compose.yaml", { job: false }, {
+			...fast,
+			oneShot: ["job"],
+			ps: async () => ({
+				exitCode: 0,
+				stdout: psLines({ State: "exited", Health: "", Service: "job", ExitCode: 3 }),
+			}),
+		});
+
+		expect(outcome).toEqual({ ok: false, stuck: ["job"] });
+	});
+
+	it("still gates a long-running service on its own state beside a finished job", async () => {
+		const rows = (dbHealth: string) => ({
+			exitCode: 0,
+			stdout: psLines(
+				{ State: "exited", Health: "", Service: "job", ExitCode: 0 },
+				{ State: "running", Health: dbHealth, Service: "db" },
+			),
+		});
+
+		const stuck = await waitForHealth("proj", "/tmp/compose.yaml", { job: false, db: true }, {
+			...fast,
+			oneShot: ["job"],
+			ps: async () => rows("starting"),
+		});
+		expect(stuck).toEqual({ ok: false, stuck: ["db"] });
+
+		const passed = await waitForHealth("proj", "/tmp/compose.yaml", { job: false, db: true }, {
+			...fast,
+			oneShot: ["job"],
+			ps: async () => rows("healthy"),
+		});
+		expect(passed).toEqual({ ok: true, stuck: [] });
+	});
+
+	it("fails a job that exited 0 when it is not declared one-shot", async () => {
+		const outcome = await waitForHealth("proj", "/tmp/compose.yaml", { web: false }, {
+			...fast,
+			ps: async () => ({
+				exitCode: 0,
+				stdout: psLines({ State: "exited", Health: "", Service: "web", ExitCode: 0 }),
+			}),
+		});
+
+		expect(outcome).toEqual({ ok: false, stuck: ["web"] });
+	});
+
 	it("polls the generated services when no ps is injected", async () => {
 		shellCalls.length = 0;
 
@@ -229,7 +351,7 @@ describe("waitForHealth", () => {
 		expect(outcome).toEqual({ ok: true, stuck: [] });
 		expect(shellCalls).toHaveLength(1);
 		expect(shellCalls[0]).toEqual([
-			"docker", "compose", "-p", "proj", "-f", "/tmp/compose.yaml", "ps", "--format", "json", "api",
+			"docker", "compose", "-p", "proj", "-f", "/tmp/compose.yaml", "ps", "--all", "--format", "json", "api",
 		]);
 	});
 

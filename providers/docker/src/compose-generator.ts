@@ -1019,6 +1019,12 @@ export interface ComposeResult {
 	 */
 	healthchecks: Record<string, boolean>;
 	/**
+	 * Compose service names whose `restart` resolves to `no` — a one-shot job
+	 * that is expected to exit (D-70). The health gate passes such a service
+	 * once it has exited 0, where every other service must still be running.
+	 */
+	oneShot: string[];
+	/**
 	 * `required:` variables that arrived from neither the Launchfile nor
 	 * `opts.operatorEnv` (D-52, PROVIDERS.md §10 rule 8). Their keys are ABSENT
 	 * from the emitted compose — never `""`, never a substitute.
@@ -1087,6 +1093,7 @@ export function launchToCompose(
 	const generatedEnv = opts.generatedEnv ?? {};
 	const ports: Record<string, number> = {};
 	const componentServices: Record<string, string> = {};
+	const oneShot: string[] = [];
 	const unsuppliedRequired: UnsuppliedRequiredVar[] = [];
 	const endpoints: Record<string, StateEndpoint> = {};
 	const storageBinds: StorageBind[] = [];
@@ -1915,6 +1922,7 @@ export function launchToCompose(
 			component.restart ?? (component.schedule ? "no" : "unless-stopped");
 		// `no` is quoted: a YAML 1.1 loader reads the bare token as boolean false.
 		service.restart = restart === "no" ? quotedScalar("no") : restart;
+		if (restart === "no") oneShot.push(serviceName);
 
 		services[serviceName] = service;
 		componentServices[componentName] = serviceName;
@@ -1988,6 +1996,7 @@ export function launchToCompose(
 				service.healthcheck !== undefined,
 			]),
 		),
+		oneShot,
 		unsuppliedRequired,
 		storageBinds,
 		unboundOperatorVolumes,

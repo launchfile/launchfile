@@ -205,6 +205,49 @@ components:
 				'it runs once with `restart: "no"`',
 			);
 		});
+
+		it("defaults every component that inherits a top-level schedule to restart: no", () => {
+			const launch = readLaunch(`
+name: jobs
+schedule: "0 3 * * *"
+components:
+  export:
+    image: alpine:3
+    commands:
+      start: "sh -c 'echo export'"
+  prune:
+    image: alpine:3
+    commands:
+      start: "sh -c 'echo prune'"
+`);
+			const result = launchToCompose(launch);
+			const services = parse(result.yaml).services;
+			expect(services["jobs-export"].restart).toBe("no");
+			expect(services["jobs-prune"].restart).toBe("no");
+			expect(result.oneShot.sort()).toEqual(["jobs-export", "jobs-prune"]);
+			const warnings = result.warnings.filter((w) => w.includes("declares a schedule"));
+			expect(warnings).toHaveLength(2);
+			for (const w of warnings) expect(w).toContain('it runs once with `restart: "no"`');
+		});
+
+		it("reports the scheduled service as one-shot for the health gate", () => {
+			expect(launchToCompose(scheduled()).oneShot).toEqual(["daily-sync"]);
+		});
+
+		it("reports no one-shot service when an explicit restart wins", () => {
+			expect(launchToCompose(scheduled('restart: "always"')).oneShot).toEqual([]);
+		});
+
+		it("leaves backing services out of the one-shot list", () => {
+			const result = launchToCompose(
+				scheduled(`requires:
+  - type: postgres
+    set_env:
+      DATABASE_URL: $url`),
+			);
+			expect(Object.keys(result.healthchecks).length).toBeGreaterThan(1);
+			expect(result.oneShot).toEqual(["daily-sync"]);
+		});
 	});
 
 	it('quotes an explicit restart: "no" on a component with no schedule', () => {
@@ -217,7 +260,9 @@ commands:
 `);
 		// Read the raw YAML: yaml@2 resolves the bare token `no` to the string
 		// "no", so the parsed value cannot tell quoted from unquoted.
-		expect(launchToCompose(plain).yaml).toContain('restart: "no"');
+		const result = launchToCompose(plain);
+		expect(result.yaml).toContain('restart: "no"');
+		expect(result.oneShot).toEqual(["one-shot"]);
 	});
 
 	it("adds a bridge network", async () => {
