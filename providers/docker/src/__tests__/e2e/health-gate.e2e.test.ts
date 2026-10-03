@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rmdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readLaunch } from "@launchfile/sdk";
@@ -32,6 +32,7 @@ const FIXTURES = join(import.meta.dirname, "fixtures");
 
 interface Launched {
 	project: string;
+	dir: string;
 	composeFile: string;
 	healthchecks: Readonly<Record<string, boolean>>;
 }
@@ -58,6 +59,7 @@ async function launch(fixture: string): Promise<Launched> {
 
 	const launched: Launched = {
 		project: `lf-e2e-${fixture}-${process.pid}`,
+		dir,
 		composeFile,
 		healthchecks: result.healthchecks,
 	};
@@ -75,31 +77,65 @@ async function launch(fixture: string): Promise<Launched> {
 	return launched;
 }
 
-async function restartCount({
+async function containerIds({
 	project,
 	composeFile,
-}: Launched): Promise<number> {
-	const ids = (
-		await docker([
-			"compose",
-			"-p",
-			project,
-			"-f",
-			composeFile,
-			"ps",
-			"--all",
-			"-q",
-		])
-	)
-		.split("\n")
-		.filter(Boolean);
+}: Launched): Promise<string[]> {
+	const out = await docker([
+		"compose",
+		"-p",
+		project,
+		"-f",
+		composeFile,
+		"ps",
+		"--all",
+		"-q",
+	]);
+	return out.split("\n").filter(Boolean);
+}
+
+async function restartCount(app: Launched): Promise<number> {
 	let total = 0;
-	for (const id of ids) {
+	for (const id of await containerIds(app)) {
 		total += Number(
 			(await docker(["inspect", "-f", "{{.RestartCount}}", id])).trim(),
 		);
 	}
 	return total;
+}
+
+/**
+ * Exit codes of the health probes docker still holds for the app's containers,
+ * oldest first. Docker keeps only the last five probes per container.
+ */
+async function probeExitCodes(app: Launched): Promise<number[]> {
+	const codes: number[] = [];
+	for (const id of await containerIds(app)) {
+		const log = JSON.parse(
+			await docker(["inspect", "-f", "{{json .State.Health.Log}}", id]),
+		) as { ExitCode: number }[] | null;
+		for (const probe of log ?? []) codes.push(probe.ExitCode);
+	}
+	return codes;
+}
+
+async function tearDown({
+	project,
+	dir,
+	composeFile,
+}: Launched): Promise<void> {
+	await docker([
+		"compose",
+		"-p",
+		project,
+		"-f",
+		composeFile,
+		"down",
+		"-v",
+		"--remove-orphans",
+	]);
+	await unlink(composeFile);
+	await rmdir(dir);
 }
 
 describe.skipIf(!ENABLED)("docker health gate against a real daemon", () => {
@@ -119,21 +155,25 @@ describe.skipIf(!ENABLED)("docker health gate against a real daemon", () => {
 					`(docker info exited ${info.exitCode}): ${info.stderr.trim()}`,
 			);
 		}
-		await docker(["pull", "--quiet", IMAGE], 300_000);
-	}, 320_000);
+		// Pull only when the image is missing, so a registry rate limit cannot
+		// fail a run that already has it.
+		const cached = await shell("docker", ["image", "inspect", IMAGE], {
+			silent: true,
+			allowFailure: true,
+			timeout: 30_000,
+		});
+		if (cached.exitCode !== 0) {
+			await docker(["pull", "--quiet", IMAGE], 300_000);
+		}
+	}, 360_000);
 
 	afterEach(async () => {
-		for (const { project, composeFile } of started.splice(0)) {
-			await docker([
-				"compose",
-				"-p",
-				project,
-				"-f",
-				composeFile,
-				"down",
-				"-v",
-				"--remove-orphans",
-			]);
+		const results = await Promise.allSettled(started.splice(0).map(tearDown));
+		const failures = results.flatMap((r) =>
+			r.status === "rejected" ? [r.reason] : [],
+		);
+		if (failures.length > 0) {
+			throw new AggregateError(failures, "docker e2e teardown failed");
 		}
 	}, 60_000);
 
@@ -172,18 +212,19 @@ describe.skipIf(!ENABLED)("docker health gate against a real daemon", () => {
 		const app = await launch("slow-healthy");
 		expect(app.healthchecks).toEqual({ "lf-e2e-slow-healthy": true });
 
-		const t0 = Date.now();
 		const outcome = await waitForHealth(
 			app.project,
 			app.composeFile,
 			app.healthchecks,
 			BUDGET,
 		);
-		const elapsed = Date.now() - t0;
 
 		expect(outcome).toEqual({ ok: true, stuck: [] });
-		// The gate saw it unhealthy first and kept polling.
-		expect(elapsed).toBeGreaterThan(3_000);
+		// Its check failed before it passed, so the gate waited through failing
+		// probes rather than catching it already healthy.
+		const codes = await probeExitCodes(app);
+		expect(codes.some((code) => code !== 0)).toBe(true);
+		expect(codes.at(-1)).toBe(0);
 		expect(await restartCount(app)).toBe(0);
 	}, 60_000);
 });
