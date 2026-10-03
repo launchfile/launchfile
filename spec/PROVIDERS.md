@@ -205,7 +205,7 @@ local watcher ← emit ← diff() ← fs change ────┘
 ### `@launchfile/docker` — artifact / container
 
 - **Verbs:** `up`, `down`, `status`, `logs`, `list`.
-- **`up` opts:** `detach`, `dryRun`, `yes`. **Returns:** `slug`, `appName`, `sourceType` (`local | catalog | url`), `sourcePath`/`sourceUrl`.
+- **`up` opts:** `dryRun`, `yes` (compose always runs detached, so there is no `detach` option). **Returns:** `slug`, `appName`, `sourceType` (`local | catalog | url`), `sourcePath`/`sourceUrl`.
 - **Translation:** Launchfile → `docker-compose.yml` (compose-generator); one compose project per deployment, keyed by `slug`.
 - **Ports:** host-port allocation, persisted and collision-avoided across deployments (UC3 worktrees get distinct ports).
 - **Build:** components with `build:` are built from source **inside `docker compose build`** (BuildKit — nothing from the repo runs on the host); `image:` services are pulled.
