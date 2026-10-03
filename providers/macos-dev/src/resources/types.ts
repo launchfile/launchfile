@@ -54,6 +54,13 @@ export interface ProvisionOpts {
 	 * ignore it.
 	 */
 	databases?: readonly string[];
+	/**
+	 * Called with the resource's state record before the provisioner creates
+	 * any credential-bearing object (a role or user). The record must be
+	 * readable as `existingState` by the next `provision()`, so a throw after
+	 * the object exists cannot lose the password it was created with.
+	 */
+	persist?: (state: ResourceState) => Promise<void>;
 }
 
 /**
