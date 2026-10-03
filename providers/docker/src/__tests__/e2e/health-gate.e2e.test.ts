@@ -223,7 +223,10 @@ describe.skipIf(!ENABLED)("docker health gate against a real daemon", () => {
 		// Its check failed before it passed, so the gate waited through failing
 		// probes rather than catching it already healthy.
 		const codes = await probeExitCodes(app);
-		expect(codes.some((code) => code !== 0)).toBe(true);
+		expect(
+			codes.some((code) => code !== 0),
+			`probe exit codes ${codes}`,
+		).toBe(true);
 		expect(codes.at(-1)).toBe(0);
 		expect(await restartCount(app)).toBe(0);
 	}, 60_000);

@@ -1,13 +1,14 @@
-# Ready only after 5s of uptime. The 1s start period lets docker probe it at
-# the declared 1s interval almost at once, so its first few probes fail before
-# one passes. retries: 10 keeps those failures from marking it unhealthy
-# before it is ready.
+# Ready only after 8s of uptime. Engines differ on when the first probe runs
+# inside the start period: Docker 29 probes at the 1s interval, Docker 28
+# waits its 5s default start interval. Either way the first probes fail
+# before one passes. retries: 10 keeps those failures from marking it
+# unhealthy before it is ready.
 version: launch/v1
 name: lf-e2e-slow-healthy
 image: busybox:1.37.0
 restart: always
 commands:
-  start: sh -c 'sleep 5; touch /tmp/ready; exec sleep 3600'
+  start: sh -c 'sleep 8; touch /tmp/ready; exec sleep 3600'
 health:
   command: test -f /tmp/ready
   interval: 1s
