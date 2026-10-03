@@ -361,6 +361,60 @@ components:
 		]);
 	});
 
+	it("warns once when two same-name entries emit the identical warning (D-24)", () => {
+		const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    requires:
+      - type: redis
+        name: cache
+        set_env:
+          CACHE_URI: $uri
+      - type: redis
+        name: cache
+        set_env:
+          CACHE_URI: $uri
+`);
+		const warnings = lintLaunch(launch, { suppressPortabilityWarnings: true });
+		expect(warnings).toEqual([
+			'api: cache (redis): CACHE_URI: "$uri" is not in the standard vocabulary (known: url, host, port, password)',
+		]);
+	});
+
+	it("keeps distinct warnings from same-name entries and the same warning in another component", () => {
+		const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    requires:
+      - type: redis
+        name: cache
+        set_env:
+          CACHE_URI: $uri
+      - type: redis
+        name: cache
+        set_env:
+          CACHE_URI: $uri
+          CACHE_DSN: $dsn
+  worker:
+    image: worker:latest
+    requires:
+      - type: redis
+        name: cache
+        set_env:
+          CACHE_URI: $uri
+`);
+		const warnings = lintLaunch(launch, { suppressPortabilityWarnings: true });
+		expect(warnings).toEqual([
+			'api: cache (redis): CACHE_URI: "$uri" is not in the standard vocabulary (known: url, host, port, password)',
+			'api: cache (redis): CACHE_DSN: "$dsn" is not in the standard vocabulary (known: url, host, port, password)',
+			'worker: cache (redis): CACHE_URI: "$uri" is not in the standard vocabulary (known: url, host, port, password)',
+		]);
+	});
+
 	it("warns inside template expressions on a supports entry", () => {
 		const launch = readLaunch(`
 name: acme

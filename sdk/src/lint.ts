@@ -163,6 +163,9 @@ function checkResourceProperties(
 ): void {
 	for (const [componentName, component] of Object.entries(launch.components)) {
 		const where = componentName === "default" ? "(top-level)" : componentName;
+		// Same-name entries are one pooled resource (D-24), so two entries can
+		// produce an identical warning; each distinct message prints once.
+		const emitted = new Set<string>();
 		for (const req of [
 			...(component.requires ?? []),
 			...(component.supports ?? []),
@@ -180,10 +183,12 @@ function checkResourceProperties(
 				for (const { prop } of bareReferences(value)) {
 					if (vocabulary.includes(prop) || flagged.has(prop)) continue;
 					flagged.add(prop);
-					warnings.push(
+					const message =
 						`${where}: ${label}: ${key}: "$${prop}" is not in the standard ` +
-							`vocabulary (known: ${vocabulary.join(", ")})`,
-					);
+						`vocabulary (known: ${vocabulary.join(", ")})`;
+					if (emitted.has(message)) continue;
+					emitted.add(message);
+					warnings.push(message);
 				}
 			}
 		}
