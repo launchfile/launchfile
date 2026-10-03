@@ -287,9 +287,9 @@ function resourceProblem(value: unknown): string | null {
 /**
  * Why a `processes` entry cannot be loaded, or null when it can. `down`
  * signals the recorded group after `checkIdentity` compares `startedAt` with
- * the live process's start time, so a record that claims to have started in
- * the future describes no process this provider spawned and is never handed
- * to the signalling path.
+ * the live process's start time, so a record that claims to have started more
+ * than a minute in the future describes no process this provider spawned and
+ * is never handed to the signalling path.
  */
 function processProblem(value: unknown, now: number): string | null {
 	if (!isPlainObject(value)) return "not an object";
@@ -299,7 +299,10 @@ function processProblem(value: unknown, now: number): string | null {
 	if (typeof value.startedAt !== "string") return "startedAt is not a string";
 	const startedAt = Date.parse(value.startedAt);
 	if (Number.isNaN(startedAt)) return "startedAt is not a parseable timestamp";
-	if (startedAt > now) return "startedAt is in the future";
+	// A backwards clock step between spawn and load must not orphan a live
+	// group; checkIdentity still compares against the real start time.
+	if (startedAt > now + 60_000)
+		return "startedAt is more than a minute in the future";
 	return null;
 }
 

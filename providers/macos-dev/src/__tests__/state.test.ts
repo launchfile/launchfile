@@ -334,7 +334,7 @@ describe("load-boundary validation (#261)", () => {
 		]);
 	});
 
-	it("drops a process whose startedAt is in the future and keeps its sibling", async () => {
+	it("drops a process whose startedAt is more than a minute in the future and keeps its sibling", async () => {
 		const file = await writeRawState({
 			...wellFormed,
 			processes: { web: { ...web, startedAt: "2999-01-01T00:00:00.000Z" }, worker },
@@ -344,7 +344,20 @@ describe("load-boundary validation (#261)", () => {
 		expect(loaded?.resources).toEqual({ postgres, redis });
 		expect(warnings).toHaveLength(1);
 		expect(warnings[0]).toContain(file);
-		expect(warnings[0]).toContain("processes.web (startedAt is in the future)");
+		expect(warnings[0]).toContain(
+			"processes.web (startedAt is more than a minute in the future)",
+		);
+	});
+
+	it("keeps a process whose startedAt is 5 seconds ahead of the clock", async () => {
+		const ahead = {
+			...web,
+			startedAt: new Date(Date.now() + 5_000).toISOString(),
+		};
+		await writeRawState({ ...wellFormed, processes: { web: ahead, worker } });
+		const loaded = await loadState(dir);
+		expect(loaded?.processes).toEqual({ web: ahead, worker });
+		expect(warnings).toHaveLength(0);
 	});
 
 	it("drops a process whose startedAt does not parse", async () => {
