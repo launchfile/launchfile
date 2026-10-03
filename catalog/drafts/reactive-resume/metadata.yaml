@@ -1,7 +1,7 @@
 test_results:
-  last_tested: 2026-09-24
-  pull_time_seconds: 66
-  startup_time_seconds: 19
+  last_tested: 2026-10-03
+  pull_time_seconds: 1
+  startup_time_seconds: 11
   total_download_mb: 385
   health_check_passed: true
   notes: ""

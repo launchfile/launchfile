@@ -5,12 +5,18 @@ test_env:
   EMAIL_NOREPLY: "noreply@fider.test"
   EMAIL_SMTP_HOST: "smtp.fider.test"
 test_results:
-  last_tested: 2026-04-06
-  pull_time_seconds: 3
-  startup_time_seconds: 107
+  last_tested: 2026-10-03
+  pull_time_seconds: 1
+  startup_time_seconds: 106
   total_download_mb: 298
   health_check_passed: false
-  notes: "Migration errors: column 'created_at' of relation 'logs' does not exist. Likely upstream app bug or schema incompatibility with postgres 16."
+  notes: "Containers running but health check timed out"
+known_issues:
+  - "Health check fails (harness run 2026-10-03, postgres:16-alpine). Cause not yet established.
+    The 2026-04-06 and 2026-10-03 runs both logged: column 'created_at' of relation 'logs' does not exist.
+    That is not a permanent schema mismatch: upstream migration
+    201809262108_rename_datetime_fields.sql renames logs.created_on to created_at.
+    All three required vars tracked in #231 are set (BASE_URL from its Launchfile default, the two EMAIL vars from test_env)."
 images:
   - name: getfider/fider:stable
     size_mb: 189

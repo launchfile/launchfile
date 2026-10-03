@@ -1,9 +1,6 @@
 category: Dashboard
 tagline: Self-hosted dashboard with RSS, weather, bookmarks, and more
 homepage: https://github.com/glanceapp/glance
-notes: "config is operator-supplied: the image ships no default glance.yml. Create a directory containing one (see
-  https://github.com/glanceapp/glance) and bind it with `launchfile up catalog/apps/glance --docker --storage
-  config=<dir>`."
 test_storage:
   config: test/config
 test_results:
