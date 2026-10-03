@@ -119,6 +119,22 @@ export class PostgresProvisioner implements ResourceProvisioner {
 		assertSafePassword(password);
 		const port = DEFAULT_PORT;
 
+		const databases = (opts.databases ?? []).map((name) => namedDatabase(dbName, name));
+		const state: ResourceState = {
+			type: "postgres",
+			name: resourceName,
+			brewService: "postgresql",
+			port,
+			dbName,
+			user,
+			password,
+			...(databases.length > 0 ? { databases } : {}),
+		};
+		// The record is complete once the password exists. Saving it before the
+		// role is created means a throw anywhere after that point leaves the
+		// password on disk for the next provision() to reuse.
+		await opts.persist?.(state);
+
 		// Create user (idempotent)
 		await this.#shell(
 			"psql",
@@ -169,7 +185,6 @@ export class PostgresProvisioner implements ResourceProvisioner {
 		// hyphens become underscores, so the identifier check cannot fail on a
 		// name that reached here through the parser; it guards the SQL below
 		// all the same.
-		const databases = (opts.databases ?? []).map((name) => namedDatabase(dbName, name));
 		for (const database of databases) {
 			assertSafeIdentifier(database, "database name");
 			if (!(await this.#databaseExists(port, database))) {
@@ -190,17 +205,6 @@ export class PostgresProvisioner implements ResourceProvisioner {
 			user,
 			password,
 			name: dbName,
-		};
-
-		const state: ResourceState = {
-			type: "postgres",
-			name: resourceName,
-			brewService: "postgresql",
-			port,
-			dbName,
-			user,
-			password,
-			...(databases.length > 0 ? { databases } : {}),
 		};
 
 		return { properties, state };

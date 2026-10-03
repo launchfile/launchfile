@@ -78,6 +78,22 @@ export class MysqlProvisioner implements ResourceProvisioner {
 		assertSafePassword(password);
 		const port = DEFAULT_PORT;
 
+		const databases = (opts.databases ?? []).map((name) => namedDatabase(dbName, name));
+		const state: ResourceState = {
+			type: "mysql",
+			name: resourceName,
+			brewService: "mysql",
+			port,
+			dbName,
+			user,
+			password,
+			...(databases.length > 0 ? { databases } : {}),
+		};
+		// The record is complete once the password exists. Saving it before the
+		// user is created means a throw anywhere after that point leaves the
+		// password on disk for the next provision() to reuse.
+		await opts.persist?.(state);
+
 		// Create database and user (idempotent)
 		await this.#shell(
 			"mysql",
@@ -110,7 +126,6 @@ export class MysqlProvisioner implements ResourceProvisioner {
 		// (^[a-z][a-z0-9-]*$) and the hyphens become underscores, so the
 		// identifier check cannot fail on a name that reached here through the
 		// parser; it guards the SQL below all the same.
-		const databases = (opts.databases ?? []).map((name) => namedDatabase(dbName, name));
 		for (const database of databases) {
 			assertSafeIdentifier(database, "database name");
 			await this.#shell(
@@ -138,17 +153,6 @@ export class MysqlProvisioner implements ResourceProvisioner {
 			user,
 			password,
 			name: dbName,
-		};
-
-		const state: ResourceState = {
-			type: "mysql",
-			name: resourceName,
-			brewService: "mysql",
-			port,
-			dbName,
-			user,
-			password,
-			...(databases.length > 0 ? { databases } : {}),
 		};
 
 		return { properties, state };
