@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it, expect, afterEach } from "vitest";
@@ -189,7 +189,9 @@ describe("ensureDirs (issue #252, CWE-276)", () => {
 	it("tightens a pre-existing .launchfile/env left at 0o755 to 0o700", async () => {
 		await withTempDir(async (dir) => {
 			const envDir = join(dir, ".launchfile", "env");
-			await mkdir(envDir, { recursive: true, mode: 0o755 });
+			await mkdir(envDir, { recursive: true });
+			await chmod(envDir, 0o755);
+			expect((await stat(envDir)).mode & 0o777).toBe(0o755);
 
 			await ensureDirs(dir);
 

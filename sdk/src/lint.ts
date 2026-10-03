@@ -161,7 +161,11 @@ function checkResourceProperties(
 	launch: NormalizedLaunch,
 	warnings: string[],
 ): void {
-	for (const component of Object.values(launch.components)) {
+	for (const [componentName, component] of Object.entries(launch.components)) {
+		const where = componentName === "default" ? "(top-level)" : componentName;
+		// Same-name entries are one pooled resource (D-24), so two entries can
+		// produce an identical warning; each distinct message prints once.
+		const emitted = new Set<string>();
 		for (const req of [
 			...(component.requires ?? []),
 			...(component.supports ?? []),
@@ -172,13 +176,19 @@ function checkResourceProperties(
 				? RESOURCE_PROPERTY_VOCABULARY[req.type]
 				: undefined;
 			if (!vocabulary || !req.set_env) continue;
-			for (const value of Object.values(req.set_env)) {
+			const label = req.name ? `${req.name} (${req.type})` : req.type;
+			for (const [key, value] of Object.entries(req.set_env)) {
+				// A property repeated within one env value warns once.
+				const flagged = new Set<string>();
 				for (const { prop } of bareReferences(value)) {
-					if (vocabulary.includes(prop)) continue;
-					warnings.push(
-						`"$${prop}" is not in the standard vocabulary for ${req.type} ` +
-							`(known: ${vocabulary.join(", ")})`,
-					);
+					if (vocabulary.includes(prop) || flagged.has(prop)) continue;
+					flagged.add(prop);
+					const message =
+						`${where}: ${label}: ${key}: "$${prop}" is not in the standard ` +
+						`vocabulary (known: ${vocabulary.join(", ")})`;
+					if (emitted.has(message)) continue;
+					emitted.add(message);
+					warnings.push(message);
 				}
 			}
 		}
@@ -198,6 +208,8 @@ function checkResourceProperties(
 function checkResourceUses(launch: NormalizedLaunch, warnings: string[]): void {
 	for (const [componentName, component] of Object.entries(launch.components)) {
 		const where = componentName === "default" ? "(top-level)" : componentName;
+		// Same-name entries are one shared resource (D-24), so each can repeat a use.
+		const emitted = new Set<string>();
 		for (const [field, entries] of [
 			["requires", component.requires ?? []],
 			["supports", component.supports ?? []],
@@ -217,10 +229,12 @@ function checkResourceUses(launch: NormalizedLaunch, warnings: string[]): void {
 						field === "requires"
 							? "a provider refuses the component rather than cover a use it does not recognise"
 							: "a provider leaves the entry unfulfilled rather than cover a use it does not recognise";
-					warnings.push(
+					const message =
 						`${where}: use "${token}" is not in the standard use vocabulary for ${req.type} ` +
-							`(known: ${known.join(", ")}) — ${outcome}`,
-					);
+						`(known: ${known.join(", ")}) — ${outcome}`;
+					if (emitted.has(message)) continue;
+					emitted.add(message);
+					warnings.push(message);
 				}
 			}
 		}
