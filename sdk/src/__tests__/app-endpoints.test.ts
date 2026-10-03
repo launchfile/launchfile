@@ -3,6 +3,7 @@ import { appEndpointReferences, lintLaunch } from "../lint.js";
 import { readLaunch } from "../reader.js";
 import {
 	APP_ENDPOINT_PROPERTIES,
+	REFUSED_PRIMARY_ADDRESS,
 	type ResolverContext,
 	resolveExpression,
 	UNPUBLISHED_APP_ENDPOINT,
@@ -368,5 +369,38 @@ components:
         exposed: true
 `);
 		expect(Object.keys(launch.components)).toEqual(["api", "admin"]);
+	});
+});
+
+describe("REFUSED_PRIMARY_ADDRESS (D-72)", () => {
+	it("is the unpublished answer with tls reading false", () => {
+		expect(REFUSED_PRIMARY_ADDRESS).toEqual({
+			...UNPUBLISHED_APP_ENDPOINT,
+			tls: "false",
+		});
+		expect(REFUSED_PRIMARY_ADDRESS.tls).toBe("false");
+		expect(REFUSED_PRIMARY_ADDRESS.url).toBe("");
+	});
+
+	it("carries every $app.endpoints property and nothing else", () => {
+		expect(Object.keys(REFUSED_PRIMARY_ADDRESS).sort()).toEqual(
+			[...APP_ENDPOINT_PROPERTIES].sort(),
+		);
+	});
+
+	it("is frozen, so no provider can drift it", () => {
+		expect(Object.isFrozen(REFUSED_PRIMARY_ADDRESS)).toBe(true);
+		expect(Object.isFrozen(UNPUBLISHED_APP_ENDPOINT)).toBe(true);
+	});
+
+	it("resolves $app.tls to the literal false and every other field to empty", () => {
+		const ctx: ResolverContext = {
+			app: { name: "vw", ...REFUSED_PRIMARY_ADDRESS },
+			components: {},
+			resources: {},
+		};
+		expect(resolveExpression("$app.tls", ctx)).toBe("false");
+		expect(resolveExpression("$app.url", ctx)).toBe("");
+		expect(resolveExpression("$app.name", ctx)).toBe("vw");
 	});
 });

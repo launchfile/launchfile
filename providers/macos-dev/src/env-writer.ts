@@ -17,6 +17,7 @@ import {
 	type NormalizedComponent,
 	type NormalizedLaunch,
 	parseUseKey,
+	REFUSED_PRIMARY_ADDRESS,
 	type ResolverContext,
 	type Secret,
 	suppliedAppProperties,
@@ -28,9 +29,9 @@ import {
 import {
 	type DeclaredPrimary,
 	declaredPrimary,
-	REFUSED_PRIMARY_ADDRESS,
 	wireHttpsOrigins,
 } from "./https-origin.js";
+import { refusedComponents } from "./refusals.js";
 import { getProvisioner } from "./resources/index.js";
 import type { ResourceProperties } from "./resources/types.js";
 import { coveredUses, type DbIndexes, namedDatabases, withCoveredUses } from "./resources/uses.js";
@@ -52,13 +53,16 @@ export type { ResolverContext, UnsuppliedRequiredEnv };
  * Apps with no exposed component get `port: 0` and `url: ""` (and empty
  * authority/scheme/tls).
  *
- * A declared primary whose component `up` refuses — a `requires:` entry the
+ * A declared primary whose component `up` refuses — for any cause in the
+ * refusal set (`refusedComponents`), not only an `https-origin` entry the
  * publication context does not satisfy — keeps its place and has no address:
  * every property is `REFUSED_PRIMARY_ADDRESS` (D-72), never a surviving
- * sibling's port and never the URL that failed to satisfy the entry. `up`
- * passes `primary` as it read it before the refusal removed the component
- * from `launch.components`; `env` and `bootstrap` read the file whole and let
- * the default compute it, so the three answer alike.
+ * sibling's port and never a supplied URL for a component that does not
+ * launch. `up` passes `primary` as it read it before the refusal removed the
+ * component from `launch.components`; `env` and `bootstrap` read the file
+ * whole and compute it from the same file and the inputs `up` recorded —
+ * the publication context and `--with-optional` (`resolverContextFor`) — so
+ * the three answer alike.
  *
  * With an `appUrl` — the orchestrator-supplied publication context (D-58) —
  * routing has moved upstream and the supplied URL answers instead, via the
@@ -81,7 +85,10 @@ export function computeAppProperties(
 	launch: NormalizedLaunch,
 	componentPorts: Record<string, number>,
 	appUrl?: string,
-	primary: DeclaredPrimary | undefined = declaredPrimary(launch, appUrl),
+	primary: DeclaredPrimary | undefined = declaredPrimary(
+		launch,
+		refusedComponents(launch, { appUrl }),
+	),
 ): Record<string, string | number> {
 	if (primary?.refused) return { name: launch.name, ...REFUSED_PRIMARY_ADDRESS };
 	if (appUrl !== undefined) return suppliedAppProperties(launch.name, appUrl);
@@ -156,7 +163,10 @@ export function printedPrimaryEndpoint(
 	launch: NormalizedLaunch,
 	componentPorts: Record<string, number>,
 	appUrl?: string,
-	primary: DeclaredPrimary | undefined = declaredPrimary(launch, appUrl),
+	primary: DeclaredPrimary | undefined = declaredPrimary(
+		launch,
+		refusedComponents(launch, { appUrl }),
+	),
 ): string | undefined {
 	if (primary?.refused) return undefined;
 	const component = primaryComponent(launch, componentPorts, primary);
@@ -351,14 +361,21 @@ export async function resourceMapFromState(
  * from the recorded publication context (D-58) with a satisfied
  * `https-origin` wired to the same string (D-60 rule 4), and the declared
  * uses the resolver applies strictly. `primary` is the declared primary as
- * `up` read it before its refusals; the other two verbs omit it and read the
- * whole file.
+ * `up` read it before its refusals; the other two verbs omit it, and it is
+ * read from the whole file against the refusal set the recorded inputs
+ * decide — the same inputs `up` decided it on.
  */
 export function resolverContextFor(
 	launch: NormalizedLaunch,
 	resourceMap: Record<string, ResourceProperties>,
 	state: LaunchState,
-	primary?: DeclaredPrimary,
+	primary: DeclaredPrimary | undefined = declaredPrimary(
+		launch,
+		refusedComponents(launch, {
+			appUrl: state.appUrl,
+			withOptional: state.withOptional,
+		}),
+	),
 ): ResolverContext {
 	const appProperties = computeAppProperties(launch, state.ports, state.appUrl, primary);
 	wireHttpsOrigins(launch, resourceMap, state.appUrl);
