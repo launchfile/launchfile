@@ -10,11 +10,13 @@ test_results:
   startup_time_seconds: 107
   total_disk_mb: 433
   health_check_passed: false
-  notes: >-
-    Blocked by an upstream fider defect: its SQL logger inserts into logs(created_at)
-    while its migration creates the column as created_on, so Postgres logs
-    'column "created_at" of relation "logs" does not exist'. The defect does not depend
-    on the Postgres major version or on the required env vars (#231).
+  notes: "Migration errors: column 'created_at' of relation 'logs' does not exist."
+known_issues:
+  - "Does not deploy. Upstream fider defect: its SQL logger inserts into logs(created_at)
+    (app/services/log/sql/sql.go:77-80), while its migration creates the column as
+    created_on (migrations/201806191904_create_logs.sql). LOG_SQL defaults to true
+    (app/pkg/env/env.go:88), so it fires on every boot, on any Postgres major.
+    Independent of the required env vars tracked in #231."
 images:
   - name: getfider/fider:stable
     size_mb: 174
