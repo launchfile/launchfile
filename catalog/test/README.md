@@ -29,9 +29,14 @@ bun run typecheck && bun run test
 
 ## Static validation
 
-`src/validate-catalog.ts` reads every `catalog/{apps,drafts}/*/Launchfile`, parses it
-with the SDK's `readLaunch` — the Zod schema in `sdk/src/schema.ts`, not the published
-JSON Schema, which nothing yet asserts agrees with it (issue #179) — and applies the
+`src/validate-catalog.ts` reads every `catalog/{apps,drafts}/*/Launchfile` and checks it
+against two schemas: the SDK's `readLaunch` (the Zod schema in `sdk/src/schema.ts`) and
+the published JSON Schema at `spec/schema/launchfile.schema.json`, via ajv (draft 2020-12,
+strict mode). A rejection names the file and the schema that rejected it. The run also
+fails when the catalog is empty or an entry directory holds no Launchfile, so the checked
+set cannot shrink silently. There is no allowlist. The published-schema check catches the
+published schema rejecting a file Zod accepts; it does not catch the converse, a file the
+published schema accepts and Zod rejects (issue #439). The script then applies the
 image-reference policy in
 [`catalog/CONTRIBUTING.md`](../CONTRIBUTING.md#image-references). A missing tag or an
 `@sha256` digest is an error anywhere in the catalog; the `:latest`-without-rationale
