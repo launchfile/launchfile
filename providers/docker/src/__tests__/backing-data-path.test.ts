@@ -63,8 +63,8 @@ describe("backing service data paths", () => {
 		// mongo:7 declares both /data/db and /data/configdb (`docker image
 		// inspect mongo:7 -f '{{json .Config.Volumes}}'`). Only /data/db is
 		// mounted: /data/configdb is written only by `mongod --configsvr`,
-		// which this provider never runs. See the mongodb factory in
-		// compose-generator.ts for the full rationale.
+		// which this provider never runs. The full rationale is the "mongo:7"
+		// entry in DECLARED_VOLUME_EXCEPTIONS (compose-generator.ts).
 		const doc = composeFor("mongodb");
 		expect(doc.services["app-mongodb"]?.volumes).toEqual([
 			"app-mongodb-data:/data/db",
