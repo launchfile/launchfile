@@ -69,7 +69,7 @@ Draft Launchfiles in [`drafts/`](drafts/) — not yet verified end-to-end. PRs w
 | [Diun](drafts/diun/) | Monitoring | Gap: device passthrough (G-11) |
 | [Docmost](drafts/docmost/) | Wiki | |
 | [Duplicati](drafts/duplicati/) | Backup | |
-| [Fider](drafts/fider/) | Feedback | Blocked: upstream logs-column defect |
+| [Fider](drafts/fider/) | Feedback | Health check fails; cause under investigation (#367) |
 | [Gatus](drafts/gatus/) | Monitoring | |
 | [Glance](drafts/glance/) | Dashboard | |
 | [Gokapi](drafts/gokapi/) | Files | |

@@ -7,16 +7,16 @@ test_env:
 test_results:
   last_tested: 2026-10-03
   pull_time_seconds: 1
-  startup_time_seconds: 107
+  startup_time_seconds: 106
   total_disk_mb: 891
   health_check_passed: false
   notes: "Containers running but health check timed out"
 known_issues:
-  - "Does not deploy. Upstream fider defect: its SQL logger inserts into logs(created_at)
-    (app/services/log/sql/sql.go:77-80), while its migration creates the column as
-    created_on (migrations/201806191904_create_logs.sql). LOG_SQL defaults to true
-    (app/pkg/env/env.go:88), so it fires on every boot, on any Postgres major.
-    Independent of the required env vars tracked in #231."
+  - "Health check fails (harness run 2026-10-03). Cause not yet established.
+    The 2026-04-06 run logged: column 'created_at' of relation 'logs' does not exist.
+    That is not a permanent schema mismatch: upstream migration
+    201809262108_rename_datetime_fields.sql renames logs.created_on to created_at.
+    Not caused by the required env vars tracked in #231 (test_env supplies them)."
 images:
   - name: getfider/fider:stable
     size_mb: 499
