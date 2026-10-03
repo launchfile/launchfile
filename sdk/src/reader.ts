@@ -166,7 +166,7 @@ function normalizeProvides(provides: Provides[] | undefined): Provides[] | undef
 	return provides?.map((p) => ({ ...p }));
 }
 
-/** Copies the storage map and each volume so inheriting components do not share objects. Nested values stay shared. */
+/** Copies the storage map and each volume so inheriting components do not share objects. */
 function normalizeStorage(
 	storage: Record<string, StorageVolume> | undefined,
 ): Record<string, StorageVolume> | undefined {
