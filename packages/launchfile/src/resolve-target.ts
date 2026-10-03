@@ -10,6 +10,7 @@ import {
 	findDeployment,
 	findBySource,
 	findAllBySource,
+	entrySource,
 	type DeploymentEntry,
 } from "./state/index.js";
 
@@ -127,7 +128,7 @@ function exitAmbiguous(
 	for (const m of matches) {
 		const src = m.entry.sourceType === "local"
 			? m.entry.source.replace(process.env.HOME ?? "", "~")
-			: m.entry.source;
+			: entrySource(m.entry);
 		const name = m.entry.name ? `(--name ${m.entry.name})` : "(unnamed)";
 		const port = m.entry.port ? `:${m.entry.port}` : "";
 		console.error(`  ${m.id}  ${name}  ${src}  ${port}`);
