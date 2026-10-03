@@ -310,7 +310,7 @@ export interface LaunchErrorContext {
 	readonly serviceLogs?: Readonly<Record<string, string>>;
 	/** Declared env var **names**. There is no field for a value (see {@link EnvKeyList}). */
 	readonly envKeys?: EnvKeyList;
-	/** Unsupplied `required:` vars (D-52). Reserved — neither reference provider fails on these yet (#192). */
+	/** Unsupplied `required:` vars (D-52). Names only — set by a provider whose deploying verb refused because the operator channel did not supply them. */
 	readonly unsupplied?: readonly UnsuppliedRequirement[];
 	/** What the launch reported alongside what killed it — e.g. the D-51 unexecuted-`schedule` warning. */
 	readonly warnings?: readonly string[];
