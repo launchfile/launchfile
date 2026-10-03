@@ -37,9 +37,11 @@ export interface CatalogEntry {
 }
 
 /**
- * Requirement types the harness cannot provision: the public HTTPS origin (a
- * backing service under D-60) and host capabilities (D-44, granted or refused,
- * not provisioned). They appear in neither the Services column nor the tier.
+ * Requirement types the harness does not provision. `https-origin` is a
+ * backing service (D-60), but fulfilling it needs a public HTTPS origin the
+ * harness cannot stand up. Host capabilities are a grant/refuse mode of
+ * `requires`, not a provisioned service (D-53, D-44). Neither appears in the
+ * Services column or the tier.
  */
 const NON_SERVICE_TYPES = new Set(["https-origin", "host"]);
 
