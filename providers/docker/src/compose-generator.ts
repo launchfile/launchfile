@@ -628,7 +628,11 @@ function createBackingServices(
 			const accessKey = getPassword("minio-access");
 			const secretKey = getPassword("minio-secret");
 			return {
-				image: "minio/minio:latest",
+				// MinIO publishes no community images (minio/minio is gone).
+				// pgsty/minio is a maintained build of the same code: same
+				// MINIO_ROOT_* env, `server /data`, and /minio/health/live. It
+				// publishes only RELEASE tags, so the pin is an exact release.
+				image: "pgsty/minio:RELEASE.2026-08-04T00-00-00Z",
 				// Matches the `server /data` command below.
 				dataPath: "/data",
 				environment: {
@@ -663,7 +667,11 @@ function createBackingServices(
 			const accessKey = getPassword("s3-access");
 			const secretKey = getPassword("s3-secret");
 			return {
-				image: "minio/minio:latest",
+				// MinIO publishes no community images (minio/minio is gone).
+				// pgsty/minio is a maintained build of the same code: same
+				// MINIO_ROOT_* env, `server /data`, and /minio/health/live. It
+				// publishes only RELEASE tags, so the pin is an exact release.
+				image: "pgsty/minio:RELEASE.2026-08-04T00-00-00Z",
 				// Matches the `server /data` command below.
 				dataPath: "/data",
 				environment: {
