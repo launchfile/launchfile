@@ -161,7 +161,8 @@ function checkResourceProperties(
 	launch: NormalizedLaunch,
 	warnings: string[],
 ): void {
-	for (const component of Object.values(launch.components)) {
+	for (const [componentName, component] of Object.entries(launch.components)) {
+		const where = componentName === "default" ? "(top-level)" : componentName;
 		for (const req of [
 			...(component.requires ?? []),
 			...(component.supports ?? []),
@@ -172,12 +173,16 @@ function checkResourceProperties(
 				? RESOURCE_PROPERTY_VOCABULARY[req.type]
 				: undefined;
 			if (!vocabulary || !req.set_env) continue;
-			for (const value of Object.values(req.set_env)) {
+			const label = req.name ? `${req.name} (${req.type})` : req.type;
+			for (const [key, value] of Object.entries(req.set_env)) {
+				// A property repeated within one env value warns once.
+				const flagged = new Set<string>();
 				for (const { prop } of bareReferences(value)) {
-					if (vocabulary.includes(prop)) continue;
+					if (vocabulary.includes(prop) || flagged.has(prop)) continue;
+					flagged.add(prop);
 					warnings.push(
-						`"$${prop}" is not in the standard vocabulary for ${req.type} ` +
-							`(known: ${vocabulary.join(", ")})`,
+						`${where}: ${label}: ${key}: "$${prop}" is not in the standard ` +
+							`vocabulary (known: ${vocabulary.join(", ")})`,
 					);
 				}
 			}

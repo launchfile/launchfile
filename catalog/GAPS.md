@@ -39,7 +39,7 @@ Each gap includes the apps that exposed it and a severity rating.
 ## Protocol & Networking
 
 ### G-9: No multicast / link-local network capability declaration 🟡
-**Apps**: Home Assistant
+**Apps**: Home Assistant, Syncthing
 **Issue**: Home Assistant uses mDNS and SSDP for local device discovery. Both protocols rely on multicast, which Docker's default bridge network does not forward between containers and the host LAN segment. There is no way in Launchfile to declare that an app requires multicast or link-local network access. The spec should express the capability needed, not a Docker-specific implementation mechanism like `network_mode: host`.
 **Approaches**:
 - **Declare required protocols** — `network.protocols: [multicast, link-local]`; orchestrator satisfies it however fits the platform. Most portable.
@@ -138,7 +138,7 @@ Each gap includes the apps that exposed it and a severity rating.
 | Severity | Count | Gaps |
 |----------|-------|------|
 | 🔴 Blocks real apps | 0 | *(G-2 shared secrets and G-8 UDP now addressed in spec)* |
-| 🟡 Workaround exists | 11 | G-1, G-3, G-5, G-9, G-9b, G-10, G-11, G-12, G-13, G-17, G-19, G-20 *(G-4 `clickhouse` type now in the well-known types — edee630; G-6 property registry now addressed in spec — D-46)* |
+| 🟡 Workaround exists | 11 | G-1, G-3, G-5, G-9, G-10, G-11, G-12, G-13, G-17, G-19, G-20 *(G-4 `clickhouse` type now in the well-known types — edee630; G-6 property registry now addressed in spec — D-46)* |
 | 🟢 Nice-to-have | 4 | G-14, G-15, G-16, G-18 |
 
 ## Apps per Gap
@@ -151,7 +151,7 @@ Each gap includes the apps that exposed it and a severity rating.
 | G-9 | Home Assistant, Syncthing |
 | G-9b | Home Assistant |
 | G-10 | Ollama, Jellyfin, Plex, Immich |
-| G-11 | Jellyfin, Home Assistant, Diun, Calibre Web |
+| G-11 | Jellyfin, Home Assistant, Diun |
 | G-12 | Diun, Home Assistant, Calibre Web |
 | G-13 | Changedetection, Nextcloud |
 | G-14 | Plex |
