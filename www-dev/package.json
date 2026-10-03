@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "schema:copy": "mkdir -p public/schema && cp ../spec/schema/launchfile.schema.json public/schema/v1",
+    "predev": "bun run schema:copy",
+    "prebuild": "bun run schema:copy",
+    "predev:search": "bun run schema:copy",
     "dev": "astro dev",
     "build": "astro build && pagefind --site dist/client",
     "dev:search": "astro build && pagefind --site dist/client && cp -r dist/client/pagefind public/pagefind && astro dev",

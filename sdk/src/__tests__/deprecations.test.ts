@@ -24,14 +24,6 @@ const SCHEMA_PATH = resolve(
 	"schema",
 	"launchfile.schema.json",
 );
-const PUBLISHED_SCHEMA_PATH = resolve(
-	SDK_ROOT,
-	"..",
-	"www-dev",
-	"public",
-	"schema",
-	"v1",
-);
 
 const schemaText = readFileSync(SCHEMA_PATH, "utf-8");
 const schema = JSON.parse(schemaText) as Record<string, unknown>;
@@ -119,13 +111,6 @@ describe("deprecation metadata in the JSON Schema", () => {
 				hint: record.hint,
 			});
 		}
-	});
-
-	// Test 9 — the published copy at launchfile.dev/schema/v1 is what every
-	// catalog file's `# yaml-language-server: $schema=` directive resolves to.
-	// Nothing else keeps the two files in sync.
-	it("keeps www-dev/public/schema/v1 byte-identical to the spec schema", () => {
-		expect(readFileSync(PUBLISHED_SCHEMA_PATH, "utf-8")).toBe(schemaText);
 	});
 
 	// D-54 leaves every legacy key structurally untouched — the deprecation is

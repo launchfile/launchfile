@@ -19,6 +19,9 @@ packages/*/package/
 # Pagefind search index (copied from dist/ by dev:search script)
 **/public/pagefind/
 
+# Published JSON Schema, copied from spec/schema/ by www-dev `schema:copy`
+www-dev/public/schema/
+
 # Cloudflare Wrangler local state
 .wrangler/
 
