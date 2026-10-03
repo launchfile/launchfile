@@ -122,6 +122,20 @@ describe("a URL up writes no credential to index.json (#627)", () => {
 		expect(Object.keys((await loadIndex(indexDir)).deployments)).toEqual(first);
 	});
 
+	it("re-ups the same row when the token is dropped next to a ref holding '/'", async () => {
+		const deps = { up: fakeUp, indexDir, recordDir };
+		const base = "https://host.example/apps/notes/Launchfile";
+		await handleUp(
+			`${base}?token=tok-QUERY-627&ref=release/1.0`,
+			{ docker: true },
+			deps,
+		);
+		await handleUp(`${base}?ref=release/1.0`, { docker: true }, deps);
+		const entries = Object.values((await loadIndex(indexDir)).deployments);
+		expect(entries).toHaveLength(1);
+		expect(entries[0]!.source).toBe(`catalog:${base}?ref=release/1.0`);
+	});
+
 	it("a different ?ref= is a different row", async () => {
 		const deps = { up: fakeUp, indexDir, recordDir };
 		await handleUp(TOKEN_URL, { docker: true }, deps);
