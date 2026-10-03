@@ -199,8 +199,8 @@ export const MAX_LINE_CHARS = 2000;
 // Unbounded, the OSC branch `\][^\u0007]*` is quadratic: each `ESC ]` in the input
 // rescans the whole remainder looking for a BEL that a hostile log line never
 // supplies, and captured output is exactly where a hostile log line arrives
-// (CWE-1333). Through an unbounded `stripControl`, 40 000 `ESC ]` pairs took 1.8s
-// under Bun 1.4.0 on an Apple-silicon Mac; bounded they take 0 ms.
+// (CWE-1333). Through an unbounded `stripControl`, 40 000 `ESC ]` pairs took
+// 1.7s under Bun 1.4.2 on arm64; bounded they take 0 ms.
 //
 // Excluding ESC from the payload also closes a swallow: ECMA-48 ends an OSC
 // string at BEL or ST (`ESC \`), and nothing between may contain ESC. The

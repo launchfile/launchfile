@@ -250,8 +250,8 @@ describe("helpers", () => {
 		const esc = String.fromCharCode(27);
 		// Every `ESC ]` opens an OSC string that no BEL ever closes. With an
 		// unbounded payload each start rescanned the whole remainder, which is
-		// quadratic: through an unbounded `stripControl`, 40 000 pairs took 1.8s under
-		// Bun 1.4.0 on an Apple-silicon Mac. Bounded, it is immeasurable.
+		// quadratic: through an unbounded `stripControl`, 40 000 pairs took 1.7s
+		// under Bun 1.4.2 on arm64. Bounded, it is immeasurable.
 		const hostile = `${esc}]`.repeat(40_000);
 		const t0 = performance.now();
 		const out = stripControl(hostile);
