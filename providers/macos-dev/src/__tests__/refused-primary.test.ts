@@ -2,8 +2,9 @@
  * A refused declared primary resolves the empty `$app.*` address whatever
  * refused it (D-72, D-next): the refusal set is one function over the whole
  * file, `up` reads it before its refusals remove anything, and `env` and
- * `bootstrap` compute it again from the file and the recorded publication
- * context, so the three verbs give one answer.
+ * `bootstrap` compute it again from the file and the inputs `up` recorded
+ * (publication context, `--with-optional`), so the three verbs give one
+ * answer.
  *
  * Every file here is the D-72 trigger shape with the supplied publication
  * URL satisfying the scheme: the primary's component is refused for a cause
@@ -151,12 +152,16 @@ describe("env and bootstrap read the file whole and decide the same set", () => 
 		},
 	);
 
-	it("a certificate refusal is the one cause they cannot see: `--with-optional` is not recorded", () => {
+	it("a certificate refusal turns on `--with-optional`, so the set reads the flag `up` recorded", () => {
 		const cert = CAUSES.find((c) => c.withOptional);
 		if (cert === undefined) throw new Error("certificate cause missing");
 		const launch = readLaunch(cert.file);
-		expect(refusedComponents(launch, { appUrl: APP_URL }).size).toBe(0);
-		expect(computeAppProperties(launch, ports, APP_URL).url).toBe(APP_URL);
+		expect([
+			...refusedComponents(launch, { appUrl: APP_URL, withOptional: true }),
+		]).toEqual(["web"]);
+		expect(
+			refusedComponents(launch, { appUrl: APP_URL, withOptional: false }).size,
+		).toBe(0);
 	});
 });
 

@@ -7,8 +7,9 @@
  * set decides whether the app's declared primary is refused, so `$app.*`
  * resolves the empty address whatever the cause (D-72): `up` computes
  * {@link refusedComponents} before its refusals remove anything, and `env`
- * and `bootstrap` compute it from the file whole with the recorded
- * publication context, so the three verbs give one answer. Pure: no I/O.
+ * and `bootstrap` compute it from the file whole with the inputs `up`
+ * recorded (publication context, `--with-optional`), so the three verbs give
+ * one answer. Pure: no I/O.
  *
  * A component outside the operator's start-set is not refused — it is not
  * selected — and is not graded here.
@@ -189,9 +190,8 @@ export interface RefusalInputs {
 	appUrl?: string;
 	/**
 	 * `--with-optional`: the only way a certificate binding is selected on
-	 * this provider (D-61 rule 5). `false` when unknown — `env` and
-	 * `bootstrap` have no record of it, so a certificate refusal is the one
-	 * cause they cannot see.
+	 * this provider (D-61 rule 5). `up` records it in state, and `env` and
+	 * `bootstrap` pass the recorded value. Absent reads as `false`.
 	 */
 	withOptional?: boolean;
 }

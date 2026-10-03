@@ -586,6 +586,56 @@ describe("launchUp https-origin through the publication context (D-60 rule 5)", 
 		expect(commands).toEqual(["echo "]);
 	});
 
+	it("empties $app.* on up, env and bootstrap when `up --with-optional` refuses the primary's certificate (D-61 rule 5)", async () => {
+		const certRefused = ORIGIN_REQUIRED_SIBLING.replace(
+			"        exposed: true\n    requires:\n      - type: https-origin\n        endpoint: ui\n",
+			"        exposed: true\n        tls: server-cert\n    requires:\n      - type: https-origin\n        endpoint: ui\n    supports:\n      - name: server-cert\n        type: certificate\n",
+		);
+		expect(certRefused).toContain("tls: server-cert");
+		writeFileSync(join(projectDir, "Launchfile"), certRefused);
+		await launchUp({
+			projectDir,
+			appUrl: "https://origin.example.com",
+			withOptional: true,
+		});
+
+		expect(registered("web")).toBeUndefined();
+		expect(consoleErrors.join("\n")).toContain("Refused: web");
+		const admin = registered("admin");
+		expect(admin?.PUBLIC_URL).toBe("");
+		expect(admin?.USE_TLS).toBe("false");
+
+		// `env` and `bootstrap` take no `--with-optional`; they read the flag
+		// `up` recorded and decide the same set.
+		consoleLogs.length = 0;
+		await launchEnv({ projectDir, component: "admin" });
+		const envOut = consoleLogs.join("\n");
+		expect(envOut).toMatch(/^PUBLIC_URL=$/m);
+		expect(envOut).toMatch(/^USE_TLS=false$/m);
+		expect(envOut).not.toContain("origin.example.com");
+		const commands: string[] = [];
+		await launchBootstrap({
+			projectDir,
+			exec: async (_cmd: string, args: string[]) => {
+				commands.push(args.at(-1) ?? "");
+				return { exitCode: 0, stdout: "", stderr: "" };
+			},
+		});
+		expect(commands).toEqual(["echo "]);
+
+		// A plain `up` selects no certificate: the primary launches and the
+		// recorded flag follows, so `env` reads the supplied URL again.
+		startRegistrations.length = 0;
+		await launchUp({ projectDir });
+		expect(registered("web")).toBeDefined();
+		expect(registered("admin")?.PUBLIC_URL).toBe("https://origin.example.com");
+		consoleLogs.length = 0;
+		await launchEnv({ projectDir, component: "admin" });
+		expect(consoleLogs.join("\n")).toMatch(
+			/^PUBLIC_URL=https:\/\/origin\.example\.com$/m,
+		);
+	});
+
 	it("wires a satisfied `supports:` entry and leaves an unsatisfied one absent with a note", async () => {
 		writeFileSync(join(projectDir, "Launchfile"), ORIGIN_OPTIONAL);
 		await launchUp({ projectDir, appUrl: "https://vw.example.com" });

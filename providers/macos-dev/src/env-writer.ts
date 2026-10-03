@@ -60,10 +60,9 @@ export type { ResolverContext, UnsuppliedRequiredEnv };
  * sibling's port and never a supplied URL for a component that does not
  * launch. `up` passes `primary` as it read it before the refusal removed the
  * component from `launch.components`; `env` and `bootstrap` read the file
- * whole and let the default compute it from the same file and the recorded
- * publication context, so the three answer alike. The one input those two
- * verbs cannot see is `--with-optional`, so a certificate refusal (D-61 rule
- * 5) is decided by `up` alone.
+ * whole and compute it from the same file and the inputs `up` recorded —
+ * the publication context and `--with-optional` (`resolverContextFor`) — so
+ * the three answer alike.
  *
  * With an `appUrl` — the orchestrator-supplied publication context (D-58) —
  * routing has moved upstream and the supplied URL answers instead, via the
@@ -362,14 +361,21 @@ export async function resourceMapFromState(
  * from the recorded publication context (D-58) with a satisfied
  * `https-origin` wired to the same string (D-60 rule 4), and the declared
  * uses the resolver applies strictly. `primary` is the declared primary as
- * `up` read it before its refusals; the other two verbs omit it and read the
- * whole file.
+ * `up` read it before its refusals; the other two verbs omit it, and it is
+ * read from the whole file against the refusal set the recorded inputs
+ * decide — the same inputs `up` decided it on.
  */
 export function resolverContextFor(
 	launch: NormalizedLaunch,
 	resourceMap: Record<string, ResourceProperties>,
 	state: LaunchState,
-	primary?: DeclaredPrimary,
+	primary: DeclaredPrimary | undefined = declaredPrimary(
+		launch,
+		refusedComponents(launch, {
+			appUrl: state.appUrl,
+			withOptional: state.withOptional,
+		}),
+	),
 ): ResolverContext {
 	const appProperties = computeAppProperties(launch, state.ports, state.appUrl, primary);
 	wireHttpsOrigins(launch, resourceMap, state.appUrl);

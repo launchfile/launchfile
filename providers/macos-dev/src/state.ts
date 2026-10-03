@@ -138,6 +138,15 @@ export interface LaunchState {
 	 */
 	appUrl?: string;
 	/**
+	 * Whether the last `up` ran with `--with-optional` — the only way a
+	 * certificate binding is selected on this provider (D-61 rule 5).
+	 * Recorded at `up` beside `appUrl` so `env` and `bootstrap` decide the
+	 * refusal set from the same inputs `up` did. Each `up` records the flag
+	 * it was given, so a plain `up` records `false`. Optional for backward
+	 * compatibility: absent reads as `false`.
+	 */
+	withOptional?: boolean;
+	/**
 	 * The `ports` key — this provider allocates one port per component, so a
 	 * component name — of the app's primary endpoint, the one `$app.*` reads,
 	 * when a declared `https-origin` names that endpoint (any protocol, D-60

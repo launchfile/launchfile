@@ -328,6 +328,22 @@ describe("the refusal set's inputs", () => {
 		expect(services(result.yaml)["split-web"]).toBeUndefined();
 	});
 
+	it("a skipped component that also meets a refusal cause is refused: the survivor reads the empty address", () => {
+		const launch = readLaunch(UNCOVERED_USE.replace("    image: web:1\n", ""));
+		expect(launch.components.web?.image).toBeUndefined();
+		const inputs = { appUrl: APP_URL };
+		const result = launchToCompose(launch, { hostPorts, ...inputs });
+		expect([...refusedComponents(launch, inputs).keys()]).toEqual(["web"]);
+		expect(result.warnings).toContain(
+			refusedComponents(launch, inputs).get("web"),
+		);
+		expect(result.warnings).not.toContain("web: no image or build — skipped");
+		const svc = services(result.yaml);
+		expect(svc["split-web"]).toBeUndefined();
+		expect(svc["split-admin"]?.environment).toMatchObject(EMPTY);
+		expect(svc["split-admin"]?.environment?.PUBLIC_URL).toBe("");
+	});
+
 	it("PROVISIONED_TYPES is exactly the set of factories the generator holds (D-64)", () => {
 		expect([...PROVISIONED_TYPES].sort()).toEqual(
 			[...provisionedTypes()].sort(),

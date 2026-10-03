@@ -517,6 +517,9 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	// recorded, so a later plain `up` cannot silently flip a proxied deployment
 	// back to localhost.
 	if (suppliedAppUrl !== undefined) state.appUrl = suppliedAppUrl;
+	// `--with-optional` selects certificate bindings (D-61 rule 5), so it is a
+	// refusal input; recorded so `env` and `bootstrap` decide the same set.
+	state.withOptional = opts.withOptional === true;
 	// The refusal set, decided once from the same inputs the refusals below
 	// apply — every cause, not only the `https-origin` scheme — and the
 	// primary an `https-origin` entry declares (D-60 rule 3), both read now,
@@ -527,7 +530,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	// 8, whatever refused it (D-72).
 	const refused = refusedComponents(launch, {
 		appUrl: state.appUrl,
-		withOptional: opts.withOptional === true,
+		withOptional: state.withOptional,
 	});
 	const primary = declaredPrimary(launch, refused);
 	// 2a. Host capabilities are granted or refused, never provisioned (D-44,
