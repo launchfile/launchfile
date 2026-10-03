@@ -107,6 +107,20 @@ export function dockerSlugFor(entry: DeploymentEntry): string {
 		: entry.appName;
 }
 
+/**
+ * The source an index row identifies (D-55): the directory for a local
+ * target, `catalog:<slug>` for a catalog target, the URL itself for a URL
+ * target. A URL row may still carry a `catalog:` prefix that older CLIs
+ * wrote; it is stripped here so the row matches a fresh `up` of the same URL
+ * and displays as the URL. `up` rewrites the row's source on its next run.
+ */
+export function entrySource(entry: DeploymentEntry): string {
+	if (entry.sourceType === "url" && entry.source.startsWith("catalog:")) {
+		return entry.source.slice("catalog:".length);
+	}
+	return entry.source;
+}
+
 /** Find a deployment by ID, name, app slug, or source directory */
 export function findDeployment(
 	index: DeploymentIndex,
@@ -161,7 +175,7 @@ export function findAllBySource(
 ): { id: string; entry: DeploymentEntry }[] {
 	const results: { id: string; entry: DeploymentEntry }[] = [];
 	for (const [id, entry] of Object.entries(index.deployments)) {
-		if (entry.source === sourcePath) {
+		if (entrySource(entry) === sourcePath) {
 			results.push({ id, entry });
 		}
 	}

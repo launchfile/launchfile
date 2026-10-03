@@ -140,10 +140,12 @@ export async function handleUp(
 	const indexDir = deps.indexDir;
 	const recordDir = deps.recordDir ?? errorsDir();
 
-	// Determine source key for index lookup
+	// Index key by target kind: directory, `catalog:<slug>`, or the URL itself.
 	const sourceKey = upTarget.type === "local"
 		? upTarget.dir ?? resolve(upTarget.value, "..")
-		: `catalog:${upTarget.value}`;
+		: upTarget.type === "catalog"
+			? `catalog:${upTarget.value}`
+			: upTarget.value;
 
 	// Check for existing deployment. Identity is the (source, name) pair
 	// (D-55): an unnamed `up` and each `--name <label>` from one directory are
