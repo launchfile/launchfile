@@ -1,4 +1,6 @@
+import { spawnSync } from "node:child_process";
 import { Writable } from "node:stream";
+import { fileURLToPath } from "node:url";
 import { readLaunch } from "@launchfile/sdk";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createLogger, REDACT_PATHS, serializeErr } from "../logger.js";
@@ -217,5 +219,19 @@ commands:
 		expect(entry.msg).toBe("failed https://example.com");
 		expect(raw()).not.toContain("literal-api-key-0123456789");
 		expect(raw()).not.toContain("824193");
+	});
+});
+
+describe("default destination", () => {
+	it("getLogger() writes to stderr and leaves stdout empty", () => {
+		const loggerUrl = new URL("../logger.ts", import.meta.url).href;
+		const script = `import { getLogger } from ${JSON.stringify(loggerUrl)}; getLogger().info("to-stderr");`;
+		const result = spawnSync("bun", ["-e", script], {
+			encoding: "utf8",
+			cwd: fileURLToPath(new URL("../..", import.meta.url)),
+		});
+		expect(result.status).toBe(0);
+		expect(result.stdout).toBe("");
+		expect(JSON.parse(result.stderr.trim()).msg).toBe("to-stderr");
 	});
 });

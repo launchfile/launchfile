@@ -61,19 +61,19 @@ export function serializeErr(err: unknown): Record<string, unknown> {
 }
 
 /**
- * The provider's logger configuration, bound to `destination`. `getLogger()`
- * uses pino's default destination; tests pass a captured stream so they assert
- * against the same redaction config the provider ships, not a copy of it.
+ * The provider's logger configuration, bound to `destination` (stderr, fd 2,
+ * when omitted). Tests pass a captured stream so they assert against the same
+ * redaction config the provider ships, not a copy of it.
  */
 export function createLogger(
-	destination?: pino.DestinationStream,
+	destination: pino.DestinationStream = pino.destination(2),
 ): pino.Logger {
 	const options: pino.LoggerOptions = {
 		level: process.env.LAUNCHFILE_LOG_LEVEL ?? "info",
 		redact: { paths: [...REDACT_PATHS], censor: "[REDACTED]" },
 		serializers: { err: serializeErr },
 	};
-	return destination ? pino(options, destination) : pino(options);
+	return pino(options, destination);
 }
 
 let logger: pino.Logger | undefined;
