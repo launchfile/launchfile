@@ -92,6 +92,8 @@ Never include: `src/`, `**/__tests__/`, `*.map`, `tsconfig*.json`, `bun.lock`.
 
 The CI pipeline must match dependency order: SDK → Providers → CLI. Each step must build before test (tests may import from dist/).
 
+A provider whose test consumes another provider builds that provider first (macos-dev's cross-provider test imports `@launchfile/docker`, so its CI leg builds `providers/docker`).
+
 ```
 SDK (typecheck → build → test)
   ↓
