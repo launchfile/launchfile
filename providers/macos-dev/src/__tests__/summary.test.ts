@@ -78,6 +78,15 @@ describe("summaryLines", () => {
 		expect(summaryLines("notes", ports, {})).toEqual(plain);
 	});
 
+	it("uses the supplied verb, as a dry run does", () => {
+		expect(
+			summaryLines("notes", ports, publication, "would be reachable at"),
+		).toEqual([
+			"  web would be reachable at https://notes.example.com",
+			"  api would be reachable at http://localhost:31246",
+		]);
+	});
+
 	it("labels the default component with the app name", () => {
 		expect(
 			summaryLines(
