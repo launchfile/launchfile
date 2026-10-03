@@ -56,6 +56,22 @@ export function unknownFlags(args: readonly string[]): string[] {
 }
 
 /**
+ * The first boolean flag written as `--flag=value`, or undefined. `hasFlag`
+ * matches only the bare form, so `--json=true` would be silently ignored;
+ * the caller refuses it instead of guessing (D-62, D-67 rule 1).
+ */
+export function valuedBooleanFlag(args: readonly string[]): BooleanFlag | undefined {
+	for (const arg of args) {
+		if (!arg.startsWith("--")) continue;
+		const eq = arg.indexOf("=");
+		if (eq === -1) continue;
+		const name = arg.slice(2, eq);
+		if ((BOOLEAN_FLAGS as readonly string[]).includes(name)) return name as BooleanFlag;
+	}
+	return undefined;
+}
+
+/**
  * The one declared flag an unknown name most plausibly meant, or undefined
  * when none fits or several fit equally. A candidate fits when one name is a
  * prefix of the other or the edit distance is at most 2. Ties yield nothing.

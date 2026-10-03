@@ -87,6 +87,17 @@ describe("launchfile CLI", () => {
 			expect(stderr).toContain("Unknown flag: --typo.");
 		});
 
+		it.each([
+			["--json=false", ["validate", valid, "--json=false"], "json"],
+			["--quiet=1", ["validate", valid, "--quiet=1"], "quiet"],
+			["--version=x", ["--version=x"], "version"],
+		])("refuses %s with exit 1, a stderr naming the flag and empty stdout", (_label, argv, name) => {
+			const { stdout, stderr, exitCode } = run(argv);
+			expect(exitCode).toBe(1);
+		expect(stdout).toBe("");
+			expect(stderr).toContain(`--${name} takes no value`);
+		});
+
 		it("suggests a single near match", () => {
 			const { stderr } = run(["validate", valid, "--jsonn"]);
 			expect(stderr).toContain("Did you mean --json?");

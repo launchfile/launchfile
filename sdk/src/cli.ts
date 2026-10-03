@@ -19,6 +19,7 @@ import {
 	getPositional,
 	suggestFlag,
 	unknownFlags,
+	valuedBooleanFlag,
 	type BooleanFlag,
 } from "./cli-args.js";
 import { stripControlInline } from "./errors.js";
@@ -43,6 +44,13 @@ function readVersion(): string {
  * uncolored: this runs before the color setting is decided.
  */
 function refuseBadFlags(): void {
+	const valued = valuedBooleanFlag(args);
+	if (valued !== undefined) {
+		process.stderr.write(
+			`error: --${valued} takes no value: write --${valued}, not --${valued}=<value>. Run launchfile --help for usage.\n`,
+		);
+		process.exit(1);
+	}
 	const [unknown] = unknownFlags(args);
 	if (unknown !== undefined) {
 		const suggestion = suggestFlag(unknown);

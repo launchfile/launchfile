@@ -6,6 +6,7 @@ import {
 	getPositional,
 	suggestFlag,
 	unknownFlags,
+	valuedBooleanFlag,
 } from "../cli-args.js";
 
 describe("unknownFlags", () => {
@@ -76,5 +77,23 @@ describe("getPositional", () => {
 
 	it("does not skip after --flag=value", () => {
 		expect(getPositional(["--schema-path=a.json", "schema"], 0)).toBe("schema");
+	});
+});
+
+describe("valuedBooleanFlag", () => {
+	it("returns the first boolean flag written with a value", () => {
+		expect(valuedBooleanFlag(["validate", "--quiet=1", "--json=false"])).toBe("quiet");
+	});
+
+	it("returns undefined for bare boolean flags", () => {
+		expect(valuedBooleanFlag(["validate", "--json", "--quiet"])).toBeUndefined();
+	});
+
+	it("ignores value flags and unknown flags with a value", () => {
+		expect(valuedBooleanFlag(["schema", "--schema-path=a.json", "--typo=1"])).toBeUndefined();
+	});
+
+	it("ignores single-dash tokens", () => {
+		expect(valuedBooleanFlag(["-j=1"])).toBeUndefined();
 	});
 });
