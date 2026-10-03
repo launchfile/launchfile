@@ -12,6 +12,7 @@ import {
 } from "@launchfile/docker";
 // The two D-50 refusals come from the SDK, so one catch covers both providers.
 import {
+	canonicalSourceUrl,
 	InvalidAppUrlError,
 	isLaunchError,
 	type LaunchPhase,
@@ -140,10 +141,11 @@ export async function handleUp(
 	const indexDir = deps.indexDir;
 	const recordDir = deps.recordDir ?? errorsDir();
 
-	// Determine source key for index lookup
+	// Determine source key for index lookup. A URL target is keyed by its
+	// canonical form, so index.json never holds a credential (D-55 rule 3).
 	const sourceKey = upTarget.type === "local"
 		? upTarget.dir ?? resolve(upTarget.value, "..")
-		: `catalog:${upTarget.value}`;
+		: `catalog:${canonicalSourceUrl(upTarget.value)}`;
 
 	// Check for existing deployment. Identity is the (source, name) pair
 	// (D-55): an unnamed `up` and each `--name <label>` from one directory are
