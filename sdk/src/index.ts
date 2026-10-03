@@ -152,4 +152,8 @@ export {
 	useKeyOf,
 	useKeys,
 } from "./uses.js";
+export {
+	checkVersionRange,
+	type VersionRangeCheck,
+} from "./version-range.js";
 export { writeLaunch } from "./writer.js";
