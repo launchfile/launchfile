@@ -9,9 +9,11 @@ import type { ResourceState } from "../state.js";
 import type {
 	DestroyOpts,
 	ProvisionOpts,
+	ProvisionResult,
 	ResourceProperties,
 	ResourceProvisioner,
 } from "./types.js";
+import { versionWarning } from "./version.js";
 
 export class SqliteProvisioner implements ResourceProvisioner {
 	readonly type = "sqlite";
@@ -23,7 +25,7 @@ export class SqliteProvisioner implements ResourceProvisioner {
 	async provision(
 		req: NormalizedRequirement,
 		opts: ProvisionOpts,
-	): Promise<{ properties: ResourceProperties; state: ResourceState }> {
+	): Promise<ProvisionResult> {
 		const resourceName = req.name ?? req.type;
 		const safeName = opts.appName.replace(/-/g, "_");
 		const dataDir = join(opts.projectDir, ".launchfile", "data", "sqlite");
@@ -45,7 +47,16 @@ export class SqliteProvisioner implements ResourceProvisioner {
 			dbName: dbPath,
 		};
 
-		return { properties, state };
+		// No server runs here: this provider creates the file and provides no
+		// SQLite library, so there is no version to compare a range against.
+		const warning = versionWarning(
+			req,
+			"the database file it creates",
+			undefined,
+			"provides only the database file, no SQLite library, so it reads no SQLite version",
+		);
+
+		return { properties, state, warnings: warning ? [warning] : [] };
 	}
 
 	async destroy(state: ResourceState, opts: DestroyOpts): Promise<void> {

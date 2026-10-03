@@ -974,6 +974,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 			// databases the running app was given.
 			state.resources[resourceName] = withRecordedDbIndexes(result.state, indexes);
 			console.log(" done");
+			for (const warning of result.warnings) console.warn(`  Warning: ${warning}`);
 		}
 
 		// Optional supports resources
@@ -1021,6 +1022,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 					resourceMap[resourceName] = registerResource(sup.type, resourceName, uses, result.properties, indexes);
 					state.resources[resourceName] = withRecordedDbIndexes(result.state, indexes);
 					console.log(" done");
+					for (const warning of result.warnings) console.warn(`  Warning: ${warning}`);
 				} catch {
 					console.log(" skipped");
 				}

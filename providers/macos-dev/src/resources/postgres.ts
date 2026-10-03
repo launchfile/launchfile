@@ -20,11 +20,13 @@ import type { ResourceState } from "../state.js";
 import type {
 	DestroyOpts,
 	ProvisionOpts,
+	ProvisionResult,
 	ResourceProperties,
 	ResourceProvisioner,
 	ShellRunner,
 } from "./types.js";
 import { namedDatabase } from "./uses.js";
+import { serverVersion, versionWarning } from "./version.js";
 
 export type { ShellRunner };
 
@@ -74,7 +76,7 @@ export class PostgresProvisioner implements ResourceProvisioner {
 		req: NormalizedRequirement,
 		opts: ProvisionOpts,
 		existingState?: ResourceState,
-	): Promise<{ properties: ResourceProperties; state: ResourceState }> {
+	): Promise<ProvisionResult> {
 		// Ensure postgres is running
 		if (!(await this.isRunning())) {
 			console.log("  Starting PostgreSQL via brew...");
@@ -103,6 +105,8 @@ export class PostgresProvisioner implements ResourceProvisioner {
 					`Check \`brew services list\` and \`pg_isready\`.`,
 			);
 		}
+
+		const versionWarnings = req.version ? await this.#versionWarnings(req) : [];
 
 		// Determine database and user names
 		const resourceName = req.name ?? req.type;
@@ -203,7 +207,23 @@ export class PostgresProvisioner implements ResourceProvisioner {
 			...(databases.length > 0 ? { databases } : {}),
 		};
 
-		return { properties, state };
+		return { properties, state, warnings: versionWarnings };
+	}
+
+	/** The `requires[].version` report, against the version the server reports. */
+	async #versionWarnings(req: NormalizedRequirement): Promise<string[]> {
+		const result = await this.#shell(
+			"psql",
+			[...psqlArgs(DEFAULT_PORT, "postgres"), "-tAc", "SHOW server_version"],
+			{ allowFailure: true, silent: true },
+		);
+		const running = result.exitCode === 0 ? serverVersion(result.stdout) : undefined;
+		const warning = versionWarning(
+			req,
+			`the PostgreSQL server on ${DEFAULT_HOST}:${DEFAULT_PORT}`,
+			running,
+		);
+		return warning ? [warning] : [];
 	}
 
 	async destroy(state: ResourceState, _opts: DestroyOpts): Promise<void> {
