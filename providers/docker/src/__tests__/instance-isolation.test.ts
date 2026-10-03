@@ -342,6 +342,13 @@ commands:
 			expect(result.sourceUrl).toBe(`${origin}/Launchfile?ref=v1`);
 		});
 
+		it("dropping the token next to a ref holding '/' is the same source — no warning", async () => {
+			await record(`${origin}/Launchfile?token=SECRET1&ref=release/1.0`);
+			const result = await dockerUp(`${origin}/Launchfile?ref=release/1.0`, { dryRun: true });
+			expect(errors.join("\n")).not.toContain("different source");
+			expect(result.sourceUrl).toBe(`${origin}/Launchfile?ref=release/1.0`);
+		});
+
 		it("legacy state holding the raw URL with userinfo is the same source", async () => {
 			// saveState canonicalizes, so the legacy file is written directly.
 			mkdirSync(stateDir("isotest"), { recursive: true });
