@@ -24,7 +24,7 @@ import { handleLogs } from "./commands/logs.js";
 import { handleList } from "./commands/list.js";
 import { handleBootstrap } from "./commands/bootstrap.js";
 import { handleDiagnose } from "./commands/diagnose.js";
-import { cmdValidate, cmdInspect, cmdSchema } from "@launchfile/sdk";
+import { cmdValidate, cmdInspect, cmdSchema, stripControlInline } from "@launchfile/sdk";
 import {
 	hasFlag as argsHasFlag,
 	getFlagValue as argsGetFlagValue,
@@ -33,6 +33,7 @@ import {
 	flagPresent as argsFlagPresent,
 	valuedBooleanFlag,
 	unknownFlags,
+	longFormsOf,
 	suggestFlag,
 	parseComponentNames,
 	parseStoragePairs,
@@ -173,8 +174,8 @@ Options:
   --detached       (validate) Evaluate as fetched standalone, not read from the
                     app's own checkout — enables the D-43 reduced-portability check
   --json           Machine-readable output (with diagnose, validate)
-  --help           Show this help
-  --version        Show version
+  --help, -h       Show this help
+  --version, -v    Show version
 
 Environment:
   LAUNCHFILE_NO_PORTABILITY_WARNINGS   Set (to any value except "0"/"false") to silence validate's D-40/D-43 reduced-portability warnings
@@ -201,16 +202,26 @@ async function main(): Promise<void> {
 		process.exit(1);
 	}
 
-	// A long flag neither table declares is refused on every verb, before
+	// A flag no table declares is refused on every verb, before
 	// --version/--help and before any target resolves: nothing downstream can
 	// tell a typo'd optional flag from an omitted one, and the token after it
-	// would be read as the target (#510).
+	// would be read as the target (#510). A single-dash token outside
+	// SHORT_FLAGS is the same refusal, naming the long form(s) it could have
+	// meant (#529). The token is the operator's own bytes, so it is printed
+	// with control characters stripped.
 	const [unknown] = unknownFlags(args);
 	if (unknown !== undefined) {
-		const nearest = suggestFlag(unknown);
-		console.error(
-			`no such flag --${unknown}${nearest ? ` — did you mean --${nearest}?` : ""}`,
-		);
+		let hint = "";
+		if (unknown.startsWith("--")) {
+			const nearest = suggestFlag(unknown.slice(2));
+			if (nearest) hint = ` — did you mean --${nearest}?`;
+		} else {
+			const longForms = longFormsOf(unknown.slice(1));
+			if (longForms.length === 1) hint = ` — did you mean --${longForms[0]}?`;
+			else if (longForms.length > 1)
+				hint = ` — spell the flag out: ${longForms.map((flag) => `--${flag}`).join(", ")}`;
+		}
+		console.error(`no such flag ${stripControlInline(unknown)}${hint}`);
 		console.error("Run `launchfile --help` for usage.");
 		process.exit(1);
 	}
@@ -271,7 +282,7 @@ async function main(): Promise<void> {
 
 		case "logs":
 			await handleLogs(target, {
-				follow: hasFlag("follow") || args.includes("-f"),
+				follow: hasFlag("follow"),
 			});
 			break;
 
