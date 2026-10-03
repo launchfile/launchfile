@@ -129,7 +129,7 @@ components:
     env:
       HD_BASE_URL:
         default: $components.backend.url`,
-    note: "Add the frontend. It <code>depends_on</code> the backend (waits until healthy), exposes port 3001 to the internet, and uses <code>$components.backend.url</code> to discover the backend's address.",
+    note: "Add the frontend. It <code>depends_on</code> the backend (waits until healthy), marks port 3001 reachable from outside the deployment with <code>exposed: true</code>, and uses <code>$components.backend.url</code> to discover the backend's address.",
   },
   {
     yaml: multiComponentYaml,

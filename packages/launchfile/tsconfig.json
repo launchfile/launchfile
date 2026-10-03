@@ -10,7 +10,10 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "rootDir": "src",
+    // The typecheck program also holds src/__tests__, and the macos-dev
+    // declaration check reads that provider's source. Emit layout is not
+    // decided here — tsconfig.build.json pins rootDir to src/.
+    "rootDir": "../..",
     "outDir": "dist",
     "types": ["@types/bun", "vitest/globals"],
     "skipLibCheck": true

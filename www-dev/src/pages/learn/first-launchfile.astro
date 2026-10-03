@@ -111,7 +111,7 @@ image: ghcr.io/org/my-app:latest`,
   yaml={cyberchefYaml}
   annotations={[
     { line: "image:", text: "Instead of building from source, CyberChef uses a prebuilt Docker image." },
-    { line: "provides:", text: "Declares an HTTP endpoint on port 8000, exposed to the internet." },
+    { line: "provides:", text: "Declares an HTTP endpoint on port 8000 and marks it reachable from outside the deployment. What outside reaches — your machine, your LAN, or the internet — is the platform's call." },
     { line: "restart: always", text: "Declares that the app should be restarted if it crashes." },
   ]}
   catalogUrl="https://launchfile.io/apps/cyberchef/"
