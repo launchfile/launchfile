@@ -14,7 +14,7 @@ import {
  * The resolver half: only the four-segment form addresses a value, from a
  * sibling map on the context; every other shape resolves "" (rule 4, L-4).
  * The `validate` half: the shapes that resolve "" are named at validate time,
- * and a `provides[].name` on two components is refused.
+ * and a `provides[].name` on two components, or twice on one, is refused.
  */
 
 const CONTEXT: ResolverContext = {
@@ -368,5 +368,63 @@ components:
         exposed: true
 `);
 		expect(Object.keys(launch.components)).toEqual(["api", "admin"]);
+	});
+});
+
+describe("validate — a provides name twice on one component is refused (D-63 rule 4)", () => {
+	it("names both indexes on a component", () => {
+		expect(() =>
+			readLaunch(`
+name: twins
+components:
+  web:
+    image: web:1
+    provides:
+      - name: api
+        protocol: http
+        port: 3000
+        exposed: true
+      - name: api
+        protocol: http
+        port: 9090
+        exposed: true
+`),
+		).toThrow(
+			/\\?"api\\?" is named twice on web, at provides\[0\] and provides\[1\]/,
+		);
+	});
+
+	it("names both indexes at the top level", () => {
+		expect(() =>
+			readLaunch(`
+name: twins
+image: web:1
+provides:
+  - name: api
+    protocol: http
+    port: 3000
+  - name: admin
+    protocol: http
+    port: 4000
+  - name: api
+    protocol: http
+    port: 9090
+`),
+		).toThrow(
+			/\\?"api\\?" is named twice on \(top-level\), at provides\[0\] and provides\[2\]/,
+		);
+	});
+
+	it("accepts repeated unnamed entries — they are not addressable", () => {
+		const launch = readLaunch(`
+name: twins
+image: web:1
+provides:
+  - protocol: http
+    port: 3000
+  - protocol: tcp
+    port: 9090
+`);
+		expect(launch.components.default?.provides).toHaveLength(2);
 	});
 });
