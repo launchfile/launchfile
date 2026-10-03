@@ -1,14 +1,14 @@
 category: Feedback
-tagline: "Open-source community feedback platform"
+tagline: Open-source community feedback platform
 homepage: https://fider.io
 test_env:
-  EMAIL_NOREPLY: "noreply@fider.test"
-  EMAIL_SMTP_HOST: "smtp.fider.test"
+  EMAIL_NOREPLY: noreply@fider.test
+  EMAIL_SMTP_HOST: smtp.fider.test
 test_results:
-  last_tested: 2026-04-06
-  pull_time_seconds: 3
-  startup_time_seconds: 107
-  total_disk_mb: 433
+  last_tested: 2026-10-03
+  pull_time_seconds: 24
+  startup_time_seconds: 106
+  total_disk_mb: 891
   health_check_passed: false
   notes: >-
     Upstream fider defect, not a Postgres version issue: fider's SQL logger inserts
@@ -18,15 +18,15 @@ test_results:
     migrations. In 2026-09-24 runs the errors stopped within a second, all 95
     migrations applied and fider served GET /_health with 200. The health check
     still fails: the Launchfile probes /api/health (404 on fider), and the image
-    ships neither wget nor curl for the harness probe. As committed, the harness
-    stops before any pull: BASE_URL, EMAIL_NOREPLY and EMAIL_SMTP_HOST are
-    required with no value source (#231).
+    ships neither wget nor curl for the harness probe. The harness supplies
+    BASE_URL, EMAIL_NOREPLY and EMAIL_SMTP_HOST from test_env, starts the stack
+    and times out on the health check (2026-10-03 run).
 images:
   - name: getfider/fider:stable
-    size_mb: 174
+    size_mb: 499
     platform:
       - linux/arm64
   - name: postgres:16-alpine
-    size_mb: 259
+    size_mb: 392
     platform:
       - linux/arm64

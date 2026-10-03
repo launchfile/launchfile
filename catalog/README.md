@@ -69,7 +69,7 @@ Draft Launchfiles in [`drafts/`](drafts/) — not yet verified end-to-end. PRs w
 | [Diun](drafts/diun/) | Monitoring | Gap: device passthrough (G-11) |
 | [Docmost](drafts/docmost/) | Wiki | |
 | [Duplicati](drafts/duplicati/) | Backup | |
-| [Fider](drafts/fider/) | Feedback | Blocked: required env vars (#231) and health probe; upstream logs-column errors are first-boot only |
+| [Fider](drafts/fider/) | Feedback | Blocked: health probe path (/api/health 404); upstream logs-column errors are first-boot only |
 | [Gatus](drafts/gatus/) | Monitoring | |
 | [Glance](drafts/glance/) | Dashboard | |
 | [Gokapi](drafts/gokapi/) | Files | |
