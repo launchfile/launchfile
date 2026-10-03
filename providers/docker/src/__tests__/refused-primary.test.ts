@@ -350,3 +350,71 @@ describe("the refusal set's inputs", () => {
 		);
 	});
 });
+
+describe("an active certificate binding on the primary (D-63 rule 2)", () => {
+	/** `web` is the primary and launches; its binding is selected and satisfied. */
+	const ACTIVE_CERT = `
+name: split
+components:
+  web:
+    image: web:1
+    provides:
+      - name: ui
+        protocol: http
+        port: 3000
+        exposed: true
+        tls: server-cert
+    supports:
+      - type: https-origin
+        endpoint: ui
+      - name: server-cert
+        type: certificate
+        set_env:
+          CERT_FILE: $cert_file
+          KEY_FILE: $key_file
+    env:
+      PUBLIC_URL:
+        default: $app.url
+      APP_SCHEME:
+        default: $app.scheme
+    commands:
+      bootstrap: echo $app.url $app.scheme
+      release: echo $app.url $app.scheme
+`;
+	const FULL_CERT: ComposeOpts["resources"] = {
+		"server-cert": {
+			properties: {
+				cert_file: "/run/secrets/tls/web.crt",
+				key_file: "/run/secrets/tls/web.key",
+			},
+		},
+	};
+
+	it("bootstrap and release resolve the $app.url and $app.scheme up resolves", () => {
+		const launch = readLaunch(ACTIVE_CERT);
+		const resources = FULL_CERT;
+		const result = launchToCompose(launch, { hostPorts, resources });
+		const env = services(result.yaml)["split-web"]?.environment;
+		expect(env?.APP_SCHEME).toBe("https");
+		expect(env?.PUBLIC_URL).toBe("https://localhost:13000");
+		const expected = `echo ${env?.PUBLIC_URL} ${env?.APP_SCHEME}`;
+
+		const bootstrap = planBootstraps(launch, {
+			hostPorts,
+			secrets: {},
+			resources,
+		});
+		const release = planReleases(launch, {
+			services: result.services,
+			hostPorts,
+			secrets: {},
+			resources,
+		});
+		expect(bootstrap.map((b) => [b.component, b.command])).toEqual([
+			["web", expected],
+		]);
+		expect(release.map((r) => [r.component, r.command])).toEqual([
+			["web", expected],
+		]);
+	});
+});
