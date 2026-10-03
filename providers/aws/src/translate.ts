@@ -1362,19 +1362,19 @@ function emitComponent(
 	if (Object.keys(resolvedEnv).length > 0)
 		c.map("env", "aws_ssm_parameter", name);
 
-	// health.path → recorded; the ALB target group carries the actual check.
-	// An ALB target group probes over HTTP only, so a command-only health block
-	// has no target to map to (SPEC "Health"; P-5: report, never drop).
-	if (comp.health?.path) {
-		c.map("health", "aws_lb_target_group health_check", name);
-	} else if (comp.health?.command) {
+	// health → recorded. The ALB target group probes HTTP only: a declared
+	// path is used, otherwise "/" (SPEC "Health"). A command-only block has
+	// no AWS equivalent, so it is a gap, never a silent mapping (P-5).
+	if (comp.health?.command && !comp.health.path) {
 		c.gap(
 			"health",
 			"workaround",
-			"health.command has no AWS equivalent here: an ALB target group probes an HTTP path, and this probe runs no command-based check",
-			"declare health.path for the ALB check, or run the command from a container health check",
+			"health.command has no AWS equivalent: no command-based check runs, and an exposed component's ALB target group probes HTTP \"/\" (matcher 200-399) instead",
+			"declare health.path so the ALB probes the app's real readiness endpoint",
 			name,
 		);
+	} else if (comp.health) {
+		c.map("health", "aws_lb_target_group health_check", name);
 	}
 
 	if (comp.schedule) {
@@ -1521,11 +1521,7 @@ function emitAlb(
 		const provide = (comp.provides ?? []).find((p) => p.exposed === true);
 		if (!provide) continue;
 		const tgTf = `${appTf}_${tfName(name)}`;
-		// A command-only health block yields no path; the target group then
-		// carries no health_check block rather than an invented "/" probe.
-		const healthPath = comp.health?.command
-			? comp.health.path
-			: (comp.health?.path ?? "/");
+		const healthPath = comp.health?.path ?? "/";
 
 		blocks.push(
 			block(
@@ -1536,15 +1532,11 @@ function emitAlb(
 					attr("protocol", "HTTP"),
 					attr("vpc_id", ref("aws_vpc", "main", "id")),
 					attr("target_type", "instance"),
-					...(healthPath
-						? [
-								block(
-									"health_check",
-									[],
-									[attr("path", healthPath), attr("matcher", "200-399")],
-								),
-							]
-						: []),
+					block(
+						"health_check",
+						[],
+						[attr("path", healthPath), attr("matcher", "200-399")],
+					),
 				],
 			),
 		);
