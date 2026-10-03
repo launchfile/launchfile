@@ -287,6 +287,9 @@ for (const img of result.images) {
       size_mb: sizeMb,
       platform: [platform],
     });
+  } else {
+    console.error(`\n=== ${appName}: FAIL — docker image inspect failed for ${img} ===`);
+    process.exit(1);
   }
 }
 
