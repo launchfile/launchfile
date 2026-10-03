@@ -35,12 +35,20 @@ function hashToRange(input: string, rangeSize: number): number {
 	return Math.abs(hash) % rangeSize;
 }
 
-async function isPortFree(port: number, proto: WireProtocol): Promise<boolean> {
+/**
+ * Docker publishes a container port on the wildcard address (0.0.0.0), and a
+ * wildcard holder does not necessarily conflict with a bind to 127.0.0.1.
+ * A port counts as free only when both the loopback and the wildcard address
+ * accept a bind.
+ */
+const PROBE_ADDRESSES = ["127.0.0.1", "0.0.0.0"] as const;
+
+function canBind(port: number, proto: WireProtocol, address: string): Promise<boolean> {
 	if (proto === "udp") {
 		return new Promise((resolve) => {
 			const socket = createSocket("udp4");
 			socket.once("error", () => resolve(false));
-			socket.bind(port, "127.0.0.1", () => {
+			socket.bind(port, address, () => {
 				socket.close(() => resolve(true));
 			});
 		});
@@ -51,8 +59,15 @@ async function isPortFree(port: number, proto: WireProtocol): Promise<boolean> {
 		server.once("listening", () => {
 			server.close(() => resolve(true));
 		});
-		server.listen(port, "127.0.0.1");
+		server.listen(port, address);
 	});
+}
+
+async function isPortFree(port: number, proto: WireProtocol): Promise<boolean> {
+	for (const address of PROBE_ADDRESSES) {
+		if (!(await canBind(port, proto, address))) return false;
+	}
+	return true;
 }
 
 async function allocatePort(key: string, taken: Set<string>, proto: WireProtocol): Promise<number> {

@@ -192,6 +192,54 @@ describe("allocatePorts", () => {
 		}
 	});
 
+	it("skips a tcp port held on the wildcard address", async () => {
+		const { createServer } = await import("node:net");
+		const blocker = createServer();
+		const port = 45888;
+		await new Promise<void>((resolve, reject) => {
+			blocker.once("error", reject);
+			blocker.listen(port, "0.0.0.0", resolve);
+		});
+
+		try {
+			const components = {
+				web: { provides: [{ port, protocol: "http", exposed: true }] },
+			};
+
+			const result = await allocatePorts(components, "web-app");
+
+			// A listener on 0.0.0.0 is how Docker Desktop publishes a container
+			// port; a loopback-only probe could miss it.
+			expect(result.web).not.toBe(port);
+		} finally {
+			await new Promise<void>((resolve) => blocker.close(() => resolve()));
+		}
+	});
+
+	it("skips a udp port held on the wildcard address", async () => {
+		const { createSocket } = await import("node:dgram");
+		const blocker = createSocket("udp4");
+		const port = 45889;
+		await new Promise<void>((resolve, reject) => {
+			blocker.once("error", reject);
+			blocker.bind(port, "0.0.0.0", resolve);
+		});
+
+		try {
+			const components = {
+				vpn: {
+					provides: [{ name: "wg", port, protocol: "udp", exposed: true }],
+				},
+			};
+
+			const result = await allocatePorts(components, "vpn-app");
+
+			expect(result.vpn).not.toBe(port);
+		} finally {
+			await new Promise<void>((resolve) => blocker.close(resolve));
+		}
+	});
+
 	it("gives same-port endpoints distinct host ports instead of colliding", async () => {
 		const components = {
 			default: {
