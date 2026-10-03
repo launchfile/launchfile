@@ -58,8 +58,9 @@ GPU, a claim token).
 | 3 | Multi-component | Two components |
 | 4 | Complex | Three or more components |
 
-`https-origin` and host-capability requirements are not backing services and do not
-affect the tier.
+`https-origin` and host-capability requirements do not affect the tier. The harness
+cannot stand up a public HTTPS origin (a backing service under D-60), and host
+capabilities are granted or refused, not provisioned (D-53).
 
 ## Catalog index
 
