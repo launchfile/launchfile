@@ -1028,13 +1028,16 @@ export interface ComposeResult {
 	 * *Rejected* block forbids. A deploying verb reads this field and fails.
 	 * `launchToCompose` itself never degrades Launchfile content into a wrong
 	 * value — it is exported public API and a pure generator, and it throws in
-	 * exactly two cases, both "refuse, never degrade". A malformed
+	 * exactly three cases, all "refuse, never degrade". A malformed
 	 * `opts.appUrl`, an orchestrator input no `$app.*` can be correctly
 	 * derived from, throws `InvalidAppUrlError` before any generation (#290).
 	 * A `$<resource>.<use>.<property>` reference on an entry that declares
 	 * `uses` but resolves to nothing throws `UnresolvedUseError` (D-65): the
 	 * alternative is the instance URL under a per-use name, which is the
 	 * silent cross-tenant failure `uses` exists to prevent.
+	 * An expression path `parseDotPath` splits into more than 10 dot or
+	 * bracket segments throws a plain `Error`, not an SDK error class, so a
+	 * caller that catches by type must also catch `Error`.
 	 */
 	unsuppliedRequired: UnsuppliedRequiredVar[];
 	/**

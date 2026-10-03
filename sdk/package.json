@@ -1,6 +1,6 @@
 {
   "name": "@launchfile/sdk",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "TypeScript SDK for parsing, validating, and serializing Launchfiles",
   "type": "module",
   "main": "dist/index.js",
@@ -51,7 +51,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",
     "@types/bun": "^1.4.2",
-    "@types/node": "^26.6.2",
+    "@types/node": "^26.6.3",
     "typescript": "^7.0.2",
     "vitest": "^5.0.2"
   }

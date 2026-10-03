@@ -2,9 +2,11 @@
  * Type declarations for the optional macOS dev provider.
  * The actual package is dynamically imported at runtime.
  *
- * Hand-maintained, and narrower than the package's own `LaunchUpOpts` — it
- * only has to cover what this CLI passes. Anything added here must exist
- * there; nothing here is checked against it.
+ * Hand-maintained and narrower than the package's own `LaunchUpOpts` — it
+ * only declares what this CLI passes. A compiled type assertion,
+ * `src/__tests__/macos-dev-declaration.types.ts`, checks these declarations
+ * against `providers/macos-dev/src`, so a field that no longer exists there,
+ * or whose type changed, fails the build.
  */
 declare module "@launchfile/macos-dev" {
 	export function launchUp(opts?: {
