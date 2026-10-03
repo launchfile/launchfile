@@ -10,23 +10,57 @@
  *   launchfile --version
  */
 
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { cmdValidate, cmdInspect, cmdSchema } from "./commands.js";
-
-const VERSION = "0.1.2";
+import {
+	flagPresent,
+	getFlagValue,
+	getPositional,
+	suggestFlag,
+	unknownFlags,
+	type BooleanFlag,
+} from "./cli-args.js";
+import { stripControlInline } from "./errors.js";
 
 const args = process.argv.slice(2);
-const command = args.find((a) => !a.startsWith("-"));
-const positionalArgs = args.filter((a) => !a.startsWith("-"));
+const command = getPositional(args, 0);
 
-function hasFlag(flag: string): boolean {
+function hasFlag(flag: BooleanFlag): boolean {
 	return args.includes(`--${flag}`);
 }
 
-function getFlagValue(flag: string): string | undefined {
-	const idx = args.indexOf(`--${flag}`);
-	if (idx === -1 || idx + 1 >= args.length) return undefined;
-	return args[idx + 1];
+/** The package version, read from the `package.json` one directory above this file. */
+function readVersion(): string {
+	const pkgUrl = new URL("../package.json", import.meta.url);
+	const pkg = JSON.parse(readFileSync(pkgUrl, "utf-8")) as { version: string };
+	return pkg.version;
+}
+
+/**
+ * Refuse any long flag outside the declared tables, and a `--schema-path`
+ * with no value, before any verb or `--version`/`--help` runs. Output is
+ * uncolored: this runs before the color setting is decided.
+ */
+function refuseBadFlags(): void {
+	const [unknown] = unknownFlags(args);
+	if (unknown !== undefined) {
+		const suggestion = suggestFlag(unknown);
+		const hint = suggestion === undefined ? "" : ` Did you mean --${suggestion}?`;
+		process.stderr.write(
+			`error: Unknown flag: --${stripControlInline(unknown)}.${hint} Run launchfile --help for usage.\n`,
+		);
+		process.exit(1);
+	}
+	if (flagPresent(args, "schema-path")) {
+		const value = getFlagValue(args, "schema-path");
+		if (value === undefined || value === "" || value.startsWith("--")) {
+			process.stderr.write(
+				"error: --schema-path needs a value: --schema-path <path>. Run launchfile --help for usage.\n",
+			);
+			process.exit(1);
+		}
+	}
 }
 
 const noColor =
@@ -66,13 +100,15 @@ ${bold("Examples:")}
 `;
 
 function resolvePath(): string {
-	const pathArg = positionalArgs[1];
+	const pathArg = getPositional(args, 1);
 	return resolve(pathArg ?? "./Launchfile");
 }
 
 function main(): void {
+	refuseBadFlags();
+
 	if (hasFlag("version")) {
-		console.log(`launchfile ${VERSION}`);
+		console.log(`launchfile ${readVersion()}`);
 		return;
 	}
 
@@ -97,7 +133,7 @@ function main(): void {
 			cmdInspect(resolvePath(), { noColor });
 			break;
 		case "schema":
-			cmdSchema({ schemaPath: getFlagValue("schema-path"), noColor });
+			cmdSchema({ schemaPath: getFlagValue(args, "schema-path"), noColor });
 			break;
 		default:
 			console.error(`${red("error:")} Unknown command: ${command}`);

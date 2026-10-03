@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -11,16 +11,17 @@ const EXAMPLES = resolve(SDK_ROOT, "..", "spec", "examples");
 function run(
 	cliArgs: string[],
 	extraEnv: Record<string, string> = {},
-): { stdout: string; exitCode: number } {
+): { stdout: string; stderr: string; exitCode: number } {
 	try {
 		const stdout = execFileSync("node", [CLI, ...cliArgs], {
 			encoding: "utf-8",
+			stdio: ["ignore", "pipe", "pipe"],
 			env: { ...process.env, NO_COLOR: "1", ...extraEnv },
 		});
-		return { stdout, exitCode: 0 };
+		return { stdout, stderr: "", exitCode: 0 };
 	} catch (err) {
-		const e = err as { stdout: string; status: number };
-		return { stdout: e.stdout ?? "", exitCode: e.status ?? 1 };
+		const e = err as { stdout: string; stderr: string; status: number };
+		return { stdout: e.stdout ?? "", stderr: e.stderr ?? "", exitCode: e.status ?? 1 };
 	}
 }
 
@@ -53,6 +54,93 @@ describe("launchfile CLI", () => {
 			const { stdout, exitCode } = run(["--version"]);
 			expect(exitCode).toBe(0);
 			expect(stdout.trim()).toMatch(/^launchfile \d+\.\d+\.\d+$/);
+		});
+
+		it("prints the version in package.json", () => {
+			const pkg = JSON.parse(readFileSync(resolve(SDK_ROOT, "package.json"), "utf-8")) as {
+				version: string;
+			};
+			expect(run(["--version"]).stdout.trim()).toBe(`launchfile ${pkg.version}`);
+		});
+	});
+
+	describe("unknown flags", () => {
+		const valid = resolve(EXAMPLES, "minimal.yaml");
+
+		it.each([
+			["validate", ["validate", valid, "--typo"]],
+			["inspect", ["inspect", valid, "--typo"]],
+			["schema", ["schema", "--typo"]],
+			["--version", ["--version", "--typo"]],
+			["--help", ["--help", "--typo"]],
+			["no verb", ["--typo"]],
+		])("refuses with exit 1 and no stdout before %s runs", (_label, argv) => {
+			const { stdout, stderr, exitCode } = run(argv);
+			expect(exitCode).toBe(1);
+			expect(stdout).toBe("");
+			expect(stderr).toContain("Unknown flag: --typo");
+		});
+
+		it("refuses the --flag=value form", () => {
+			const { stderr, exitCode } = run(["validate", valid, "--typo=1"]);
+			expect(exitCode).toBe(1);
+			expect(stderr).toContain("Unknown flag: --typo.");
+		});
+
+		it("suggests a single near match", () => {
+			const { stderr } = run(["validate", valid, "--jsonn"]);
+			expect(stderr).toContain("Did you mean --json?");
+		});
+
+		it("makes no suggestion when nothing is near", () => {
+			const { stderr } = run(["validate", valid, "--frobnicate"]);
+			expect(stderr).not.toContain("Did you mean");
+		});
+
+		it("writes uncolored output even when color is forced on", () => {
+			const { stderr } = run(["validate", valid, "--typo"], { NO_COLOR: "", FORCE_COLOR: "1" });
+			// eslint-disable-next-line no-control-regex
+			expect(stderr).not.toMatch(/\x1b\[/);
+		});
+
+		it("strips control characters from the echoed flag", () => {
+			const { stderr } = run(["validate", valid, "--ty\x1b[31mpo\nx"]);
+			expect(stderr).not.toContain("\x1b");
+			expect(stderr).toContain("Unknown flag: --typo\\nx");
+			expect(stderr.trim().split("\n")).toHaveLength(1);
+		});
+
+		it("does not judge single-dash tokens", () => {
+			expect(run(["validate", valid, "-x"]).exitCode).toBe(0);
+		});
+
+		it("still accepts every declared flag", () => {
+			expect(run(["validate", valid, "--json", "--quiet", "--detached", "--no-color"]).exitCode).toBe(0);
+		});
+	});
+
+	describe("--schema-path", () => {
+		it("reads the schema from the given path in both spellings", () => {
+			const file = fixture('{"a":1}');
+			expect(run(["schema", "--schema-path", file]).stdout).toContain('"a":1');
+			expect(run(["schema", `--schema-path=${file}`]).stdout).toContain('"a":1');
+		});
+
+		it("does not take the value as the verb", () => {
+			const file = fixture('{"a":1}');
+			expect(run(["--schema-path", file, "schema"]).stdout).toContain('"a":1');
+		});
+
+		it.each([
+			["last token", ["schema", "--schema-path"]],
+			["followed by a -- token", ["schema", "--schema-path", "--json"]],
+			["followed by an unknown flag", ["schema", "--schema-path", "--typo"]],
+			["empty inline value", ["schema", "--schema-path="]],
+		])("exits 1 when the value is missing: %s", (_label, argv) => {
+			const { stdout, stderr, exitCode } = run(argv);
+			expect(exitCode).toBe(1);
+			expect(stdout).toBe("");
+			expect(stderr).toContain("--schema-path needs a value");
 		});
 	});
 
