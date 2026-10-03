@@ -885,3 +885,31 @@ describe("catalog/drafts/plausible — TOTP_VAULT_KEY is base64 of 32 bytes (#41
     expect(env.SECRET_KEY_BASE).toMatch(HEX64);
   });
 });
+
+describe("health precedence (SPEC health: path over command)", () => {
+  function healthTest(healthYaml: string): string {
+    const launch = readLaunch(`version: launch/v1
+name: healthapp
+image: nginx:alpine
+provides:
+  - protocol: http
+    port: 8080
+health:
+${healthYaml}
+`);
+    const compose = parse(launchToCompose(launch).yaml) as {
+      services: Record<string, { healthcheck?: { test: string[] } }>;
+    };
+    return compose.services.healthapp!.healthcheck!.test.join(" ");
+  }
+
+  it("uses the HTTP probe when both path and command are declared", () => {
+    const test = healthTest("  path: /ready\n  command: pg_isready");
+    expect(test).toContain("http://localhost:8080/ready");
+    expect(test).not.toContain("pg_isready");
+  });
+
+  it("uses the command when only command is declared", () => {
+    expect(healthTest("  command: pg_isready")).toBe("CMD-SHELL pg_isready");
+  });
+});

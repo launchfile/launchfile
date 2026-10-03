@@ -2275,7 +2275,7 @@ function translateHealth(
 	health: NormalizedHealth,
 	provides?: { port: number; protocol: string }[],
 ): ComposeHealthcheck {
-	if (health.command) {
+	if (health.command && health.path === undefined) {
 		return {
 			test: ["CMD-SHELL", health.command],
 			interval: health.interval ?? "10s",
