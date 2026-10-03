@@ -224,7 +224,7 @@ env:
 </Callout>
 
 <p>
-  Not every app speaks HTTP. A background worker or a TCP-only service has nothing for a <code>path</code> check to hit — but it can still tell you it's alive. Use <code>command</code> instead of <code>path</code>: the provider runs the shell command, and a zero exit code means healthy. A <code>command</code> can also probe an HTTP endpoint with a tool your image ships, which helps when a <code>path</code> check cannot run for your app.
+  Not every app speaks HTTP. A background worker or a TCP-only service has nothing for a <code>path</code> check to hit — but it can still tell you it's alive. Use <code>command</code> instead of <code>path</code>: the provider runs the shell command, and a zero exit code means healthy. A <code>command</code> can also probe an HTTP endpoint, which helps when a <code>path</code> check cannot run for your app. It can use only the tools available where your provider runs the check.
 </p>
 
 <BeforeAfter
@@ -278,7 +278,7 @@ env:
     <li><strong><code>storage</code></strong> declares named volumes. Set <code>persistent: true</code> for data that must survive restarts.</li>
     <li><strong><code>content: operator</code></strong> marks a volume you fill yourself — the provider binds your directory (<code>--storage &lt;volume&gt;=&lt;path&gt;</code>) or refuses the component, and never creates the volume empty.</li>
     <li><strong><code>$storage.&lt;name&gt;.path</code></strong> resolves to the real path the volume was actually provisioned at — reference it in <code>env</code> instead of hardcoding the path in two places.</li>
-    <li><strong><code>health</code></strong> describes how your app's readiness is checked. Use the string shorthand for simple cases, the object form for tuning — with <code>path</code> for HTTP checks or <code>command</code> for any shell check, including an HTTP probe that uses a tool your image ships.</li>
+    <li><strong><code>health</code></strong> describes how your app's readiness is checked. Use the string shorthand for simple cases, the object form for tuning — with <code>path</code> for HTTP checks or <code>command</code> for any shell check, including an HTTP probe.</li>
     <li><strong><code>exposed: true</code></strong> means "something outside the deployment should reach this." Where that reaches, and whether it is encrypted, are the platform's call. Default is <code>false</code> (internal only).</li>
   </ul>
 </div>
