@@ -1,5 +1,6 @@
 # Exits non-zero a second after every start, so docker restarts it forever.
-# It never runs long enough for its check to pass.
+# Its check always fails, so no probe can mark it healthy in the moment
+# before it exits.
 version: launch/v1
 name: lf-e2e-crash-loop
 image: busybox:1.37.0
@@ -7,7 +8,7 @@ restart: always
 commands:
   start: sh -c 'echo booting; sleep 1; exit 1'
 health:
-  command: "true"
+  command: "false"
   interval: 1s
   timeout: 2s
   retries: 3

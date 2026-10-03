@@ -191,6 +191,20 @@ describe.skipIf(!ENABLED)("docker health gate against a real daemon", () => {
 		expect(outcome).toEqual({ ok: true, stuck: [] });
 	}, 60_000);
 
+	it("passes a running container that declares no health check", async () => {
+		const app = await launch("no-health");
+		expect(app.healthchecks).toEqual({ "lf-e2e-no-health": false });
+
+		const outcome = await waitForHealth(
+			app.project,
+			app.composeFile,
+			app.healthchecks,
+			BUDGET,
+		);
+
+		expect(outcome).toEqual({ ok: true, stuck: [] });
+	}, 60_000);
+
 	it("fails a crash-looping container and names it as stuck", async () => {
 		const app = await launch("crash-loop");
 		expect(app.healthchecks).toEqual({ "lf-e2e-crash-loop": true });
