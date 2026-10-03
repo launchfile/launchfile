@@ -346,6 +346,72 @@ jobs:
           print(f'ci-required waits on all {len(expected)} other ci.yml jobs')
           PY
 
+  # Guards the compiled-binary import path (#329). `bun build --compile` embeds
+  # every statically imported module into one executable that has no
+  # node_modules next to it, so a dependency that is resolved by name at
+  # runtime (pino's worker-thread transports did this until #328) crashes the
+  # process at module load, and no test, typecheck, or `dist/` build notices.
+  # This job compiles a scratch entry that statically imports the public entry
+  # of each published package, runs the binary from a directory outside the
+  # repo, and fails if it exits non-zero.
+  #
+  # @launchfile/macos-dev is probed through its source entry. The bare
+  # specifier is still marked --external below: up.ts loads it with a
+  # dynamic import() inside loadMacosProvider(), which runs only when the
+  # macOS provider is selected. The `launchfile` package's
+  # library entry (src/index.ts) is probed, but not the CLI binary: cli.ts
+  # reads ../package.json from disk at startup, so a compiled CLI cannot run
+  # `--version` yet. @launchfile/aws is private and not published.
+  #
+  # No `needs:` edge, for the reason recorded on aws-terraform-validate: this
+  # job builds what it imports from source.
+  compiled-binary:
+    name: Compiled binary imports
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+      - name: Build SDK and provider packages (local dependencies)
+        run: |
+          cd sdk && bun install --frozen-lockfile && bun run build
+          cd ../providers/docker && bun install --frozen-lockfile && bun run build
+          cd ../macos-dev && bun install --frozen-lockfile && bun run build
+      - run: cd packages/launchfile && bun install --frozen-lockfile
+      - name: Compile and run the probe outside the repo
+        run: |
+          set -euo pipefail
+          repo="$PWD"
+          scratch="$(mktemp -d)"
+          run_dir="$(mktemp -d)"
+
+          cat > "$scratch/probe.ts" <<EOF
+          import { readLaunch } from "$repo/sdk/src/index.ts";
+          import { dockerUp } from "$repo/providers/docker/src/index.ts";
+          import { launchUp } from "$repo/providers/macos-dev/src/index.ts";
+          import { handleUp } from "$repo/packages/launchfile/src/index.ts";
+
+          const exports: Record<string, unknown> = { readLaunch, dockerUp, launchUp, handleUp };
+          for (const [name, value] of Object.entries(exports)) {
+            if (typeof value !== "function") {
+              console.error(name + " is not a function");
+              process.exit(1);
+            }
+          }
+          console.log("probe ok");
+          EOF
+
+          fail() {
+            echo "::error::Compiled binary '$1' failed."
+            echo "Most likely a dependency was resolved by name at runtime. Compiled binaries have no node_modules, so the lookup fails. Import the module statically instead."
+            exit 1
+          }
+
+          bun build --compile --external @launchfile/macos-dev "$scratch/probe.ts" --outfile "$scratch/probe" || fail build
+          cp "$scratch/probe" "$run_dir/probe"
+          (cd "$run_dir" && ./probe) || fail probe
+
   # The single required status check on the `Protect main` ruleset. A ruleset
   # matches a required check by its rendered name, so requiring the jobs
   # directly makes merge policy track matrix membership: add a matrix entry and
@@ -365,6 +431,7 @@ jobs:
       - spec-citations
       - workflow-lint
       - root-install
+      - compiled-binary
     # Without always() this job is skipped the moment anything it needs fails,
     # and a skipped required check never reports — the merge box would wait for
     # a result that is not coming.
