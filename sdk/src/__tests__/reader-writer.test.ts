@@ -458,6 +458,29 @@ components:
 			expect(result.components.api?.env).toEqual({});
 		});
 
+		it("gives each component its own copy of inherited provides and storage", () => {
+			const result = readLaunch(`
+name: my-app
+provides:
+  - protocol: http
+    port: 8080
+storage:
+  data:
+    path: /data
+components:
+  api: {}
+  worker: {}
+`);
+			const api = result.components.api;
+			const worker = result.components.worker;
+			expect(api?.provides).toEqual(worker?.provides);
+			expect(api?.provides).not.toBe(worker?.provides);
+			expect(api?.provides?.[0]).not.toBe(worker?.provides?.[0]);
+			expect(api?.storage).toEqual(worker?.storage);
+			expect(api?.storage).not.toBe(worker?.storage);
+			expect(api?.storage?.data).not.toBe(worker?.storage?.data);
+		});
+
 		// sdk/src/reader.ts:91 passes no defaults in single-component mode —
 		// confirm none of the 10 fields regressed there.
 		it("leaves single-component mode unaffected", () => {
