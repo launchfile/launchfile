@@ -273,8 +273,8 @@ export class ProcessManager {
 	 * SPEC.md § Failure semantics: a component that never becomes healthy, or
 	 * whose run slot fails, FAILS THE INVOCATION. The rejection names each
 	 * exited component with its exit code, or each stuck component with the
-	 * probe it was asked. A component without `health:` is watched for
-	 * `EXIT_WATCH_MS` after spawn; one with `health:` for its whole budget. An
+	 * probe it was asked. A component without `health:` is watched until
+	 * `EXIT_WATCH_MS` after the last spawn; one with `health:` for its whole budget. An
 	 * exit found anywhere in that time wins over a stuck check, since it is
 	 * terminal. Processes that did start are left running and stay registered,
 	 * so the caller can record their pids for `status`/`logs`/`down`.
