@@ -10,6 +10,7 @@
 
 import type { NormalizedRequirement } from "@launchfile/sdk";
 import { shell, shellOk } from "../shell.js";
+import { redactSecrets } from "../redact.js";
 import { generatePassword } from "../secret-generator.js";
 import {
 	assertSafeIdentifier,
@@ -52,10 +53,13 @@ export class PostgresProvisioner implements ResourceProvisioner {
 	}
 
 	/**
-	 * Whether `database` exists on the server. psql exits 0 whenever the query
-	 * ran, a zero-row SELECT included, so the exit code says nothing about
-	 * existence — only the `1` the row prints does. The caller validates the
-	 * name before it reaches the SQL here.
+	 * Whether `database` exists on the server. Three outcomes: psql exits 0
+	 * whenever the query ran, a zero-row SELECT included, so exit 0 with no
+	 * row means absent and the `1` the row prints means present. A non-zero
+	 * exit means the query could not be answered — an auth error, a server
+	 * gone since `pg_isready` — and throws with psql's stderr, since reading
+	 * it as "absent" would hand the app a URL to a database nobody created.
+	 * The caller validates the name before it reaches the SQL here.
 	 */
 	async #databaseExists(port: number, database: string): Promise<boolean> {
 		const result = await this.#shell(
@@ -67,7 +71,13 @@ export class PostgresProvisioner implements ResourceProvisioner {
 			],
 			{ allowFailure: true, silent: true },
 		);
-		return result.exitCode === 0 && result.stdout.trim() === "1";
+		if (result.exitCode !== 0) {
+			throw new Error(
+				`Could not check whether database "${database}" exists: psql exited ${result.exitCode}` +
+					`${result.stderr.trim() ? `: ${redactSecrets(result.stderr.trim())}` : ""}`,
+			);
+		}
+		return result.stdout.trim() === "1";
 	}
 
 	async provision(
@@ -164,22 +174,55 @@ export class PostgresProvisioner implements ResourceProvisioner {
 		}
 
 		// Named `database` uses (SPEC.md § Resource uses): one more database per
-		// name, `<instance>_<name>`, created the same way as the app's own.
+		// name, `<instance>_<name>`, created the same way as the app's own. A
+		// createdb that fails aborts `up`, naming the entry, the token and the
+		// name, the way any provisioning failure here does: a use the provider
+		// could not create is never handed to the app as a URL.
 		// Security: a use name is schema-validated (^[a-z][a-z0-9-]*$) and the
 		// hyphens become underscores, so the identifier check cannot fail on a
 		// name that reached here through the parser; it guards the SQL below
 		// all the same.
-		const databases = (opts.databases ?? []).map((name) => namedDatabase(dbName, name));
-		for (const database of databases) {
+		const databases: string[] = [];
+		for (const name of opts.databases ?? []) {
+			const database = namedDatabase(dbName, name);
 			assertSafeIdentifier(database, "database name");
-			if (!(await this.#databaseExists(port, database))) {
-				await this.#shell(
-					"createdb",
-					["-h", DEFAULT_HOST, "-p", String(port), "-O", user, database],
-					{ allowFailure: true },
+			databases.push(database);
+			if (await this.#databaseExists(port, database)) continue;
+			try {
+				await this.#shell("createdb", [
+					"-h",
+					DEFAULT_HOST,
+					"-p",
+					String(port),
+					"-O",
+					user,
+					database,
+				]);
+			} catch (error) {
+				throw new Error(
+					`Refused: ${resourceName}: database: ${name} — could not create database "${database}" ` +
+						`(${error instanceof Error ? error.message : String(error)})`,
+					{ cause: error },
 				);
 			}
 		}
+		// A database this entry named on an earlier run and no longer does
+		// stays recorded: dropping it here would destroy data on a one-line
+		// `uses:` edit with no undo. `destroy` is the only path that drops it.
+		const vanished = (existingState?.databases ?? []).filter(
+			(database) => !databases.includes(database),
+		);
+		for (const database of vanished) {
+			// Security: the stored name is unvalidated JSON (state.ts); an unsafe
+			// one is never echoed.
+			const label = SAFE_IDENTIFIER.test(database)
+				? `"${database}"`
+				: "(unsafe name in state.json)";
+			console.warn(
+				`  ! postgres: database ${label} is no longer a named use of ${resourceName} — kept; \`destroy\` drops it`,
+			);
+		}
+		databases.push(...vanished);
 
 		const url = `postgresql://${user}:${password}@${DEFAULT_HOST}:${port}/${dbName}`;
 
