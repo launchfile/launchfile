@@ -15,9 +15,17 @@ import { join } from "node:path";
 import { launchBootstrap } from "@launchfile/macos-dev";
 import { sourceErrorKey } from "@launchfile/sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { handleBootstrap } from "../commands/bootstrap.js";
+import { handleBootstrap, type MacosBootstrapOpts } from "../commands/bootstrap.js";
 import { readLaunchErrorRecord } from "../state/errors.js";
 import { type DeploymentEntry, saveIndex } from "../state/index.js";
+
+// `src/macos-dev.d.ts` declares only what the CLI passes; the provider's
+// `launchBootstrap` also takes an `exec` seam, which this test uses so no
+// process is spawned.
+type ExecResult = { exitCode: number; stdout: string; stderr: string };
+const launchBootstrapWithExec = launchBootstrap as unknown as (
+	opts: MacosBootstrapOpts & { exec: () => Promise<ExecResult> },
+) => ReturnType<typeof launchBootstrap>;
 
 const PIN = "424242";
 const OPERATOR_TOKEN = "op-supplied-7c1e0b9a";
@@ -118,7 +126,7 @@ describe("macos bootstrap failure record", () => {
 					indexDir,
 					recordDir,
 					macosBootstrap: (opts) =>
-						launchBootstrap({
+						launchBootstrapWithExec({
 							...opts,
 							exec: async () => ({ exitCode: 3, stdout: echoed, stderr: echoed }),
 						}),
