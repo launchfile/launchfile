@@ -14,11 +14,13 @@ import type { ResourceState } from "../state.js";
 import type {
 	DestroyOpts,
 	ProvisionOpts,
+	ProvisionResult,
 	ResourceProperties,
 	ResourceProvisioner,
 	ShellRunner,
 } from "./types.js";
 import { namedDatabase } from "./uses.js";
+import { serverVersion, versionWarning } from "./version.js";
 
 const DEFAULT_PORT = 3306;
 const DEFAULT_HOST = "localhost";
@@ -51,7 +53,7 @@ export class MysqlProvisioner implements ResourceProvisioner {
 		req: NormalizedRequirement,
 		opts: ProvisionOpts,
 		existingState?: ResourceState,
-	): Promise<{ properties: ResourceProperties; state: ResourceState }> {
+	): Promise<ProvisionResult> {
 		if (!(await this.isRunning())) {
 			console.log("  Starting MySQL via brew...");
 			const started = await this.#shellOk("brew", [
@@ -64,6 +66,8 @@ export class MysqlProvisioner implements ResourceProvisioner {
 				await this.#shell("brew", ["services", "start", "mysql"]);
 			}
 		}
+
+		const versionWarnings = req.version ? await this.#versionWarnings(req) : [];
 
 		const resourceName = req.name ?? req.type;
 		const safeName = opts.appName.replace(/-/g, "_");
@@ -151,7 +155,31 @@ export class MysqlProvisioner implements ResourceProvisioner {
 			...(databases.length > 0 ? { databases } : {}),
 		};
 
-		return { properties, state };
+		return { properties, state, warnings: versionWarnings };
+	}
+
+	/**
+	 * The `requires[].version` report, against the version the server reports.
+	 * One server on port 3306 serves both `mysql` and `mariadb` entries, and
+	 * the two number their releases independently, so a version is compared
+	 * only when the server is the product the entry names.
+	 */
+	async #versionWarnings(req: NormalizedRequirement): Promise<string[]> {
+		const result = await this.#shell(
+			"mysql",
+			[...mysqlArgs(), "-N", "-e", "SELECT VERSION();"],
+			{ allowFailure: true, silent: true },
+		);
+		const output = result.exitCode === 0 ? result.stdout.trim() : "";
+		const isMariadb = /mariadb/i.test(output);
+		const product = isMariadb ? "MariaDB" : "MySQL";
+		const server = output
+			? `the ${product} server on ${DEFAULT_HOST}:${DEFAULT_PORT}`
+			: `the server on ${DEFAULT_HOST}:${DEFAULT_PORT}`;
+		const running =
+			output && isMariadb === (req.type === "mariadb") ? serverVersion(output) : undefined;
+		const warning = versionWarning(req, server, running);
+		return warning ? [warning] : [];
 	}
 
 	async destroy(state: ResourceState, _opts: DestroyOpts): Promise<void> {

@@ -59,6 +59,7 @@ export type {
 	ResourceProvisioner,
 	ResourceProperties,
 	ProvisionOpts,
+	ProvisionResult,
 	DestroyOpts,
 	ShellRunner,
 } from "./types.js";

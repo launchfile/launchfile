@@ -15,6 +15,7 @@
 import {
 	atDeclarations,
 	atEntryLabel,
+	checkVersionRange,
 	deriveAppUrlProperties,
 	endpointProperties,
 	isExpression,
@@ -235,13 +236,20 @@ export function resourcePropertyKeys(): Record<string, string[]> {
 			spec.kind === "rds"
 				? emitRds(
 						discarded,
+						new Conformance(),
 						"probe",
 						type,
 						{ type } as NormalizedRequirement,
 						spec.engine,
 						spec.port,
 					)
-				: emitElastiCache(discarded, "probe", type);
+				: emitElastiCache(
+						discarded,
+						new Conformance(),
+						"probe",
+						type,
+						{ type } as NormalizedRequirement,
+					);
 		keys[type] = Object.keys(properties);
 	}
 	return keys;
@@ -522,6 +530,7 @@ export function translate(
 				needsDbSubnetGroup = true;
 				resourceMap[resourceName] = emitRds(
 					blocks,
+					c,
 					appTf,
 					resourceName,
 					req,
@@ -533,8 +542,10 @@ export function translate(
 				needsCacheSubnetGroup = true;
 				resourceMap[resourceName] = emitElastiCache(
 					blocks,
+					c,
 					appTf,
 					resourceName,
+					req,
 				);
 				c.map(`requires:${req.type}`, "aws_elasticache_cluster");
 			}
@@ -990,8 +1001,53 @@ function emitFoundation(
 	return out;
 }
 
+/**
+ * The `engine_version` this probe emits for a declared `requires[].version`,
+ * or `undefined` for none. Only a bare dotted version passes through: `16` or
+ * `16.4` names the same family to RDS (a version prefix it completes to a
+ * minor) as it does to node-semver (`16` is `16.x`), so the pin is the
+ * author's own constraint, not a narrowing of it. Every other range has no
+ * offline translation — RDS's version list is not consulted — so none is
+ * emitted. A passed-through version RDS does not offer fails at apply.
+ */
+function rdsEngineVersion(declared: string | undefined): string | undefined {
+	return declared && /^\d+(?:\.\d+){0,2}$/.test(declared)
+		? declared
+		: undefined;
+}
+
+/**
+ * Report a `requires[].version` this probe does not meet as a gap
+ * (PROVIDERS.md §10 item 8, D-next). `emitted` names the engine version or
+ * family the emitted Terraform runs, `undefined` when it leaves the choice to
+ * AWS; `what` names that engine for the reason. Through the SDK's shared
+ * comparison, a range `emitted` satisfies records nothing. The reason states
+ * what this probe emits, never what the app will do (the D-51 constraint).
+ */
+function reportEngineVersion(
+	c: Conformance,
+	req: NormalizedRequirement,
+	emitted: string | undefined,
+	what: string,
+	suggestion: string,
+): void {
+	const declared = req.version;
+	if (!declared) return;
+	const field = `requires:${req.name ?? req.type}.version`;
+	const quoted = JSON.stringify(declared);
+	const reason = {
+		satisfied: undefined,
+		invalid: `declared version ${quoted} is not a valid semver range; this probe emits ${what}`,
+		unknown: `declared version ${quoted} is a range this probe does not resolve to an engine version; it emits ${what}`,
+		unsatisfied: `declared version ${quoted} is not satisfied: this probe emits ${what} and selects no other version`,
+		undecidable: `declared version ${quoted} cannot be checked against ${what}, which this probe emits and selects no narrower version of`,
+	}[checkVersionRange(declared, emitted)];
+	if (reason) c.gap(field, "workaround", reason, suggestion);
+}
+
 function emitRds(
 	blocks: string[],
+	c: Conformance,
 	appTf: string,
 	resourceName: string,
 	req: NormalizedRequirement,
@@ -1021,12 +1077,15 @@ function emitRds(
 		attr("publicly_accessible", false),
 		attr("skip_final_snapshot", true),
 	];
-	if (req.version)
-		body.splice(
-			2,
-			0,
-			attr("engine_version", req.version.replace(/[^0-9.]/g, "") || "16"),
-		);
+	const engineVersion = rdsEngineVersion(req.version);
+	if (engineVersion) body.splice(2, 0, attr("engine_version", engineVersion));
+	reportEngineVersion(
+		c,
+		req,
+		engineVersion,
+		`no engine_version, so RDS uses its default ${engine} version`,
+		`set engine_version on aws_db_instance.${tf} to an RDS ${engine} version that satisfies ${JSON.stringify(req.version)}`,
+	);
 	blocks.push(block("resource", ["aws_db_instance", tf], body));
 
 	const host = `\${aws_db_instance.${tf}.address}`;
@@ -1044,10 +1103,22 @@ function emitRds(
 
 function emitElastiCache(
 	blocks: string[],
+	c: Conformance,
 	appTf: string,
 	resourceName: string,
+	req: NormalizedRequirement,
 ): Record<string, string | number> {
 	const tf = `${appTf}_${tfName(resourceName)}`;
+	// No engine_version is emitted; the `default.redis7` parameter group fixes
+	// the cluster to the Redis 7 family, so that family is what a declared
+	// range is compared with.
+	reportEngineVersion(
+		c,
+		req,
+		"7.x",
+		"a Redis 7 cluster (parameter group default.redis7, any 7.x)",
+		`set engine_version and a matching parameter_group_name on aws_elasticache_cluster.${tf} that satisfy ${JSON.stringify(req.version)}`,
+	);
 	blocks.push(
 		block(
 			"resource",
