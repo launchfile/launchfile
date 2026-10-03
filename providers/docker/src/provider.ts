@@ -7,6 +7,7 @@ import { writeFile } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
 import { createInterface } from "node:readline";
 import {
+	canonicalSourceUrl,
 	MissingOperatorStoragePathError,
 	readLaunch,
 	selectionClosure,
@@ -327,7 +328,7 @@ export interface DockerUpResult {
 	sourceType: "local" | "catalog" | "url";
 	/** Absolute Launchfile path for local sources; undefined otherwise. */
 	sourcePath?: string;
-	/** Original URL for url sources; undefined otherwise. */
+	/** Canonical URL (`canonicalSourceUrl`) for url sources; undefined otherwise. */
 	sourceUrl?: string;
 }
 
@@ -449,10 +450,15 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 
 		// Persisted source info (#25): records where the Launchfile came from
 		// so bootstrap/inspect can re-read it independent of the caller's cwd.
+		// A URL is recorded in its canonical form: credentials are never
+		// persisted, and they do not identify the source (D-55 rule 3).
 		const sourceInfo = {
 			sourceType: resolved.source,
 			sourcePath: resolved.source === "local" ? resolved.path : undefined,
-			sourceUrl: resolved.source === "url" ? resolved.url : undefined,
+			sourceUrl:
+				resolved.source === "url" && resolved.url !== undefined
+					? canonicalSourceUrl(resolved.url)
+					: undefined,
 		};
 
 		// Load or init state
@@ -466,7 +472,10 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// A dry run surfaces the same message as a warning: it writes nothing,
 		// so previewing is safe. Pre-source-tracking state files record no
 		// sourceType and pass through unchanged (fail-open floor — the guard
-		// arms on the next legitimate `up`, which records the source).
+		// arms on the next legitimate `up`, which records the source). URLs
+		// compare in canonical form on both sides, so a rotated credential is
+		// not a different source and a state file holding a raw URL still
+		// matches; the refresh below rewrites it canonical.
 		const foreign =
 			state !== null &&
 			((state.sourceType !== undefined && state.sourceType !== sourceInfo.sourceType) ||
@@ -475,7 +484,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 					!samePath(state.sourcePath, sourceInfo.sourcePath)) ||
 				(state.sourceUrl !== undefined &&
 					sourceInfo.sourceUrl !== undefined &&
-					state.sourceUrl !== sourceInfo.sourceUrl));
+					canonicalSourceUrl(state.sourceUrl) !== sourceInfo.sourceUrl));
 		if (state && foreign) {
 			const details: ForeignSourceDetails = {
 				slug,
