@@ -69,6 +69,37 @@ describe("canonicalSourceUrl", () => {
 		);
 	});
 
+	it("does not re-encode the parameters it keeps", () => {
+		expect(
+			canonicalSourceUrl(
+				"https://gitlab.com/api/x/raw?private_token=T&ref=release/1.0&q=a%20b&r=c+d",
+			),
+		).toBe("https://gitlab.com/api/x/raw?ref=release/1.0&q=a%20b&r=c+d");
+	});
+
+	it("gives the same identity with and without a credential, whatever the other parameters hold", () => {
+		for (const [withCredential, without] of [
+			[
+				"https://gitlab.com/api/x/raw?private_token=T&ref=release/1.0",
+				"https://gitlab.com/api/x/raw?ref=release/1.0",
+			],
+			[
+				"https://h.example/x?ref=release/1.0&token=T",
+				"https://h.example/x?ref=release/1.0",
+			],
+			["https://h.example/x?q=a%20b&sig=S", "https://h.example/x?q=a%20b"],
+			[
+				"https://u:p@h.example/x?q=a+b&path=a:b/c&token=T#main",
+				"https://h.example/x?q=a+b&path=a:b/c#main",
+			],
+			["https://h.example/x?token=T", "https://h.example/x?"],
+		] as const) {
+			expect(canonicalSourceUrl(withCredential)).toBe(
+				canonicalSourceUrl(without),
+			);
+		}
+	});
+
 	it("keeps host, port, path, ref query and fragment distinct", () => {
 		const base = canonicalSourceUrl("https://h.example/x?ref=v1#main");
 		for (const other of [

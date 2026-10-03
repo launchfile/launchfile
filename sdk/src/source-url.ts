@@ -52,9 +52,12 @@ const URL_WITH_AUTHORITY = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//;
  * the other query parameters and the `#<ref>` fragment are kept, so `?ref=v1`
  * and `?ref=v2`, or `#main` and `#v2`, stay different sources.
  *
- * The result is the WHATWG URL serialization, so two spellings of one URL
- * (`HTTPS://Host:443/x` and `https://host/x`) compare equal. The function is
- * idempotent. A string that is not a `scheme://` URL is returned unchanged.
+ * Scheme, host and port take their WHATWG URL serialization, so
+ * `HTTPS://Host:443/x` and `https://host/x` compare equal. Kept query
+ * parameters are not re-encoded: two URLs that differ only in credentials
+ * give the same result, whatever the other parameters contain. An empty query
+ * (`/x?`) is dropped. The function is idempotent. A string that is not a
+ * `scheme://` URL is returned unchanged.
  */
 export function canonicalSourceUrl(url: string): string {
 	if (!URL_WITH_AUTHORITY.test(url)) return url;
@@ -66,13 +69,28 @@ export function canonicalSourceUrl(url: string): string {
 	}
 	parsed.username = "";
 	parsed.password = "";
-	const credentialKeys = [...parsed.searchParams.keys()].filter(
-		isCredentialQueryKey,
-	);
-	// Mutating searchParams re-serializes the whole query, so it is touched
-	// only when there is something to remove.
-	for (const key of new Set(credentialKeys)) parsed.searchParams.delete(key);
+	// The query is filtered as text. URLSearchParams would re-encode the kept
+	// values (`ref=a/b` to `ref=a%2Fb`), so removing a credential would change
+	// the identity of the parameters it leaves behind.
+	const kept = withoutCredentialParams(parsed.search.slice(1));
+	parsed.search = kept === "" ? "" : `?${kept}`;
 	return parsed.href;
+}
+
+/**
+ * `query` (no leading `?`) with every `name=value` pair whose decoded name is
+ * on `CREDENTIAL_QUERY_KEYS` removed. Kept pairs stay byte-for-byte.
+ */
+function withoutCredentialParams(query: string): string {
+	if (query === "") return "";
+	return query
+		.split("&")
+		.filter((param) => {
+			const eq = param.indexOf("=");
+			const name = eq === -1 ? param : param.slice(0, eq);
+			return !isCredentialQueryKey(safeDecode(name));
+		})
+		.join("&");
 }
 
 /**
@@ -102,12 +120,8 @@ function canonicalUnparsed(url: string): string {
 
 	let out = `${base.slice(0, schemeEnd)}${host}${rest}`;
 	if (query !== undefined) {
-		const kept = query.split("&").filter((param) => {
-			const eq = param.indexOf("=");
-			const name = eq === -1 ? param : param.slice(0, eq);
-			return !isCredentialQueryKey(safeDecode(name));
-		});
-		if (kept.length > 0) out += `?${kept.join("&")}`;
+		const kept = withoutCredentialParams(query);
+		if (kept !== "") out += `?${kept}`;
 	}
 	return out + fragment;
 }
