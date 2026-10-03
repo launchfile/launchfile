@@ -68,6 +68,105 @@ describe("redactSecrets", () => {
 		expect(performance.now() - t0).toBeLessThan(250);
 	});
 
+	it("masks a password-less userinfo token (#575)", () => {
+		expect(
+			redactSecrets(
+				"https://ghp_abc123@raw.githubusercontent.com/a/b/Launchfile",
+			),
+		).toBe(`https://${REDACTED}@raw.githubusercontent.com/a/b/Launchfile`);
+	});
+
+	it("masks a plain username in userinfo rather than risk a token", () => {
+		expect(redactSecrets("ssh://git@host/x")).toBe(`ssh://${REDACTED}@host/x`);
+	});
+
+	it("masks every query value and keeps every name", () => {
+		expect(redactSecrets("https://h/L?token=abc&v=2")).toBe(
+			`https://h/L?token=${REDACTED}&v=${REDACTED}`,
+		);
+	});
+
+	it("masks a query value behind a masked userinfo in one pass", () => {
+		expect(redactSecrets("https://alice:hunter2@h/L?sig=xyz")).toBe(
+			`https://alice:${REDACTED}@h/L?sig=${REDACTED}`,
+		);
+	});
+
+	it("is idempotent: a second pass leaves what follows the marker alone", () => {
+		const once = `Failed to fetch https://h/L?token=abc: 404 Not Found`;
+		const masked = redactSecrets(once);
+		expect(masked).toBe(
+			`Failed to fetch https://h/L?token=${REDACTED} 404 Not Found`,
+		);
+		const shown = `Failed to fetch ${redactSecrets("https://h/L?token=abc")}: 404 Not Found`;
+		expect(shown).toBe(
+			`Failed to fetch https://h/L?token=${REDACTED}: 404 Not Found`,
+		);
+		expect(redactSecrets(shown)).toBe(shown);
+	});
+
+	it("leaves a query parameter with no `=` alone", () => {
+		expect(redactSecrets("https://h/L?debug#ref")).toBe(
+			"https://h/L?debug#ref",
+		);
+	});
+
+	it("masks every fragment value and keeps every name (#628)", () => {
+		expect(redactSecrets("https://host/cb#access_token=abc&state=xyz")).toBe(
+			`https://host/cb#access_token=${REDACTED}&state=${REDACTED}`,
+		);
+	});
+
+	it("leaves a D-43 baseline ref fragment unchanged", () => {
+		const branch = "https://github.com/hedgedoc/hedgedoc#develop";
+		const sha = `https://github.com/a/b#${"0123456789abcdef".repeat(2)}01234567`;
+		expect(redactSecrets(branch)).toBe(branch);
+		expect(redactSecrets(sha)).toBe(sha);
+	});
+
+	it("masks a query value and a fragment value in the same URL", () => {
+		expect(redactSecrets("https://h/p?a=1#b=2")).toBe(
+			`https://h/p?a=${REDACTED}#b=${REDACTED}`,
+		);
+	});
+
+	it("is idempotent on a masked fragment", () => {
+		const once = redactSecrets("see https://h/p?a=1#b=2&c and https://x/#t=9");
+		expect(redactSecrets(once)).toBe(once);
+	});
+
+	it("leaves a `#` outside a URL alone", () => {
+		expect(redactSecrets('sh -c "true #a=b"')).toBe('sh -c "true #a=b"');
+	});
+
+	it("stays linear on a long run of URL tokens with no `#` (CWE-1333)", () => {
+		const hostile = "a://".repeat(40_000);
+		const t0 = performance.now();
+		expect(redactSecrets(hostile)).toBe(hostile);
+		expect(performance.now() - t0).toBeLessThan(250);
+	});
+
+	it("leaves an scp-style remote and a bare URL unchanged", () => {
+		expect(redactSecrets("git@github.com:a/b")).toBe("git@github.com:a/b");
+		expect(redactSecrets("https://host/Launchfile")).toBe(
+			"https://host/Launchfile",
+		);
+	});
+
+	it("stays linear on a long authority that never reaches `@` (CWE-1333)", () => {
+		const hostile = `https://${"a".repeat(80_000)}`;
+		const t0 = performance.now();
+		expect(redactSecrets(hostile)).toBe(hostile);
+		expect(performance.now() - t0).toBeLessThan(250);
+	});
+
+	it("stays linear on a long query that never terminates (CWE-1333)", () => {
+		const hostile = `https://h/L?${"a".repeat(80_000)}`;
+		const t0 = performance.now();
+		expect(redactSecrets(hostile)).toBe(hostile);
+		expect(performance.now() - t0).toBeLessThan(250);
+	});
+
 	it("ignores values too short to be registered safely", () => {
 		registerSecret("abc");
 		expect(redactSecrets("abc def")).toBe("abc def");
