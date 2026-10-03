@@ -74,6 +74,35 @@ describe("docker state — source persistence (#25)", () => {
 		expect(src!.sourceUrl).toBe("https://example.com/Launchfile");
 	});
 
+	it("writes a URL source without its credentials (#627)", async () => {
+		const state = initState("remote", "remote", "name: remote\n", {
+			sourceType: "url",
+			sourceUrl: "https://user:tok-USERINFO-627@host.example/x?token=t-QUERY-627&ref=v1",
+		});
+		await saveState("remote", state);
+
+		const onDisk = readFileSync(join(stateDir("remote"), "state.json"), "utf8");
+		expect(onDisk).not.toContain("user:tok-USERINFO-627");
+		expect(onDisk).not.toContain("tok-USERINFO-627");
+		expect(onDisk).not.toContain("t-QUERY-627");
+		expect(onDisk).toContain('"sourceUrl": "https://host.example/x?ref=v1"');
+
+		const src = await loadDockerSource("remote");
+		expect(src!.sourceUrl).toBe("https://host.example/x?ref=v1");
+	});
+
+	it("loadDockerSource returns the canonical form of a raw URL an older state file holds", async () => {
+		mkdirSync(stateDir("legacy"), { recursive: true });
+		const legacy = initState("legacy", "legacy", "name: legacy\n", { sourceType: "url" });
+		writeFileSync(
+			join(stateDir("legacy"), "state.json"),
+			JSON.stringify({ ...legacy, sourceUrl: "https://user:tok-LEGACY@host.example/x?ref=v1" }),
+		);
+
+		const src = await loadDockerSource("legacy");
+		expect(src!.sourceUrl).toBe("https://host.example/x?ref=v1");
+	});
+
 	it("loadDockerSource returns null when no state exists", async () => {
 		expect(await loadDockerSource("nope")).toBeNull();
 	});

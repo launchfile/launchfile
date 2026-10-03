@@ -17,6 +17,7 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { canonicalSourceUrl } from "@launchfile/sdk";
 import type { DeploymentIndex, DeploymentEntry } from "./types.js";
 
 export type { DeploymentEntry, DeploymentIndex } from "./types.js";
@@ -154,14 +155,28 @@ export function findBySource(
 	return null;
 }
 
+const CATALOG_PREFIX = "catalog:";
+
+/**
+ * A `source` key in comparable form: a `catalog:<url>` key with its URL
+ * canonicalized, so an entry recorded with credentials matches the same
+ * source without them (D-55 rule 3). Paths and catalog slugs are unchanged.
+ */
+function comparableSource(source: string): string {
+	return source.startsWith(CATALOG_PREFIX)
+		? CATALOG_PREFIX + canonicalSourceUrl(source.slice(CATALOG_PREFIX.length))
+		: source;
+}
+
 /** Every deployment launched from `sourcePath`, one per instance name (D-55). */
 export function findAllBySource(
 	index: DeploymentIndex,
 	sourcePath: string,
 ): { id: string; entry: DeploymentEntry }[] {
 	const results: { id: string; entry: DeploymentEntry }[] = [];
+	const wanted = comparableSource(sourcePath);
 	for (const [id, entry] of Object.entries(index.deployments)) {
-		if (entry.source === sourcePath) {
+		if (comparableSource(entry.source) === wanted) {
 			results.push({ id, entry });
 		}
 	}
