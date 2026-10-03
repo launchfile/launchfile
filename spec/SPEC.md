@@ -1221,7 +1221,7 @@ The six are the standard `$app.*` set less `name`, each defined per endpoint exa
 
 1. A provider computes every endpoint's address through the same derivation it uses for `$app.*`. Where a provider publishes a per-endpoint address, the **primary** endpoint's `$app.endpoints.<name>.url` **is** `$app.url` — the same value, never a second computation.
 2. `scheme`, `tls` and `url` read the entry's **effective** listener ([Native TLS](#native-tls-with-a-certificate-binding)): an active certificate binding makes them read `https` and `true`.
-3. Unnamed endpoints are not addressable — add a `name:`. An endpoint name is app-wide: the same name on two components is a **validation error** naming both.
+3. Unnamed endpoints are not addressable — add a `name:`. An endpoint name is app-wide: the same name on two components, or on two entries of one component, is a **validation error** naming both.
 4. Anything else resolves `""` with a `validate` warning naming it: an unknown name, a named endpoint that is not `exposed: true`, `$app.endpoints` with no name, `$app.endpoints.<name>` with no property, a property outside the six, and an endpoint the provider publishes no address for (`@launchfile/macos-dev` and `@launchfile/aws` today, where this reaches the primary too and `$app.url` keeps its own value). A `tcp`/`udp` endpoint's `""` `url` and `scheme` are a defined answer and draw no warning.
 5. An orchestrator-supplied publication context asserts the **primary** endpoint's address only ([D-58](DESIGN.md#d-58-orchestrator-supplied-publication-context--app-under-an-owning-orchestrator) rule 4): while one is supplied, every other named endpoint resolves `""`.
 
