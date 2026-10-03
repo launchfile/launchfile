@@ -122,6 +122,15 @@ updates:
       all-dependencies:
         patterns: ["*"]
 
+  # Smoke tests
+  # bun ecosystem so dependabot regenerates smoke-tests/bun.lock, which CI
+  # installs with --frozen-lockfile
+  - package-ecosystem: bun
+    directory: /smoke-tests
+    schedule:
+      interval: weekly
+      day: monday
+
   # GitHub Actions
   - package-ecosystem: github-actions
     directory: /

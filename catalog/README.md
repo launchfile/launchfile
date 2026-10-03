@@ -144,14 +144,14 @@ Draft Launchfiles in [`drafts/`](drafts/) — not yet verified end-to-end. PRs w
 | [penpot](drafts/penpot/) | Design | Open-source design and prototyping platform | postgres, redis | |
 | [photoprism](drafts/photoprism/) | — | AI-powered photo management with face recognition and maps | mariadb | |
 | [pihole](drafts/pihole/) | DNS | Network-wide ad blocking via DNS | — | |
-| [plausible](drafts/plausible/) | Analytics | Privacy-friendly web analytics | clickhouse, postgres | G-4 |
+| [plausible](drafts/plausible/) | Analytics | Privacy-friendly web analytics | clickhouse, postgres | |
 | [plex](drafts/plex/) | Media | Media server for personal media streaming | — | G-10, G-14 |
 | [portainer](drafts/portainer/) | — | Container management platform with web UI | — | |
 | [reactive-resume](drafts/reactive-resume/) | — | Open-source resume builder with real-time preview and export | postgres | |
 | [rocketchat](drafts/rocketchat/) | Communication | Open-source team communication platform | mongodb | G-5 |
 | [strapi](drafts/strapi/) | CMS | Open-source headless CMS | postgres | |
 | [supabase](drafts/supabase/) | Backend | Open-source Firebase alternative | — | |
-| [syncthing](drafts/syncthing/) | Sync | Continuous peer-to-peer file synchronization | — | |
+| [syncthing](drafts/syncthing/) | Sync | Continuous peer-to-peer file synchronization | — | G-9 |
 | [twenty](drafts/twenty/) | — | Modern open-source CRM platform for managing customer relationships | postgres, redis | |
 | [wg-easy](drafts/wg-easy/) | — | WireGuard VPN server with simple web management UI | — | |
 <!-- END GENERATED: drafts -->
