@@ -122,6 +122,11 @@ export {
 	selectionClosure,
 } from "./select.js";
 export {
+	CREDENTIAL_QUERY_KEYS,
+	canonicalSourceUrl,
+	isCredentialQueryKey,
+} from "./source-url.js";
+export {
 	resolveSourcePrepareCommand,
 	resolveSourceRunCommand,
 } from "./source-mode.js";
