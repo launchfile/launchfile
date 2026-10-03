@@ -107,6 +107,8 @@ describe("requires[].version constraint reporting", () => {
 					"pgsty/minio:RELEASE.2026-08-04T00-00-00Z",
 				);
 				expect(warnings[0]).not.toContain("is not satisfied");
+				expect(warnings[0]).toContain("names no semver version");
+				expect(warnings[0]).not.toContain("not fixed");
 			}
 		}
 	});
