@@ -160,11 +160,16 @@ export function publishedEndpoints(
  * only the UDP side of a port and is probed with a UDP socket, so a tcp/udp
  * pair on one container port (the DNS shape) shares its host port and
  * round-trips saved state identically.
+ *
+ * `ownPorts` holds the `<port>/<tcp|udp>` slots the deployment's running
+ * containers already publish. A saved port in that set is reused without
+ * probing, because the probe would see the deployment's own bind as taken.
  */
 export async function allocatePorts(
 	components: Record<string, { provides?: ProvidesEntry[] }>,
 	appName: string,
 	savedPorts?: Record<string, number>,
+	ownPorts?: ReadonlySet<string>,
 ): Promise<Record<string, number>> {
 	const taken = new Set<string>();
 	const result: Record<string, number> = {};
@@ -174,9 +179,15 @@ export async function allocatePorts(
 			const { key, port: containerPort } = endpoint;
 			const proto = wireProtocol(endpoint.protocol);
 
-			// Reuse saved port if still free, so a restart keeps its URLs.
+			// Reuse a saved port when this deployment's own containers hold it
+			// (a re-up of a live deployment) or when it is still free, so a
+			// restart keeps its URLs.
 			const saved = savedPorts?.[key];
-			if (saved && !taken.has(portSlot(saved, proto)) && (await isPortFree(saved, proto))) {
+			if (
+				saved &&
+				!taken.has(portSlot(saved, proto)) &&
+				(ownPorts?.has(portSlot(saved, proto)) || (await isPortFree(saved, proto)))
+			) {
 				result[key] = saved;
 				taken.add(portSlot(saved, proto));
 				continue;

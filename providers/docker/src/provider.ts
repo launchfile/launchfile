@@ -33,6 +33,7 @@ import {
 	type DockerState,
 	type StateEndpoint,
 } from "./state.js";
+import { ownPublishedSlots } from "./own-ports.js";
 import { allocatePorts } from "./port-allocator.js";
 import {
 	launchToCompose,
@@ -535,8 +536,14 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// distinct ports before probing (D-55). Unnamed deployments keep the
 		// historical `launch.name` seed — changing it would move existing
 		// deployments' fallback ports.
+		// A live deployment's own containers hold their saved ports on the
+		// wildcard address; allocation must not read that as a collision.
+		const hasSavedPorts = Object.keys(state.ports ?? {}).length > 0;
+		const ownPorts = hasSavedPorts
+			? await inPhase("provision", failure(), () => ownPublishedSlots(composeProject(slug)))
+			: undefined;
 		const hostPorts = await inPhase("provision", failure(), () =>
-			allocatePorts(launch.components, opts.name ? slug : launch.name, state.ports),
+			allocatePorts(launch.components, opts.name ? slug : launch.name, state.ports, ownPorts),
 		);
 
 		// Generate compose. `process.env` is this provider's operator channel for
