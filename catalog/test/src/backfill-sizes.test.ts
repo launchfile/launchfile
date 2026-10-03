@@ -68,12 +68,13 @@ describe("backfillMetadata", () => {
 		expect(asked).toEqual(["binwiederhier/ntfy:latest linux/arm/v7", "redis:7-alpine linux/arm64"]);
 	});
 
-	it("lists an unknown-platform image and keeps its size", async () => {
+	it("lists an unknown-platform image, keeps its size and leaves the total value unrewritten", async () => {
 		const input = tested.replace("- linux/arm64\n  - name: redis", "- unknown\n  - name: redis");
 		const res = await backfillMetadata(input, sizes);
 		expect(res.skipped).toEqual(["binwiederhier/ntfy:latest (unknown)"]);
-		expect(res.text).toContain("size_mb: 110");
-		expect(res.text).toContain("total_download_mb: 126");
+		expect(res.text).toBe(
+			input.replace("total_disk_mb: 110", "total_download_mb: 110").replace("size_mb: 40", "size_mb: 16"),
+		);
 	});
 
 	it("leaves the file unchanged when a lookup fails", async () => {

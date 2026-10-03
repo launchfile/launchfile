@@ -7,8 +7,9 @@
  * renamed to `total_download_mb` in place.
  *
  * An image whose recorded platform is `unknown` keeps its `size_mb`; the
- * summary lists it for a harness rerun. A file with a failed manifest lookup is
- * not written, and the run exits 1.
+ * summary lists it for a harness rerun. Its file keeps the recorded total value,
+ * because a sum of old and new sizes would mix two measures. A file with a
+ * failed manifest lookup is not written, and the run exits 1.
  *
  * Usage: bun run backfill-sizes [app ...]
  *
@@ -71,7 +72,6 @@ export async function backfillMetadata(text: string, sizeOf: SizeOf): Promise<Ba
 		}
 		if (platform === undefined || platform === "unknown") {
 			skipped.push(`${name} (${platform ?? "no single platform"})`);
-			total += Number(sizeNode.value ?? 0);
 			continue;
 		}
 		try {
@@ -91,7 +91,9 @@ export async function backfillMetadata(text: string, sizeOf: SizeOf): Promise<Ba
 		);
 		if (pair && isScalar(pair.key) && pair.key.range && isScalar(pair.value) && pair.value.range) {
 			edits.push({ start: pair.key.range[0], end: pair.key.range[1], text: "total_download_mb" });
-			edits.push({ start: pair.value.range[0], end: pair.value.range[1], text: String(total) });
+			if (skipped.length === 0) {
+				edits.push({ start: pair.value.range[0], end: pair.value.range[1], text: String(total) });
+			}
 		}
 	}
 
