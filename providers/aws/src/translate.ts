@@ -1160,6 +1160,7 @@ function emitComponent(
 			"add runtime+commands for a portable build path, or target a container provider",
 			name,
 		);
+		reportUntranslatedFields(comp, name, c, "image");
 		return;
 	}
 	if (!comp.runtime && !comp.commands?.start) {
@@ -1170,6 +1171,7 @@ function emitComponent(
 			undefined,
 			name,
 		);
+		reportUntranslatedFields(comp, name, c, "runtime");
 		return;
 	}
 
@@ -1377,6 +1379,49 @@ function emitComponent(
 
 	// Stash the instance ref so the ALB can attach it.
 	targetGroupFor[name] = instanceTf;
+}
+
+/**
+ * Record one `workaround` gap per field a component declares when that component
+ * is not translated at all — PROVIDERS.md §10 rule 8 / D-51.
+ *
+ * `emitComponent` stops at the `image` or `runtime` gap, so none of the per-field
+ * rows below it are ever recorded. Each declared field still gets its own row,
+ * naming the field, so the report shows what the operator loses. Fields already
+ * reported above the early returns (`requires:host.*`, `supports:host.*`,
+ * `host.docker`, unsupplied-required `env.<NAME>`) are not repeated here, and a
+ * field the file does not declare gets no row.
+ */
+function reportUntranslatedFields(
+	comp: NormalizedComponent,
+	name: string,
+	c: Conformance,
+	cause: "image" | "runtime",
+): void {
+	const fields: string[] = [];
+	if (comp.commands?.start) fields.push("commands.start");
+	if (comp.commands?.build) fields.push("commands.build");
+	if (comp.commands?.release) fields.push("commands.release");
+	if (comp.env && Object.keys(comp.env).length > 0) fields.push("env");
+	if (comp.health) fields.push("health");
+	if (comp.restart) fields.push("restart");
+	for (const volName of Object.keys(comp.storage ?? {}))
+		fields.push(`storage:${volName}`);
+	for (const dep of comp.depends_on ?? [])
+		fields.push(`depends_on:${dep.component}`);
+	for (const p of comp.provides ?? [])
+		fields.push(`provides:${p.protocol}:${p.port}`);
+	if (comp.schedule) fields.push("schedule");
+
+	for (const field of fields) {
+		c.gap(
+			field,
+			"workaround",
+			`declared but not translated — the component stops at the \`${cause}\` gap, so nothing on EC2 carries it`,
+			"add runtime+commands for a portable build path, or target a container provider",
+			name,
+		);
+	}
 }
 
 /**
