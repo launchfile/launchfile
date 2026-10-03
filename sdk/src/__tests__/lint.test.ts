@@ -454,6 +454,39 @@ requires:
 		]);
 	});
 
+	it("warns once when two same-name entries in one component carry the same bad use", () => {
+		const warnings = useWarnings(`
+name: app
+image: app:1
+requires:
+  - type: redis
+    name: cache
+    uses: [streams]
+  - type: redis
+    name: cache
+    uses: [streams]
+`);
+		expect(warnings).toHaveLength(1);
+	});
+
+	it("still warns once per component when the same bad use appears in two components", () => {
+		const warnings = useWarnings(`
+name: app
+components:
+  web:
+    image: app:1
+    requires:
+      - type: redis
+        uses: [streams]
+  worker:
+    image: app:1
+    requires:
+      - type: redis
+        uses: [streams]
+`);
+		expect(warnings).toHaveLength(2);
+	});
+
 	it("says a supports token leaves the entry unfulfilled instead", () => {
 		const warnings = useWarnings(`
 name: app
