@@ -1,31 +1,32 @@
 /**
  * A failed native `launchfile bootstrap` leaves a record `diagnose` can read
  * (#44, D-48), and that record carries no declared-sensitive (D-18) or
- * operator-supplied (D-52) value. The real macos-dev `launchBootstrap` runs with
- * an injected exec, so its redactor registration is exercised in the same
- * module instance the CLI builds the record with. Vitest isolates each file,
- * so the registry starts empty, as it does in a fresh `bootstrap` process that
- * never ran `up`. Nothing touches the real ~/.launchfile and no process is
- * spawned.
+ * operator-supplied (D-52) value. The real macos-dev `launchBootstrap` runs
+ * with an injected exec, and the CLI builds the record through `importMacos`
+ * with that same module, so the redactor registration is exercised in the
+ * module instance that redacts. The provider is imported from its `src/`
+ * because CI never builds its `dist/` (see macos-dev-declaration.types.ts).
+ * Vitest isolates each file, so the registry starts empty, as it does in a
+ * fresh `bootstrap` process that never ran `up`. Nothing touches the real
+ * ~/.launchfile and no process is spawned.
  */
 
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+	mkdir,
+	mkdtemp,
+	readdir,
+	readFile,
+	rm,
+	writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { launchBootstrap } from "@launchfile/macos-dev";
 import { sourceErrorKey } from "@launchfile/sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { handleBootstrap, type MacosBootstrapOpts } from "../commands/bootstrap.js";
+import * as macosDev from "../../../../providers/macos-dev/src/index.js";
+import { handleBootstrap } from "../commands/bootstrap.js";
 import { readLaunchErrorRecord } from "../state/errors.js";
 import { type DeploymentEntry, saveIndex } from "../state/index.js";
-
-// `src/macos-dev.d.ts` declares only what the CLI passes; the provider's
-// `launchBootstrap` also takes an `exec` seam, which this test uses so no
-// process is spawned.
-type ExecResult = { exitCode: number; stdout: string; stderr: string };
-const launchBootstrapWithExec = launchBootstrap as unknown as (
-	opts: MacosBootstrapOpts & { exec: () => Promise<ExecResult> },
-) => ReturnType<typeof launchBootstrap>;
 
 const PIN = "424242";
 const OPERATOR_TOKEN = "op-supplied-7c1e0b9a";
@@ -125,17 +126,26 @@ describe("macos bootstrap failure record", () => {
 				{
 					indexDir,
 					recordDir,
+					importMacos: async () =>
+						macosDev as unknown as typeof import("@launchfile/macos-dev"),
 					macosBootstrap: (opts) =>
-						launchBootstrapWithExec({
+						macosDev.launchBootstrap({
 							...opts,
-							exec: async () => ({ exitCode: 3, stdout: echoed, stderr: echoed }),
+							exec: async () => ({
+								exitCode: 3,
+								stdout: echoed,
+								stderr: echoed,
+							}),
 						}),
 				},
 			),
 		).rejects.toThrow("exited");
 		expect(exited).toBe(1);
 
-		const record = await readLaunchErrorRecord(sourceErrorKey(projectDir), recordDir);
+		const record = await readLaunchErrorRecord(
+			sourceErrorKey(projectDir),
+			recordDir,
+		);
 		expect(record?.phase).toBe("bootstrap");
 		expect(record?.disposition).toBe("reported");
 		expect(record?.component).toBe("api");

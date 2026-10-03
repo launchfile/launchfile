@@ -71,6 +71,12 @@ export interface BootstrapDeps {
 	macosBootstrap?: (
 		opts: MacosBootstrapOpts,
 	) => Promise<MacosBootstrapResult[]>;
+	/**
+	 * Loads the optional macOS provider. It is imported only when this command
+	 * needs it: to run bootstrap when `macosBootstrap` is not injected, or to
+	 * build the failure record. A host without the provider never imports it.
+	 */
+	importMacos?: () => Promise<typeof import("@launchfile/macos-dev")>;
 	indexDir?: string;
 	recordDir?: string;
 }
@@ -127,9 +133,12 @@ export async function handleBootstrap(
 
 	if (deployment.entry.provider === "macos") {
 		try {
-			const macos = await import("@launchfile/macos-dev");
+			const importMacos =
+				deps.importMacos ?? (() => import("@launchfile/macos-dev"));
 			const projectDir = deployment.entry.source;
-			const results = await (deps.macosBootstrap ?? macos.launchBootstrap)({
+			const bootstrap =
+				deps.macosBootstrap ?? (await importMacos()).launchBootstrap;
+			const results = await bootstrap({
 				projectDir,
 				component: flags.component,
 				reveal: flags.reveal,
@@ -142,6 +151,7 @@ export async function handleBootstrap(
 				// docker one a few lines up (#44).
 				const content = await readFile(join(projectDir, "Launchfile"), "utf-8");
 				const launch = readLaunch(content);
+				const macos = await importMacos();
 				const error = macos.macosLaunchError({
 					phase: "bootstrap",
 					key: sourceErrorKey(projectDir),
