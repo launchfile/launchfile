@@ -11,6 +11,7 @@
   },
   "scripts": {
     "ci:version": "changeset version && bun install",
+    "lint:lockfile-ranges": "node scripts/lint-lockfile-ranges.mjs",
     "lint:spec-citations": "node scripts/lint-spec-citations.mjs spec"
   }
 }
