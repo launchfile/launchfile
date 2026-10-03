@@ -1,6 +1,6 @@
 ---
 "@launchfile/macos-dev": minor
-"@launchfile/docker": patch
+"@launchfile/docker": minor
 "launchfile": patch
 ---
 
