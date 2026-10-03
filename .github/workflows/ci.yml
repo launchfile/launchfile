@@ -356,7 +356,9 @@ jobs:
   # repo, and fails if it exits non-zero.
   #
   # @launchfile/macos-dev is not probed: importing it runs a top-level check in
-  # up.ts that deliberately exits 1 off macOS. The `launchfile` package's
+  # up.ts that deliberately exits 1 off macOS. It is also marked --external
+  # below, because up.ts loads it with an optional dynamic import() that
+  # only runs on macOS and is not installed here. The `launchfile` package's
   # library entry (src/index.ts) is probed, but not the CLI binary: cli.ts
   # reads ../package.json from disk at startup, so a compiled CLI cannot run
   # `--version` yet. @launchfile/aws is private and not published.
@@ -404,7 +406,7 @@ jobs:
             exit 1
           }
 
-          bun build --compile "$scratch/probe.ts" --outfile "$scratch/probe"
+          bun build --compile --external @launchfile/macos-dev "$scratch/probe.ts" --outfile "$scratch/probe"
           cp "$scratch/probe" "$run_dir/probe"
           (cd "$run_dir" && ./probe) || fail probe
 
