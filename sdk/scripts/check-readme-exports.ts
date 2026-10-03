@@ -27,12 +27,9 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
-	compareArity,
+	checkRowArity,
 	getReadmeApiTableRows,
 	getValueExportSources,
-	parseDeclarationParams,
-	parseReadmeParams,
-	sourcePathForSpecifier,
 } from "./readme-exports.ts";
 
 /**
@@ -120,8 +117,6 @@ async function main(): Promise<void> {
 	const excluded = new Set(Object.keys(EXCLUDED_EXPORTS));
 
 	const errors: string[] = [];
-	let arityChecked = 0;
-	let arityUnchecked = 0;
 
 	if (valueExports.size === 0) {
 		errors.push(
@@ -159,56 +154,16 @@ async function main(): Promise<void> {
 		}
 	}
 
-	for (const [name, cell] of rows) {
-		const exportSource = exportSources.get(name);
-		if (!exportSource) continue; // already reported as a stale row
-		try {
-			const readmeParams = parseReadmeParams(cell);
-			if (readmeParams === null) continue;
-			const declPath = sourcePathForSpecifier(exportSource.from);
+	const arity = checkRowArity(
+		rows,
+		exportSources,
+		(declPath) => {
 			const absPath = resolve(sdkRoot, declPath);
-			if (!existsSync(absPath)) {
-				throw new Error(
-					`re-exported from "${exportSource.from}", but ${declPath} does not exist`,
-				);
-			}
-			const source = readFileSync(absPath, "utf-8");
-			if (name in ARITY_UNCHECKED) {
-				try {
-					parseDeclarationParams(source, exportSource.localName);
-				} catch {
-					arityUnchecked++;
-					continue;
-				}
-				throw new Error(
-					`ARITY_UNCHECKED lists it (${ARITY_UNCHECKED[name]}), but ${declPath} now declares a parameter list the check can map. Remove the stale entry.`,
-				);
-			}
-			const decl = parseDeclarationParams(source, exportSource.localName);
-			const mismatch = compareArity(name, cell, readmeParams, declPath, decl);
-			if (mismatch) errors.push(mismatch);
-			arityChecked++;
-		} catch (err) {
-			errors.push(
-				`"${name}": cannot check the README row's parameters against the declaration: ${(err as Error).message}`,
-			);
-		}
-	}
-
-	for (const name of Object.keys(ARITY_UNCHECKED)) {
-		const cell = rows.get(name);
-		let listsParams = false;
-		try {
-			listsParams = cell !== undefined && parseReadmeParams(cell) !== null;
-		} catch {
-			listsParams = true; // the row loop above already reported the unreadable cell
-		}
-		if (!listsParams) {
-			errors.push(
-				`ARITY_UNCHECKED lists "${name}" (${ARITY_UNCHECKED[name]}), but README.md's API table has no row for it that lists parameters. Remove the stale entry.`,
-			);
-		}
-	}
+			return existsSync(absPath) ? readFileSync(absPath, "utf-8") : undefined;
+		},
+		ARITY_UNCHECKED,
+	);
+	errors.push(...arity.errors);
 
 	if (errors.length > 0) {
 		console.error("\n✗ README export coverage check failed:\n");
@@ -220,7 +175,7 @@ async function main(): Promise<void> {
 	}
 
 	console.log(
-		`✓ README export coverage: ${valueExports.size} value exports — ${documented.size} documented, ${excluded.size} excluded, 0 unaccounted for. ${arityChecked} parameter lists match their declarations, ${arityUnchecked} listed in ARITY_UNCHECKED.`,
+		`✓ README export coverage: ${valueExports.size} value exports — ${documented.size} documented, ${excluded.size} excluded, 0 unaccounted for. ${arity.checked} parameter lists match their declarations, ${arity.unchecked} listed in ARITY_UNCHECKED.`,
 	);
 }
 

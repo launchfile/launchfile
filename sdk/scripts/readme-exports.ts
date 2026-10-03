@@ -412,3 +412,86 @@ export function compareArity(
 		`but ${declPath} declares \`${decl.signature}\` (${describeShape(decl.params)}).`
 	);
 }
+
+export interface RowArityResult {
+	errors: string[];
+	/** Rows whose parameter list was compared against its declaration. */
+	checked: number;
+	/** Allowlisted rows whose declaration the check cannot map. */
+	unchecked: number;
+}
+
+/**
+ * Compare every README API row that lists parameters against its
+ * declaration. `readSource` returns the text of an sdk-relative source path,
+ * or `undefined` when the file is missing. `allowlist` maps an export name to
+ * the reason its declaration cannot be mapped; an entry that no longer
+ * applies is an error.
+ */
+export function checkRowArity(
+	rows: Map<string, string>,
+	exportSources: Map<string, ValueExportSource>,
+	readSource: (declPath: string) => string | undefined,
+	allowlist: Record<string, string>,
+): RowArityResult {
+	const errors: string[] = [];
+	let checked = 0;
+	let unchecked = 0;
+
+	for (const [name, cell] of rows) {
+		const exportSource = exportSources.get(name);
+		if (!exportSource) continue; // reported separately as a stale row
+		try {
+			const readmeParams = parseReadmeParams(cell);
+			if (readmeParams === null) continue;
+			const declPath = sourcePathForSpecifier(exportSource.from);
+			const source = readSource(declPath);
+			if (source === undefined) {
+				throw new Error(
+					`re-exported from "${exportSource.from}", but ${declPath} does not exist`,
+				);
+			}
+			if (name in allowlist) {
+				try {
+					parseDeclarationParams(source, exportSource.localName);
+				} catch (err) {
+					if (
+						!(err as Error).message.includes("has a destructured parameter")
+					) {
+						throw err;
+					}
+					unchecked++;
+					continue;
+				}
+				throw new Error(
+					`ARITY_UNCHECKED lists it (${allowlist[name]}), but ${declPath} now declares a parameter list the check can map. Remove the stale entry.`,
+				);
+			}
+			const decl = parseDeclarationParams(source, exportSource.localName);
+			const mismatch = compareArity(name, cell, readmeParams, declPath, decl);
+			if (mismatch) errors.push(mismatch);
+			checked++;
+		} catch (err) {
+			errors.push(
+				`"${name}": cannot check the README row's parameters against the declaration: ${(err as Error).message}`,
+			);
+		}
+	}
+
+	for (const name of Object.keys(allowlist)) {
+		const cell = rows.get(name);
+		let listsParams = false;
+		try {
+			listsParams = cell !== undefined && parseReadmeParams(cell) !== null;
+		} catch {
+			listsParams = true; // the row loop above already reported the unreadable cell
+		}
+		if (!listsParams) {
+			errors.push(
+				`ARITY_UNCHECKED lists "${name}" (${allowlist[name]}), but README.md's API table has no row for it that lists parameters. Remove the stale entry.`,
+			);
+		}
+	}
+
+	return { errors, checked, unchecked };
+}

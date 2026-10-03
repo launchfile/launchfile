@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	checkRowArity,
 	compareArity,
 	getReadmeApiTableNames,
 	getReadmeApiTableRows,
@@ -316,5 +317,93 @@ describe("compareArity", () => {
 				decl,
 			),
 		).not.toBeNull();
+	});
+});
+
+describe("checkRowArity", () => {
+	const sources = new Map([
+		["fn", { localName: "fn", from: "./a.js" }],
+		["destr", { localName: "destr", from: "./a.js" }],
+		["rest", { localName: "rest", from: "./a.js" }],
+	]);
+	const files: Record<string, string> = {
+		"src/a.ts": [
+			"export function fn(a: string, b?: number) {}",
+			"export function destr({ x }: { x: string }) {}",
+			"export function rest(...xs: string[]) {}",
+		].join("\n"),
+	};
+	const read = (p: string): string | undefined => files[p];
+	const allow = { destr: "destructures its parameter" };
+
+	it("counts a matching row as checked", () => {
+		const r = checkRowArity(new Map([["fn", "fn(a, b?)"]]), sources, read, {});
+		expect(r).toEqual({ errors: [], checked: 1, unchecked: 0 });
+	});
+
+	it("skips and counts an allowlisted unmappable row", () => {
+		const r = checkRowArity(
+			new Map([["destr", "destr(use)"]]),
+			sources,
+			read,
+			allow,
+		);
+		expect(r).toEqual({ errors: [], checked: 0, unchecked: 1 });
+	});
+
+	it("errors when an allowlisted row is now mappable", () => {
+		const r = checkRowArity(new Map([["fn", "fn(a, b?)"]]), sources, read, {
+			fn: "stale",
+		});
+		expect(r.errors).toHaveLength(1);
+		expect(r.errors[0]).toContain("Remove the stale entry");
+		expect(r.unchecked).toBe(0);
+	});
+
+	it("errors when an allowlisted export has no parameter row", () => {
+		const r = checkRowArity(
+			new Map([["destr", "destr"]]),
+			sources,
+			read,
+			allow,
+		);
+		expect(r.errors).toHaveLength(1);
+		expect(r.errors[0]).toContain("no row for it that lists parameters");
+	});
+
+	it("errors on an unmappable row that is not allowlisted", () => {
+		const r = checkRowArity(
+			new Map([["destr", "destr(use)"]]),
+			sources,
+			read,
+			{},
+		);
+		expect(r.errors).toHaveLength(1);
+		expect(r.errors[0]).toContain("destructured parameter");
+	});
+
+	it("errors when the source file is missing", () => {
+		const r = checkRowArity(
+			new Map([["fn", "fn(a, b?)"]]),
+			sources,
+			() => undefined,
+			{},
+		);
+		expect(r.errors[0]).toContain("src/a.ts does not exist");
+	});
+
+	it("rethrows an allowlisted failure that is not a destructured parameter", () => {
+		const r = checkRowArity(new Map([["rest", "rest(xs)"]]), sources, read, {
+			rest: "wrong reason",
+		});
+		expect(r.errors).toHaveLength(1);
+		expect(r.errors[0]).toContain("rest parameter");
+		expect(r.unchecked).toBe(0);
+	});
+
+	it("flags an arity mismatch", () => {
+		const r = checkRowArity(new Map([["fn", "fn(a)"]]), sources, read, {});
+		expect(r.errors).toHaveLength(1);
+		expect(r.checked).toBe(1);
 	});
 });
