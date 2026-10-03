@@ -188,16 +188,16 @@ components:
 </Callout>
 
 <p>
-  The rule is nullish coalescing: the component's value is used unless the field is <em>omitted</em>. An empty value still counts as defined. So <code>env: {}</code> on a component is a way to say "inherit nothing":
+  The rule is nullish coalescing: the component's value is used unless the field is <em>omitted</em>. An empty value still counts as defined. So <code>env: &#123;&#125;</code> on a component is a way to say "inherit nothing":
 </p>
 
 <pre><code>components:
   worker:
-    env: {}          # defined but empty: no inherited LOG_LEVEL
-  web: {}            # field omitted: inherits LOG_LEVEL</code></pre>
+    env: &#123;&#125;          # defined but empty: no inherited LOG_LEVEL
+  web: &#123;&#125;            # field omitted: inherits LOG_LEVEL</code></pre>
 
 <p>
-  Every component field follows this same rule. For larger shared blocks, YAML anchors give you explicit reuse — but they make deep copies, so use <code>$secrets.&lt;name&gt;</code> for any value that must be shared.
+  Every component field follows this same rule. For larger shared blocks, YAML anchors give you explicit reuse. An alias is a deep copy, so a <code>generator: secret</code> inside an anchored block generates a separate secret per copy. Components that must share one secret should reference <code>$secrets.&lt;name&gt;</code> instead.
 </p>
 
 <h2 id="starting-one-component">Starting just one component</h2>
@@ -249,7 +249,7 @@ components:
     <li><code>depends_on</code> controls startup order — a component waits until its dependency is healthy.</li>
     <li><code>$components.&lt;name&gt;.url</code> lets components discover each other without hardcoded addresses.</li>
     <li>Give a <code>provides</code> entry a <code>name</code> and siblings can reach that one endpoint: <code>$components.&lt;name&gt;.&lt;endpoint&gt;.url</code>, and the same for <code>host</code>, <code>port</code>, and <code>protocol</code>. It works for an internal endpoint too — <code>exposed</code> decides what the outside world reaches, not what siblings can.</li>
-    <li>Top-level component fields are defaults. A component that defines a field replaces the default entirely — arrays and objects are never merged. <code>env: {}</code> blocks inheritance; omitting <code>env</code> inherits it.</li>
+    <li>Top-level component fields are defaults. A component that defines a field replaces the default entirely — arrays and objects are never merged. <code>env: &#123;&#125;</code> blocks inheritance; omitting <code>env</code> inherits it.</li>
     <li>Only public-facing components need <code>exposed: true</code> — keep backends internal.</li>
     <li><code>launchfile up --components &lt;component&gt;</code> starts that component plus its downward dependency closure — its dependencies and their services, never the components that depend on it.</li>
   </ul>
