@@ -34,6 +34,7 @@ import {
 	resolverContextFor,
 	resourceMapFromState,
 } from "./env-writer.js";
+import { registerSensitiveEnv, registerSuppliedEnv } from "./env-secrets.js";
 import { redactSecrets, registerDeclaredSecret } from "./redact.js";
 
 /** Default budget for a bootstrap command when no `timeout` is declared. */
@@ -364,10 +365,18 @@ export async function launchBootstrap(
 		if (minted) await saveState(projectDir, state);
 		// `up` took its `required:` values from the launching environment; read the
 		// same channel so bootstrap really does see the running component's env.
+		const suppliedEnv: Record<string, string> = {};
 		for (const { key } of unsupplied) {
 			const supplied = process.env[key];
-			if (supplied !== undefined) env[key] = supplied;
+			if (supplied !== undefined) suppliedEnv[key] = supplied;
 		}
+		Object.assign(env, suppliedEnv);
+		// This process never ran `up`, so its redactor knows none of the
+		// author-declared (D-18) or operator-supplied (D-52) values yet. They
+		// register before the command runs, so neither the printed stderr nor a
+		// failure record the CLI writes from this result can carry them.
+		registerSensitiveEnv(component.env, env);
+		registerSuppliedEnv(suppliedEnv);
 
 		const port = state.ports[name];
 		if (port && !env.PORT) env.PORT = String(port);

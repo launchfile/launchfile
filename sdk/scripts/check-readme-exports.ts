@@ -72,6 +72,8 @@ const EXCLUDED_EXPORTS: Record<string, string> = {
 		"provider error-context vocabulary (PROVIDERS.md §8), not the parse/validate/serialize surface",
 	isLaunchError:
 		"provider error-context vocabulary (PROVIDERS.md §8), not the parse/validate/serialize surface",
+	sourceErrorKey:
+		"provider error-context vocabulary (PROVIDERS.md §8), not the parse/validate/serialize surface",
 
 	// Deprecation-registry data: the version constants and the registry table
 	// that `lintDeprecations` reads. Callers use `lintDeprecations`.
