@@ -817,7 +817,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		await inPhase("health", withLogs(), () =>
 			withSpan("up:health", { project }, async () => {
 				const health = await waitForHealth(project, composeFile, result.healthchecks, {
-					oneShot: result.oneShot,
+					mayExit: result.mayExit,
 				});
 				if (!health.ok) {
 					const message = healthFailureMessage(
@@ -1027,19 +1027,20 @@ export interface PsContainer {
  * reaches here; a row that still does is a gap to report, not one to absorb
  * into a pass (the D-51/D-52 posture).
  *
- * A one-shot service (`ComposeResult.oneShot`, restart `no`) is a job that is
- * meant to end, so it passes once it has exited 0. A one-shot that exited
- * non-zero fails, and one that is still running gates like any other service.
+ * A service in `ComposeResult.mayExit` (restart `no` or `on-failure`) is
+ * allowed to end: Docker leaves it stopped after an exit 0, so that row passes.
+ * An exited row with a non-zero or missing exit code fails, and a row that is
+ * still running or restarting gates like any other service.
  */
 export function isContainerHealthy(
 	container: PsContainer,
 	healthchecks: Readonly<Record<string, boolean>>,
-	oneShot: ReadonlySet<string> = new Set(),
+	mayExit: ReadonlySet<string> = new Set(),
 ): boolean {
 	const service = container.Service;
 	if (service === undefined || !Object.hasOwn(healthchecks, service)) return false;
 
-	if (container.State === "exited" && oneShot.has(service)) {
+	if (container.State === "exited" && mayExit.has(service)) {
 		return container.ExitCode === 0;
 	}
 	if (container.State !== "running") return false;
@@ -1061,9 +1062,9 @@ export type ComposePs = () => Promise<{ exitCode: number; stdout: string }>;
  * component the app no longer has. Naming the generated services keeps the poll
  * to what this `up` wrote.
  *
- * `--all` keeps exited containers in the list. Without it a one-shot job that
- * has already finished drops out of the rows, and a project whose only service
- * is that job reports no container at all for the whole budget.
+ * `--all` keeps exited containers in the list. Without it a job that has
+ * already finished drops out of the rows, and a project whose only service is
+ * that job reports no container at all for the whole budget.
  *
  * With no generated services there is nothing the gate can accept, so the bare
  * poll it returns then costs nothing: every row fails closed either way.
@@ -1094,8 +1095,8 @@ export interface WaitForHealthOpts {
 	pollIntervalMs?: number;
 	/** How to read container status. Defaults to `docker compose ps`. */
 	ps?: ComposePs;
-	/** Services that pass by exiting 0 (`ComposeResult.oneShot`). */
-	oneShot?: readonly string[];
+	/** Services that pass by exiting 0 (`ComposeResult.mayExit`). */
+	mayExit?: readonly string[];
 }
 
 export async function waitForHealth(
@@ -1114,7 +1115,7 @@ export async function waitForHealth(
 				allowFailure: true,
 				silent: true,
 			}));
-	const oneShot = new Set(opts.oneShot ?? []);
+	const mayExit = new Set(opts.mayExit ?? []);
 	const start = Date.now();
 	let stuck: string[] = [];
 
@@ -1138,7 +1139,7 @@ export async function waitForHealth(
 			try {
 				const container = JSON.parse(line) as PsContainer;
 				hasContainers = true;
-				if (!isContainerHealthy(container, healthchecks, oneShot)) {
+				if (!isContainerHealthy(container, healthchecks, mayExit)) {
 					unhealthy.push(container.Service || container.Name || "(unnamed container)");
 				}
 			} catch {

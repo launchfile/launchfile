@@ -224,21 +224,27 @@ components:
 			const services = parse(result.yaml).services;
 			expect(services["jobs-export"].restart).toBe("no");
 			expect(services["jobs-prune"].restart).toBe("no");
-			expect(result.oneShot.sort()).toEqual(["jobs-export", "jobs-prune"]);
+			expect(result.mayExit.sort()).toEqual(["jobs-export", "jobs-prune"]);
 			const warnings = result.warnings.filter((w) => w.includes("declares a schedule"));
 			expect(warnings).toHaveLength(2);
 			for (const w of warnings) expect(w).toContain('it runs once with `restart: "no"`');
 		});
 
 		it("reports the scheduled service as one-shot for the health gate", () => {
-			expect(launchToCompose(scheduled()).oneShot).toEqual(["daily-sync"]);
+			expect(launchToCompose(scheduled()).mayExit).toEqual(["daily-sync"]);
 		});
 
-		it("reports no one-shot service when an explicit restart wins", () => {
-			expect(launchToCompose(scheduled('restart: "always"')).oneShot).toEqual([]);
+		it("reports no service that may exit when an explicit restart: always wins", () => {
+			expect(launchToCompose(scheduled('restart: "always"')).mayExit).toEqual([]);
 		});
 
-		it("leaves backing services out of the one-shot list", () => {
+		it("reports an explicit restart: on-failure service as one that may exit", () => {
+			const result = launchToCompose(scheduled('restart: "on-failure"'));
+			expect(parse(result.yaml).services["daily-sync"].restart).toBe("on-failure");
+			expect(result.mayExit).toEqual(["daily-sync"]);
+		});
+
+		it("leaves backing services out of the list of services that may exit", () => {
 			const result = launchToCompose(
 				scheduled(`requires:
   - type: postgres
@@ -246,8 +252,23 @@ components:
       DATABASE_URL: $url`),
 			);
 			expect(Object.keys(result.healthchecks).length).toBeGreaterThan(1);
-			expect(result.oneShot).toEqual(["daily-sync"]);
+			expect(result.mayExit).toEqual(["daily-sync"]);
 		});
+	});
+
+	it("reports an on-failure component with no schedule as one that may exit", () => {
+		const seed = readLaunch(`
+name: stack
+components:
+  web:
+    image: alpine:3
+  seed:
+    image: alpine:3
+    restart: on-failure
+    commands:
+      start: "sh -c 'echo seed-ran'"
+`);
+		expect(launchToCompose(seed).mayExit).toEqual(["stack-seed"]);
 	});
 
 	it('quotes an explicit restart: "no" on a component with no schedule', () => {
@@ -262,7 +283,7 @@ commands:
 		// "no", so the parsed value cannot tell quoted from unquoted.
 		const result = launchToCompose(plain);
 		expect(result.yaml).toContain('restart: "no"');
-		expect(result.oneShot).toEqual(["one-shot"]);
+		expect(result.mayExit).toEqual(["one-shot"]);
 	});
 
 	it("adds a bridge network", async () => {

@@ -21,6 +21,8 @@ vi.mock("../shell.js", () => ({
 	shellOk: async () => true,
 }));
 
+import { readLaunch } from "@launchfile/sdk";
+import { launchToCompose } from "../compose-generator.js";
 import {
 	healthFailureMessage,
 	healthPsArgs,
@@ -120,55 +122,65 @@ describe("isContainerHealthy", () => {
 	});
 });
 
-describe("isContainerHealthy for a one-shot service", () => {
-	const oneShot = new Set(["job"]);
+describe("isContainerHealthy for a service that may exit", () => {
+	const mayExit = new Set(["job"]);
 
-	it("accepts a one-shot that exited 0", () => {
+	it("accepts a service that may exit once it exited 0", () => {
 		expect(
 			isContainerHealthy(
 				{ State: "exited", Health: "", Service: "job", ExitCode: 0 },
 				{ job: false },
-				oneShot,
+				mayExit,
 			),
 		).toBe(true);
 	});
 
-	it("rejects a one-shot that exited non-zero", () => {
+	it("rejects a service that may exit when it exited non-zero", () => {
 		expect(
 			isContainerHealthy(
 				{ State: "exited", Health: "", Service: "job", ExitCode: 1 },
 				{ job: false },
-				oneShot,
+				mayExit,
 			),
 		).toBe(false);
 	});
 
 	it("rejects an exited row with no exit code", () => {
 		expect(
-			isContainerHealthy({ State: "exited", Health: "", Service: "job" }, { job: false }, oneShot),
+			isContainerHealthy({ State: "exited", Health: "", Service: "job" }, { job: false }, mayExit),
 		).toBe(false);
 	});
 
-	it("gates a one-shot that is still running like any other service", () => {
+	it("gates a service that may exit like any other while it runs", () => {
 		expect(
-			isContainerHealthy({ State: "running", Health: "", Service: "job" }, { job: true }, oneShot),
+			isContainerHealthy({ State: "running", Health: "", Service: "job" }, { job: true }, mayExit),
 		).toBe(false);
 		expect(
 			isContainerHealthy(
 				{ State: "running", Health: "healthy", Service: "job" },
 				{ job: true },
-				oneShot,
+				mayExit,
 			),
 		).toBe(true);
 	});
 
-	it("rejects a long-running service that exited 0", () => {
-		// Only a service whose restart resolves to `no` is allowed to end.
+	it("gates a restarting on-failure service like any other", () => {
+		expect(
+			isContainerHealthy(
+				{ State: "restarting", Health: "", Service: "job", ExitCode: 1 },
+				{ job: false },
+				mayExit,
+			),
+		).toBe(false);
+	});
+
+	it("rejects an exited service outside mayExit even at exit 0", () => {
+		// Under `always` or `unless-stopped` Docker restarts it, so it is not done.
 		expect(
 			isContainerHealthy(
 				{ State: "exited", Health: "", Service: "web", ExitCode: 0 },
 				{ web: false, job: false },
-				oneShot,
+				mayExit,
 			),
 		).toBe(false);
 	});
@@ -281,10 +293,10 @@ describe("waitForHealth", () => {
 		expect(outcome).toEqual({ ok: false, stuck: [] });
 	});
 
-	it("passes a one-shot job that exited 0", async () => {
+	it("passes a job in mayExit that exited 0", async () => {
 		const outcome = await waitForHealth("proj", "/tmp/compose.yaml", { job: false }, {
 			...fast,
-			oneShot: ["job"],
+			mayExit: ["job"],
 			ps: async () => ({
 				exitCode: 0,
 				stdout: psLines({ State: "exited", Health: "", Service: "job", ExitCode: 0 }),
@@ -294,10 +306,10 @@ describe("waitForHealth", () => {
 		expect(outcome).toEqual({ ok: true, stuck: [] });
 	});
 
-	it("fails and names a one-shot job that exited non-zero", async () => {
+	it("fails and names a job in mayExit that exited non-zero", async () => {
 		const outcome = await waitForHealth("proj", "/tmp/compose.yaml", { job: false }, {
 			...fast,
-			oneShot: ["job"],
+			mayExit: ["job"],
 			ps: async () => ({
 				exitCode: 0,
 				stdout: psLines({ State: "exited", Health: "", Service: "job", ExitCode: 3 }),
@@ -318,20 +330,20 @@ describe("waitForHealth", () => {
 
 		const stuck = await waitForHealth("proj", "/tmp/compose.yaml", { job: false, db: true }, {
 			...fast,
-			oneShot: ["job"],
+			mayExit: ["job"],
 			ps: async () => rows("starting"),
 		});
 		expect(stuck).toEqual({ ok: false, stuck: ["db"] });
 
 		const passed = await waitForHealth("proj", "/tmp/compose.yaml", { job: false, db: true }, {
 			...fast,
-			oneShot: ["job"],
+			mayExit: ["job"],
 			ps: async () => rows("healthy"),
 		});
 		expect(passed).toEqual({ ok: true, stuck: [] });
 	});
 
-	it("fails a job that exited 0 when it is not declared one-shot", async () => {
+	it("fails a job that exited 0 when it is not in mayExit", async () => {
 		const outcome = await waitForHealth("proj", "/tmp/compose.yaml", { web: false }, {
 			...fast,
 			ps: async () => ({
@@ -341,6 +353,48 @@ describe("waitForHealth", () => {
 		});
 
 		expect(outcome).toEqual({ ok: false, stuck: ["web"] });
+	});
+
+	describe("an on-failure job beside a long-running service", () => {
+		const compose = launchToCompose(
+			readLaunch(`
+name: stack
+components:
+  web:
+    image: alpine:3
+  seed:
+    image: alpine:3
+    restart: on-failure
+    commands:
+      start: "sh -c 'echo seed-ran'"
+`),
+		);
+		const gate = (seed: Record<string, string | number>) =>
+			waitForHealth("proj", "/tmp/compose.yaml", compose.healthchecks, {
+				...fast,
+				mayExit: compose.mayExit,
+				ps: async () => ({
+					exitCode: 0,
+					stdout: psLines({ State: "running", Health: "", Service: "stack-web" }, seed),
+				}),
+			});
+
+		it("passes once the job exited 0", async () => {
+			expect(await gate({ State: "exited", Health: "", Service: "stack-seed", ExitCode: 0 })).toEqual({
+				ok: true,
+				stuck: [],
+			});
+		});
+
+		it("keeps gating and names the job while it exits non-zero", async () => {
+			expect(await gate({ State: "exited", Health: "", Service: "stack-seed", ExitCode: 1 })).toEqual({
+				ok: false,
+				stuck: ["stack-seed"],
+			});
+			expect(
+				await gate({ State: "restarting", Health: "", Service: "stack-seed", ExitCode: 1 }),
+			).toEqual({ ok: false, stuck: ["stack-seed"] });
+		});
 	});
 
 	it("polls the generated services when no ps is injected", async () => {
