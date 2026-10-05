@@ -157,7 +157,7 @@ const POSTGRES_EXTENSION_SQL_NAMES: Record<string, string> = {
 // SQL extension name → smallest stock image that ships its binaries. The
 // default postgres image carries the contrib extensions (pg_trgm, hstore,
 // citext, …) but not these; declaring one swaps the service image.
-const POSTGRES_EXTENSION_IMAGES: Record<string, string> = {
+export const POSTGRES_EXTENSION_IMAGES: Record<string, string> = {
 	vector: "pgvector/pgvector:pg16",
 	postgis: "postgis/postgis:16-3.4",
 };
@@ -295,9 +295,14 @@ function checkVersionConstraint(
 
 	const tagRange = tagVersionRange(image);
 	if (tagRange === undefined) {
+		const tag = /:([^/:]+)$/.exec(image)?.[1];
+		const why =
+			tag === undefined || tag === "latest"
+				? "whose version is not fixed"
+				: `whose tag ${JSON.stringify(tag)} names no semver version`;
 		warnings.push(
 			`requires[${key}]: declared version ${quoted} cannot be checked — this provider provisions ` +
-				`${image}, whose version is not fixed, and does not select versions.`,
+				`${image}, ${why}, and does not select versions.`,
 		);
 		return;
 	}
@@ -393,6 +398,53 @@ function atReport(
 		"that does not resolve to this machine (hosts file or DNS), or use a provider that routes host names"
 	);
 }
+
+/**
+ * An image whose declared VOLUME set the generated compose does not fully
+ * mount, and why that is correct. `unmounted` names declared paths left on an
+ * anonymous volume; `declares-none` marks an image with no VOLUME at all.
+ */
+export type DeclaredVolumeException =
+	| {
+			readonly kind: "unmounted";
+			readonly paths: readonly string[];
+			readonly reason: string;
+	  }
+	| { readonly kind: "declares-none"; readonly reason: string };
+
+/**
+ * The one list of backing-service images that the declared-VOLUME gate
+ * (`bun run check:volumes`, src/check-declared-volumes.ts) lets through
+ * without every declared path mounted. Keyed by the exact image reference a
+ * factory emits. The gate also fails on an entry that no longer matches the
+ * image, so an entry cannot outlive the reason it records.
+ *
+ * A `declares-none` entry records that the gate cannot guard that image, not
+ * that its mount is proven right: an image that persists under a path it
+ * never declares is outside what the gate reads.
+ */
+export const DECLARED_VOLUME_EXCEPTIONS: Readonly<
+	Record<string, DeclaredVolumeException>
+> = {
+	"mongo:7": {
+		kind: "unmounted",
+		paths: ["/data/configdb"],
+		reason:
+			"/data/configdb is written only by `mongod --configsvr`, which this provider never runs (#322). " +
+			"A config-server or sharded topology would need its own named volume there.",
+	},
+	"elasticsearch:8.17.0": {
+		kind: "declares-none",
+		reason:
+			"The image declares no VOLUME. The factory mounts `path.data` under the image's WORKDIR " +
+			"(/usr/share/elasticsearch/data), the path Elastic's container documentation mounts.",
+	},
+	"memcached:1-alpine": {
+		kind: "declares-none",
+		reason:
+			"In-memory by design: the service holds no state, so no volume is correct.",
+	},
+};
 
 /**
  * Create a backing service factory with pre-generated or cached passwords.
@@ -531,12 +583,9 @@ function createBackingServices(
 			return {
 				image: "mongo:7",
 				// The image declares two volumes: /data/db and /data/configdb. Only
-				// /data/db is mounted here. /data/configdb is written only by
-				// `mongod --configsvr`, which this provider never runs, so it stays
-				// on an anonymous volume deliberately — not a gap in the #270
-				// invariant. If this factory ever runs mongo as a config server or
-				// in a sharded/replica-set topology, /data/configdb needs its own
-				// named volume at that point.
+				// /data/db is mounted; /data/configdb stays on an anonymous volume
+				// deliberately. The reason is recorded in DECLARED_VOLUME_EXCEPTIONS
+				// ["mongo:7"], which the declared-VOLUME gate reads.
 				dataPath: "/data/db",
 				environment: {
 					MONGO_INITDB_ROOT_USERNAME: "launchfile",
@@ -597,7 +646,7 @@ function createBackingServices(
 				image: "elasticsearch:8.17.0",
 				// The one entry not taken from a VOLUME declaration: this image declares none. It
 				// is `path.data` under the image's WORKDIR, which is what Elastic's own container
-				// documentation mounts.
+				// documentation mounts. Recorded in DECLARED_VOLUME_EXCEPTIONS.
 				dataPath: "/usr/share/elasticsearch/data",
 				environment: {
 					"discovery.type": "single-node",
@@ -628,7 +677,11 @@ function createBackingServices(
 			const accessKey = getPassword("minio-access");
 			const secretKey = getPassword("minio-secret");
 			return {
-				image: "minio/minio:latest",
+				// MinIO publishes no community images (minio/minio is gone).
+				// pgsty/minio is a maintained community fork of MinIO: same
+				// MINIO_ROOT_* env, `server /data`, and /minio/health/live. It
+				// publishes only RELEASE tags, so the pin is an exact release.
+				image: "pgsty/minio:RELEASE.2026-08-04T00-00-00Z",
 				// Matches the `server /data` command below.
 				dataPath: "/data",
 				environment: {
@@ -663,7 +716,11 @@ function createBackingServices(
 			const accessKey = getPassword("s3-access");
 			const secretKey = getPassword("s3-secret");
 			return {
-				image: "minio/minio:latest",
+				// MinIO publishes no community images (minio/minio is gone).
+				// pgsty/minio is a maintained community fork of MinIO: same
+				// MINIO_ROOT_* env, `server /data`, and /minio/health/live. It
+				// publishes only RELEASE tags, so the pin is an exact release.
+				image: "pgsty/minio:RELEASE.2026-08-04T00-00-00Z",
 				// Matches the `server /data` command below.
 				dataPath: "/data",
 				environment: {
@@ -696,7 +753,7 @@ function createBackingServices(
 
 		memcache: (_name) => ({
 			image: "memcached:1-alpine",
-			// In-memory by design: no volume.
+			// In-memory by design: no volume. Recorded in DECLARED_VOLUME_EXCEPTIONS.
 			dataPath: null,
 			environment: {},
 			properties: {

@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check src/",
     "lint:fix": "biome check --write src/",
-    "dev": "bun run src/cli.ts"
+    "dev": "bun run src/cli.ts",
+    "check:volumes": "bun run src/check-declared-volumes.ts"
   },
   "keywords": [
     "launchfile",
