@@ -645,7 +645,11 @@ function createBackingServices(
 					region: "us-east-1",
 				},
 				extra: {
-					command: "server /data",
+					// MinIO creates no bucket on its own and a client cannot assume
+					// one: a directory under the data path is a bucket, so create the
+					// one the `bucket` property names before the server starts. The
+					// name travels as an argument, never inside the script.
+					entrypoint: ["sh", "-c", 'mkdir -p "/data/$1" && exec minio server /data', "sh", name],
 				},
 				healthcheck: {
 					test: [
@@ -680,7 +684,11 @@ function createBackingServices(
 					region: "us-east-1",
 				},
 				extra: {
-					command: "server /data",
+					// MinIO creates no bucket on its own and a client cannot assume
+					// one: a directory under the data path is a bucket, so create the
+					// one the `bucket` property names before the server starts. The
+					// name travels as an argument, never inside the script.
+					entrypoint: ["sh", "-c", 'mkdir -p "/data/$1" && exec minio server /data', "sh", name],
 				},
 				healthcheck: {
 					test: [
