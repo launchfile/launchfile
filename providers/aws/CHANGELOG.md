@@ -1,5 +1,13 @@
 # @launchfile/aws
 
+## 0.6.1
+
+### Patch Changes
+
+- [#648](https://github.com/launchfile/launchfile/pull/648) [`b208f9c`](https://github.com/launchfile/launchfile/commit/b208f9cf07862eccf684bce118358d92077543fc) Thanks [@launchfile-steward](https://github.com/apps/launchfile-steward)! - The conformance report now opens with a gap-severity legend ([#592](https://github.com/launchfile/launchfile/issues/592)). It defines 🔴 `blocker`, 🟡 `workaround` and 🟢 `nice-to-have` in terms of this probe, and states that a gap of any severity never stops `translate()`. The icons come from the same map the report rows use.
+- Updated dependencies [[`6ec891b`](https://github.com/launchfile/launchfile/commit/6ec891bdfea097e436eb4c68f7dfe0d491830c22), [`3632d48`](https://github.com/launchfile/launchfile/commit/3632d48ba09532cdf11908dbb23103c5a2a07a57), [`91ca1a8`](https://github.com/launchfile/launchfile/commit/91ca1a84acfcfca20bcd4ba0c73e6fd5492b7692), [`dff6745`](https://github.com/launchfile/launchfile/commit/dff67458457392e6d9b6ab15a2651ebbc2dbb412), [`2c7d895`](https://github.com/launchfile/launchfile/commit/2c7d895ea3033f77857b8458c0d095a111787f5e)]:
+  - @launchfile/sdk@0.14.0
+
 ## 0.6.0
 
 ### Minor Changes
