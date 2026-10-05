@@ -5,11 +5,11 @@ test_results:
   last_tested: 2026-04-06
   pull_time_seconds: 2
   startup_time_seconds: 6
-  total_disk_mb: 216
+  total_download_mb: 87
   health_check_passed: true
   notes: ""
 images:
   - name: deluan/navidrome:latest
-    size_mb: 216
+    size_mb: 87
     platform:
       - linux/arm64

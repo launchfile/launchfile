@@ -15,6 +15,7 @@ import { resolve, dirname } from "node:path";
 import { parse, stringify } from "yaml";
 import { readLaunch } from "../../../sdk/src/reader.ts";
 import { launchToCompose } from "./launch-to-compose.ts";
+import { dockerManifestFetcher, downloadSizeMb, formatPlatform } from "./image-size.ts";
 
 // --- CLI args ---
 
@@ -261,21 +262,39 @@ interface ImageInfo {
 }
 
 const imageInfos: ImageInfo[] = [];
+const fetchManifest = dockerManifestFetcher((cmd) => run(cmd, { timeout: 60_000 }));
 for (const img of result.images) {
-  const inspect = await run(["docker", "image", "inspect", img, "--format", "{{.Size}} {{.Architecture}}"]);
+  // The local image store supplies only the platform that was pulled. The size
+  // comes from the registry manifest for that platform, so it does not depend
+  // on the machine's Docker setup.
+  const inspect = await run(["docker", "image", "inspect", img, "--format", "{{.Architecture}} {{.Variant}}"]);
   if (inspect.exitCode === 0) {
-    const [sizeStr, arch] = inspect.stdout.trim().split(" ");
-    const sizeMb = Math.round(Number.parseInt(sizeStr, 10) / 1024 / 1024);
+    const [arch, variant] = inspect.stdout.trim().split(" ");
+    const platform = arch
+      ? formatPlatform({ os: "linux", architecture: arch, ...(variant ? { variant } : {}) })
+      : "unknown";
+    let sizeMb: number;
+    try {
+      sizeMb = await downloadSizeMb(img, platform, fetchManifest);
+    } catch (err) {
+      console.error(`\n=== ${appName}: FAIL — manifest size lookup failed ===`);
+      console.error(`  - ${img} (${platform}): ${err instanceof Error ? err.message : String(err)}`);
+      console.error("\nsize_mb is the registry manifest's download size; there is no local fallback.");
+      process.exit(1);
+    }
     imageInfos.push({
       name: img,
       size_mb: sizeMb,
-      platform: [arch ? `linux/${arch}` : "unknown"],
+      platform: [platform],
     });
+  } else {
+    console.error(`\n=== ${appName}: FAIL — docker image inspect failed for ${img} ===`);
+    process.exit(1);
   }
 }
 
-const totalDiskMb = imageInfos.reduce((sum, i) => sum + i.size_mb, 0);
-console.log(`Total image disk: ${totalDiskMb} MB`);
+const totalDownloadMb = imageInfos.reduce((sum, i) => sum + i.size_mb, 0);
+console.log(`Total image download: ${totalDownloadMb} MB`);
 
 // --- Launch ---
 
@@ -320,9 +339,9 @@ if (!healthPassed) {
 
 const passed = healthPassed ? "PASS" : "FAIL";
 console.log(`\n=== ${appName}: ${passed} ===`);
-console.log(`  Pull time:    ${pullTimeSeconds}s`);
-console.log(`  Startup time: ${startupTimeSeconds}s`);
-console.log(`  Disk usage:   ${totalDiskMb} MB`);
+console.log(`  Pull time:     ${pullTimeSeconds}s`);
+console.log(`  Startup time:  ${startupTimeSeconds}s`);
+console.log(`  Download size: ${totalDownloadMb} MB`);
 
 // --- Write/update metadata.yaml ---
 
@@ -330,7 +349,7 @@ metadata.test_results = {
   last_tested: new Date().toISOString().split("T")[0],
   pull_time_seconds: pullTimeSeconds,
   startup_time_seconds: startupTimeSeconds,
-  total_disk_mb: totalDiskMb,
+  total_download_mb: totalDownloadMb,
   health_check_passed: healthPassed,
   notes: statusNote,
 };

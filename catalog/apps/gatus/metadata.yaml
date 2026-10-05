@@ -5,11 +5,11 @@ test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 8
   startup_time_seconds: 1
-  total_disk_mb: 44
+  total_download_mb: 23
   health_check_passed: true
   notes: ""
 images:
   - name: twinproduction/gatus:latest
-    size_mb: 44
+    size_mb: 23
     platform:
       - linux/arm64

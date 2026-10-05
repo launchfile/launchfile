@@ -5,11 +5,11 @@ test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 12
   startup_time_seconds: 6
-  total_disk_mb: 257
+  total_download_mb: 76
   health_check_passed: true
   notes: ""
 images:
   - name: ghcr.io/gethomepage/homepage:latest
-    size_mb: 257
+    size_mb: 76
     platform:
       - linux/arm64

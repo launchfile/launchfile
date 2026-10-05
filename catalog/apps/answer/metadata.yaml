@@ -5,11 +5,11 @@ test_results:
   last_tested: 2026-04-09
   pull_time_seconds: 9
   startup_time_seconds: 1
-  total_disk_mb: 133
+  total_download_mb: 57
   health_check_passed: true
   notes: ""
 images:
   - name: apache/answer:latest
-    size_mb: 133
+    size_mb: 57
     platform:
       - linux/arm64

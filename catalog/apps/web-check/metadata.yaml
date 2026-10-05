@@ -5,11 +5,11 @@ test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 64
   startup_time_seconds: 1
-  total_disk_mb: 2251
+  total_download_mb: 505
   health_check_passed: true
   notes: ""
 images:
   - name: lissy93/web-check:latest
-    size_mb: 2251
+    size_mb: 505
     platform:
       - linux/arm64
