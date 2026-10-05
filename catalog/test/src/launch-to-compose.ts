@@ -18,6 +18,11 @@ import {
   computeAppProperties,
   httpsOriginSatisfied,
 } from "../../../providers/docker/src/app-url.ts";
+import {
+  DEFAULT_RESOURCE_PORTS,
+  type ResourcePorts,
+  validateResourcePorts,
+} from "../../../providers/docker/src/resource-ports.ts";
 import { unsuppliedRequiredEnv } from "../../../sdk/src/env.ts";
 import type {
   NormalizedLaunch,
@@ -50,77 +55,121 @@ interface ComposeHealthcheck {
 // Null prototype, like the docker provider's map: a `requires[].type` read out
 // of a Launchfile is looked up here, so `constructor` or `toString` must
 // resolve to nothing rather than an `Object.prototype` member.
-const BACKING_SERVICES: Record<string, (name: string) => BackingService> = Object.assign(Object.create(null), {
-  postgres: (name) => ({
-    image: "postgres:16-alpine",
-    environment: {
-      POSTGRES_USER: "launchfile",
-      POSTGRES_PASSWORD: "launchfile",
-      POSTGRES_DB: name,
-    },
-    properties: {
-      host: `${name}-postgres`,
-      port: "5432",
-      user: "launchfile",
-      password: "launchfile",
-      name: name,
-      url: `postgres://launchfile:launchfile@${name}-postgres:5432/${name}?sslmode=disable`,
-    },
-    healthcheck: {
-      test: ["CMD-SHELL", `pg_isready -U launchfile -d ${name}`],
-      interval: "5s",
-      timeout: "5s",
-      retries: 5,
-    },
-  }),
+//
+// The SQL factories take the same `resourcePorts` the Docker provider's
+// `ComposeOpts.resourcePorts` takes, and move the engine, its healthcheck and
+// the `port`/`url` properties the same way (#568). A type not listed keeps its
+// default and emits what it emits without the option.
+const BACKING_SERVICES: Record<string, (name: string, ports?: ResourcePorts) => BackingService> =
+  Object.assign(Object.create(null), {
+  postgres: (name: string, ports: ResourcePorts = {}) => {
+    const chosenPort = ports.postgres;
+    const port = chosenPort ?? DEFAULT_RESOURCE_PORTS.postgres;
+    return {
+      image: "postgres:16-alpine",
+      environment: {
+        POSTGRES_USER: "launchfile",
+        POSTGRES_PASSWORD: "launchfile",
+        POSTGRES_DB: name,
+        // The server, the init-time temporary server and pg_isready all read PGPORT.
+        ...(chosenPort !== undefined ? { PGPORT: String(chosenPort) } : {}),
+      },
+      properties: {
+        host: `${name}-postgres`,
+        port: String(port),
+        user: "launchfile",
+        password: "launchfile",
+        name: name,
+        url: `postgres://launchfile:launchfile@${name}-postgres:${port}/${name}?sslmode=disable`,
+      },
+      healthcheck: {
+        test: [
+          "CMD-SHELL",
+          chosenPort !== undefined
+            ? `pg_isready -U launchfile -d ${name} -p ${chosenPort}`
+            : `pg_isready -U launchfile -d ${name}`,
+        ],
+        interval: "5s",
+        timeout: "5s",
+        retries: 5,
+      },
+    };
+  },
 
-  mysql: (name) => ({
-    image: "mysql:8",
-    environment: {
-      MYSQL_ROOT_PASSWORD: "launchfile",
-      MYSQL_USER: "launchfile",
-      MYSQL_PASSWORD: "launchfile",
-      MYSQL_DATABASE: name,
-    },
-    properties: {
-      host: `${name}-mysql`,
-      port: "3306",
-      user: "launchfile",
-      password: "launchfile",
-      name: name,
-      url: `mysql://launchfile:launchfile@${name}-mysql:3306/${name}`,
-    },
-    healthcheck: {
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"],
-      interval: "5s",
-      timeout: "5s",
-      retries: 5,
-    },
-  }),
+  mysql: (name: string, ports: ResourcePorts = {}) => {
+    const chosenPort = ports.mysql;
+    const port = chosenPort ?? DEFAULT_RESOURCE_PORTS.mysql;
+    return {
+      image: "mysql:8",
+      environment: {
+        MYSQL_ROOT_PASSWORD: "launchfile",
+        MYSQL_USER: "launchfile",
+        MYSQL_PASSWORD: "launchfile",
+        MYSQL_DATABASE: name,
+      },
+      properties: {
+        host: `${name}-mysql`,
+        port: String(port),
+        user: "launchfile",
+        password: "launchfile",
+        name: name,
+        url: `mysql://launchfile:launchfile@${name}-mysql:${port}/${name}`,
+      },
+      healthcheck: {
+        // `-h localhost` is the Unix socket, which answers on any port; a chosen
+        // port is probed over TCP.
+        test:
+          chosenPort !== undefined
+            ? ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-P", String(chosenPort)]
+            : ["CMD", "mysqladmin", "ping", "-h", "localhost"],
+        interval: "5s",
+        timeout: "5s",
+        retries: 5,
+        // First-boot initialization runs a socket-only temporary server; the TCP
+        // probe fails until the real server is up, so those failures must not count.
+        ...(chosenPort !== undefined ? { start_period: "60s" } : {}),
+      },
+      // The image's entrypoint prepends `mysqld` to a command that starts with a flag.
+      ...(chosenPort !== undefined ? { extra: { command: [`--port=${chosenPort}`] } } : {}),
+    };
+  },
 
-  mariadb: (name) => ({
-    image: "mariadb:11",
-    environment: {
-      MARIADB_ROOT_PASSWORD: "launchfile",
-      MARIADB_USER: "launchfile",
-      MARIADB_PASSWORD: "launchfile",
-      MARIADB_DATABASE: name,
-    },
-    properties: {
-      host: `${name}-mariadb`,
-      port: "3306",
-      user: "launchfile",
-      password: "launchfile",
-      name: name,
-      url: `mysql://launchfile:launchfile@${name}-mariadb:3306/${name}`,
-    },
-    healthcheck: {
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"],
-      interval: "5s",
-      timeout: "5s",
-      retries: 5,
-    },
-  }),
+  mariadb: (name: string, ports: ResourcePorts = {}) => {
+    const chosenPort = ports.mariadb;
+    const port = chosenPort ?? DEFAULT_RESOURCE_PORTS.mariadb;
+    return {
+      image: "mariadb:11",
+      environment: {
+        MARIADB_ROOT_PASSWORD: "launchfile",
+        MARIADB_USER: "launchfile",
+        MARIADB_PASSWORD: "launchfile",
+        MARIADB_DATABASE: name,
+      },
+      properties: {
+        host: `${name}-mariadb`,
+        port: String(port),
+        user: "launchfile",
+        password: "launchfile",
+        name: name,
+        url: `mysql://launchfile:launchfile@${name}-mariadb:${port}/${name}`,
+      },
+      healthcheck: {
+        // `healthcheck.sh --connect` answers over the Unix socket when it can, so a
+        // chosen port gets a TCP ping of that port as well.
+        test:
+          chosenPort !== undefined
+            ? [
+                "CMD-SHELL",
+                `healthcheck.sh --connect --innodb_initialized && mariadb-admin ping -h 127.0.0.1 -P ${chosenPort}`,
+              ]
+            : ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"],
+        interval: "5s",
+        timeout: "5s",
+        retries: 5,
+      },
+      ...(chosenPort !== undefined ? { extra: { command: [`--port=${chosenPort}`] } } : {}),
+    };
+  },
 
   redis: (name) => ({
     image: "redis:7-alpine",
@@ -317,6 +366,16 @@ export interface ComposeOpts {
    * entry (D-60 rule 5: one channel, not two).
    */
   appUrl?: string;
+  /**
+   * Container port per SQL backing service (`postgres`, `mysql`, `mariadb`),
+   * the same input as the Docker provider's `ComposeOpts.resourcePorts`
+   * (#568). A listed engine listens on that port, its healthcheck probes it,
+   * and `$port`/`$url` publish it — a run on a non-default port fails an
+   * entry that hard-codes the engine default. Validated the same way the
+   * provider validates it: an integer from 1 to 65535 or a thrown
+   * `InvalidResourcePortError`. Absent, output is unchanged.
+   */
+  resourcePorts?: ResourcePorts;
 }
 
 /** The backing-service type that declares the app's public HTTPS origin (D-60). */
@@ -352,6 +411,8 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
   const resourceRefusals: ComposeResult["resourceRefusals"] = [];
   const services: Record<string, Record<string, unknown>> = {};
   const volumes: Record<string, Record<string, unknown>> = {};
+  // Refused before anything is translated, as the provider refuses it.
+  const resourcePorts = validateResourcePorts(opts.resourcePorts);
 
   // D-50 storage-path keys, indexed by the SDK so this harness applies the
   // same key rule the providers do — a harness that matched keys its own way
@@ -579,6 +640,7 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
           volumes,
           images,
           warnings,
+          resourcePorts,
         );
         if (backingResult) {
           resources[req.name ?? req.type] = backingResult.properties;
@@ -807,6 +869,7 @@ function addBackingService(
   volumes: Record<string, Record<string, unknown>>,
   images: string[],
   warnings: string[],
+  resourcePorts: ResourcePorts,
 ): { serviceName: string; properties: Record<string, string> } | null {
   const type = req.type;
   const factory = Object.hasOwn(BACKING_SERVICES, type) ? BACKING_SERVICES[type] : undefined;
@@ -823,7 +886,7 @@ function addBackingService(
 
   // Don't add duplicate services (multiple components might require the same type)
   if (!services[serviceName]) {
-    const backing = factory(appName);
+    const backing = factory(appName, resourcePorts);
     images.push(backing.image);
 
     const service: Record<string, unknown> = {
@@ -852,7 +915,7 @@ function addBackingService(
 
   return {
     serviceName,
-    properties: factory(appName).properties,
+    properties: factory(appName, resourcePorts).properties,
   };
 }
 
