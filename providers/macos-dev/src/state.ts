@@ -5,7 +5,7 @@
  * so credentials and ports are stable across restarts.
  */
 
-import { readFile, writeFile, mkdir, chmod } from "node:fs/promises";
+import { readFile, writeFile, mkdir, chmod, open } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { registerSecrets } from "./redact.js";
@@ -221,7 +221,27 @@ export async function saveState(projectDir: string, state: LaunchState): Promise
 	// Security: restrict directory/file permissions — state.json contains
 	// database passwords and generated secrets in plaintext.
 	await mkdir(stateDir(projectDir), { recursive: true, mode: 0o700 });
-	await writeFile(statePath(projectDir), JSON.stringify(state, null, 2) + "\n", { mode: 0o600 });
+	await writePrivateFile(statePath(projectDir), JSON.stringify(state, null, 2) + "\n");
+}
+
+/**
+ * Write a file that holds secrets so no other user can read it, even when the
+ * file already exists with a looser mode. `writeFile`'s `mode` option applies
+ * only when it creates the file, so this opens the file, tightens the open
+ * handle to 0o600, and only then writes: the secret bytes never sit in a
+ * loose-mode file (CWE-276). The file is written in place, not through a
+ * temp-file rename — a rename would leave `*.tmp-*` files behind in the
+ * project root and would replace a user's symlinked or hard-linked file with
+ * a plain one.
+ */
+export async function writePrivateFile(path: string, data: string): Promise<void> {
+	const handle = await open(path, "w", 0o600);
+	try {
+		await handle.chmod(0o600);
+		await handle.writeFile(data);
+	} finally {
+		await handle.close();
+	}
 }
 
 /** Ensure .launchfile directories exist */

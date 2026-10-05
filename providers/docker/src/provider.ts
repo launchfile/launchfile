@@ -3,7 +3,6 @@
  */
 
 import { accessSync, constants as fsConstants, realpathSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
 import { createInterface } from "node:readline";
 import {
@@ -30,6 +29,7 @@ import {
 	stateDir,
 	stateBaseDir,
 	hashLaunchfile,
+	writePrivateFile,
 	type DockerState,
 	type StateEndpoint,
 } from "./state.js";
@@ -695,7 +695,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 			withSpan("up:compose", { slug }, async () => {
 				// Security: compose file contains passwords in environment variables
 				const file = composePath(slug);
-				await writeFile(file, result.yaml, { mode: 0o600 });
+				await writePrivateFile(file, result.yaml);
 			}),
 		);
 

@@ -1141,9 +1141,13 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 			await writeEnvFile(join(projectDir, ".env.local"), env);
 			console.log(`  \u2193 Wiring environment variables... done (${Object.keys(env).length} vars)`);
 		} else {
-			const { mkdir } = await import("node:fs/promises");
-			await mkdir(join(projectDir, ".launchfile", "env"), { recursive: true, mode: 0o700 });
-			await writeEnvFile(join(projectDir, ".launchfile", "env", `${name}.env`), env);
+			const { mkdir, chmod } = await import("node:fs/promises");
+			const envDir = join(projectDir, ".launchfile", "env");
+			// mkdir applies its mode only on create; chmod keeps the dir at 0o700
+			// even if something loosened it after `ensureDirs` ran.
+			await mkdir(envDir, { recursive: true, mode: 0o700 });
+			await chmod(envDir, 0o700);
+			await writeEnvFile(join(envDir, `${name}.env`), env);
 			console.log(`  \u2193 Wiring ${name} environment... done (${Object.keys(env).length} vars)`);
 		}
 	}

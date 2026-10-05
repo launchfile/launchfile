@@ -18,12 +18,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	chmodSync,
+	closeSync,
 	existsSync,
+	fchmodSync,
 	mkdirSync,
 	mkdtempSync,
+	openSync,
 	readFileSync,
 	rmSync,
 	writeFileSync,
+	writeSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -48,6 +52,20 @@ vi.mock("node:fs/promises", () => ({
 	},
 	chmod: async (path: string, mode: number) => {
 		chmodSync(path, mode);
+	},
+	// `writePrivateFile` writes secret files through an open handle so it can
+	// chmod before the first byte lands; mirror that with the sync fs API and
+	// keep recording what was written.
+	open: async (path: string, flags: string, mode?: number) => {
+		const fd = openSync(path, flags, mode);
+		return {
+			chmod: async (m: number) => fchmodSync(fd, m),
+			writeFile: async (content: string) => {
+				writtenEnvFiles.push({ path: String(path), content: String(content) });
+				writeSync(fd, content);
+			},
+			close: async () => closeSync(fd),
+		};
 	},
 }));
 
