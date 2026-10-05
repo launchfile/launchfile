@@ -1460,8 +1460,14 @@ function exposedProvide(
 	return (comp?.provides ?? []).find((p) => p.exposed === true);
 }
 
+interface AlbTarget {
+	comp: NormalizedComponent;
+	provide: NonNullable<NormalizedComponent["provides"]>[number];
+	instanceTf: string;
+}
+
 /**
- * Whether `emitAlb` gives this component an ALB target group: it is exposed,
+ * The ALB target group `emitAlb` gives this component, if any: it is exposed,
  * reached compute (`targetGroupFor` is set), and has an exposed provide.
  */
 function hasAlbTargetGroup(
@@ -1469,12 +1475,13 @@ function hasAlbTargetGroup(
 	launch: NormalizedLaunch,
 	exposedComponents: string[],
 	targetGroupFor: Record<string, string>,
-): boolean {
-	return (
-		exposedComponents.includes(name) &&
-		targetGroupFor[name] !== undefined &&
-		exposedProvide(launch.components[name]) !== undefined
-	);
+): AlbTarget | undefined {
+	const comp = launch.components[name];
+	const instanceTf = targetGroupFor[name];
+	const provide = exposedProvide(comp);
+	if (!exposedComponents.includes(name) || !comp || !instanceTf || !provide)
+		return undefined;
+	return { comp, provide, instanceTf };
 }
 
 /**
@@ -1510,16 +1517,14 @@ function recordHealth(
 				"declare health.path so the ALB probes the app's real readiness endpoint",
 				name,
 			);
-		} else if (health.path === "") {
+		} else {
 			c.gap(
 				"health",
 				"workaround",
-				'health.path is empty, so the ALB target group probes HTTP "/" (matcher 200-399) instead',
+				'health declares no path, so the ALB target group probes HTTP "/" (matcher 200-399) instead',
 				"declare health.path so the ALB probes the app's real readiness endpoint",
 				name,
 			);
-		} else {
-			c.map("health", "aws_lb_target_group health_check", name);
 		}
 	}
 }
@@ -1581,12 +1586,14 @@ function emitAlb(
 	const usedListenerPorts = new Set<number>();
 	for (const [idx, name] of exposedComponents.entries()) {
 		// A component gapped before compute (e.g. image-only) has no target group.
-		if (!hasAlbTargetGroup(name, launch, exposedComponents, targetGroupFor))
-			continue;
-		const comp = launch.components[name];
-		const instanceTf = targetGroupFor[name];
-		const provide = exposedProvide(comp);
-		if (!comp || !instanceTf || !provide) continue;
+		const target = hasAlbTargetGroup(
+			name,
+			launch,
+			exposedComponents,
+			targetGroupFor,
+		);
+		if (!target) continue;
+		const { comp, provide, instanceTf } = target;
 		const tgTf = `${appTf}_${tfName(name)}`;
 		const healthPath = probePath(comp.health) ?? "/";
 

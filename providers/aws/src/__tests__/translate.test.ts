@@ -1356,12 +1356,16 @@ ${health}`;
 		expect(conformance.gaps.some((g) => g.field === "health")).toBe(false);
 	});
 
-	it("maps a start_period-only health block and keeps the / probe", () => {
+	it("probes / and records a gap for a start_period-only health block", () => {
 		const { hcl, conformance } = tf(exposed("health:\n  start_period: 30s\n"));
 		expect(hcl).toMatch(/health_check[\s\S]*path\s*=\s*"\/"/);
 		expect(hcl).toContain('matcher = "200-399"');
-		expect(conformance.mapped.some((m) => m.field === "health")).toBe(true);
-		expect(conformance.gaps.some((g) => g.field === "health")).toBe(false);
+		expect(conformance.mapped.some((m) => m.field === "health")).toBe(false);
+		const gap = conformance.gaps.find((g) => g.field === "health");
+		expect(gap?.severity).toBe("workaround");
+		expect(gap?.reason).toBe(
+			'health declares no path, so the ALB target group probes HTTP "/" (matcher 200-399) instead',
+		);
 	});
 
 	it("records a gap, not a mapping, for a command-only health block", () => {
@@ -1391,7 +1395,10 @@ ${health}`;
 		expect(hcl).not.toMatch(/path\s*=\s*""/);
 		expect(conformance.mapped.some((m) => m.field === "health")).toBe(false);
 		const gap = conformance.gaps.find((g) => g.field === "health");
+		const absent = tf(exposed("health:\n  start_period: 30s\n"));
+		const absentGap = absent.conformance.gaps.find((g) => g.field === "health");
 		expect(gap?.reason).toContain('"/"');
+		expect(gap?.reason).toBe(absentGap?.reason);
 	});
 
 	it("treats the empty health shorthand like an empty path", () => {
