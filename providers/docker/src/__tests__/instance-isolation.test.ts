@@ -13,7 +13,7 @@
  * docker.
  */
 
-import { mkdtempSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -300,6 +300,119 @@ describe("foreign-source guard across source types (#240 review blocker)", () =>
 		} finally {
 			await new Promise((resolve) => server.close(resolve));
 		}
+	});
+
+	describe("url sources compare credential-free (#627)", () => {
+		const UNPULLABLE = `version: launch/v1
+name: isotest
+image: 127.0.0.1:1/lf-627-never:latest
+commands:
+  start: sleep 300
+`;
+		let server: import("node:http").Server;
+		let origin: string;
+		let body: string;
+
+		beforeEach(async () => {
+			body = LAUNCHFILE;
+			const { createServer: createHttpServer } = await import("node:http");
+			server = createHttpServer((_req, res) => {
+				res.writeHead(200, { "content-type": "text/yaml" });
+				res.end(body);
+			});
+			await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+			origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+		});
+
+		afterEach(async () => {
+			await new Promise((resolve) => server.close(resolve));
+		});
+
+		async function record(sourceUrl: string): Promise<void> {
+			await saveState(
+				"isotest",
+				initState("isotest", "isotest", LAUNCHFILE, { sourceType: "url", sourceUrl }),
+			);
+		}
+
+		it("a rotated token is the same source — no warning", async () => {
+			await record(`${origin}/Launchfile?token=tok-old&ref=v1`);
+			const result = await dockerUp(`${origin}/Launchfile?token=tok-new&ref=v1`, { dryRun: true });
+			expect(errors.join("\n")).not.toContain("different source");
+			expect(result.sourceUrl).toBe(`${origin}/Launchfile?ref=v1`);
+		});
+
+		it("dropping the token next to a ref holding '/' is the same source — no warning", async () => {
+			await record(`${origin}/Launchfile?token=SECRET1&ref=release/1.0`);
+			const result = await dockerUp(`${origin}/Launchfile?ref=release/1.0`, { dryRun: true });
+			expect(errors.join("\n")).not.toContain("different source");
+			expect(result.sourceUrl).toBe(`${origin}/Launchfile?ref=release/1.0`);
+		});
+
+		it("legacy state holding the raw URL with userinfo is the same source", async () => {
+			// saveState canonicalizes, so the legacy file is written directly.
+			mkdirSync(stateDir("isotest"), { recursive: true });
+			const legacy = initState("isotest", "isotest", LAUNCHFILE, { sourceType: "url" });
+			writeFileSync(
+				join(stateDir("isotest"), "state.json"),
+				JSON.stringify({
+					...legacy,
+					sourceUrl: `${origin.replace("://", "://user:tok-old@")}/Launchfile?token=tok-old`,
+				}),
+			);
+			await dockerUp(`${origin}/Launchfile?token=tok-new`, { dryRun: true });
+			expect(errors.join("\n")).not.toContain("different source");
+		});
+
+		it.each([
+			["a different path", "/other/Launchfile?ref=v1#main"],
+			["a different ?ref=", "/Launchfile?ref=v2#main"],
+			["a different #ref", "/Launchfile?ref=v1#v2"],
+		])("%s is a different source — warns on dry-run", async (_label, suffix) => {
+			await record(`${origin}/Launchfile?ref=v1#main`);
+			await dockerUp(`${origin}${suffix}`, { dryRun: true });
+			expect(errors.join("\n")).toContain("already deployed from a different source");
+		});
+
+		it("a different host is a different source — warns on dry-run", async () => {
+			await record(`${origin.replace("127.0.0.1", "localhost")}/Launchfile`);
+			await dockerUp(`${origin}/Launchfile?token=tok`, { dryRun: true });
+			expect(errors.join("\n")).toContain("already deployed from a different source");
+		});
+
+		itIfPrereqsOk("a different ?ref= refuses a real launch", async () => {
+			await record(`${origin}/Launchfile?token=tok-old&ref=v1`);
+			const err = await dockerUp(`${origin}/Launchfile?token=tok-new&ref=v2`, { yes: true }).catch(
+				(e: unknown) => e,
+			);
+			expect(err).toBeInstanceOf(ForeignSourceError);
+		});
+
+		itIfPrereqsOk(
+			"a real up rewrites legacy raw-URL state in canonical form",
+			async () => {
+				// The image cannot be pulled, so the launch fails after state is saved
+				// and before any container exists.
+				body = UNPULLABLE;
+				mkdirSync(stateDir("isotest"), { recursive: true });
+				const legacy = initState("isotest", "isotest", UNPULLABLE, { sourceType: "url" });
+				writeFileSync(
+					join(stateDir("isotest"), "state.json"),
+					JSON.stringify({
+						...legacy,
+						sourceUrl: `${origin.replace("://", "://user:tok-LEGACY@")}/Launchfile?token=tok-LEGACY`,
+					}),
+				);
+
+				await dockerUp(`${origin}/Launchfile?token=tok-CURRENT`, { yes: true }).catch(() => undefined);
+
+				const onDisk = readFileSync(join(stateDir("isotest"), "state.json"), "utf8");
+				expect(onDisk).not.toContain("tok-LEGACY");
+				expect(onDisk).not.toContain("tok-CURRENT");
+				expect(JSON.parse(onDisk).sourceUrl).toBe(`${origin}/Launchfile`);
+			},
+			30_000,
+		);
 	});
 
 	it("a catalog up over catalog-recorded state proceeds — same source, no warning", async () => {

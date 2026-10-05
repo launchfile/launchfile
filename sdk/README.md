@@ -149,6 +149,9 @@ stale.
 | `writeLaunch(launch)` | Serialize `NormalizedLaunch` → compact YAML string |
 | `LaunchSchema` | Zod schema for direct validation |
 | `parseRepository(repository)` | Split a `repository` value at its `#` fragment → `{ url, ref }` |
+| `canonicalSourceUrl(url)` | A URL source's identity with credentials removed: userinfo and credential query parameters dropped; scheme, host, port, path, other query parameters and the `#<ref>` fragment kept. Providers compare and persist this form (D-55 rule 3) |
+| `CREDENTIAL_QUERY_KEYS` | The query parameter names `canonicalSourceUrl` treats as credentials (lowercase, matched case-insensitively) |
+| `isCredentialQueryKey(name)` | True when a query parameter name is on `CREDENTIAL_QUERY_KEYS` |
 
 ### Expressions
 
