@@ -34,6 +34,8 @@ export interface CatalogEntry {
 	/** Backing-service types the app requires, sorted, without duplicates. */
 	services: string[];
 	componentCount: number;
+	/** Some component lists `https-origin` under `requires` (never `supports`, which is optional). */
+	requiresHttpsOrigin: boolean;
 }
 
 /**
@@ -55,8 +57,10 @@ export function readEntry(catalogRoot: string, dir: CatalogDir, slug: string): C
 
 	const components = Object.values(launch.components);
 	const services = new Set<string>();
+	let requiresHttpsOrigin = false;
 	for (const component of components) {
 		for (const req of component.requires ?? []) {
+			if (req.type === "https-origin") requiresHttpsOrigin = true;
 			if (!NON_SERVICE_TYPES.has(req.type)) services.add(req.type);
 		}
 	}
@@ -68,6 +72,7 @@ export function readEntry(catalogRoot: string, dir: CatalogDir, slug: string): C
 		description: stringField(meta.tagline) ?? stringField(launch.description),
 		services: [...services].sort(),
 		componentCount: components.length,
+		requiresHttpsOrigin,
 	};
 }
 

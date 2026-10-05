@@ -62,6 +62,11 @@ GPU, a claim token).
 cannot stand up a public HTTPS origin (a backing service under D-60), and host
 capabilities are granted or refused, not provisioned (D-53).
 
+`test-all.ts` skips an app that lists `https-origin` under `requires` (privatebin,
+vaultwarden) unless `--url https://<host>` is given. It prints `SKIP`, counts the app as
+neither passed nor failed, and the exit code depends on failures only. An app that only
+`supports` `https-origin` (grocy) runs as normal.
+
 ## Catalog index
 
 `src/build-index.ts` rewrites the Tested Apps and Proposed Apps tables in
