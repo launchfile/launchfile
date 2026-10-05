@@ -28,9 +28,12 @@ const NEEDS_HTTPS_ORIGIN = new Set(ENTRIES.filter((e) => e.requiresHttpsOrigin).
 
 const args = process.argv.slice(2);
 const tierFlag = args.find((a) => a.startsWith("--tier=") || a.startsWith("--tier "));
+const tierIdx = args.indexOf("--tier");
 const tierArg = tierFlag
   ? tierFlag.split("=")[1]
-  : args[args.indexOf("--tier") + 1];
+  : tierIdx >= 0
+    ? args[tierIdx + 1]
+    : undefined;
 const selectedTier = tierArg !== undefined ? Number.parseInt(tierArg, 10) : undefined;
 const dryRun = args.includes("--dry-run");
 const urlFlag = args.find((a) => a.startsWith("--url="));
