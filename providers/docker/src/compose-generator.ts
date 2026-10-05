@@ -61,6 +61,11 @@ import {
 } from "./env-secrets.js";
 import { registerSecret } from "./redact.js";
 import {
+	DEFAULT_RESOURCE_PORTS,
+	type ResourcePorts,
+	validateResourcePorts,
+} from "./resource-ports.js";
+import {
 	declaredSecrets,
 	migrateResourcePasswords,
 	type ResourcePasswordKey,
@@ -407,9 +412,14 @@ function atReport(
  * straight out of a Launchfile, so `constructor`, `toString` and every other
  * `Object.prototype` key must resolve to nothing, never to an inherited
  * function that is not a factory.
+ *
+ * `resourcePorts` moves an SQL engine off its default container port
+ * (`ComposeOpts.resourcePorts`). A type it does not list keeps the default
+ * and emits exactly what it emits without the option.
  */
 function createBackingServices(
 	savedPasswords: Record<string, string>,
+	resourcePorts: ResourcePorts = {},
 ): Record<string, (name: string) => BackingService> {
 	// Use saved password or generate a new one. Keyed by `ResourcePasswordKey`,
 	// so a factory can only mint under a key `DockerState.resourcePasswords`
@@ -424,6 +434,8 @@ function createBackingServices(
 	return Object.assign(Object.create(null), {
 		postgres: (name) => {
 			const pw = getPassword("postgres");
+			const chosenPort = resourcePorts.postgres;
+			const port = chosenPort ?? DEFAULT_RESOURCE_PORTS.postgres;
 			return {
 				image: "postgres:16-alpine",
 				dataPath: "/var/lib/postgresql/data",
@@ -431,17 +443,25 @@ function createBackingServices(
 					POSTGRES_USER: "launchfile",
 					POSTGRES_PASSWORD: pw,
 					POSTGRES_DB: name,
+					// The server, the entrypoint's init-time temporary server and
+					// pg_isready all read PGPORT, so one variable moves them together.
+					...(chosenPort !== undefined ? { PGPORT: String(chosenPort) } : {}),
 				},
 				properties: {
 					host: `${name}-postgres`,
-					port: "5432",
+					port: String(port),
 					user: "launchfile",
 					password: pw,
 					name: name,
-					url: `postgres://launchfile:${encodeURIComponent(pw)}@${name}-postgres:5432/${name}?sslmode=disable`,
+					url: `postgres://launchfile:${encodeURIComponent(pw)}@${name}-postgres:${port}/${name}?sslmode=disable`,
 				},
 				healthcheck: {
-					test: ["CMD-SHELL", `pg_isready -U launchfile -d ${name}`],
+					test: [
+						"CMD-SHELL",
+						chosenPort !== undefined
+							? `pg_isready -U launchfile -d ${name} -p ${chosenPort}`
+							: `pg_isready -U launchfile -d ${name}`,
+					],
 					interval: "5s",
 					timeout: "5s",
 					retries: 5,
@@ -451,6 +471,8 @@ function createBackingServices(
 
 		mysql: (name) => {
 			const pw = getPassword("mysql");
+			const chosenPort = resourcePorts.mysql;
+			const port = chosenPort ?? DEFAULT_RESOURCE_PORTS.mysql;
 			return {
 				image: "mysql:8",
 				dataPath: "/var/lib/mysql",
@@ -462,23 +484,47 @@ function createBackingServices(
 				},
 				properties: {
 					host: `${name}-mysql`,
-					port: "3306",
+					port: String(port),
 					user: "launchfile",
 					password: pw,
 					name: name,
-					url: `mysql://launchfile:${encodeURIComponent(pw)}@${name}-mysql:3306/${name}`,
+					url: `mysql://launchfile:${encodeURIComponent(pw)}@${name}-mysql:${port}/${name}`,
 				},
 				healthcheck: {
-					test: ["CMD", "mysqladmin", "ping", "-h", "localhost"],
+					// `-h localhost` is the Unix socket, which answers on any port.
+					// With a chosen port the probe goes over TCP to that port.
+					test:
+						chosenPort !== undefined
+							? [
+									"CMD",
+									"mysqladmin",
+									"ping",
+									"-h",
+									"127.0.0.1",
+									"-P",
+									String(chosenPort),
+								]
+							: ["CMD", "mysqladmin", "ping", "-h", "localhost"],
 					interval: "5s",
 					timeout: "5s",
 					retries: 5,
+					// First-boot initialization runs a socket-only temporary server, so
+					// the TCP probe fails until the real server is up. The socket probe
+					// never sees this; the TCP one needs the failures not to count.
+					...(chosenPort !== undefined ? { start_period: "60s" } : {}),
 				},
+				// The image's entrypoint prepends `mysqld` to a command that starts
+				// with a flag.
+				...(chosenPort !== undefined
+					? { extra: { command: [`--port=${chosenPort}`] } }
+					: {}),
 			};
 		},
 
 		mariadb: (name) => {
 			const pw = getPassword("mariadb");
+			const chosenPort = resourcePorts.mariadb;
+			const port = chosenPort ?? DEFAULT_RESOURCE_PORTS.mariadb;
 			return {
 				image: "mariadb:11",
 				dataPath: "/var/lib/mysql",
@@ -490,18 +536,29 @@ function createBackingServices(
 				},
 				properties: {
 					host: `${name}-mariadb`,
-					port: "3306",
+					port: String(port),
 					user: "launchfile",
 					password: pw,
 					name: name,
-					url: `mysql://launchfile:${encodeURIComponent(pw)}@${name}-mariadb:3306/${name}`,
+					url: `mysql://launchfile:${encodeURIComponent(pw)}@${name}-mariadb:${port}/${name}`,
 				},
 				healthcheck: {
-					test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"],
+					// `healthcheck.sh --connect` answers over the Unix socket when it
+					// can, so with a chosen port a TCP ping of that port is added.
+					test:
+						chosenPort !== undefined
+							? [
+									"CMD-SHELL",
+									`healthcheck.sh --connect --innodb_initialized && mariadb-admin ping -h 127.0.0.1 -P ${chosenPort}`,
+								]
+							: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"],
 					interval: "5s",
 					timeout: "5s",
 					retries: 5,
 				},
+				...(chosenPort !== undefined
+					? { extra: { command: [`--port=${chosenPort}`] } }
+					: {}),
 			};
 		},
 
@@ -909,6 +966,20 @@ export interface ComposeOpts {
 	 * captured output.
 	 */
 	resources?: Record<string, { properties: Record<string, string> }>;
+	/**
+	 * Container port per SQL backing service this provider provisions (#568):
+	 * `postgres`, `mysql`, `mariadb`. For a listed type the engine listens on
+	 * the given port, its healthcheck probes that port, and the `port` and
+	 * `url` properties publish it — so an entry that ignores `$port` and
+	 * assumes the engine default fails to connect instead of passing by luck.
+	 * Each value must be an integer from 1 to 65535; anything else throws
+	 * `InvalidResourcePortError` rather than falling back to the default.
+	 * Absent, every engine keeps its default and the output is unchanged.
+	 *
+	 * This is the port INSIDE the compose network. Host ports published for
+	 * the app's own endpoints (`hostPorts`) are unrelated.
+	 */
+	resourcePorts?: ResourcePorts;
 }
 
 // D-50 row 1 and row 2 shapes are the SDK's — every provider reports the same
@@ -1190,7 +1261,10 @@ export function launchToCompose(
 		),
 	);
 
-	const backingServices = createBackingServices(resourcePasswords);
+	const backingServices = createBackingServices(
+		resourcePasswords,
+		validateResourcePorts(opts.resourcePorts),
+	);
 
 	// Pre-generate app-wide secrets
 	if (launch.secrets) {
