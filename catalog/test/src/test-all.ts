@@ -4,9 +4,10 @@
  *
  * Usage: bun run src/test-all.ts [--tier N] [--dry-run] [--url <public-url>]
  *
- * `--url` is forwarded to every app (see test-app.ts). Apps that declare a
- * required `https-origin` fail without an `https://` value, exactly as they
- * would on the shipped Docker provider.
+ * `--url` is forwarded to every app (see test-app.ts). Apps that require an
+ * `https-origin` (D-60) cannot run without an `https://` value, so they are
+ * reported as skipped, neither passed nor failed, when `--url` is absent or
+ * not `https://`.
  *
  * Tiers are derived from the catalog directories: every
  * directory under catalog/{apps,drafts}/ runs except those in `SKIPPED`
@@ -18,7 +19,9 @@
 import { resolve } from "node:path";
 import { buildTiers, loadEntries } from "./build-index.ts";
 
-const TIERS = buildTiers(loadEntries(resolve(import.meta.dir, "..", "..")));
+const ENTRIES = loadEntries(resolve(import.meta.dir, "..", ".."));
+const TIERS = buildTiers(ENTRIES);
+const NEEDS_HTTPS_ORIGIN = new Set(ENTRIES.filter((e) => e.requiresHttpsOrigin).map((e) => e.slug));
 
 // --- CLI args ---
 
@@ -48,6 +51,8 @@ interface Result {
   passed: boolean;
   duration: number;
   error?: string;
+  /** Reason the app was not run; a skipped app is neither passed nor failed. */
+  skipped?: string;
 }
 
 const results: Result[] = [];
@@ -70,6 +75,13 @@ for (const [tierNum, tier] of Object.entries(tiersToRun)) {
   for (const app of tier.apps) {
     const start = performance.now();
     console.log(`\n--- ${app} ---`);
+
+    if (NEEDS_HTTPS_ORIGIN.has(app) && !appUrl?.startsWith("https://")) {
+      const skipped = "requires https-origin (D-60); pass --url https://<host> to run";
+      console.log(`SKIP: ${skipped}`);
+      results.push({ app, tier: Number(tierNum), passed: false, duration: 0, skipped });
+      continue;
+    }
 
     try {
       const proc = Bun.spawn(
@@ -116,6 +128,10 @@ console.log(
 console.log("-".repeat(maxAppLen + 25));
 
 for (const r of results) {
+  if (r.skipped) {
+    console.log(`${r.app.padEnd(maxAppLen)}  T${r.tier}    - SKIP  ${r.skipped}`);
+    continue;
+  }
   const status = r.passed ? "PASS" : "FAIL";
   const icon = r.passed ? "+" : "x";
   console.log(
@@ -124,7 +140,8 @@ for (const r of results) {
 }
 
 const passed = results.filter((r) => r.passed).length;
-const failed = results.filter((r) => !r.passed).length;
-console.log(`\nTotal: ${passed} passed, ${failed} failed out of ${results.length}`);
+const skipped = results.filter((r) => r.skipped).length;
+const failed = results.length - passed - skipped;
+console.log(`\nTotal: ${passed} passed, ${failed} failed, ${skipped} skipped out of ${results.length}`);
 
 process.exit(failed > 0 ? 1 : 0);

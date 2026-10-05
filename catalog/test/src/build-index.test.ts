@@ -22,6 +22,7 @@ function entry(overrides: Partial<CatalogEntry>): CatalogEntry {
 		description: undefined,
 		services: [],
 		componentCount: 1,
+		requiresHttpsOrigin: false,
 		...overrides,
 	};
 }
@@ -75,7 +76,7 @@ provides:
 		mkdirSync(join(root, "drafts", "empty-dir"), { recursive: true });
 
 		expect(loadEntries(root)).toEqual([
-			entry({ slug: "blog", category: "CMS", description: "From metadata", services: ["postgres"] }),
+			entry({ slug: "blog", category: "CMS", description: "From metadata", services: ["postgres"], requiresHttpsOrigin: true }),
 			entry({ slug: "notes", dir: "drafts", description: "Only a Launchfile" }),
 		]);
 	});
@@ -108,6 +109,32 @@ components:
 		const root = mkdtempSync(join(tmpdir(), "build-index-"));
 		writeApp(root, "apps", "broken", "name: broken\nimage: [not, a, string]\n");
 		expect(() => loadEntries(root)).toThrow();
+	});
+});
+
+describe("requiresHttpsOrigin", () => {
+	const catalogRoot = resolve(import.meta.dirname, "..", "..");
+	const bySlug = new Map(loadEntries(catalogRoot).map((e) => [e.slug, e]));
+
+	it("is true for apps that require https-origin", () => {
+		expect(bySlug.get("privatebin")?.requiresHttpsOrigin).toBe(true);
+		expect(bySlug.get("vaultwarden")?.requiresHttpsOrigin).toBe(true);
+	});
+
+	it("is false when https-origin is only supported", () => {
+		expect(bySlug.get("grocy")?.requiresHttpsOrigin).toBe(false);
+	});
+
+	it("is false for an app with no https-origin at all", () => {
+		const root = mkdtempSync(join(tmpdir(), "build-index-"));
+		writeApp(root, "apps", "plain", "name: plain\nimage: example/plain:1\n");
+		expect(loadEntries(root)[0]?.requiresHttpsOrigin).toBe(false);
+	});
+
+	it("does not change any tier", () => {
+		const withFlag = entry({ requiresHttpsOrigin: true, services: ["postgres"] });
+		expect(tierOf(withFlag)).toBe(tierOf(entry({ services: ["postgres"] })));
+		expect(tierOf(entry({ requiresHttpsOrigin: true }))).toBe(0);
 	});
 });
 
