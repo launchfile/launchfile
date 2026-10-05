@@ -76,6 +76,7 @@ import { prepareFingerprint } from "./prepare-fingerprint.js";
 import { provisionStorage, storagePaths } from "./storage.js";
 import { HealthGateError, ProcessManager } from "./process-manager.js";
 import { redactSecrets } from "./redact.js";
+import { ConfinementRefusal } from "./safe-path.js";
 import { stopRecordedProcesses } from "./process-stopper.js";
 import { shellScript } from "./shell.js";
 import { parseDuration } from "./bootstrap.js";
@@ -588,6 +589,21 @@ export async function runSourcePrepare(
 }
 
 export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
+	try {
+		await runUp(opts);
+	} catch (err) {
+		// A write under `.launchfile/` or to `.env.local` found a symlink the
+		// repository shipped (safe-path.ts). Nothing went through it; the run
+		// stops naming the path, the same way every other refusal exits.
+		if (err instanceof ConfinementRefusal) {
+			console.error(`Refused: ${err.message}`);
+			process.exit(1);
+		}
+		throw err;
+	}
+}
+
+async function runUp(opts: LaunchUpOpts): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 
 	// Publication context (D-58): validated and normalized before anything is
@@ -1176,12 +1192,10 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		}
 
 		if (isSingleComponent) {
-			await writeEnvFile(join(projectDir, ".env.local"), env);
+			await writeEnvFile(projectDir, [".env.local"], env);
 			console.log(`  \u2193 Wiring environment variables... done (${Object.keys(env).length} vars)`);
 		} else {
-			const { mkdir } = await import("node:fs/promises");
-			await mkdir(join(projectDir, ".launchfile", "env"), { recursive: true, mode: 0o700 });
-			await writeEnvFile(join(projectDir, ".launchfile", "env", `${name}.env`), env);
+			await writeEnvFile(projectDir, [".launchfile", "env", `${name}.env`], env);
 			console.log(`  \u2193 Wiring ${name} environment... done (${Object.keys(env).length} vars)`);
 		}
 	}

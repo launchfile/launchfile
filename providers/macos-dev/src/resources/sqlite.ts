@@ -2,9 +2,10 @@
  * SQLite resource provisioner — just creates a directory for the DB file.
  */
 
-import { lstat, mkdir, realpath, rm } from "node:fs/promises";
+import { realpath, rm } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import type { NormalizedRequirement } from "@launchfile/sdk";
+import { ConfinementRefusal, ensureConfinedDir } from "../safe-path.js";
 import type { ResourceState } from "../state.js";
 import {
 	type DestroyOpts,
@@ -35,34 +36,6 @@ async function anchoredDataDir(
 	return { projectRoot, dataDir: join(projectRoot, ...DATA_DIR) };
 }
 
-/**
- * Creates the data directory under `projectRoot`, refusing when any
- * component of `.launchfile/data/sqlite` already exists as something other
- * than a real directory. `mkdir(..., { recursive: true })` succeeds through a
- * symlink to a directory and reports nothing, so the check uses `lstat`
- * (which does not follow symlinks) on each component before anything is
- * created — `realpath` cannot do it, as the path does not exist on a first
- * run. After the mkdir the directory must still resolve to itself.
- *
- * Returns the reason for a refusal, or null when the directory is ready.
- */
-async function createDataDir(projectRoot: string): Promise<string | null> {
-	let path = projectRoot;
-	for (const component of DATA_DIR) {
-		path = join(path, component);
-		const entry = await lstat(path).catch(() => null);
-		if (entry !== null && !entry.isDirectory()) {
-			return `${path} ${entry.isSymbolicLink() ? "is a symlink" : "is not a directory"}`;
-		}
-	}
-	await mkdir(path, { recursive: true });
-	const real = await realpath(path).catch(() => null);
-	if (real !== path) {
-		return `${path} resolves to ${real ?? "nothing"}`;
-	}
-	return null;
-}
-
 function refuse(resourceName: string, reason: string): never {
 	console.warn(`  ! sqlite: refusing to provision ${resourceName} — ${reason}`);
 	throw new ResourceRefusedError(resourceName, reason);
@@ -84,15 +57,21 @@ export class SqliteProvisioner implements ResourceProvisioner {
 
 		// The refusal happens before `path`/`url` exist: this provisioner
 		// writes no database bytes itself, the app does, through whatever
-		// path it is handed. The reason prints here because the caller's
-		// optional-resource loop reports only "skipped".
-		const anchored = await anchoredDataDir(opts.projectDir);
-		if (anchored === null)
-			refuse(resourceName, `${opts.projectDir} does not exist`);
-		const reason = await createDataDir(anchored.projectRoot);
-		if (reason !== null) refuse(resourceName, reason);
+		// path it is handed. A refused data path is a refused resource, so the
+		// caller's loop can skip an optional one; the reason prints here
+		// because that loop reports only "skipped".
+		let dataDir: string;
+		try {
+			dataDir = await ensureConfinedDir(opts.projectDir, DATA_DIR, {
+				mode: 0o700,
+			});
+		} catch (err) {
+			if (err instanceof ConfinementRefusal)
+				refuse(resourceName, `${err.path} ${err.reason}`);
+			throw err;
+		}
 
-		const dbPath = join(anchored.dataDir, `${safeName}.db`);
+		const dbPath = join(dataDir, `${safeName}.db`);
 
 		// SPEC.md § Resource Property Vocabulary gives sqlite `url` and `path`
 		// only. A file has no host and no port, so neither is exposed.
