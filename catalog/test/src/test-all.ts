@@ -18,7 +18,7 @@
 
 import { resolve } from "node:path";
 import { buildTiers, loadEntries } from "./build-index.ts";
-import { httpsOriginSatisfied, InvalidAppUrlError } from "../../../providers/docker/src/app-url.ts";
+import { skipsForHttpsOrigin } from "./https-origin-skip.ts";
 
 const ENTRIES = loadEntries(resolve(import.meta.dir, "..", ".."));
 const TIERS = buildTiers(ENTRIES);
@@ -39,15 +39,6 @@ const appUrl = urlFlag
   : args.includes("--url")
     ? args[args.indexOf("--url") + 1]
     : undefined;
-// A malformed --url is not a skip: test-app.ts refuses it and reports a failure.
-const originSatisfied = (() => {
-  try {
-    return httpsOriginSatisfied(appUrl);
-  } catch (e) {
-    if (e instanceof InvalidAppUrlError) return true;
-    throw e;
-  }
-})();
 const extraFlags = [
   ...(dryRun ? ["--dry-run"] : []),
   ...(appUrl ? ["--url", appUrl] : []),
@@ -86,7 +77,7 @@ for (const [tierNum, tier] of Object.entries(tiersToRun)) {
     const start = performance.now();
     console.log(`\n--- ${app} ---`);
 
-    if (NEEDS_HTTPS_ORIGIN.has(app) && !originSatisfied) {
+    if (skipsForHttpsOrigin(NEEDS_HTTPS_ORIGIN.has(app), appUrl)) {
       const skipped = "requires https-origin (D-60); pass --url https://<host> to run";
       console.log(`SKIP: ${skipped}`);
       results.push({ app, tier: Number(tierNum), passed: false, duration: 0, skipped });
