@@ -44,6 +44,7 @@ import {
 import {
 	loadState,
 	initState,
+	hashLaunchfile,
 	saveState,
 	ensureDirs,
 	withRecordedDbIndexes,
@@ -648,6 +649,22 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	let state = await loadState(projectDir);
 	if (!state) {
 		state = initState(launch.name, launchfileContent);
+	} else {
+		// The recorded hash detects an edit; it does not authenticate one. A
+		// mismatch is reported and the recorded state is kept: discarding it
+		// would re-mint every `generatedEnv` value on an ordinary edit, against
+		// D-49's generate-once-then-preserve rule, and buys nothing against a
+		// shipped file whose author can compute the matching hash.
+		const currentHash = hashLaunchfile(launchfileContent);
+		const recordedHash = state.launchfileHash;
+		if (recordedHash !== undefined && recordedHash !== currentHash) {
+			console.warn(
+				"  Warning: .launchfile/state.json was recorded for different " +
+					`Launchfile content (recorded ${recordedHash}, current ` +
+					`${currentHash}) — continuing with the recorded state.`,
+			);
+		}
+		state.launchfileHash = currentHash;
 	}
 	// Publication context (D-58), the same preservation rule the docker provider
 	// applies: a supplied value replaces the recorded one — the derived $app.*

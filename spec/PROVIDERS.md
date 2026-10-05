@@ -226,7 +226,7 @@ local watcher ← emit ← diff() ← fs change ────┘
 - **Also:** health checks, secret generation, persistent storage, env writing.
 - **`env`:** prints a component's resolved environment (§7) — the read surface §8 generalizes.
 - **Storage:** resolves `$storage.<name>.path` to `.launchfile/storage/<component>/<name>` on the host (D-39).
-- **State:** `LaunchState` at `<projectDir>/.launchfile/state.json`, keyed by Launchfile **content hash**; holds `resources`, `secrets`, `ports`, `processes`, `generatedEnv`, `operatorStorage`, `appUrl`, `primaryEndpoint`, `prepared`.
+- **State:** `LaunchState` at `<projectDir>/.launchfile/state.json`; holds `resources`, `secrets`, `ports`, `processes`, `generatedEnv`, `operatorStorage`, `appUrl`, `primaryEndpoint`, `prepared`, and the recorded Launchfile hash. Checked on load: a malformed `resources` or `processes` entry is dropped with a warning naming the state file and the field, every other entry loads, unknown keys survive a load-and-save round trip, and a file whose `appName`, `resources`, `secrets` or `ports` is missing or malformed loads as no state. The recorded Launchfile hash is recompared on `up`; a mismatch warns and the launch continues with the recorded state.
 - **Selection:** narrows `components` to the selected set's downward `depends_on` closure (`selectionClosure`) after the prereq gate, so every phase honors it.
 
 ### Mode coverage today
