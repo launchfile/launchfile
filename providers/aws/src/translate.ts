@@ -625,6 +625,8 @@ export function translate(
 		);
 	}
 
+	recordHealth(c, launch, exposedComponents, targetGroupFor);
+
 	// --- ALB fronting exposed provides ---
 	if (hasAlb) {
 		emitAlb(blocks, c, appTf, launch, exposedComponents, targetGroupFor);
@@ -1362,21 +1364,6 @@ function emitComponent(
 	if (Object.keys(resolvedEnv).length > 0)
 		c.map("env", "aws_ssm_parameter", name);
 
-	// health → recorded. The ALB target group probes HTTP only: a declared
-	// path is used, otherwise "/" (SPEC "Health"). A command-only block has
-	// no AWS equivalent, so it is a gap, never a silent mapping (P-5).
-	if (comp.health?.command && !comp.health.path) {
-		c.gap(
-			"health",
-			"workaround",
-			"health.command has no AWS equivalent: no command-based check runs, and an exposed component's ALB target group probes HTTP \"/\" (matcher 200-399) instead",
-			"declare health.path so the ALB probes the app's real readiness endpoint",
-			name,
-		);
-	} else if (comp.health) {
-		c.map("health", "aws_lb_target_group health_check", name);
-	}
-
 	if (comp.schedule) {
 		c.gap(
 			"schedule",
@@ -1459,6 +1446,89 @@ function resolveEnvVar(
 	return undefined;
 }
 
+/**
+ * The HTTP path the ALB probes for a declared health block. An empty
+ * `health.path` cannot be a probe target, so it reads as absent (P-9).
+ */
+function probePath(health: NormalizedComponent["health"]): string | undefined {
+	return health?.path ? health.path : undefined;
+}
+
+function exposedProvide(
+	comp: NormalizedComponent | undefined,
+): NonNullable<NormalizedComponent["provides"]>[number] | undefined {
+	return (comp?.provides ?? []).find((p) => p.exposed === true);
+}
+
+interface AlbTarget {
+	comp: NormalizedComponent;
+	provide: NonNullable<NormalizedComponent["provides"]>[number];
+	instanceTf: string;
+}
+
+/**
+ * The ALB target group `emitAlb` gives this component, if any: it is exposed,
+ * reached compute (`targetGroupFor` is set), and has an exposed provide.
+ */
+function hasAlbTargetGroup(
+	name: string,
+	launch: NormalizedLaunch,
+	exposedComponents: string[],
+	targetGroupFor: Record<string, string>,
+): AlbTarget | undefined {
+	const comp = launch.components[name];
+	const instanceTf = targetGroupFor[name];
+	const provide = exposedProvide(comp);
+	if (!exposedComponents.includes(name) || !comp || !instanceTf || !provide)
+		return undefined;
+	return { comp, provide, instanceTf };
+}
+
+/**
+ * Records each component's `health` as the check the Terraform actually runs.
+ * Only an ALB target group carries a check, and it probes HTTP only: the
+ * declared path, otherwise "/" (SPEC "Health"). Anything else is a gap, never
+ * a silent mapping (P-5). Runs after compute so `targetGroupFor` is complete.
+ */
+function recordHealth(
+	c: Conformance,
+	launch: NormalizedLaunch,
+	exposedComponents: string[],
+	targetGroupFor: Record<string, string>,
+): void {
+	for (const [name, comp] of Object.entries(launch.components)) {
+		const health = comp.health;
+		if (!health) continue;
+		if (!hasAlbTargetGroup(name, launch, exposedComponents, targetGroupFor)) {
+			c.gap(
+				"health",
+				"nice-to-have",
+				`${name} has no ALB target group, so no health check runs for it.`,
+				"Expose the component, or add a container or instance health check by hand.",
+				name,
+			);
+		} else if (probePath(health)) {
+			c.map("health", "aws_lb_target_group health_check", name);
+		} else if (health.command) {
+			c.gap(
+				"health",
+				"workaround",
+				'health.command has no AWS equivalent: no command-based check runs, and an exposed component\'s ALB target group probes HTTP "/" (matcher 200-399) instead',
+				"declare health.path so the ALB probes the app's real readiness endpoint",
+				name,
+			);
+		} else {
+			c.gap(
+				"health",
+				"workaround",
+				'health declares no path, so the ALB target group probes HTTP "/" (matcher 200-399) instead',
+				"declare health.path so the ALB probes the app's real readiness endpoint",
+				name,
+			);
+		}
+	}
+}
+
 function emitAlb(
 	blocks: string[],
 	c: Conformance,
@@ -1515,13 +1585,17 @@ function emitAlb(
 
 	const usedListenerPorts = new Set<number>();
 	for (const [idx, name] of exposedComponents.entries()) {
-		const comp = launch.components[name];
-		const instanceTf = targetGroupFor[name];
-		if (!comp || !instanceTf) continue; // component was gapped (e.g. image-only)
-		const provide = (comp.provides ?? []).find((p) => p.exposed === true);
-		if (!provide) continue;
+		// A component gapped before compute (e.g. image-only) has no target group.
+		const target = hasAlbTargetGroup(
+			name,
+			launch,
+			exposedComponents,
+			targetGroupFor,
+		);
+		if (!target) continue;
+		const { comp, provide, instanceTf } = target;
 		const tgTf = `${appTf}_${tfName(name)}`;
-		const healthPath = comp.health?.path ?? "/";
+		const healthPath = probePath(comp.health) ?? "/";
 
 		blocks.push(
 			block(
