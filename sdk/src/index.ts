@@ -1,4 +1,5 @@
 export {
+	httpsOriginSatisfied,
 	InvalidAppUrlError,
 	normalizeAppUrl,
 	suppliedAppAddress,
@@ -104,6 +105,7 @@ export {
 	isExpression,
 	parseDotPath,
 	parseExpression,
+	REFUSED_PRIMARY_ADDRESS,
 	type ResolverContext,
 	resolveExpression,
 	UNPUBLISHED_APP_ENDPOINT,

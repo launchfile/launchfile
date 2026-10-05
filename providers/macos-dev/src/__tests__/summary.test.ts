@@ -20,6 +20,7 @@ import {
 	statusLines,
 	summaryLines,
 } from "../provider.js";
+import { refusedComponents } from "../refusals.js";
 
 const ports = { web: 31245, api: 31246 };
 const publication = {
@@ -347,7 +348,7 @@ components:
 		const appUrl = "http://vault.example.com";
 		const launch = readLaunch(REFUSED);
 		// `up` reads the primary before its refusals remove the component.
-		const primary = declaredPrimary(launch, appUrl);
+		const primary = declaredPrimary(launch, refusedComponents(launch, { appUrl }));
 		expect(primary).toEqual({ component: "web", refused: true });
 		expect(applyHttpsOriginRefusals(launch, appUrl)).toBe("ok");
 		expect(Object.keys(launch.components)).toEqual(["api"]);
@@ -371,7 +372,7 @@ components:
 	it("places the supplied URL on the declared primary when the entry is satisfied", () => {
 		const appUrl = "https://vault.example.com";
 		const launch = readLaunch(REFUSED);
-		const primary = declaredPrimary(launch, appUrl);
+		const primary = declaredPrimary(launch, refusedComponents(launch, { appUrl }));
 		expect(applyHttpsOriginRefusals(launch, appUrl)).toBe("ok");
 		const ports = { web: 3000, api: 4000 };
 		const primaryEndpoint = printedPrimaryEndpoint(

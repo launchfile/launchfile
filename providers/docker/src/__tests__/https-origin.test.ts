@@ -20,6 +20,7 @@ import {
 } from "../app-url.js";
 import { planBootstraps } from "../bootstrap.js";
 import { launchToCompose } from "../compose-generator.js";
+import { refusedComponents } from "../refusals.js";
 import { planReleases } from "../release.js";
 
 const VAULTWARDEN = `
@@ -243,11 +244,16 @@ describe("rule 3 — the named endpoint is the primary", () => {
 
 	it("declaration fixes the primary even when the entry is refused — and then it has no address (D-72)", () => {
 		const launch = readLaunch(OPENCLAW);
-		expect(declaredPrimaryEndpoint(launch)).toMatchObject({
+		expect(declaredPrimaryEndpoint(launch, refusedComponents(launch))).toMatchObject({
 			key: "default:bridge",
 			refused: true,
 		});
-		expect(declaredPrimaryEndpoint(launch, "https://claw.example.com")?.refused).toBe(false);
+		expect(
+			declaredPrimaryEndpoint(
+				launch,
+				refusedComponents(launch, { appUrl: "https://claw.example.com" }),
+			)?.refused,
+		).toBe(false);
 		const app = computeAppProperties(launch, {
 			openclaw: 10001,
 			"default:bridge": 10002,

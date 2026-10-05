@@ -12,28 +12,24 @@
  */
 
 import {
-	type AppEndpointProperties,
+	httpsOriginSatisfied,
 	type NormalizedLaunch,
 	type NormalizedRequirement,
+	REFUSED_PRIMARY_ADDRESS,
 	suppliedAppAddress,
-	UNPUBLISHED_APP_ENDPOINT,
 	useKeys,
 } from "@launchfile/sdk";
 import { uncoveredUses, withCoveredUses } from "./resources/index.js";
 import type { ResourceProperties } from "./resources/types.js";
 
+// Re-exported so callers of this provider keep testing `https-origin`
+// satisfaction and reading the refused primary's address through
+// `@launchfile/macos-dev` (the SDK owns both, so this provider and
+// `@launchfile/docker` answer alike — P-5).
+export { httpsOriginSatisfied, REFUSED_PRIMARY_ADDRESS };
+
 /** The backing-service type that declares the app's public HTTPS origin (D-60). */
 export const HTTPS_ORIGIN = "https-origin";
-
-/**
- * Whether a supplied publication URL satisfies an `https-origin` entry: its
- * scheme is `https`. Syntactic only — `undefined` (nothing supplied and nothing
- * recorded) and an `http` URL both fail. Expects a normalized value, as
- * `launchUp` records it.
- */
-export function httpsOriginSatisfied(appUrl: string | undefined): boolean {
-	return appUrl !== undefined && suppliedAppAddress(appUrl).scheme === "https";
-}
 
 /**
  * The uses an `https-origin` entry declares that this provider cannot cover,
@@ -59,56 +55,53 @@ export function httpsOriginShortfall(
 		: `${label}: the supplied publication URL's scheme is "${suppliedAppAddress(appUrl).scheme}", not https`;
 }
 
-/**
- * The `$app.*` address of a primary whose component is refused (D-72):
- * every field `""` — the answer D-63 rule 4 gives an endpoint the provider
- * publishes no address for — with `tls` reading `false`, as D-63 rule 3 has
- * a listener with no origin read it, so a literal on/off flag
- * (`USE_SSL: $app.tls`) still receives a boolean. The same object
- * `@launchfile/docker` resolves (P-5).
- */
-export const REFUSED_PRIMARY_ADDRESS: Readonly<AppEndpointProperties> =
-	Object.freeze({ ...UNPUBLISHED_APP_ENDPOINT, tls: "false" });
-
 /** The primary an `https-origin` entry declares (D-60 rule 3). */
 export interface DeclaredPrimary {
 	/** The component the entry sits on — the one that owns the named endpoint. */
 	component: string;
 	/**
-	 * The entry is `requires:` and the publication context does not satisfy
-	 * it, so `up` refuses the component (D-60 rule 5). It stays the primary; it
-	 * has no address (D-72).
+	 * The component that declares the entry is in the refusal set, for any of
+	 * the five causes `refusedComponents` grades, so `up` removes it from the
+	 * run. It stays the primary; it has no address (D-72).
 	 */
 	refused: boolean;
 }
 
 /**
+ * The refusal set as {@link declaredPrimary} reads it: anything that answers
+ * `has(componentName)` — the `Set` `refusedComponents` returns, or any other
+ * set of names.
+ */
+export type RefusedComponents = Pick<ReadonlySet<string>, "has">;
+
+/**
  * The primary an `https-origin` entry declares, when the file declares one
  * (D-60 rule 3), else `undefined`. **Declaration** fixes the primary, not
  * fulfillment: a `supports:` entry this provider leaves unsatisfied still
- * names it, and so does a `requires:` entry whose component this provider
- * refuses — `refused` says which, and `computeAppProperties` then resolves
- * the empty address rather than a surviving sibling's (D-72). Either way
- * `$app.*` does not move with the provider's capability. The SDK caps the app
- * at one such entry and requires it to sit on the component that owns the
- * named endpoint, so the first match is the only one.
+ * names it, and so does an entry whose component this provider refuses —
+ * `refused` says which, and `computeAppProperties` then resolves the empty
+ * address rather than a surviving sibling's (D-72). Either way `$app.*` does
+ * not move with the provider's capability. The SDK caps the app at one such
+ * entry and requires it to sit on the component that owns the named
+ * endpoint, so the first match is the only one.
  *
- * `up` reads this before its refusals remove anything from
- * `launch.components`; `env` and `bootstrap` read the file whole. `appUrl` is
- * the effective publication context — supplied or recorded — normalized.
+ * `refused` is the refusal set (`refusedComponents`) — every cause, not only
+ * the entry's own scheme check, and under `supports:` as under `requires:`.
+ * Omitted, nothing is refused: that reading selects the component and never
+ * resolves an address. `up` reads this before its refusals remove anything
+ * from `launch.components`; `env` and `bootstrap` read the file whole.
  */
 export function declaredPrimary(
 	launch: NormalizedLaunch,
-	appUrl?: string,
+	refused?: RefusedComponents,
 ): DeclaredPrimary | undefined {
 	for (const [name, component] of Object.entries(launch.components)) {
-		for (const entry of component.requires ?? []) {
+		for (const entry of [
+			...(component.requires ?? []),
+			...(component.supports ?? []),
+		]) {
 			if (entry.type === HTTPS_ORIGIN && entry.endpoint !== undefined)
-				return { component: name, refused: !httpsOriginSatisfied(appUrl) };
-		}
-		for (const entry of component.supports ?? []) {
-			if (entry.type === HTTPS_ORIGIN && entry.endpoint !== undefined)
-				return { component: name, refused: false };
+				return { component: name, refused: refused?.has(name) ?? false };
 		}
 	}
 	return undefined;
