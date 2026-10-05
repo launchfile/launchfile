@@ -1384,4 +1384,73 @@ ${health}`;
 		expect(conformance.mapped.some((m) => m.field === "health")).toBe(true);
 		expect(conformance.gaps.some((g) => g.field === "health")).toBe(false);
 	});
+
+	it("probes / and records a gap for an empty health.path", () => {
+		const { hcl, conformance } = tf(exposed('health:\n  path: ""\n'));
+		expect(hcl).toMatch(/health_check[\s\S]*path\s*=\s*"\/"/);
+		expect(hcl).not.toMatch(/path\s*=\s*""/);
+		expect(conformance.mapped.some((m) => m.field === "health")).toBe(false);
+		const gap = conformance.gaps.find((g) => g.field === "health");
+		expect(gap?.reason).toContain('"/"');
+	});
+
+	it("treats the empty health shorthand like an empty path", () => {
+		const { hcl, conformance } = tf(exposed('health: ""\n'));
+		expect(hcl).toMatch(/health_check[\s\S]*path\s*=\s*"\/"/);
+		expect(hcl).not.toMatch(/path\s*=\s*""/);
+		expect(conformance.mapped.some((m) => m.field === "health")).toBe(false);
+		const gap = conformance.gaps.find((g) => g.field === "health");
+		expect(gap?.reason).toContain('"/"');
+	});
+
+	it("names the / it emits when health.path is empty beside a command", () => {
+		const { hcl, conformance } = tf(
+			exposed(
+				'health:\n  path: ""\n  command: "curl -f localhost:3000/ready"\n',
+			),
+		);
+		expect(hcl).toMatch(/health_check[\s\S]*path\s*=\s*"\/"/);
+		expect(hcl).not.toMatch(/path\s*=\s*""/);
+		expect(conformance.mapped.some((m) => m.field === "health")).toBe(false);
+		const gap = conformance.gaps.find((g) => g.field === "health");
+		expect(gap?.reason).toContain("health.command");
+		expect(gap?.reason).toContain('"/"');
+	});
+
+	it("records a gap for health on a non-exposed worker", () => {
+		const { hcl, conformance } = tf(`
+version: launch/v1
+name: worker
+runtime: node
+commands:
+  start: "node worker.js"
+health: /healthz
+`);
+		expect(hcl).not.toContain('resource "aws_lb_target_group"');
+		expect(hcl).not.toContain("/healthz");
+		expect(conformance.mapped.some((m) => m.field === "health")).toBe(false);
+		const gap = conformance.gaps.find((g) => g.field === "health");
+		expect(gap?.severity).toBe("nice-to-have");
+		expect(gap?.reason).toBe(
+			"default has no ALB target group, so no health check runs for it.",
+		);
+	});
+
+	it("records a gap for health on an exposed component that gets no target group", () => {
+		const { hcl, conformance } = tf(`
+version: launch/v1
+name: my-app
+image: ghcr.io/example/app:1
+provides:
+  - protocol: http
+    port: 3000
+    exposed: true
+health: /healthz
+`);
+		expect(hcl).not.toContain('resource "aws_lb_target_group"');
+		expect(conformance.mapped.some((m) => m.field === "health")).toBe(false);
+		const gap = conformance.gaps.find((g) => g.field === "health");
+		expect(gap?.severity).toBe("nice-to-have");
+		expect(gap?.reason).toContain("no ALB target group");
+	});
 });

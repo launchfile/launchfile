@@ -13,8 +13,8 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 ## Summary
 
 - **86** Launchfile(s) translated
-- **169** field mappings
-- **98** gaps logged (never silently dropped)
+- **168** field mappings
+- **141** gaps logged (never silently dropped)
 - **8** specializations safely ignored
 
 ### Distinct gaps
@@ -22,6 +22,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 | Field | Severity | Reason | Suggestion |
 |---|---|---|---|
 | `image` | 🟡 workaround | prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host | add runtime+commands for a portable build path, or target a container provider |
+| `health` | 🟢 nice-to-have | default has no ALB target group, so no health check runs for it. | Expose the component, or add a container or instance health check by hand. |
 | `supports:postgres` | 🟢 nice-to-have | optional resources (supports) are not provisioned by this probe | provision behind a Terraform variable toggle |
 | `supports:certificate` | 🟢 nice-to-have | the app can serve TLS on its own listener 'web' with the certificate 'server-cert', and this probe has no way to place one in the task | mount the certificate into the task and supply cert_file/key_file, or terminate TLS at the ALB instead — a different arrangement, not this entry |
 | `supports:https-origin` | 🟢 nice-to-have | the app would use a public HTTPS origin in front of endpoint 'web', and this probe emits an http-only load balancer | terminate TLS at the ALB (aws_acm_certificate + an HTTPS listener) |
@@ -91,7 +92,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### audiobookshelf
 
-> Source: `catalog/apps/audiobookshelf/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/audiobookshelf/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -100,6 +101,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### beszel
 
@@ -141,7 +143,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### cobalt
 
-> Source: `catalog/apps/cobalt/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/cobalt/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -150,10 +152,11 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### cyberchef
 
-> Source: `catalog/apps/cyberchef/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/cyberchef/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -162,10 +165,11 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### dockge
 
-> Source: `catalog/apps/dockge/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/dockge/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -174,6 +178,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### docmost
 
@@ -203,7 +208,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### excalidraw
 
-> Source: `catalog/apps/excalidraw/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/excalidraw/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -212,10 +217,11 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### file-browser
 
-> Source: `catalog/apps/file-browser/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/file-browser/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -224,10 +230,11 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### firefly-iii
 
-> Source: `catalog/apps/firefly-iii/Launchfile` — 3 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/firefly-iii/Launchfile` — 3 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -238,10 +245,11 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### flowise
 
-> Source: `catalog/apps/flowise/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
+> Source: `catalog/apps/flowise/Launchfile` — 1 mapped, 3 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -251,6 +259,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 - 🟢 `supports:postgres`: optional resources (supports) are not provisioned by this probe — provision behind a Terraform variable toggle
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### freshrss
 
@@ -279,7 +288,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### ghost
 
-> Source: `catalog/apps/ghost/Launchfile` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/ghost/Launchfile` — 2 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -289,6 +298,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### gitea
 
@@ -306,7 +316,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### glance
 
-> Source: `catalog/apps/glance/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/glance/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -315,6 +325,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### gokapi
 
@@ -342,7 +353,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### grafana
 
-> Source: `catalog/apps/grafana/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
+> Source: `catalog/apps/grafana/Launchfile` — 1 mapped, 3 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -352,6 +363,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 - 🟢 `supports:certificate`: the app can serve TLS on its own listener 'web' with the certificate 'server-cert', and this probe has no way to place one in the task — mount the certificate into the task and supply cert_file/key_file, or terminate TLS at the ALB instead — a different arrangement, not this entry
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### grocy
 
@@ -368,7 +380,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### hedgedoc
 
-> Source: `catalog/apps/hedgedoc/Launchfile` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/hedgedoc/Launchfile` — 2 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -378,6 +390,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### homebox
 
@@ -393,7 +406,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### homepage-dashboard
 
-> Source: `catalog/apps/homepage-dashboard/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/homepage-dashboard/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -402,6 +415,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### it-tools
 
@@ -467,7 +481,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### listmonk
 
-> Source: `catalog/apps/listmonk/Launchfile` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/listmonk/Launchfile` — 2 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -477,6 +491,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### mailpit
 
@@ -505,7 +520,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### mealie
 
-> Source: `catalog/apps/mealie/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
+> Source: `catalog/apps/mealie/Launchfile` — 1 mapped, 3 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -515,6 +530,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 - 🟢 `supports:postgres`: optional resources (supports) are not provisioned by this probe — provision behind a Terraform variable toggle
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### memos
 
@@ -530,7 +546,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### metabase
 
-> Source: `catalog/apps/metabase/Launchfile` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/metabase/Launchfile` — 2 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -540,10 +556,11 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### miniflux
 
-> Source: `catalog/apps/miniflux/Launchfile` — 2 mapped, 2 gap(s), 0 ignored
+> Source: `catalog/apps/miniflux/Launchfile` — 2 mapped, 3 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -554,10 +571,11 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 - 🟢 `supports:certificate`: the app can serve TLS on its own listener 'web' with the certificate 'server-cert', and this probe has no way to place one in the task — mount the certificate into the task and supply cert_file/key_file, or terminate TLS at the ALB instead — a different arrangement, not this entry
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### monica
 
-> Source: `catalog/apps/monica/Launchfile` — 3 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/monica/Launchfile` — 3 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -568,10 +586,11 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### navidrome
 
-> Source: `catalog/apps/navidrome/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/navidrome/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -580,6 +599,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### nocodb
 
@@ -595,7 +615,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### node-red
 
-> Source: `catalog/apps/node-red/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/node-red/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -604,10 +624,11 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### ntfy
 
-> Source: `catalog/apps/ntfy/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/ntfy/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -616,10 +637,11 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### openclaw
 
-> Source: `catalog/apps/openclaw/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/openclaw/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -628,6 +650,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### opengist
 
@@ -643,7 +666,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### outline
 
-> Source: `catalog/apps/outline/Launchfile` — 3 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/outline/Launchfile` — 3 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -654,10 +677,11 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### paperclip
 
-> Source: `catalog/apps/paperclip/Launchfile` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/paperclip/Launchfile` — 2 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -667,10 +691,11 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### paperless
 
-> Source: `catalog/apps/paperless/Launchfile` — 3 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/paperless/Launchfile` — 3 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -681,10 +706,11 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### pocketbase
 
-> Source: `catalog/apps/pocketbase/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/pocketbase/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -693,10 +719,11 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### posthog
 
-> Source: `catalog/apps/posthog/Launchfile` — 3 mapped, 3 gap(s), 0 ignored
+> Source: `catalog/apps/posthog/Launchfile` — 3 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -709,6 +736,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `requires:clickhouse`: no managed AWS service mapping for resource type 'clickhouse' — model as a self-hosted component, or extend MANAGED_RESOURCES
 - 🟡 `requires:kafka`: no managed AWS service mapping for resource type 'kafka' — model as a self-hosted component, or extend MANAGED_RESOURCES
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### privatebin
 
@@ -725,7 +753,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### rallly
 
-> Source: `catalog/apps/rallly/Launchfile` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/rallly/Launchfile` — 2 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -735,6 +763,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### redmine
 
@@ -751,7 +780,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### concentrator
 
-> Source: `catalog/apps/remote-claude-concentrator/Launchfile` — 1 mapped, 1 gap(s), 1 ignored
+> Source: `catalog/apps/remote-claude-concentrator/Launchfile` — 1 mapped, 2 gap(s), 1 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -760,6 +789,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🔴 `runtime` _(default)_: no runtime and no commands.start — nothing to build or run on EC2
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 **Ignored specializations** (contract sufficed — D-40 / RFC C)
 
@@ -767,7 +797,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### rsshub
 
-> Source: `catalog/apps/rsshub/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/rsshub/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -776,10 +806,11 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### searxng
 
-> Source: `catalog/apps/searxng/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/searxng/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -788,6 +819,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### snipe-it
 
@@ -829,7 +861,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### trilium-notes
 
-> Source: `catalog/apps/trilium-notes/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/trilium-notes/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -838,10 +870,11 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### umami
 
-> Source: `catalog/apps/umami/Launchfile` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/umami/Launchfile` — 2 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -851,10 +884,11 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### uptime-kuma
 
-> Source: `catalog/apps/uptime-kuma/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/uptime-kuma/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -863,6 +897,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### vaultwarden
 
@@ -904,7 +939,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### web-check
 
-> Source: `catalog/apps/web-check/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/web-check/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -913,10 +948,11 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### wikijs
 
-> Source: `catalog/apps/wikijs/Launchfile` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/wikijs/Launchfile` — 2 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -926,6 +962,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### wordpress
 
@@ -942,7 +979,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### zeroclaw
 
-> Source: `catalog/apps/zeroclaw/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/zeroclaw/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -951,6 +988,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### daily-sync
 
@@ -989,7 +1027,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### dockge
 
-> Source: `spec/examples/host-container-runtime.yaml` — 1 mapped, 2 gap(s), 0 ignored
+> Source: `spec/examples/host-container-runtime.yaml` — 1 mapped, 3 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -999,6 +1037,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 - 🔴 `requires:host.container_runtime` _(default)_: component requires host capability container_runtime=docker; a bare EC2 target cannot grant it — use an ECS/container provider
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### launchpad
 
@@ -1059,7 +1098,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### hedgedoc
 
-> Source: `spec/examples/multi-component.yaml` — 13 mapped, 0 gap(s), 2 ignored
+> Source: `spec/examples/multi-component.yaml` — 12 mapped, 1 gap(s), 2 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1069,13 +1108,16 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 | `commands.start` | `systemd unit (run slot)` | backend |
 | `commands.release` | `cloud-init (release slot)` | backend |
 | `env` | `aws_ssm_parameter` | backend |
-| `health` | `aws_lb_target_group health_check` | backend |
 | `depends_on:backend` | `terraform depends_on` | frontend |
 | `provides:http:3001` | `aws_security_group ingress` | frontend |
 | `runtime:node` | `aws_instance (cloud-init)` | frontend |
 | `env` | `aws_ssm_parameter` | frontend |
 | `provides.exposed` | `aws_lb (ALB)` | — |
 | `provides.exposed:frontend` | `aws_lb_target_group + listener` | frontend |
+
+**Gaps**
+
+- 🟢 `health` _(backend)_: backend has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 **Ignored specializations** (contract sufficed — D-40 / RFC C)
 
@@ -1084,7 +1126,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### media-server
 
-> Source: `spec/examples/operator-content.yaml` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `spec/examples/operator-content.yaml` — 1 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1093,6 +1135,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### my-app
 
@@ -1115,7 +1158,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### hedgedoc-backend
 
-> Source: `spec/examples/prebuilt-image.yaml` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `spec/examples/prebuilt-image.yaml` — 2 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1125,10 +1168,11 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### board
 
-> Source: `spec/examples/resource-uses.yaml` — 3 mapped, 1 gap(s), 0 ignored
+> Source: `spec/examples/resource-uses.yaml` — 3 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1139,6 +1183,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### simple-api
 
@@ -1164,7 +1209,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### notes-app
 
-> Source: `spec/examples/storage-paths.yaml` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `spec/examples/storage-paths.yaml` — 1 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1173,3 +1218,4 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
