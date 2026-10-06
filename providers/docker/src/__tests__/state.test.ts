@@ -1,5 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
+import {
+	chmodSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	statSync,
+	symlinkSync,
+	lstatSync,
+	writeFileSync,
+} from "node:fs";
 import { chmod, mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -12,6 +22,7 @@ import {
 	hashLaunchfile,
 	stateDir,
 	composeProject,
+	writePrivateFile,
 	type DockerState,
 } from "../state.js";
 import { dockerUp } from "../provider.js";
@@ -505,6 +516,70 @@ commands:
 	it("stays silent on a first deployment, which has no recorded hash", async () => {
 		await dockerUp(projectDir, { dryRun: true });
 		expect(warnings.join("\n")).not.toContain("differs from the one");
+	});
+});
+
+describe("docker state — private file modes (#683, CWE-276)", () => {
+	const mode = (path: string) => statSync(path).mode & 0o777;
+
+	it("saveState tightens a pre-existing state.json left at 0o644 to 0o600", async () => {
+		const state = initState("acme", "acme", "name: acme\n");
+		await saveState("acme", state);
+		const file = join(stateDir("acme"), "state.json");
+		// Loosen with an explicit chmod — never via a `mode` option, which the
+		// runner's umask can mask so the setup silently proves nothing (#410).
+		chmodSync(file, 0o644);
+		expect(mode(file)).toBe(0o644);
+
+		await saveState("acme", state);
+
+		expect(mode(file)).toBe(0o600);
+		expect(JSON.parse(readFileSync(file, "utf8")).slug).toBe("acme");
+	});
+
+	it("writePrivateFile tightens an existing 0o644 file and replaces its content", async () => {
+		const file = join(tmpHome, "secret.txt");
+		writeFileSync(file, "old and longer content\n");
+		chmodSync(file, 0o644);
+		expect(mode(file)).toBe(0o644);
+
+		await writePrivateFile(file, "new\n");
+
+		expect(mode(file)).toBe(0o600);
+		expect(readFileSync(file, "utf8")).toBe("new\n");
+	});
+
+	it("writePrivateFile creates a missing file at 0o600", async () => {
+		const file = join(tmpHome, "fresh.txt");
+		await writePrivateFile(file, "x\n");
+		expect(mode(file)).toBe(0o600);
+		expect(readFileSync(file, "utf8")).toBe("x\n");
+	});
+
+	it("writePrivateFile writes through a symlink instead of replacing it", async () => {
+		const target = join(tmpHome, "target.env");
+		const link = join(tmpHome, "link.env");
+		writeFileSync(target, "old\n");
+		chmodSync(target, 0o644);
+		symlinkSync(target, link);
+
+		await writePrivateFile(link, "new\n");
+
+		expect(lstatSync(link).isSymbolicLink()).toBe(true);
+		expect(readFileSync(target, "utf8")).toBe("new\n");
+		expect(mode(target)).toBe(0o600);
+	});
+
+	it("writePrivateFile rejects when the parent directory is missing and leaves nothing behind", async () => {
+		const missingDir = join(tmpHome, "missing");
+		await expect(writePrivateFile(join(missingDir, "x.txt"), "x\n")).rejects.toThrow(/ENOENT/);
+		expect(() => statSync(missingDir)).toThrow();
+	});
+
+	it("writePrivateFile rejects a directory path", async () => {
+		const dir = join(tmpHome, "a-dir");
+		mkdirSync(dir);
+		await expect(writePrivateFile(dir, "x\n")).rejects.toThrow(/EISDIR/);
 	});
 });
 
