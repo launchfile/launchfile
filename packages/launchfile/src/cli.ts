@@ -24,7 +24,7 @@ import { handleLogs } from "./commands/logs.js";
 import { handleList } from "./commands/list.js";
 import { handleBootstrap } from "./commands/bootstrap.js";
 import { handleDiagnose } from "./commands/diagnose.js";
-import { cmdValidate, cmdInspect, cmdSchema } from "@launchfile/sdk";
+import { cmdValidate, cmdInspect, cmdSchema, stripControlInline } from "@launchfile/sdk";
 import {
 	hasFlag as argsHasFlag,
 	getFlagValue as argsGetFlagValue,
@@ -205,12 +205,18 @@ async function main(): Promise<void> {
 	// --version/--help and before any target resolves: nothing downstream can
 	// tell a typo'd optional flag from an omitted one, and the token after it
 	// would be read as the target (#510).
+	// The name is argv text, so it is escaped before it reaches the terminal: a
+	// newline or ANSI escape in it would otherwise print as forged output (#545).
 	const [unknown] = unknownFlags(args);
 	if (unknown !== undefined) {
-		const nearest = suggestFlag(unknown);
-		console.error(
-			`no such flag --${unknown}${nearest ? ` — did you mean --${nearest}?` : ""}`,
-		);
+		if (unknown === "") {
+			console.error("no such flag: `--` has an empty flag name");
+		} else {
+			const nearest = suggestFlag(unknown);
+			console.error(
+				`no such flag --${stripControlInline(unknown)}${nearest ? ` — did you mean --${nearest}?` : ""}`,
+			);
+		}
 		console.error("Run `launchfile --help` for usage.");
 		process.exit(1);
 	}
@@ -319,7 +325,7 @@ async function main(): Promise<void> {
 			break;
 
 		default:
-			console.error(`Unknown command: ${command}`);
+			console.error(`Unknown command: ${stripControlInline(command)}`);
 			console.error("Run `launchfile --help` for usage.");
 			process.exit(1);
 	}

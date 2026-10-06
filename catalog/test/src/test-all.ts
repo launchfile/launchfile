@@ -7,83 +7,18 @@
  * `--url` is forwarded to every app (see test-app.ts). Apps that declare a
  * required `https-origin` fail without an `https://` value, exactly as they
  * would on the shipped Docker provider.
+ *
+ * Tiers are derived from the catalog directories: every
+ * directory under catalog/{apps,drafts}/ runs except those in `SKIPPED`
+ * (build-index.ts), in the tier `tierOf` gives it — 0 = no backing services,
+ * 1 = postgres only, 2 = any other service mix, 3 = two components,
+ * 4 = three or more.
  */
 
-const TIERS: Record<number, { name: string; apps: string[] }> = {
-  0: {
-    name: "Zero dependencies (image only, no backing services)",
-    apps: [
-      "it-tools",
-      "dashy",
-      "privatebin",
-      "stirling-pdf",
-      "linkding",
-      "memos",
-      "uptime-kuma",
-      "mealie",
-      "anythingllm",
-      "audiobookshelf",
-      "navidrome",
-      "flowise",    // supports: postgres (optional, works without)
-      "freshrss",   // supports: postgres (optional, works without)
-    ],
-  },
-  1: {
-    name: "Postgres only",
-    apps: [
-      "miniflux",
-      "fider",
-      "umami",
-      "langfuse",
-      "gitea",
-      "n8n",
-      "metabase",
-      "openclaw",
-      "strapi",
-      "redmine",
-      "mattermost",
-      "vaultwarden",
-      "hedgedoc",
-    ],
-  },
-  2: {
-    name: "Postgres + Redis / MongoDB / MySQL",
-    apps: [
-      // postgres + redis
-      "paperless",
-      // mongodb
-      "librechat",
-      "rocketchat",
-      // mysql
-      "ghost",
-      "bookstack",
-      "wordpress",
-    ],
-  },
-  3: {
-    name: "Multi-component",
-    apps: [
-      "changedetection",
-      "nextcloud",
-      "immich",
-    ],
-  },
-  4: {
-    name: "Complex (3+ components)",
-    apps: [
-      "appwrite",
-      "chatwoot",
-      "dify",
-      "hoppscotch",
-      "penpot",
-      "supabase",
-    ],
-  },
-  // Skipped: home-assistant (multicast/device), pihole (host networking),
-  // plex (claim token), diun (docker socket), calibre-web (host bind mount),
-  // ollama-openwebui (GPU), jellyfin (/dev/dri), duplicati (host bind mount),
-  // syncthing (host bind mount)
-};
+import { resolve } from "node:path";
+import { buildTiers, loadEntries } from "./build-index.ts";
+
+const TIERS = buildTiers(loadEntries(resolve(import.meta.dir, "..", "..")));
 
 // --- CLI args ---
 

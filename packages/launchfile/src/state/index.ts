@@ -14,9 +14,10 @@
  * As in `state/errors.ts`, there is deliberately no environment variable for it.
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { ensurePrivateDir, writeAtomic } from "./fs.js";
 import type { DeploymentIndex, DeploymentEntry } from "./types.js";
 
 export type { DeploymentEntry, DeploymentIndex } from "./types.js";
@@ -57,8 +58,12 @@ export async function saveIndex(
 	index: DeploymentIndex,
 	dir: string = deploymentsDir(),
 ): Promise<void> {
-	await mkdir(dir, { recursive: true });
-	await writeFile(indexPath(dir), JSON.stringify(index, null, 2) + "\n");
+	// The index names every source directory and instance on the machine, so
+	// it gets the same owner-only treatment as a provider's state file. The
+	// atomic write also keeps two concurrent `launchfile` commands, each doing
+	// a read-modify-write of this file, from tearing it.
+	await ensurePrivateDir(dir);
+	await writeAtomic(indexPath(dir), `${JSON.stringify(index, null, 2)}\n`);
 }
 
 export async function addDeployment(
@@ -69,7 +74,7 @@ export async function addDeployment(
 	const index = await loadIndex(dir);
 	index.deployments[id] = entry;
 	await saveIndex(index, dir);
-	await mkdir(deploymentDir(id, dir), { recursive: true });
+	await ensurePrivateDir(deploymentDir(id, dir));
 }
 
 export async function updateDeployment(

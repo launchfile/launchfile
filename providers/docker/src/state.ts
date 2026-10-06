@@ -5,7 +5,7 @@
  * isolated and state persists across runs.
  */
 
-import { readFile, mkdir, open } from "node:fs/promises";
+import { readFile, mkdir, chmod, open } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
@@ -387,12 +387,24 @@ export function initState(
 	};
 }
 
+/** state.json contains database passwords and generated secrets in plaintext. */
+const FILE_MODE = 0o600;
+const DIR_MODE = 0o700;
+
+/** Create the state dir owner-only, and fix its mode if it already exists too open. */
+export async function ensureStateDir(slug: string): Promise<void> {
+	const dir = stateDir(slug);
+	await mkdir(dir, { recursive: true, mode: DIR_MODE });
+	// `mkdir` sets the mode only when it creates the directory. Setting it
+	// unconditionally means a directory created by an earlier version, or under a
+	// looser umask, does not stay world-readable (CWE-276).
+	await chmod(dir, DIR_MODE);
+}
+
 export async function saveState(slug: string, state: DockerState): Promise<void> {
 	state.updatedAt = new Date().toISOString();
-	// Security: restrict directory/file permissions — state.json contains
-	// database passwords and generated secrets in plaintext.
-	await mkdir(stateDir(slug), { recursive: true, mode: 0o700 });
-	await writePrivateFile(statePath(slug), JSON.stringify(state, null, 2) + "\n");
+	await ensureStateDir(slug);
+	await writePrivateFile(statePath(slug), `${JSON.stringify(state, null, 2)}\n`);
 }
 
 /**
@@ -406,17 +418,13 @@ export async function saveState(slug: string, state: DockerState): Promise<void>
  * a plain one.
  */
 export async function writePrivateFile(path: string, data: string): Promise<void> {
-	const handle = await open(path, "w", 0o600);
+	const handle = await open(path, "w", FILE_MODE);
 	try {
-		await handle.chmod(0o600);
+		await handle.chmod(FILE_MODE);
 		await handle.writeFile(data);
 	} finally {
 		await handle.close();
 	}
-}
-
-export async function ensureStateDir(slug: string): Promise<void> {
-	await mkdir(stateDir(slug), { recursive: true, mode: 0o700 });
 }
 
 /** Persisted source location for a deployed slug (#25). */
