@@ -50,10 +50,30 @@ export class ConfinementRefusal extends Error {
 	readonly reason: string;
 
 	constructor(path: string, reason: string) {
-		super(`${path} ${reason}; refusing to write`);
+		const shown = printable(path);
+		super(`${shown} ${reason}; refusing to write`);
 		this.name = "ConfinementRefusal";
-		this.path = path;
+		this.path = shown;
 		this.reason = reason;
+	}
+}
+
+/**
+ * Runs a command, turning a {@link ConfinementRefusal} into one
+ * `Refused: <message>` line on stderr and exit 1, with no stack trace.
+ * Anything else is rethrown unchanged.
+ */
+export async function withConfinementRefusal<T>(
+	fn: () => Promise<T>,
+): Promise<T> {
+	try {
+		return await fn();
+	} catch (err) {
+		if (err instanceof ConfinementRefusal) {
+			console.error(`Refused: ${err.message}`);
+			process.exit(1);
+		}
+		throw err;
 	}
 }
 

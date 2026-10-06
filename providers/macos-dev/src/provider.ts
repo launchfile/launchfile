@@ -76,7 +76,7 @@ import { prepareFingerprint } from "./prepare-fingerprint.js";
 import { provisionStorage, storagePaths } from "./storage.js";
 import { HealthGateError, ProcessManager } from "./process-manager.js";
 import { redactSecrets } from "./redact.js";
-import { ConfinementRefusal } from "./safe-path.js";
+import { withConfinementRefusal } from "./safe-path.js";
 import { stopRecordedProcesses } from "./process-stopper.js";
 import { shellScript } from "./shell.js";
 import { parseDuration } from "./bootstrap.js";
@@ -589,18 +589,9 @@ export async function runSourcePrepare(
 }
 
 export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
-	try {
-		await runUp(opts);
-	} catch (err) {
-		// A write under `.launchfile/` or to `.env.local` found a symlink the
-		// repository shipped (safe-path.ts). Nothing went through it; the run
-		// stops naming the path, the same way every other refusal exits.
-		if (err instanceof ConfinementRefusal) {
-			console.error(`Refused: ${err.message}`);
-			process.exit(1);
-		}
-		throw err;
-	}
+	// A write under `.launchfile/` or to `.env.local` that finds a symlink the
+	// repository shipped (safe-path.ts) stops the run with a `Refused:` line.
+	return withConfinementRefusal(() => runUp(opts));
 }
 
 async function runUp(opts: LaunchUpOpts): Promise<void> {
@@ -1386,6 +1377,10 @@ function printSummary(
 }
 
 export async function launchDown(opts: { destroy?: boolean; projectDir?: string } = {}): Promise<void> {
+	return withConfinementRefusal(() => runDown(opts));
+}
+
+async function runDown(opts: { destroy?: boolean; projectDir?: string }): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 	const state = await loadState(projectDir);
 	if (!state) {
@@ -1480,6 +1475,10 @@ export async function launchStatus(opts: { projectDir?: string } = {}): Promise<
 }
 
 export async function launchEnv(opts: { component?: string; projectDir?: string } = {}): Promise<void> {
+	return withConfinementRefusal(() => runEnv(opts));
+}
+
+async function runEnv(opts: { component?: string; projectDir?: string }): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 
 	const launchfileContent = await readFile(join(projectDir, "Launchfile"), "utf8");

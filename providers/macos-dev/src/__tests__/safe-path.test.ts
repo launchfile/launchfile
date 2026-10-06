@@ -122,6 +122,51 @@ describe("ensureConfinedDir", () => {
 		expect(controls).toEqual([]);
 	});
 
+	it("escapes control characters in a path component it refuses", async () => {
+		// Storage volume keys are free-form strings that reach this helper as
+		// parts, so a hostile key must not forge a terminal line either.
+		const refusal = await ensureConfinedDir(
+			projectDir,
+			[".launchfile", "storage", "x/\n\x1b[2KStarted web on :3000"],
+			{ mode: 0o700 },
+		).then(
+			() => null,
+			(err: unknown) => err,
+		);
+
+		expect(refusal).toBeInstanceOf(ConfinementRefusal);
+		const { message, path } = refusal as ConfinementRefusal;
+		expect(message).toBe(
+			"x/\\u000a\\u001b[2KStarted web on :3000 is not a single path component; refusing to write",
+		);
+		expect(path).toBe("x/\\u000a\\u001b[2KStarted web on :3000");
+		const controls = Array.from(message).filter((c) => {
+			const code = c.charCodeAt(0);
+			return code < 0x20 || (code >= 0x7f && code <= 0x9f);
+		});
+		expect(controls).toEqual([]);
+	});
+
+	it("escapes control characters in the refused path itself", async () => {
+		const hostileProject = join(projectDir, "gone\n\x1b[2K");
+
+		const refusal = await ensureConfinedDir(hostileProject, [".launchfile"], {
+			mode: 0o700,
+		}).then(
+			() => null,
+			(err: unknown) => err,
+		);
+
+		expect(refusal).toBeInstanceOf(ConfinementRefusal);
+		const { message } = refusal as ConfinementRefusal;
+		expect(message).toContain("gone\\u000a\\u001b[2K does not exist;");
+		const controls = Array.from(message).filter((c) => {
+			const code = c.charCodeAt(0);
+			return code < 0x20 || (code >= 0x7f && code <= 0x9f);
+		});
+		expect(controls).toEqual([]);
+	});
+
 	it("refuses when the leaf component is a symlink to a directory", async () => {
 		// mkdir({ recursive: true }) succeeds through a symlink to a directory
 		// and reports nothing.
