@@ -1019,7 +1019,7 @@ function rdsEngineVersion(declared: string | undefined): string | undefined {
 
 /**
  * Report a `requires[].version` this probe does not meet as a gap
- * (PROVIDERS.md §10 item 8, D-next). `emitted` names the engine version or
+ * (PROVIDERS.md §10 item 8, D-74). `emitted` names the engine version or
  * family the emitted Terraform runs, `undefined` when it leaves the choice to
  * AWS; `what` names that engine for the reason. Through the SDK's shared
  * comparison, a range `emitted` satisfies records nothing. The reason states

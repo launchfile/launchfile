@@ -1,5 +1,5 @@
 /**
- * `requires[].version` reporting (PROVIDERS.md §10 item 8, D-next). This
+ * `requires[].version` reporting (PROVIDERS.md §10 item 8, D-74). This
  * provider never selects a version, so each provisioner compares a declared
  * range with the version its running server reports and returns a warning
  * for every range it cannot show is met. A satisfied range stays silent.

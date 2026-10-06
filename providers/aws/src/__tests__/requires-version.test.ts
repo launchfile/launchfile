@@ -1,5 +1,5 @@
 /**
- * `requires[].version` on the aws probe (PROVIDERS.md §10 item 8, D-next).
+ * `requires[].version` on the aws probe (PROVIDERS.md §10 item 8, D-74).
  * The probe emits `engine_version` only for a version it can pass through
  * unchanged, never a string carved out of a range, and records every range it
  * does not meet as a conformance gap.

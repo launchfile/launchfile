@@ -1,6 +1,6 @@
 /**
  * `requires[].version` reporting for the resource provisioners (PROVIDERS.md
- * §10 item 8, D-next). This provider never selects a version: it uses the
+ * §10 item 8, D-74). This provider never selects a version: it uses the
  * Homebrew service it finds running, or the formula it installs. A declared
  * range is compared, through the SDK's shared comparison, with the version the
  * running server reports. A range that version satisfies is honored and stays
