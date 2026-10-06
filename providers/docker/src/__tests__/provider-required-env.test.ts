@@ -119,6 +119,9 @@ vi.mock("../shell.js", () => ({
 	shellOk: async () => true,
 }));
 
+const { isLaunchError } = await import("@launchfile/sdk");
+const { dockerErrorKey } = await import("../errors.js");
+const { isExpectedRefusal } = await import("../logger.js");
 const { dockerUp, UnsuppliedRequiredEnvError } = await import("../provider.js");
 
 const SINGLE = `
@@ -206,6 +209,50 @@ describe("dockerUp — unsupplied required env (PROVIDERS.md rule 8, D-52)", () 
 			slug: "acme",
 		});
 		expect(calls.some((argv) => argv.includes("up"))).toBe(true);
+	});
+
+	it("is a LaunchError carrying a resolve-phase record with unsupplied[] — names only (#242)", async () => {
+		yaml = TWO_COMPONENTS;
+		const err = (await dockerUp("Launchfile", {}).catch(
+			(e: unknown) => e,
+		)) as InstanceType<typeof UnsuppliedRequiredEnvError>;
+		expect(err).toBeInstanceOf(UnsuppliedRequiredEnvError);
+		expect(isLaunchError(err)).toBe(true);
+		expect(isExpectedRefusal(err)).toBe(true);
+		// Same key `up` files every other record under, so `diagnose` finds it.
+		expect(err.context.key).toBe(dockerErrorKey({ slug: "acme" }));
+		expect(err.context.slug).toBe("acme");
+		expect(err.context.app).toBe("acme");
+		expect(err.context.provider).toBe("docker");
+		expect(err.context.phase).toBe("resolve");
+		expect(err.context.unsupplied).toEqual([{ component: "worker", variable: "QUEUE_URL" }]);
+		expect(err.context.message).toBe(err.message);
+		// The `sensitive` flag stays on the CLI message; the record holds names only.
+		expect(JSON.stringify(err.context.unsupplied)).not.toContain("sensitive");
+	});
+
+	it("bounds the record's unsupplied[] to the start-set, like the refusal itself", async () => {
+		yaml = `
+name: acme
+components:
+  web:
+    image: acme/web:1
+    provides:
+      - { protocol: http, port: 3000, exposed: true }
+    env:
+      SITE_URL:
+        required: true
+  worker:
+    image: acme/worker:1
+    env:
+      QUEUE_URL:
+        required: true
+`;
+		const err = (await dockerUp("Launchfile", { components: ["web"] }).catch(
+			(e: unknown) => e,
+		)) as InstanceType<typeof UnsuppliedRequiredEnvError>;
+		expect(err).toBeInstanceOf(UnsuppliedRequiredEnvError);
+		expect(err.context.unsupplied).toEqual([{ component: "web", variable: "SITE_URL" }]);
 	});
 
 	// 12
