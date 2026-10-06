@@ -95,6 +95,33 @@ describe("ensureConfinedDir", () => {
 		expect(await readdir(victimDir)).toEqual([]);
 	});
 
+	it("escapes control characters in a symlink target before naming it", async () => {
+		await symlink(
+			"/tmp/x\nRefused: nothing\x1b[2K",
+			join(projectDir, ".launchfile"),
+		);
+
+		const refusal = await ensureConfinedDir(
+			projectDir,
+			[".launchfile", "env"],
+			{ mode: 0o700 },
+		).then(
+			() => null,
+			(err: unknown) => err,
+		);
+
+		expect(refusal).toBeInstanceOf(ConfinementRefusal);
+		const { message } = refusal as ConfinementRefusal;
+		expect(message).toContain(
+			"is a symlink to /tmp/x\\u000aRefused: nothing\\u001b[2K;",
+		);
+		const controls = Array.from(message).filter((c) => {
+			const code = c.charCodeAt(0);
+			return code < 0x20 || (code >= 0x7f && code <= 0x9f);
+		});
+		expect(controls).toEqual([]);
+	});
+
 	it("refuses when the leaf component is a symlink to a directory", async () => {
 		// mkdir({ recursive: true }) succeeds through a symlink to a directory
 		// and reports nothing.

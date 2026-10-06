@@ -102,9 +102,21 @@ function confinedPath(root: string, parts: readonly string[]): string {
 	return join(root, ...parts);
 }
 
+/** Escapes control characters in a repo-controlled string before it is printed (CWE-117). */
+function printable(text: string): string {
+	return Array.from(text, (c) => {
+		const code = c.charCodeAt(0);
+		return code < 0x20 || (code >= 0x7f && code <= 0x9f)
+			? `\\u${code.toString(16).padStart(4, "0")}`
+			: c;
+	}).join("");
+}
+
 async function describeLink(path: string): Promise<string> {
 	const target = await readlink(path).catch(() => null);
-	return target === null ? "is a symlink" : `is a symlink to ${target}`;
+	return target === null
+		? "is a symlink"
+		: `is a symlink to ${printable(target)}`;
 }
 
 /**
@@ -141,7 +153,10 @@ export async function ensureConfinedDir(
 	await chmod(path, opts.mode);
 	const real = await realpath(path).catch(() => null);
 	if (real !== path) {
-		throw new ConfinementRefusal(path, `resolves to ${real ?? "nothing"}`);
+		throw new ConfinementRefusal(
+			path,
+			`resolves to ${real === null ? "nothing" : printable(real)}`,
+		);
 	}
 	return path;
 }
