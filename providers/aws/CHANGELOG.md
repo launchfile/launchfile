@@ -1,5 +1,12 @@
 # @launchfile/aws
 
+## 0.6.2
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @launchfile/sdk@0.15.0
+
 ## 0.6.1
 
 ### Patch Changes

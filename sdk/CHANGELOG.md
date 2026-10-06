@@ -1,5 +1,11 @@
 # @launchfile/sdk
 
+## 0.15.0
+
+### Minor Changes
+
+- Throwaway changeset: proves the root-install lockfile check fails on a stale bun.lock ([#757](https://github.com/launchfile/launchfile/issues/757)). Never merge.
+
 ## 0.14.0
 
 ### Minor Changes
