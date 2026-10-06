@@ -22,7 +22,7 @@ const metabaseYaml = metabaseYamlRaw.replace(/^#.*\n/gm, "").trim();
     "The complete $ expression grammar — bare props, dot paths, templates, fallbacks, and escapes",
     "How a reference is resolved — the namespace order",
     "Naming resources to tell two instances of the same type apart",
-    "Version constraints and config hints on required resources",
+    "Version ranges and config hints on required resources",
     "Declaring what the app uses of a resource — and the $resource.use.property fields it unlocks",
     "The property vocabulary — and how validate catches typos",
   ]}
@@ -73,7 +73,7 @@ const metabaseYaml = metabaseYamlRaw.replace(/^#.*\n/gm, "").trim();
       extensions: [pgvector]
     set_env:
       PRIMARY_DB_URL: $url`,
-    note: "Two more resource fields. <code>version</code> constrains what the platform may provision, using semver range syntax — <code>\">=15\"</code>, <code>\"^7.0\"</code>, <code>\"20.x\"</code>. <code>config</code> passes <strong>provisioning hints</strong> whose keys are resource-type-specific; a platform that doesn't understand a key ignores it.",
+    note: "Two more resource fields. <code>version</code> declares the engine versions the app supports, using semver range syntax — <code>\">=15\"</code>, <code>\"^7.0\"</code>, <code>\"20.x\"</code>. The provider checks the range against the version it actually runs and, when the range is not met or cannot be checked, reports it — a warning at launch on docker and macos-dev, a gap in the conformance report on aws — and still launches the app; it never picks a different version for you. <code>config</code> passes <strong>provisioning hints</strong> whose keys are resource-type-specific; a platform that doesn't understand a key ignores it.",
   },
   {
     yaml: `requires:
@@ -268,7 +268,7 @@ supports:
     <li>Every expression in a Launchfile is one grammar: bare <code>$prop</code> for the enclosing resource, dotted paths for everything else, <code>{"${...}"}</code> to compose inside strings, <code>{"${prop:-default}"}</code> for fallbacks, <code>$$</code> for a literal dollar.</li>
     <li>Dotted paths resolve namespaces in a fixed order — <code>app</code>, <code>secrets</code>, <code>components</code>, <code>storage</code>, then resource names. <code>app</code> and <code>storage</code> are reserved.</li>
     <li>Use <code>name:</code> when you require two resources of the same type — references become <code>$primary-db.host</code> instead of an ambiguous <code>$postgres.host</code>.</li>
-    <li><code>version:</code> constrains provisioning with semver ranges; <code>config:</code> passes type-specific hints that unsupporting platforms ignore.</li>
+    <li><code>version:</code> is a semver range checked against the version the provider runs — an unmet or uncheckable range is reported as a warning, never used to pick a version; <code>config:</code> passes type-specific hints that unsupporting platforms ignore.</li>
     <li><code>uses:</code> declares what the app needs <em>of</em> a resource — <code>[db, pubsub]</code> on redis — and unlocks <code>$resource.use.property</code> fields like <code>$redis.db.url</code>. A repeatable use is named to occur more than once — <code>- db: cache</code> → <code>$redis.db.cache.url</code>. Undeclared means what the entry always meant; a provider covers every declared use or refuses.</li>
     <li>Each resource type has a standard property vocabulary. An unknown property resolves to empty string — <code>launchfile validate</code> warns about it before your app fails at first connection.</li>
   </ul>
