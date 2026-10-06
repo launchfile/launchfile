@@ -17,17 +17,13 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-	chmodSync,
-	closeSync,
 	existsSync,
-	fchmodSync,
 	mkdirSync,
 	mkdtempSync,
-	openSync,
+	readdirSync,
 	readFileSync,
 	rmSync,
 	writeFileSync,
-	writeSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -35,39 +31,24 @@ import { provisionStorage, storagePaths } from "../storage.js";
 
 const shellCalls: string[] = [];
 const startRegistrations: { name: string; env: Record<string, string> }[] = [];
-const writtenEnvFiles: { path: string; content: string }[] = [];
 const consoleLogs: string[] = [];
 const consoleWarns: string[] = [];
 const consoleErrors: string[] = [];
 
-vi.mock("node:fs/promises", () => ({
-	readFile: async (path: string, encoding?: BufferEncoding) =>
-		readFileSync(path, encoding ?? "utf8"),
-	writeFile: async (path: string, content: string, opts?: { mode?: number }) => {
-		writtenEnvFiles.push({ path: String(path), content: String(content) });
-		writeFileSync(path, content, opts?.mode !== undefined ? { mode: opts.mode } : undefined);
-	},
-	mkdir: async (path: string, opts?: { recursive?: boolean; mode?: number }) => {
-		mkdirSync(path, opts);
-	},
-	chmod: async (path: string, mode: number) => {
-		chmodSync(path, mode);
-	},
-	// `writePrivateFile` writes secret files through an open handle so it can
-	// chmod before the first byte lands; mirror that with the sync fs API and
-	// keep recording what was written.
-	open: async (path: string, flags: string, mode?: number) => {
-		const fd = openSync(path, flags, mode);
-		return {
-			chmod: async (m: number) => fchmodSync(fd, m),
-			writeFile: async (content: string) => {
-				writtenEnvFiles.push({ path: String(path), content: String(content) });
-				writeSync(fd, content);
-			},
-			close: async () => closeSync(fd),
-		};
-	},
-}));
+/** The env files `up` wrote, read back off disk: `.env.local` and `.launchfile/env/*.env`. */
+function writtenEnvFiles(projectDir: string): { path: string; content: string }[] {
+	const files: { path: string; content: string }[] = [];
+	const local = join(projectDir, ".env.local");
+	if (existsSync(local)) files.push({ path: local, content: readFileSync(local, "utf8") });
+	const envDir = join(projectDir, ".launchfile", "env");
+	if (existsSync(envDir)) {
+		for (const name of readdirSync(envDir)) {
+			const path = join(envDir, name);
+			files.push({ path, content: readFileSync(path, "utf8") });
+		}
+	}
+	return files;
+}
 
 vi.mock("../prereqs.js", () => ({
 	checkPrereqs: async () => ({ ok: true, missing: [] }),
@@ -184,7 +165,6 @@ describe("macos-dev up — operator storage (D-50 rule 2)", () => {
 	beforeEach(() => {
 		shellCalls.length = 0;
 		startRegistrations.length = 0;
-		writtenEnvFiles.length = 0;
 		consoleLogs.length = 0;
 		consoleWarns.length = 0;
 		consoleErrors.length = 0;
@@ -235,7 +215,7 @@ describe("macos-dev up — operator storage (D-50 rule 2)", () => {
 		await expect(launchUp({ projectDir })).rejects.toThrow("content: operator");
 		expect(shellCalls).toEqual([]);
 		expect(startRegistrations).toEqual([]);
-		expect(writtenEnvFiles).toEqual([]);
+		expect(writtenEnvFiles(projectDir)).toEqual([]);
 		// Not even the unmarked volume's directory — the refusal lands first.
 		expect(existsSync(join(projectDir, ".launchfile", "storage"))).toBe(false);
 		expect(exitCode).toBeUndefined();
@@ -268,7 +248,7 @@ describe("macos-dev up — operator storage (D-50 rule 2)", () => {
 
 		await launchUp({ projectDir, storage: { media: library } });
 
-		const envFile = writtenEnvFiles.find((f) => f.path.endsWith(".env.local"));
+		const envFile = writtenEnvFiles(projectDir).find((f) => f.path.endsWith(".env.local"));
 		expect(envFile?.content).toContain(`MEDIA_DIR=${library}`);
 		expect(startRegistrations[0]?.env.MEDIA_DIR).toBe(library);
 	});

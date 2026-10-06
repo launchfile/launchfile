@@ -76,6 +76,7 @@ import { prepareFingerprint } from "./prepare-fingerprint.js";
 import { provisionStorage, storagePaths } from "./storage.js";
 import { HealthGateError, ProcessManager } from "./process-manager.js";
 import { redactSecrets } from "./redact.js";
+import { withConfinementRefusal } from "./safe-path.js";
 import { stopRecordedProcesses } from "./process-stopper.js";
 import { shellScript } from "./shell.js";
 import { parseDuration } from "./bootstrap.js";
@@ -588,6 +589,12 @@ export async function runSourcePrepare(
 }
 
 export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
+	// A write under `.launchfile/` or to `.env.local` that finds a symlink the
+	// repository shipped (safe-path.ts) stops the run with a `Refused:` line.
+	return withConfinementRefusal(() => runUp(opts));
+}
+
+async function runUp(opts: LaunchUpOpts): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 
 	// Publication context (D-58): validated and normalized before anything is
@@ -1178,16 +1185,10 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		}
 
 		if (isSingleComponent) {
-			await writeEnvFile(join(projectDir, ".env.local"), env);
+			await writeEnvFile(projectDir, [".env.local"], env);
 			console.log(`  \u2193 Wiring environment variables... done (${Object.keys(env).length} vars)`);
 		} else {
-			const { mkdir, chmod } = await import("node:fs/promises");
-			const envDir = join(projectDir, ".launchfile", "env");
-			// mkdir applies its mode only on create; chmod keeps the dir at 0o700
-			// even if something loosened it after `ensureDirs` ran.
-			await mkdir(envDir, { recursive: true, mode: 0o700 });
-			await chmod(envDir, 0o700);
-			await writeEnvFile(join(envDir, `${name}.env`), env);
+			await writeEnvFile(projectDir, [".launchfile", "env", `${name}.env`], env);
 			console.log(`  \u2193 Wiring ${name} environment... done (${Object.keys(env).length} vars)`);
 		}
 	}
@@ -1378,6 +1379,10 @@ function printSummary(
 }
 
 export async function launchDown(opts: { destroy?: boolean; projectDir?: string } = {}): Promise<void> {
+	return withConfinementRefusal(() => runDown(opts));
+}
+
+async function runDown(opts: { destroy?: boolean; projectDir?: string }): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 	const state = await loadState(projectDir);
 	if (!state) {
@@ -1472,6 +1477,10 @@ export async function launchStatus(opts: { projectDir?: string } = {}): Promise<
 }
 
 export async function launchEnv(opts: { component?: string; projectDir?: string } = {}): Promise<void> {
+	return withConfinementRefusal(() => runEnv(opts));
+}
+
+async function runEnv(opts: { component?: string; projectDir?: string }): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 
 	const launchfileContent = await readFile(join(projectDir, "Launchfile"), "utf8");

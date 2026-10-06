@@ -12,16 +12,12 @@
  */
 
 import {
-	chmodSync,
-	closeSync,
-	fchmodSync,
-	mkdirSync,
+	existsSync,
 	mkdtempSync,
-	openSync,
+	readdirSync,
 	readFileSync,
 	rmSync,
 	writeFileSync,
-	writeSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -37,48 +33,22 @@ import {
 	computeAppProperties,
 } from "../env-writer.js";
 
-const writtenEnvFiles: { path: string; content: string }[] = [];
 const consoleWarns: string[] = [];
 
-vi.mock("node:fs/promises", () => ({
-	readFile: async (path: string, encoding?: BufferEncoding) =>
-		readFileSync(path, encoding ?? "utf8"),
-	writeFile: async (
-		path: string,
-		content: string,
-		opts?: { mode?: number },
-	) => {
-		writtenEnvFiles.push({ path: String(path), content: String(content) });
-		writeFileSync(
-			path,
-			content,
-			opts?.mode !== undefined ? { mode: opts.mode } : undefined,
-		);
-	},
-	mkdir: async (
-		path: string,
-		opts?: { recursive?: boolean; mode?: number },
-	) => {
-		mkdirSync(path, opts);
-	},
-	chmod: async (path: string, mode: number) => {
-		chmodSync(path, mode);
-	},
-	// `writePrivateFile` writes secret files through an open handle so it can
-	// chmod before the first byte lands; mirror that with the sync fs API and
-	// keep recording what was written.
-	open: async (path: string, flags: string, mode?: number) => {
-		const fd = openSync(path, flags, mode);
-		return {
-			chmod: async (m: number) => fchmodSync(fd, m),
-			writeFile: async (content: string) => {
-				writtenEnvFiles.push({ path: String(path), content: String(content) });
-				writeSync(fd, content);
-			},
-			close: async () => closeSync(fd),
-		};
-	},
-}));
+/** The env files `up` wrote, read back off disk: `.env.local` and `.launchfile/env/*.env`. */
+function writtenEnvFiles(projectDir: string): { path: string; content: string }[] {
+	const files: { path: string; content: string }[] = [];
+	const local = join(projectDir, ".env.local");
+	if (existsSync(local)) files.push({ path: local, content: readFileSync(local, "utf8") });
+	const envDir = join(projectDir, ".launchfile", "env");
+	if (existsSync(envDir)) {
+		for (const name of readdirSync(envDir)) {
+			const path = join(envDir, name);
+			files.push({ path, content: readFileSync(path, "utf8") });
+		}
+	}
+	return files;
+}
 
 vi.mock("../prereqs.js", () => ({
 	checkPrereqs: async () => ({ ok: true, missing: [] }),
@@ -181,7 +151,6 @@ describe('launchUp — $app.endpoints.* resolves "" and says so (D-63 rule 4, #2
 	let projectDir: string;
 
 	beforeEach(() => {
-		writtenEnvFiles.length = 0;
 		consoleWarns.length = 0;
 		projectDir = mkdtempSync(join(tmpdir(), "lf-macos-app-endpoints-"));
 		vi.spyOn(console, "log").mockImplementation(() => {});
@@ -198,7 +167,7 @@ describe('launchUp — $app.endpoints.* resolves "" and says so (D-63 rule 4, #2
 	});
 
 	function envLocal(): Record<string, string> {
-		const file = writtenEnvFiles
+		const file = writtenEnvFiles(projectDir)
 			.filter((f) => f.path.endsWith(".env.local"))
 			.at(-1);
 		const env: Record<string, string> = {};

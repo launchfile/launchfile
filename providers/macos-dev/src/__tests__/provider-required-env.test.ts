@@ -26,49 +26,30 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { chmodSync, closeSync, fchmodSync, mkdirSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync, writeSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const shellCalls: string[] = [];
 const releaseEnvs: (Record<string, string> | undefined)[] = [];
 const startRegistrations: { name: string; env: Record<string, string> }[] = [];
-const writtenEnvFiles: { path: string; content: string }[] = [];
 const consoleLogs: string[] = [];
 const consoleErrors: string[] = [];
 
-// Real reads/writes/mkdir, confined to whatever path the caller passes —
-// every test below points collaborators at its own temp project dir.
-// `writeFile` is additionally captured so assertions can inspect what was
-// written without re-reading the file back off disk.
-vi.mock("node:fs/promises", () => ({
-	readFile: async (path: string, encoding?: BufferEncoding) =>
-		readFileSync(path, encoding ?? "utf8"),
-	writeFile: async (path: string, content: string, opts?: { mode?: number }) => {
-		writtenEnvFiles.push({ path: String(path), content: String(content) });
-		writeFileSync(path, content, opts?.mode !== undefined ? { mode: opts.mode } : undefined);
-	},
-	mkdir: async (path: string, opts?: { recursive?: boolean; mode?: number }) => {
-		mkdirSync(path, opts);
-	},
-	chmod: async (path: string, mode: number) => {
-		chmodSync(path, mode);
-	},
-	// `writePrivateFile` writes secret files through an open handle so it can
-	// chmod before the first byte lands; mirror that with the sync fs API and
-	// keep recording what was written.
-	open: async (path: string, flags: string, mode?: number) => {
-		const fd = openSync(path, flags, mode);
-		return {
-			chmod: async (m: number) => fchmodSync(fd, m),
-			writeFile: async (content: string) => {
-				writtenEnvFiles.push({ path: String(path), content: String(content) });
-				writeSync(fd, content);
-			},
-			close: async () => closeSync(fd),
-		};
-	},
-}));
+/** The env files `up` wrote, read back off disk: `.env.local` and `.launchfile/env/*.env`. */
+function writtenEnvFiles(projectDir: string): { path: string; content: string }[] {
+	const files: { path: string; content: string }[] = [];
+	const local = join(projectDir, ".env.local");
+	if (existsSync(local)) files.push({ path: local, content: readFileSync(local, "utf8") });
+	const envDir = join(projectDir, ".launchfile", "env");
+	if (existsSync(envDir)) {
+		for (const name of readdirSync(envDir)) {
+			const path = join(envDir, name);
+			files.push({ path, content: readFileSync(path, "utf8") });
+		}
+	}
+	return files;
+}
 
 vi.mock("../prereqs.js", () => ({
 	checkPrereqs: async () => ({ ok: true, missing: [] }),
@@ -146,7 +127,6 @@ describe("macos-dev up/env — unsupplied required env (rule 8, D-52)", () => {
 		shellCalls.length = 0;
 		releaseEnvs.length = 0;
 		startRegistrations.length = 0;
-		writtenEnvFiles.length = 0;
 		consoleLogs.length = 0;
 		consoleErrors.length = 0;
 		exitCode = undefined;
@@ -197,7 +177,7 @@ describe("macos-dev up/env — unsupplied required env (rule 8, D-52)", () => {
 		// No provisioning shell call (pg_isready, psql, createdb, ...) ran.
 		expect(shellCalls).toEqual([]);
 		expect(startRegistrations).toEqual([]);
-		expect(writtenEnvFiles).toEqual([]);
+		expect(writtenEnvFiles(projectDir)).toEqual([]);
 	});
 
 	// 15
@@ -215,7 +195,7 @@ describe("macos-dev up/env — unsupplied required env (rule 8, D-52)", () => {
 		// And it reaches the written .env file, which is what makes it visible.
 		// (saveState also writes state.json and a .gitignore alongside it.)
 		expect(
-			writtenEnvFiles.some((f) => /^SITE_URL=https:\/\/wiki\.example\.com$/m.test(f.content)),
+			writtenEnvFiles(projectDir).some((f) => /^SITE_URL=https:\/\/wiki\.example\.com$/m.test(f.content)),
 		).toBe(true);
 	});
 

@@ -14,6 +14,7 @@ import {
 import { readLaunch, resolveExpression } from "@launchfile/sdk";
 import type { NormalizedComponent, NormalizedLaunch, Secret } from "@launchfile/sdk";
 import type { ResourceProperties } from "../resources/types.js";
+import { ConfinementRefusal } from "../safe-path.js";
 import { storagePaths } from "../storage.js";
 
 const NO_APP: Record<string, string | number> = {};
@@ -646,7 +647,7 @@ components:
 			await chmod(file, 0o644);
 			expect(await mode(file)).toBe(0o644);
 
-			await writeEnvFile(file, { TOKEN: "s3cret" });
+			await writeEnvFile(dir, [".env.local"], { TOKEN: "s3cret" });
 
 			expect(await mode(file)).toBe(0o600);
 			const content = await readFile(file, "utf8");
@@ -655,11 +656,13 @@ components:
 		});
 	});
 
-	it("writeEnvFile rejects when the parent directory is missing", async () => {
+	it("writeEnvFile refuses when the project directory is missing and leaves nothing behind", async () => {
 		await withTempDir(async (dir) => {
-			await expect(writeEnvFile(join(dir, "missing", ".env.local"), { A: "b" })).rejects.toThrow(
-				/ENOENT/,
+			const missing = join(dir, "missing");
+			await expect(writeEnvFile(missing, [".env.local"], { A: "b" })).rejects.toThrow(
+				ConfinementRefusal,
 			);
+			await expect(stat(missing)).rejects.toThrow();
 		});
 	});
 

@@ -11,9 +11,10 @@
  * path, or has one that is not there.
  */
 
-import { chmod, mkdir, rm } from "node:fs/promises";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import type { StorageVolume } from "@launchfile/sdk";
+import { ensureConfinedDir } from "./safe-path.js";
 
 const STATE_DIR = ".launchfile";
 
@@ -68,17 +69,17 @@ export async function provisionStorage(
 	operatorPaths: Readonly<Record<string, string>> = {},
 ): Promise<Record<string, string>> {
 	const volumeMap = storagePaths(storage, componentName, projectDir, operatorPaths);
-	for (const [name, localPath] of Object.entries(volumeMap)) {
+	for (const [name, volume] of Object.entries(storage ?? {})) {
 		// A `content: operator` volume is never created (D-50 rule 2, row 3):
 		// an empty directory where the operator's library belongs is the
 		// failure the marker exists to catch, and minting one here would
-		// reintroduce it through the channel's own flag.
-		if (storage?.[name]?.content === "operator") continue;
-		// Owner-only like the rest of .launchfile/ (state.ts ensureDirs): the
-		// mode is applied on creation only, so chmod also covers a directory
-		// left by an earlier version (CWE-276).
-		await mkdir(localPath, { recursive: true, mode: 0o700 });
-		await chmod(localPath, 0o700);
+		// reintroduce it through the channel's own flag. Its path is also the
+		// operator's own and is not confined to the project.
+		if (volume.content === "operator") continue;
+		const subdir = volume.persistent !== false ? "storage" : "tmp";
+		// Owner-only like the rest of .launchfile/ (CWE-276), and refused when
+		// a component on the way is a symlink the repository shipped.
+		await ensureConfinedDir(projectDir, [STATE_DIR, subdir, componentName, name], { mode: 0o700 });
 	}
 	return volumeMap;
 }

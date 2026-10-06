@@ -5,11 +5,12 @@
  * so credentials and ports are stable across restarts.
  */
 
-import { readFile, writeFile, mkdir, chmod, open } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { registerSecrets } from "./redact.js";
 import type { DbIndexes } from "./resources/uses.js";
+import { ensureConfinedDir, writeConfinedFile } from "./safe-path.js";
 
 export interface ResourceState {
 	type: string;
@@ -219,49 +220,25 @@ export function initState(appName: string, launchfileContent: string): LaunchSta
 export async function saveState(projectDir: string, state: LaunchState): Promise<void> {
 	state.updatedAt = new Date().toISOString();
 	// Security: restrict directory/file permissions — state.json contains
-	// database passwords and generated secrets in plaintext. mkdir applies the
-	// mode only when it creates the directory, so chmod unconditionally
-	// (CWE-276, as in ensureDirs).
-	await mkdir(stateDir(projectDir), { recursive: true, mode: 0o700 });
-	await chmod(stateDir(projectDir), 0o700);
-	await writePrivateFile(statePath(projectDir), JSON.stringify(state, null, 2) + "\n");
-}
-
-/**
- * Write a file that holds secrets so no other user can read it, even when the
- * file already exists with a looser mode. `writeFile`'s `mode` option applies
- * only when it creates the file, so this opens the file, tightens the open
- * handle to 0o600, and only then writes: the secret bytes never sit in a
- * loose-mode file (CWE-276). The file is written in place, not through a
- * temp-file rename — a rename would leave `*.tmp-*` files behind in the
- * project root and would replace a user's symlinked or hard-linked file with
- * a plain one.
- */
-export async function writePrivateFile(path: string, data: string): Promise<void> {
-	const handle = await open(path, "w", 0o600);
-	try {
-		await handle.chmod(0o600);
-		await handle.writeFile(data);
-	} finally {
-		await handle.close();
-	}
+	// database passwords and generated secrets in plaintext. Both `.launchfile/`
+	// and the file ship with the repository, so the write is confined to the
+	// real project directory and refused through a symlink (safe-path.ts).
+	await writeConfinedFile(projectDir, [STATE_DIR, STATE_FILE], `${JSON.stringify(state, null, 2)}\n`, {
+		mode: 0o600,
+		dirMode: 0o700,
+	});
 }
 
 /** Ensure .launchfile directories exist */
 export async function ensureDirs(projectDir: string): Promise<void> {
 	const dirs = ["storage", "tmp", "logs", "data", "env"];
-	// Security: these dirs hold secrets, logs, and env files. mkdir applies the
-	// mode only when it creates the directory, so chmod unconditionally — a dir
-	// left by an earlier version or a looser umask must not stay world-readable
-	// (CWE-276). Mirrors packages/launchfile/src/state/errors.ts.
-	await Promise.all(
-		dirs.map(async (d) => {
-			const dir = join(projectDir, STATE_DIR, d);
-			await mkdir(dir, { recursive: true, mode: 0o700 });
-			await chmod(dir, 0o700);
-		}),
-	);
+	// Security: these dirs hold secrets, logs, and env files, and are
+	// owner-only whatever mode an earlier version or a looser umask left them
+	// with (CWE-276). This is the first write `up` makes, so a `.launchfile/`
+	// the repository ships as a symlink is refused here, before anything else
+	// can go through it.
+	await Promise.all(dirs.map((d) => ensureConfinedDir(projectDir, [STATE_DIR, d], { mode: 0o700 })));
 	// Safety net: write a .gitignore inside .launchfile/ so secrets aren't
 	// accidentally committed even if the project's .gitignore doesn't exclude it.
-	await writeFile(join(projectDir, STATE_DIR, ".gitignore"), "*\n", { mode: 0o644 });
+	await writeConfinedFile(projectDir, [STATE_DIR, ".gitignore"], "*\n", { mode: 0o644 });
 }

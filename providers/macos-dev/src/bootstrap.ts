@@ -27,6 +27,7 @@ import {
 	type NormalizedLaunch,
 	type ResolverContext,
 } from "@launchfile/sdk";
+import { withConfinementRefusal } from "./safe-path.js";
 import { loadState, saveState } from "./state.js";
 import {
 	resolveComponentEnv,
@@ -284,6 +285,19 @@ const defaultExec: BootstrapExec = (cmd, args, opts) =>
 		});
 	});
 
+export interface LaunchBootstrapOpts {
+	component?: string;
+	projectDir?: string;
+	/**
+	 * Print sensitive captures instead of masking them — the operator's
+	 * explicit act on the invoking command (`launchfile bootstrap
+	 * --reveal`). Display only: the values are registered with the
+	 * redactor either way.
+	 */
+	reveal?: boolean;
+	exec?: BootstrapExec;
+}
+
 /**
  * Public entry point for `launch bootstrap`. Loads the Launchfile, rebuilds
  * the resolver context from persisted state (so $app.url resolves to the
@@ -293,21 +307,17 @@ const defaultExec: BootstrapExec = (cmd, args, opts) =>
  *
  * Does not fail the process on command error — the caller (CLI) decides
  * how to display failures. This matches the "reported, not deploy-failing"
- * semantics in SPEC.md § Bootstrap stage.
+ * semantics in SPEC.md § Bootstrap stage. A state write refused by
+ * safe-path.ts does stop the process: one `Refused:` line and exit 1.
  */
 export async function launchBootstrap(
-	opts: {
-		component?: string;
-		projectDir?: string;
-		/**
-		 * Print sensitive captures instead of masking them — the operator's
-		 * explicit act on the invoking command (`launchfile bootstrap
-		 * --reveal`). Display only: the values are registered with the
-		 * redactor either way.
-		 */
-		reveal?: boolean;
-		exec?: BootstrapExec;
-	} = {},
+	opts: LaunchBootstrapOpts = {},
+): Promise<BootstrapResult[]> {
+	return withConfinementRefusal(() => runBootstrap(opts));
+}
+
+async function runBootstrap(
+	opts: LaunchBootstrapOpts,
 ): Promise<BootstrapResult[]> {
 	const projectDir = opts.projectDir ?? process.cwd();
 	const reveal = opts.reveal === true;
