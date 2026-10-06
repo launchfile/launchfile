@@ -151,6 +151,141 @@ provides:
 		expect(minResult.yaml).toContain("unless-stopped");
 	});
 
+	describe("restart default for a scheduled component (D-70)", () => {
+		const scheduled = (extra = "") =>
+			readLaunch(`
+name: daily-sync
+image: alpine:3
+schedule: "0 3 * * *"
+commands:
+  start: "sh -c 'echo tick'"
+${extra}`);
+
+		it("defaults a schedule-bearing component to restart: no", () => {
+			const result = launchToCompose(scheduled());
+			const service = parse(result.yaml).services["daily-sync"];
+			expect(service.restart).toBe("no");
+			// Quoted, or a YAML 1.1 loader reads the bare token as boolean false.
+			expect(result.yaml).toContain('restart: "no"');
+		});
+
+		it("keeps an explicit restart on a schedule-bearing component", () => {
+			const result = launchToCompose(scheduled('restart: "always"'));
+			expect(parse(result.yaml).services["daily-sync"].restart).toBe("always");
+			// The author chose the policy, so the warning must not claim the provider did.
+			const warning = result.warnings.join(" ");
+			expect(warning).toContain("declares a schedule");
+			expect(warning).not.toContain("it runs once with");
+		});
+
+		it("keeps a restart inherited from the top level on a schedule-bearing component", () => {
+			const launch = readLaunch(`
+name: stack
+restart: always
+components:
+  web:
+    image: alpine:3
+  sync:
+    image: alpine:3
+    schedule: "0 3 * * *"
+    commands:
+      start: "sh -c 'echo tick'"
+`);
+			const result = launchToCompose(launch);
+			const services = parse(result.yaml).services;
+			expect(services["stack-sync"].restart).toBe("always");
+			expect(services["stack-web"].restart).toBe("always");
+			const warning = result.warnings.join(" ");
+			expect(warning).toContain("declares a schedule");
+			expect(warning).not.toContain("it runs once with");
+		});
+
+		it("names the chosen restart policy in the schedule warning", () => {
+			expect(launchToCompose(scheduled()).warnings.join(" ")).toContain(
+				'it runs once with `restart: "no"`',
+			);
+		});
+
+		it("defaults every component that inherits a top-level schedule to restart: no", () => {
+			const launch = readLaunch(`
+name: jobs
+schedule: "0 3 * * *"
+components:
+  export:
+    image: alpine:3
+    commands:
+      start: "sh -c 'echo export'"
+  prune:
+    image: alpine:3
+    commands:
+      start: "sh -c 'echo prune'"
+`);
+			const result = launchToCompose(launch);
+			const services = parse(result.yaml).services;
+			expect(services["jobs-export"].restart).toBe("no");
+			expect(services["jobs-prune"].restart).toBe("no");
+			expect(result.mayExit.sort()).toEqual(["jobs-export", "jobs-prune"]);
+			const warnings = result.warnings.filter((w) => w.includes("declares a schedule"));
+			expect(warnings).toHaveLength(2);
+			for (const w of warnings) expect(w).toContain('it runs once with `restart: "no"`');
+		});
+
+		it("reports the scheduled service as one-shot for the health gate", () => {
+			expect(launchToCompose(scheduled()).mayExit).toEqual(["daily-sync"]);
+		});
+
+		it("reports no service that may exit when an explicit restart: always wins", () => {
+			expect(launchToCompose(scheduled('restart: "always"')).mayExit).toEqual([]);
+		});
+
+		it("reports an explicit restart: on-failure service as one that may exit", () => {
+			const result = launchToCompose(scheduled('restart: "on-failure"'));
+			expect(parse(result.yaml).services["daily-sync"].restart).toBe("on-failure");
+			expect(result.mayExit).toEqual(["daily-sync"]);
+		});
+
+		it("leaves backing services out of the list of services that may exit", () => {
+			const result = launchToCompose(
+				scheduled(`requires:
+  - type: postgres
+    set_env:
+      DATABASE_URL: $url`),
+			);
+			expect(Object.keys(result.healthchecks).length).toBeGreaterThan(1);
+			expect(result.mayExit).toEqual(["daily-sync"]);
+		});
+	});
+
+	it("reports an on-failure component with no schedule as one that may exit", () => {
+		const seed = readLaunch(`
+name: stack
+components:
+  web:
+    image: alpine:3
+  seed:
+    image: alpine:3
+    restart: on-failure
+    commands:
+      start: "sh -c 'echo seed-ran'"
+`);
+		expect(launchToCompose(seed).mayExit).toEqual(["stack-seed"]);
+	});
+
+	it('quotes an explicit restart: "no" on a component with no schedule', () => {
+		const plain = readLaunch(`
+name: one-shot
+image: alpine:3
+restart: "no"
+commands:
+  start: "sh -c 'echo tick'"
+`);
+		// Read the raw YAML: yaml@2 resolves the bare token `no` to the string
+		// "no", so the parsed value cannot tell quoted from unquoted.
+		const result = launchToCompose(plain);
+		expect(result.yaml).toContain('restart: "no"');
+		expect(result.mayExit).toEqual(["one-shot"]);
+	});
+
 	it("adds a bridge network", async () => {
 		const launch = await loadApp("audiobookshelf");
 		const result = launchToCompose(launch);

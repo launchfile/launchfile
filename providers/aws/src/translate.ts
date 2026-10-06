@@ -69,8 +69,8 @@ const RESTART_DIRECTIVE: Record<RestartPolicy, string> = {
 
 /**
  * The directive used when a component declares no `restart:`. A long-running
- * service the file says nothing about stays supervised; the cross-provider
- * default for an undeclared `restart:` is decided in #234, not here.
+ * service the file says nothing about stays supervised. D-70 settled docker's
+ * default for a scheduled component; aws's is open in #573, not decided here.
  */
 const DEFAULT_RESTART_DIRECTIVE = "always";
 
