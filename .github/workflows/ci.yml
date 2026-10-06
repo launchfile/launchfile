@@ -293,6 +293,15 @@ jobs:
             exit 1
           fi
       - run: bun install --frozen-lockfile
+      # A frozen install only checks that bun.lock agrees with itself, so it
+      # accepts a lockfile whose internal @launchfile/* ranges lag the ranges
+      # package.json declares — which is what the first `bun install` after
+      # `changeset version` writes on bun 1.4.2 (#756). `--lockfile-only`
+      # rewrites those ranges, so a non-empty diff here means bun.lock is not
+      # what bun writes for the current package.json files: stale ranges, or a
+      # bun upgrade (#540) that changed the lockfile format.
+      - run: bun install --lockfile-only
+      - run: git diff --exit-code -- bun.lock
 
   # Catches invalid YAML in workflow files before it gets merged and breaks
   # the CI/release pipeline. actionlint alone is not sufficient here — it
