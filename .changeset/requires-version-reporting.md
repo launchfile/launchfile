@@ -5,7 +5,7 @@
 "@launchfile/aws": patch
 ---
 
-Report a `requires[].version` range a provider cannot show is met, in every reference provider (#404, D-next). `@launchfile/sdk` exports `checkVersionRange(declared, provided)`, the one range comparison all three providers use: it classifies a declared node-semver range against the version or version family a provider runs as `satisfied`, `unsatisfied`, `undecidable`, `unknown` or `invalid`. `semver` moves from `@launchfile/docker` to `@launchfile/sdk`.
+Report a `requires[].version` range a provider cannot show is met, in every reference provider (#404, D-74). `@launchfile/sdk` exports `checkVersionRange(declared, provided)`, the one range comparison all three providers use: it classifies a declared node-semver range against the version or version family a provider runs as `satisfied`, `unsatisfied`, `undecidable`, `unknown` or `invalid`. `semver` moves from `@launchfile/docker` to `@launchfile/sdk`.
 
 `@launchfile/docker` now calls the shared comparison. Its warnings are unchanged.
 
