@@ -7,12 +7,15 @@
  *
  * Uses a dedicated tiny app (alpine + sleep) under the compose project
  * `launchfile-gov23-envgen`, torn down via the provider's own destroy path.
+ * $HOME points at a temp dir for the whole file, so provider state never
+ * collides with a real ~/.launchfile/docker/gov23-envgen from another
+ * checkout or a crashed run (that would throw ForeignSourceError).
  * Skipped when Docker is not available — the rest of the suite stays runnable
  * anywhere.
  */
 
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { checkPrereqs } from "../prereqs.js";
@@ -40,9 +43,20 @@ const describeIfPrereqsOk = prereqs.ok ? describe : describe.skip;
 
 describeIfPrereqsOk("env-level generator lifecycle — real up/down (D-49, #186)", () => {
 	let dir: string;
+	let tmpHome: string;
 	let slug: string | undefined;
+	let prevHome: string | undefined;
+	let prevDockerConfig: string | undefined;
 
 	beforeAll(async () => {
+		// state.ts resolves its root via homedir(), which honors $HOME. The
+		// docker CLI also finds its config, contexts and compose plugin under
+		// $HOME/.docker, so pin DOCKER_CONFIG to the real one first.
+		prevHome = process.env.HOME;
+		prevDockerConfig = process.env.DOCKER_CONFIG;
+		process.env.DOCKER_CONFIG ??= join(homedir(), ".docker");
+		tmpHome = await mkdtemp(join(tmpdir(), "gov23-envgen-home-"));
+		process.env.HOME = tmpHome;
 		dir = await mkdtemp(join(tmpdir(), "gov23-envgen-"));
 		await writeFile(join(dir, "Launchfile"), LAUNCHFILE);
 	});
@@ -53,6 +67,15 @@ describeIfPrereqsOk("env-level generator lifecycle — real up/down (D-49, #186)
 		// the launchfile-gov23-envgen compose project.
 		if (slug) await dockerDown({ slug, destroy: true }).catch(() => {});
 		await rm(dir, { recursive: true, force: true });
+		if (prevHome === undefined) delete process.env.HOME;
+		else process.env.HOME = prevHome;
+		if (prevDockerConfig === undefined) delete process.env.DOCKER_CONFIG;
+		else process.env.DOCKER_CONFIG = prevDockerConfig;
+		await rm(tmpHome, { recursive: true, force: true });
+	});
+
+	it("starts from isolated state even when the real home holds a foreign gov23-envgen", async () => {
+		expect(stateDir("gov23-envgen").startsWith(tmpHome)).toBe(true);
 	});
 
 	it("preserves the value across down + a second real up; destroy discards it", async () => {
