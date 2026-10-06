@@ -2,7 +2,7 @@
  * SQLite resource provisioner — just creates a directory for the DB file.
  */
 
-import { lstat, mkdir, realpath, rm } from "node:fs/promises";
+import { chmod, lstat, mkdir, realpath, rm } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import type { NormalizedRequirement } from "@launchfile/sdk";
 import type { ResourceState } from "../state.js";
@@ -55,7 +55,11 @@ async function createDataDir(projectRoot: string): Promise<string | null> {
 			return `${path} ${entry.isSymbolicLink() ? "is a symlink" : "is not a directory"}`;
 		}
 	}
-	await mkdir(path, { recursive: true });
+	// Owner-only like the rest of .launchfile/ (state.ts ensureDirs). mkdir
+	// applies the mode on creation only, so chmod also covers a directory
+	// that already exists with a wider mode (CWE-276).
+	await mkdir(path, { recursive: true, mode: 0o700 });
+	await chmod(path, 0o700);
 	const real = await realpath(path).catch(() => null);
 	if (real !== path) {
 		return `${path} resolves to ${real ?? "nothing"}`;
