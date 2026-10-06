@@ -7,6 +7,8 @@ import { writeFile } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
 import { createInterface } from "node:readline";
 import {
+	buildLaunchErrorContext,
+	LaunchError,
 	MissingOperatorStoragePathError,
 	readLaunch,
 	selectionClosure,
@@ -41,12 +43,14 @@ import {
 	type StorageBind,
 	type UnsuppliedRequiredVar,
 } from "./compose-generator.js";
+import { redactSecrets } from "./redact.js";
 import { planReleases, runReleases } from "./release.js";
 import { shell, shellStream } from "./shell.js";
 import { getLogger, withSpan } from "./logger.js";
 import {
 	captureComposeLogs,
 	declaredEnvKeys,
+	DOCKER_PROVIDER,
 	dockerErrorKey,
 	dockerLaunchError,
 	inPhase,
@@ -191,24 +195,46 @@ export interface DockerUpOpts {
  * The message names every offending component and variable in one go, and never
  * prints a value — for a `sensitive: true` var it would be a credential, and for
  * the rest it would be noise the operator already knows.
+ *
+ * It is a `LaunchError` so the CLI persists it as a failure record with
+ * `unsupplied[]` filled in, which `launchfile diagnose` renders — otherwise a
+ * refusal would leave the previous, unrelated failure on disk as if it were
+ * current. The record carries names only: no value ever enters this class. The
+ * phase is `resolve`, the pre-deploy slot the refusal fires in — nothing has
+ * been provisioned when it throws — and the `expectedRefusal` marker still keeps
+ * the CLI's print-and-exit UX and keeps the span log at debug.
  */
-export class UnsuppliedRequiredEnvError extends Error {
+export class UnsuppliedRequiredEnvError extends LaunchError {
 	/** An operator-fixable precondition, not a crash — see `ExpectedRefusal`. */
 	readonly expectedRefusal = true as const;
 	readonly vars: UnsuppliedRequiredVar[];
 
-	constructor(vars: UnsuppliedRequiredVar[]) {
+	constructor(vars: UnsuppliedRequiredVar[], record: PhaseContext) {
 		const lines = vars.map(
 			({ component, key, sensitive }) =>
 				`  - ${component}: ${key}${sensitive ? " (sensitive)" : ""}`,
 		);
-		super(
+		const message =
 			`Cannot launch: ${vars.length} required environment variable${vars.length === 1 ? "" : "s"} ` +
-				"had no value.\n" +
-				`${lines.join("\n")}\n` +
-				"The Launchfile declares them `required:` with no `default:`, `generator:`, or resource\n" +
-				"binding, so you supply them. Set them in the environment and run `up` again, e.g.\n" +
-				`  ${vars[0]!.key}=<value> launchfile up`,
+			"had no value.\n" +
+			`${lines.join("\n")}\n` +
+			"The Launchfile declares them `required:` with no `default:`, `generator:`, or resource\n" +
+			"binding, so you supply them. Set them in the environment and run `up` again, e.g.\n" +
+			`  ${vars[0]!.key}=<value> launchfile up`;
+		super(
+			buildLaunchErrorContext(
+				{
+					phase: "resolve",
+					provider: DOCKER_PROVIDER,
+					key: record.key,
+					slug: record.slug,
+					app: record.app,
+					message,
+					env: record.env,
+					unsupplied: vars.map(({ component, key }) => ({ component, variable: key })),
+				},
+				redactSecrets,
+			),
 		);
 		this.name = "UnsuppliedRequiredEnvError";
 		this.vars = vars;
@@ -577,7 +603,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		);
 		const blocking = result.unsuppliedRequired.filter((v) => launching.has(v.component));
 		if (blocking.length > 0) {
-			throw new UnsuppliedRequiredEnvError(blocking);
+			throw new UnsuppliedRequiredEnvError(blocking, failure());
 		}
 
 		// D-50 rule 2, rows 2 and 3 — refused before the compose file is
@@ -816,7 +842,9 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// the deployment on this path so `status`/`logs`/`down` reach them.
 		await inPhase("health", withLogs(), () =>
 			withSpan("up:health", { project }, async () => {
-				const health = await waitForHealth(project, composeFile, result.healthchecks);
+				const health = await waitForHealth(project, composeFile, result.healthchecks, {
+					mayExit: result.mayExit,
+				});
 				if (!health.ok) {
 					const message = healthFailureMessage(
 						health.stuck,
@@ -1002,6 +1030,7 @@ export interface PsContainer {
 	Health: string;
 	Name?: string;
 	Service?: string;
+	ExitCode?: number;
 }
 
 /**
@@ -1023,15 +1052,24 @@ export interface PsContainer {
  * services ({@link healthPsArgs}), so an orphan left behind by a rename never
  * reaches here; a row that still does is a gap to report, not one to absorb
  * into a pass (the D-51/D-52 posture).
+ *
+ * A service in `ComposeResult.mayExit` (restart `no` or `on-failure`) is
+ * allowed to end: Docker leaves it stopped after an exit 0, so that row passes.
+ * An exited row with a non-zero or missing exit code fails, and a row that is
+ * still running or restarting gates like any other service.
  */
 export function isContainerHealthy(
 	container: PsContainer,
 	healthchecks: Readonly<Record<string, boolean>>,
+	mayExit: ReadonlySet<string> = new Set(),
 ): boolean {
-	if (container.State !== "running") return false;
-
 	const service = container.Service;
 	if (service === undefined || !Object.hasOwn(healthchecks, service)) return false;
+
+	if (container.State === "exited" && mayExit.has(service)) {
+		return container.ExitCode === 0;
+	}
+	if (container.State !== "running") return false;
 
 	return healthchecks[service] ? container.Health === "healthy" : true;
 }
@@ -1050,6 +1088,10 @@ export type ComposePs = () => Promise<{ exitCode: number; stdout: string }>;
  * component the app no longer has. Naming the generated services keeps the poll
  * to what this `up` wrote.
  *
+ * `--all` keeps exited containers in the list. Without it a job that has
+ * already finished drops out of the rows, and a project whose only service is
+ * that job reports no container at all for the whole budget.
+ *
  * With no generated services there is nothing the gate can accept, so the bare
  * poll it returns then costs nothing: every row fails closed either way.
  */
@@ -1065,6 +1107,7 @@ export function healthPsArgs(
 		"-f",
 		composeFile,
 		"ps",
+		"--all",
 		"--format",
 		"json",
 		...Object.keys(healthchecks),
@@ -1078,6 +1121,8 @@ export interface WaitForHealthOpts {
 	pollIntervalMs?: number;
 	/** How to read container status. Defaults to `docker compose ps`. */
 	ps?: ComposePs;
+	/** Services that pass by exiting 0 (`ComposeResult.mayExit`). */
+	mayExit?: readonly string[];
 }
 
 export async function waitForHealth(
@@ -1096,6 +1141,7 @@ export async function waitForHealth(
 				allowFailure: true,
 				silent: true,
 			}));
+	const mayExit = new Set(opts.mayExit ?? []);
 	const start = Date.now();
 	let stuck: string[] = [];
 
@@ -1119,7 +1165,7 @@ export async function waitForHealth(
 			try {
 				const container = JSON.parse(line) as PsContainer;
 				hasContainers = true;
-				if (!isContainerHealthy(container, healthchecks)) {
+				if (!isContainerHealthy(container, healthchecks, mayExit)) {
 					unhealthy.push(container.Service || container.Name || "(unnamed container)");
 				}
 			} catch {

@@ -7,7 +7,15 @@
  * byte-identical output (P-13), pinned at the end.
  */
 
-import { isRepeatableUse, RESOURCE_USE_VOCABULARY, readLaunch, UnresolvedUseError } from "@launchfile/sdk";
+import {
+	allocateDbIndexes,
+	isRepeatableUse,
+	namedDatabase,
+	RESOURCE_USE_VOCABULARY,
+	readLaunch,
+	UnresolvedUseError,
+	withDatabasePath,
+} from "@launchfile/sdk";
 import { beforeEach, describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import {
@@ -17,17 +25,14 @@ import {
 } from "../compose-generator.js";
 import { clearRegisteredSecrets, REDACTED, redactSecrets } from "../redact.js";
 import {
-	allocateDbIndexes,
 	COVERED_TYPES,
 	coverUse,
 	coveredUses,
-	namedDatabase,
 	namedDatabases,
 	repeatableUses,
 	uncoveredProvisionedUses,
 	uncoveredSuppliedUses,
 	usePropertyKeys,
-	withDatabasePath,
 } from "../resource-uses.js";
 
 interface ComposeDoc {

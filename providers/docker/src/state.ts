@@ -5,7 +5,7 @@
  * isolated and state persists across runs.
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, chmod } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
@@ -387,16 +387,24 @@ export function initState(
 	};
 }
 
-export async function saveState(slug: string, state: DockerState): Promise<void> {
-	state.updatedAt = new Date().toISOString();
-	// Security: restrict directory/file permissions — state.json contains
-	// database passwords and generated secrets in plaintext.
-	await mkdir(stateDir(slug), { recursive: true, mode: 0o700 });
-	await writeFile(statePath(slug), JSON.stringify(state, null, 2) + "\n", { mode: 0o600 });
+/** state.json contains database passwords and generated secrets in plaintext. */
+const FILE_MODE = 0o600;
+const DIR_MODE = 0o700;
+
+/** Create the state dir owner-only, and fix its mode if it already exists too open. */
+export async function ensureStateDir(slug: string): Promise<void> {
+	const dir = stateDir(slug);
+	await mkdir(dir, { recursive: true, mode: DIR_MODE });
+	// `mkdir` sets the mode only when it creates the directory. Setting it
+	// unconditionally means a directory created by an earlier version, or under a
+	// looser umask, does not stay world-readable (CWE-276).
+	await chmod(dir, DIR_MODE);
 }
 
-export async function ensureStateDir(slug: string): Promise<void> {
-	await mkdir(stateDir(slug), { recursive: true, mode: 0o700 });
+export async function saveState(slug: string, state: DockerState): Promise<void> {
+	state.updatedAt = new Date().toISOString();
+	await ensureStateDir(slug);
+	await writeFile(statePath(slug), `${JSON.stringify(state, null, 2)}\n`, { mode: FILE_MODE });
 }
 
 /** Persisted source location for a deployed slug (#25). */

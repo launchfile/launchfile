@@ -198,7 +198,10 @@ export async function handleUp(
 			// (D-58) is an operator's problem to fix, not a bug — it gets the
 			// provider's own message, not a stack trace. The URL refusal masks
 			// any userinfo in its own message (D-18), so the raw value the
-			// operator typed is never echoed here.
+			// operator typed is never echoed here. The D-52 refusal is also a
+			// `LaunchError`, so `withFailureRecord` has already written its
+			// record (phase `resolve`, `unsupplied[]` names only) for `diagnose`
+			// by the time this prints.
 			if (
 				err instanceof UnsuppliedRequiredEnvError ||
 				err instanceof UnboundOperatorStorageError ||

@@ -144,13 +144,17 @@ export type {
 export { extractToolchainVersions } from "./toolchain.js";
 export type * from "./types.js";
 export {
+	allocateDbIndexes,
+	type DbIndexes,
 	type DeclaredUse,
 	declaredUse,
 	formatUseKey,
+	namedDatabase,
 	parseUseKey,
 	useKey,
 	useKeyOf,
 	useKeys,
+	withDatabasePath,
 } from "./uses.js";
 export {
 	checkVersionRange,

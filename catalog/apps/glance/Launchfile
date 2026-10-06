@@ -11,6 +11,10 @@ provides:
     port: 8080
     exposed: true
 storage:
+  # Operator-supplied: the image ships no default glance.yml. Create a directory
+  # holding one (see https://github.com/glanceapp/glance), then bind it:
+  # launchfile up catalog/apps/glance --docker --storage config=<dir>;
+  # catalog/apps/glance/test/config/glance.yml is a working example.
   config:
     path: /app/config
     content: operator

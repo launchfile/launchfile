@@ -2,18 +2,77 @@
  * SQLite resource provisioner — just creates a directory for the DB file.
  */
 
-import { mkdir } from "node:fs/promises";
+import { chmod, lstat, mkdir, realpath, rm } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import type { NormalizedRequirement } from "@launchfile/sdk";
 import type { ResourceState } from "../state.js";
-import type {
-	DestroyOpts,
-	ProvisionOpts,
-	ProvisionResult,
-	ResourceProperties,
-	ResourceProvisioner,
+import {
+	type DestroyOpts,
+	type ProvisionOpts,
+	type ProvisionResult,
+	type ResourceProperties,
+	type ResourceProvisioner,
+	ResourceRefusedError,
 } from "./types.js";
 import { versionWarning } from "./version.js";
+
+const DATA_DIR = [".launchfile", "data", "sqlite"] as const;
+
+/**
+ * The directory this provisioner owns: `.launchfile/data/sqlite` joined
+ * lexically onto `realpath(projectDir)`. `.launchfile/` ships inside the
+ * cloned repository, so the data path is repo-controlled and is never
+ * resolved itself — resolving both ends would pass a symlinked component
+ * through, since both sides then agree on the symlink's target. The project
+ * root comes from the caller and is the only trustworthy anchor; every
+ * path `provision()` hands out and `destroy()` deletes is confined to it.
+ *
+ * Returns null when the project directory does not exist.
+ */
+async function anchoredDataDir(
+	projectDir: string,
+): Promise<{ projectRoot: string; dataDir: string } | null> {
+	const projectRoot = await realpath(projectDir).catch(() => null);
+	if (projectRoot === null) return null;
+	return { projectRoot, dataDir: join(projectRoot, ...DATA_DIR) };
+}
+
+/**
+ * Creates the data directory under `projectRoot`, refusing when any
+ * component of `.launchfile/data/sqlite` already exists as something other
+ * than a real directory. `mkdir(..., { recursive: true })` succeeds through a
+ * symlink to a directory and reports nothing, so the check uses `lstat`
+ * (which does not follow symlinks) on each component before anything is
+ * created — `realpath` cannot do it, as the path does not exist on a first
+ * run. After the mkdir the directory must still resolve to itself.
+ *
+ * Returns the reason for a refusal, or null when the directory is ready.
+ */
+async function createDataDir(projectRoot: string): Promise<string | null> {
+	let path = projectRoot;
+	for (const component of DATA_DIR) {
+		path = join(path, component);
+		const entry = await lstat(path).catch(() => null);
+		if (entry !== null && !entry.isDirectory()) {
+			return `${path} ${entry.isSymbolicLink() ? "is a symlink" : "is not a directory"}`;
+		}
+	}
+	// Owner-only like the rest of .launchfile/ (state.ts ensureDirs). mkdir
+	// applies the mode on creation only, so chmod also covers a directory
+	// that already exists with a wider mode (CWE-276).
+	await mkdir(path, { recursive: true, mode: 0o700 });
+	await chmod(path, 0o700);
+	const real = await realpath(path).catch(() => null);
+	if (real !== path) {
+		return `${path} resolves to ${real ?? "nothing"}`;
+	}
+	return null;
+}
+
+function refuse(resourceName: string, reason: string): never {
+	console.warn(`  ! sqlite: refusing to provision ${resourceName} — ${reason}`);
+	throw new ResourceRefusedError(resourceName, reason);
+}
 
 export class SqliteProvisioner implements ResourceProvisioner {
 	readonly type = "sqlite";
@@ -28,10 +87,18 @@ export class SqliteProvisioner implements ResourceProvisioner {
 	): Promise<ProvisionResult> {
 		const resourceName = req.name ?? req.type;
 		const safeName = opts.appName.replace(/-/g, "_");
-		const dataDir = join(opts.projectDir, ".launchfile", "data", "sqlite");
-		await mkdir(dataDir, { recursive: true });
 
-		const dbPath = join(dataDir, `${safeName}.db`);
+		// The refusal happens before `path`/`url` exist: this provisioner
+		// writes no database bytes itself, the app does, through whatever
+		// path it is handed. The reason prints here because the caller's
+		// optional-resource loop reports only "skipped".
+		const anchored = await anchoredDataDir(opts.projectDir);
+		if (anchored === null)
+			refuse(resourceName, `${opts.projectDir} does not exist`);
+		const reason = await createDataDir(anchored.projectRoot);
+		if (reason !== null) refuse(resourceName, reason);
+
+		const dbPath = join(anchored.dataDir, `${safeName}.db`);
 
 		// SPEC.md § Resource Property Vocabulary gives sqlite `url` and `path`
 		// only. A file has no host and no port, so neither is exposed.
@@ -63,19 +130,17 @@ export class SqliteProvisioner implements ResourceProvisioner {
 		if (!state.dbName) return;
 
 		// state.json is repo-supplied and parsed without validation (state.ts),
-		// so dbName is untrusted here. The repo also supplies .launchfile/, so
-		// the data directory itself can be a symlink: resolve() is lexical and
-		// would not see it, while fs.rm follows symlinked components at the OS
-		// layer. Anchor on realpath(projectDir), which the caller supplies, and
-		// compare the target's real parent against it.
+		// so dbName is untrusted here. resolve() is lexical and would not see
+		// a symlinked data directory, while fs.rm follows symlinked components
+		// at the OS layer, so the target's real parent is compared against the
+		// anchored root instead.
 		// The trailing separator matters: a bare startsWith(root) would leave a
 		// sibling directory named `sqlite-evil` deletable.
-		const { realpath, rm } = await import("node:fs/promises");
-		const projectRoot = await realpath(opts.projectDir).catch(() => null);
-		if (projectRoot === null) return;
+		const anchored = await anchoredDataDir(opts.projectDir);
+		if (anchored === null) return;
 
-		const root = join(projectRoot, ".launchfile", "data", "sqlite");
-		const target = resolve(projectRoot, state.dbName);
+		const root = anchored.dataDir;
+		const target = resolve(anchored.projectRoot, state.dbName);
 		const parent = await realpath(dirname(target)).catch(() => null);
 		if (parent === null) return; // nothing at that path to delete
 

@@ -55,11 +55,12 @@ export {
 	withDatabasePath,
 } from "./uses.js";
 
-export type {
-	ResourceProvisioner,
-	ResourceProperties,
-	ProvisionOpts,
-	ProvisionResult,
-	DestroyOpts,
-	ShellRunner,
+export {
+	type ResourceProvisioner,
+	type ResourceProperties,
+	type ProvisionOpts,
+	type ProvisionResult,
+	type DestroyOpts,
+	ResourceRefusedError,
+	type ShellRunner,
 } from "./types.js";

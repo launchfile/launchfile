@@ -6,6 +6,7 @@
   "scripts": {
     "test-app": "bun run src/test-app.ts",
     "test-all": "bun run src/test-all.ts",
+    "build-index": "bun run src/build-index.ts",
     "portability-lint-counts": "bun run src/portability-lint-counts.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",

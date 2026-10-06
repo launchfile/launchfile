@@ -48,6 +48,7 @@ import type {
 	PriorSource,
 	PriorStack,
 } from "./prior-stack.js";
+import { registerDeclaredSecret } from "./redact.js";
 
 /** The backing-service type that declares the app's public HTTPS origin (D-60). */
 const HTTPS_ORIGIN = "https-origin";
@@ -69,8 +70,8 @@ const RESTART_DIRECTIVE: Record<RestartPolicy, string> = {
 
 /**
  * The directive used when a component declares no `restart:`. A long-running
- * service the file says nothing about stays supervised; the cross-provider
- * default for an undeclared `restart:` is decided in #234, not here.
+ * service the file says nothing about stays supervised. D-70 settled docker's
+ * default for a scheduled component; aws's is open in #573, not decided here.
  */
 const DEFAULT_RESTART_DIRECTIVE = "always";
 
@@ -1433,8 +1434,20 @@ function emitComponent(
 	if (Object.keys(resolvedEnv).length > 0)
 		c.map("env", "aws_ssm_parameter", name);
 
-	// health → recorded; the ALB target group carries the actual check.
-	if (comp.health) c.map("health", "aws_lb_target_group health_check", name);
+	// health → recorded. The ALB target group probes HTTP only: a declared
+	// path is used, otherwise "/" (SPEC "Health"). A command-only block has
+	// no AWS equivalent, so it is a gap, never a silent mapping (P-5).
+	if (comp.health?.command && !comp.health.path) {
+		c.gap(
+			"health",
+			"workaround",
+			"health.command has no AWS equivalent: no command-based check runs, and an exposed component's ALB target group probes HTTP \"/\" (matcher 200-399) instead",
+			"declare health.path so the ALB probes the app's real readiness endpoint",
+			name,
+		);
+	} else if (comp.health) {
+		c.map("health", "aws_lb_target_group health_check", name);
+	}
 
 	if (comp.schedule) {
 		c.gap(
@@ -1509,6 +1522,9 @@ function resolveEnvVar(
 	if (envVar.default !== undefined) {
 		const raw = String(envVar.default);
 		const value = isExpression(raw) ? resolveExpression(raw, context) : raw;
+		// D-18: a declared-sensitive value is masked in every log line from here on.
+		// No length floor — the author, not a heuristic, said this value is a secret.
+		if (envVar.sensitive === true) registerDeclaredSecret(value);
 		return { value, sensitive: envVar.sensitive === true };
 	}
 	// PROVIDERS.md §10 rule 8 (D-52): an unsupplied `required` value is a gap to
