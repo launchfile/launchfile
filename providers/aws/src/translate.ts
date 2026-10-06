@@ -1362,8 +1362,20 @@ function emitComponent(
 	if (Object.keys(resolvedEnv).length > 0)
 		c.map("env", "aws_ssm_parameter", name);
 
-	// health → recorded; the ALB target group carries the actual check.
-	if (comp.health) c.map("health", "aws_lb_target_group health_check", name);
+	// health → recorded. The ALB target group probes HTTP only: a declared
+	// path is used, otherwise "/" (SPEC "Health"). A command-only block has
+	// no AWS equivalent, so it is a gap, never a silent mapping (P-5).
+	if (comp.health?.command && !comp.health.path) {
+		c.gap(
+			"health",
+			"workaround",
+			"health.command has no AWS equivalent: no command-based check runs, and an exposed component's ALB target group probes HTTP \"/\" (matcher 200-399) instead",
+			"declare health.path so the ALB probes the app's real readiness endpoint",
+			name,
+		);
+	} else if (comp.health) {
+		c.map("health", "aws_lb_target_group health_check", name);
+	}
 
 	if (comp.schedule) {
 		c.gap(
