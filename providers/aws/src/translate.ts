@@ -47,6 +47,7 @@ import type {
 	PriorSource,
 	PriorStack,
 } from "./prior-stack.js";
+import { registerDeclaredSecret } from "./redact.js";
 
 /** The backing-service type that declares the app's public HTTPS origin (D-60). */
 const HTTPS_ORIGIN = "https-origin";
@@ -1450,6 +1451,9 @@ function resolveEnvVar(
 	if (envVar.default !== undefined) {
 		const raw = String(envVar.default);
 		const value = isExpression(raw) ? resolveExpression(raw, context) : raw;
+		// D-18: a declared-sensitive value is masked in every log line from here on.
+		// No length floor — the author, not a heuristic, said this value is a secret.
+		if (envVar.sensitive === true) registerDeclaredSecret(value);
 		return { value, sensitive: envVar.sensitive === true };
 	}
 	// PROVIDERS.md §10 rule 8 (D-52): an unsupplied `required` value is a gap to
