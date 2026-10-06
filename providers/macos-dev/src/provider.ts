@@ -1208,7 +1208,7 @@ async function runUp(opts: LaunchUpOpts): Promise<void> {
 
 	if (opts.dryRun) {
 		console.log("\n[dry-run] Would now run build, release, and start commands.");
-		printSummary(launch.name, componentPorts, state);
+		printSummary(launch.name, componentPorts, state, "would be reachable at");
 		return;
 	}
 
@@ -1346,16 +1346,19 @@ export function componentAddress(
 
 /**
  * The "<component> is running at …" lines `up` prints, one per `ports` key.
+ * `verb` is the phrase between the label and the address; a dry run passes
+ * "would be reachable at" because nothing has started.
  * Pure, so the placement of the supplied URL is testable without a launch.
  */
 export function summaryLines(
 	appName: string,
 	ports: Record<string, number>,
 	publication?: PrintedPublication,
+	verb = "is running at",
 ): string[] {
 	return Object.entries(ports).map(([name, port]) => {
 		const label = name === "default" ? appName : name;
-		return `  ${label} is running at ${componentAddress(name, port, publication)}`;
+		return `  ${label} ${verb} ${componentAddress(name, port, publication)}`;
 	});
 }
 
@@ -1373,9 +1376,10 @@ function printSummary(
 	appName: string,
 	ports: Record<string, number>,
 	publication: PrintedPublication,
+	verb?: string,
 ): void {
 	console.log("");
-	for (const line of summaryLines(appName, ports, publication)) {
+	for (const line of summaryLines(appName, ports, publication, verb)) {
 		console.log(line);
 	}
 	console.log("\n  Press Ctrl+C to stop all processes.");
