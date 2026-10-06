@@ -302,12 +302,18 @@ function checkVersionConstraint(
 					`this provider cannot check it against ${image}.`,
 			);
 			return;
-		case "unknown":
+		case "unknown": {
+			const tag = /:([^/:]+)$/.exec(image)?.[1];
+			const why =
+				tag === undefined || tag === "latest"
+					? "whose version is not fixed"
+					: `whose tag ${JSON.stringify(tag)} names no semver version`;
 			warnings.push(
 				`requires[${key}]: declared version ${quoted} cannot be checked — this provider provisions ` +
-					`${image}, whose version is not fixed, and does not select versions.`,
+					`${image}, ${why}, and does not select versions.`,
 			);
 			return;
+		}
 		case "unsatisfied":
 			warnings.push(
 				`requires[${key}]: declared version ${quoted} is not satisfied — this provider provisions the ` +
@@ -633,7 +639,11 @@ function createBackingServices(
 			const accessKey = getPassword("minio-access");
 			const secretKey = getPassword("minio-secret");
 			return {
-				image: "minio/minio:latest",
+				// MinIO publishes no community images (minio/minio is gone).
+				// pgsty/minio is a maintained community fork of MinIO: same
+				// MINIO_ROOT_* env, `server /data`, and /minio/health/live. It
+				// publishes only RELEASE tags, so the pin is an exact release.
+				image: "pgsty/minio:RELEASE.2026-08-04T00-00-00Z",
 				// Matches the `server /data` command below.
 				dataPath: "/data",
 				environment: {
@@ -668,7 +678,11 @@ function createBackingServices(
 			const accessKey = getPassword("s3-access");
 			const secretKey = getPassword("s3-secret");
 			return {
-				image: "minio/minio:latest",
+				// MinIO publishes no community images (minio/minio is gone).
+				// pgsty/minio is a maintained community fork of MinIO: same
+				// MINIO_ROOT_* env, `server /data`, and /minio/health/live. It
+				// publishes only RELEASE tags, so the pin is an exact release.
+				image: "pgsty/minio:RELEASE.2026-08-04T00-00-00Z",
 				// Matches the `server /data` command below.
 				dataPath: "/data",
 				environment: {

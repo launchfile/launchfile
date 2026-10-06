@@ -11,9 +11,11 @@ provides:
     port: 80
     exposed: true
 requires:
+  # WordPress splits DB_HOST into host and port (wp-includes/class-wpdb.php parse_db_host);
+  # the image copies WORDPRESS_DB_HOST into DB_HOST (docker-library/wordpress wp-config-docker.php:59).
   - type: mysql
     set_env:
-      WORDPRESS_DB_HOST: $host
+      WORDPRESS_DB_HOST: "${host}:${port}"
       WORDPRESS_DB_USER: $user
       WORDPRESS_DB_PASSWORD: $password
       WORDPRESS_DB_NAME: $name
