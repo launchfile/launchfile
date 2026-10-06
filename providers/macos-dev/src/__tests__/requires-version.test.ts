@@ -213,6 +213,16 @@ describe("RedisProvisioner requires[].version", () => {
 		);
 		expect(warnings[0]).toContain("cannot be checked");
 	});
+
+	it("queries the host and port the warning names", async () => {
+		const { commands, deps } = runner({ [INFO]: info });
+		const { warnings } = await new RedisProvisioner(deps).provision(
+			req("redis", ">=8"),
+			OPTS,
+		);
+		expect(commands).toContain("redis-cli -h localhost -p 6379 INFO server");
+		expect(warnings[0]).toContain("localhost:6379");
+	});
 });
 
 describe("SqliteProvisioner requires[].version", () => {

@@ -1004,12 +1004,13 @@ function emitFoundation(
 
 /**
  * The `engine_version` this probe emits for a declared `requires[].version`,
- * or `undefined` for none. Only a bare dotted version passes through: `16` or
- * `16.4` names the same family to RDS (a version prefix it completes to a
- * minor) as it does to node-semver (`16` is `16.x`), so the pin is the
- * author's own constraint, not a narrowing of it. Every other range has no
- * offline translation — RDS's version list is not consulted — so none is
- * emitted. A passed-through version RDS does not offer fails at apply.
+ * or `undefined` for none. Only a bare dotted version of one to three parts
+ * passes through: `16` or `16.4` names the same family to RDS (a version
+ * prefix it completes to a minor) as it does to node-semver (`16` is `16.x`),
+ * and `8.0.35` names one exact version to both, so the pin is the author's
+ * own constraint, not a narrowing of it. Every other range has no offline
+ * translation — RDS's version list is not consulted — so none is emitted. A
+ * passed-through version RDS does not offer fails at apply.
  */
 function rdsEngineVersion(declared: string | undefined): string | undefined {
 	return declared && /^\d+(?:\.\d+){0,2}$/.test(declared)

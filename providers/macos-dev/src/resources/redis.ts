@@ -74,10 +74,11 @@ export class RedisProvisioner implements ResourceProvisioner {
 
 	/** The `requires[].version` report, against the version the server reports. */
 	async #versionWarnings(req: NormalizedRequirement): Promise<string[]> {
-		const result = await this.#shell("redis-cli", ["INFO", "server"], {
-			allowFailure: true,
-			silent: true,
-		});
+		const result = await this.#shell(
+			"redis-cli",
+			["-h", DEFAULT_HOST, "-p", String(DEFAULT_PORT), "INFO", "server"],
+			{ allowFailure: true, silent: true },
+		);
 		const line = /^redis_version:(.*)$/m.exec(result.stdout)?.[1];
 		const running =
 			result.exitCode === 0 && line ? serverVersion(line) : undefined;
