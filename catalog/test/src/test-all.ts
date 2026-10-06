@@ -17,17 +17,20 @@
 
 import { resolve } from "node:path";
 import { buildTiers, loadEntries } from "./build-index.ts";
+import { parseTier } from "./cli-args.ts";
 
 const TIERS = buildTiers(loadEntries(resolve(import.meta.dir, "..", "..")));
 
 // --- CLI args ---
 
 const args = process.argv.slice(2);
-const tierFlag = args.find((a) => a.startsWith("--tier=") || a.startsWith("--tier "));
-const tierArg = tierFlag
-  ? tierFlag.split("=")[1]
-  : args[args.indexOf("--tier") + 1];
-const selectedTier = tierArg !== undefined ? Number.parseInt(tierArg, 10) : undefined;
+let selectedTier: number | undefined;
+try {
+  selectedTier = parseTier(args);
+} catch (err) {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+}
 const dryRun = args.includes("--dry-run");
 const urlFlag = args.find((a) => a.startsWith("--url="));
 const appUrl = urlFlag
