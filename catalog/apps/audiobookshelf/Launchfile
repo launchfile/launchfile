@@ -19,9 +19,11 @@ storage:
     persistent: true
   audiobooks:
     path: /audiobooks
+    content: operator
     persistent: true
   podcasts:
     path: /podcasts
+    content: operator
     persistent: true
 health: /healthcheck
 restart: always
