@@ -1,8 +1,16 @@
-import { chmod, mkdir, mkdtemp, rm, stat } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it, expect, afterEach } from "vitest";
-import { initState, hashLaunchfile, loadState, saveState, ensureDirs, type LaunchState } from "../state.js";
+import {
+	initState,
+	hashLaunchfile,
+	loadState,
+	saveState,
+	ensureDirs,
+	writePrivateFile,
+	type LaunchState,
+} from "../state.js";
 import { clearRegisteredSecrets, redactSecrets, REDACTED } from "../redact.js";
 
 describe("initState", () => {
@@ -206,6 +214,90 @@ describe("ensureDirs (issue #252, CWE-276)", () => {
 			for (const d of ["storage", "tmp", "logs", "data", "env"]) {
 				expect((await stat(join(dir, ".launchfile", d))).mode & 0o777).toBe(0o700);
 			}
+		});
+	});
+});
+
+describe("private file modes (#683, CWE-276)", () => {
+	async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
+		const dir = await mkdtemp(join(tmpdir(), "launchfile-state-"));
+		try {
+			return await fn(dir);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	}
+	const mode = async (path: string) => (await stat(path)).mode & 0o777;
+
+	it("saveState tightens a pre-existing state.json left at 0o644 to 0o600", async () => {
+		await withTempDir(async (dir) => {
+			const state = initState("app", "abc");
+			await saveState(dir, state);
+			const file = join(dir, ".launchfile", "state.json");
+			// Loosen with an explicit chmod — never via a `mode` option, which
+			// the runner's umask can mask so the setup proves nothing (#410).
+			await chmod(file, 0o644);
+			expect(await mode(file)).toBe(0o644);
+
+			await saveState(dir, state);
+
+			expect(await mode(file)).toBe(0o600);
+			expect((await loadState(dir))?.appName).toBe("app");
+		});
+	});
+
+	it("writePrivateFile tightens an existing 0o644 file and replaces its content", async () => {
+		await withTempDir(async (dir) => {
+			const file = join(dir, "secret.txt");
+			await writeFile(file, "old and longer content\n");
+			await chmod(file, 0o644);
+			expect(await mode(file)).toBe(0o644);
+
+			await writePrivateFile(file, "new\n");
+
+			expect(await mode(file)).toBe(0o600);
+			expect(await readFile(file, "utf8")).toBe("new\n");
+		});
+	});
+
+	it("writePrivateFile creates a missing file at 0o600", async () => {
+		await withTempDir(async (dir) => {
+			const file = join(dir, "fresh.txt");
+			await writePrivateFile(file, "x\n");
+			expect(await mode(file)).toBe(0o600);
+			expect(await readFile(file, "utf8")).toBe("x\n");
+		});
+	});
+
+	it("writePrivateFile writes through a symlink instead of replacing it", async () => {
+		await withTempDir(async (dir) => {
+			const target = join(dir, "target.env");
+			const link = join(dir, ".env.local");
+			await writeFile(target, "old\n");
+			await chmod(target, 0o644);
+			await symlink(target, link);
+
+			await writePrivateFile(link, "new\n");
+
+			expect((await lstat(link)).isSymbolicLink()).toBe(true);
+			expect(await readFile(target, "utf8")).toBe("new\n");
+			expect(await mode(target)).toBe(0o600);
+		});
+	});
+
+	it("writePrivateFile rejects when the parent directory is missing and leaves nothing behind", async () => {
+		await withTempDir(async (dir) => {
+			const missingDir = join(dir, "missing");
+			await expect(writePrivateFile(join(missingDir, "x.txt"), "x\n")).rejects.toThrow(/ENOENT/);
+			await expect(stat(missingDir)).rejects.toThrow();
+		});
+	});
+
+	it("writePrivateFile rejects a directory path", async () => {
+		await withTempDir(async (dir) => {
+			const sub = join(dir, "a-dir");
+			await mkdir(sub);
+			await expect(writePrivateFile(sub, "x\n")).rejects.toThrow(/EISDIR/);
 		});
 	});
 });

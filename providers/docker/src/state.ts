@@ -5,7 +5,7 @@
  * isolated and state persists across runs.
  */
 
-import { readFile, writeFile, mkdir, chmod } from "node:fs/promises";
+import { readFile, mkdir, chmod, open } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
@@ -404,7 +404,27 @@ export async function ensureStateDir(slug: string): Promise<void> {
 export async function saveState(slug: string, state: DockerState): Promise<void> {
 	state.updatedAt = new Date().toISOString();
 	await ensureStateDir(slug);
-	await writeFile(statePath(slug), `${JSON.stringify(state, null, 2)}\n`, { mode: FILE_MODE });
+	await writePrivateFile(statePath(slug), `${JSON.stringify(state, null, 2)}\n`);
+}
+
+/**
+ * Write a file that holds secrets so no other user can read it, even when the
+ * file already exists with a looser mode. `writeFile`'s `mode` option applies
+ * only when it creates the file, so this opens the file, tightens the open
+ * handle to 0o600, and only then writes: the secret bytes never sit in a
+ * loose-mode file (CWE-276). The file is written in place, not through a
+ * temp-file rename — a rename would leave `*.tmp-*` files behind in the
+ * project root and would replace a user's symlinked or hard-linked file with
+ * a plain one.
+ */
+export async function writePrivateFile(path: string, data: string): Promise<void> {
+	const handle = await open(path, "w", FILE_MODE);
+	try {
+		await handle.chmod(FILE_MODE);
+		await handle.writeFile(data);
+	} finally {
+		await handle.close();
+	}
 }
 
 /** Persisted source location for a deployed slug (#25). */
