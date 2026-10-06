@@ -786,13 +786,15 @@ A string shorthand (`health: /health`) expands to `{ path: "/health" }`.
 | Field | Type | Description |
 |---|---|---|
 | `path` | `string` | HTTP path to check |
-| `command` | `string` | Shell command for non-HTTP checks |
+| `command` | `string` | Shell command run as the check — exit status 0 means healthy. Use it when `path` cannot express the check, including an HTTP probe (see below) |
 | `interval` | `string` | Check interval — a [duration](#durations) (e.g. `30s`, `1m`) |
 | `timeout` | `string` | Timeout per check attempt — a [duration](#durations) |
 | `retries` | `integer` | Consecutive failures before unhealthy (min: 1) |
 | `start_period` | `string` | Grace period before failures count — a [duration](#durations) |
 
 Use `path` for HTTP checks or `command` for exec checks. If both are present, `path` takes precedence.
+
+A `command` may probe an HTTP endpoint. Use this when a provider's `path` check cannot run for the app. For example, a provider may run `path` checks with an HTTP client such as `wget` or `curl` from the app's image, and some images ship neither. The command can use only tools available where the provider runs it.
 
 ```yaml
 health:

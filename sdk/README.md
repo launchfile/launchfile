@@ -216,6 +216,9 @@ addresses.
 | `useKeys(uses)` | The use keys of a `uses` list, in declaration order |
 | `parseUseKey(key)` | Split a use key back into `{ use, name? }` |
 | `formatUseKey(key)` | The spelling diagnostics use: `db` for a bare key, `db: cache` for a named one |
+| `allocateDbIndexes(launch)` | One numbered redis database per `db` use key, app-wide, keyed by resource name — the allocation every provider applies (D-65): blocks in the order of each resource's first `db`-declaring entry, `requires` before `supports`, the bare `db` first and named ones in name order |
+| `namedDatabase(instance, name)` | The database a named `database` use gets on a SQL server: `<instance>_<name>`, hyphens as underscores |
+| `withDatabasePath(url, database)` | `url` with its path replaced by `/<database>`, query and fragment kept |
 | `isRepeatableUse(type, use)` | Whether the standard vocabulary lets `use` occur more than once on one `type` entry; `undefined` outside the registry, where the provider decides (L-4) |
 | `RESOURCE_USE_VOCABULARY` | Standard use vocabulary by resource type → use → the properties it registers. Advisory: lint warns, the schema never rejects |
 | `UnresolvedUseError` | Thrown when a `$<resource>.<use>.<property>` path names a use the entry does not declare, or a property the use does not register. Not softened by `:-default` — the path is wrong, not empty |

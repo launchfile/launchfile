@@ -9,10 +9,12 @@
  * branch AWS has no verb for is in `provider-required-env.test.ts`.
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { readLaunch } from "@launchfile/sdk";
 import { launchToCompose, type ComposeOpts } from "../compose-generator.js";
+import { dockerLaunchError } from "../errors.js";
+import { clearRegisteredSecrets, REDACTED } from "../redact.js";
 
 const compose = (yaml: string, opts: ComposeOpts = {}) => {
 	const result = launchToCompose(readLaunch(yaml), opts);
@@ -207,6 +209,10 @@ components:
 	});
 
 	describe("operator channel", () => {
+		afterEach(() => {
+			clearRegisteredSecrets();
+		});
+
 		it("uses an operator-supplied value and stops reporting the var", () => {
 			const { doc, unsuppliedRequired } = compose(REQUIRED, {
 				operatorEnv: { API_KEY: "sk-real", SITE_URL: "https://wiki.example.com" },
@@ -238,6 +244,45 @@ env:
 			const env = doc.services.app!.environment!;
 			expect(env.HAS_DEFAULT).toBe("fine");
 			expect(env.DATABASE_URL).toContain("postgres://");
+		});
+
+		it("registers every value it takes with the redactor, sensitive or not, before a capture (#242, D-18)", () => {
+			// SITE_URL is not `sensitive: true`. The operator channel is still
+			// credential material the platform never minted, so a captured
+			// failure must not carry it. A compose-output assertion cannot show
+			// this; only a capture through the redactor can.
+			compose(REQUIRED, {
+				operatorEnv: { API_KEY: "sk-real-key-3f1a", SITE_URL: "https://wiki.example.com" },
+			});
+			const err = dockerLaunchError({
+				phase: "run",
+				key: "app",
+				message: "boom",
+				stderr: "GET https://wiki.example.com -> 502\nauth sk-real-key-3f1a rejected",
+			});
+			const serialized = JSON.stringify(err.context);
+			expect(serialized).not.toContain("https://wiki.example.com");
+			expect(serialized).not.toContain("sk-real-key-3f1a");
+			expect(err.context.stderr).toContain(REDACTED);
+		});
+
+		it("registers only the values it actually takes — not the whole operator environment", () => {
+			// `dockerUp` passes `process.env`. Registering every entry in it would
+			// scrub $HOME, $PATH and the rest out of every diagnostic; only a value
+			// that arrives for an otherwise-unsupplied required var registers.
+			compose(REQUIRED, {
+				operatorEnv: {
+					SITE_URL: "https://wiki.example.com",
+					HAS_DEFAULT: "never-consulted-9c2d",
+					UNRELATED_SHELL_VAR: "/Users/operator",
+				},
+			});
+			const err = dockerLaunchError({
+				phase: "run",
+				key: "app",
+				message: "cwd /Users/operator; default never-consulted-9c2d",
+			});
+			expect(err.context.message).toBe("cwd /Users/operator; default never-consulted-9c2d");
 		});
 	});
 
