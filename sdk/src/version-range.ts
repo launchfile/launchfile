@@ -1,6 +1,6 @@
 /**
  * The one comparison every provider runs between a `requires[].version` range
- * and what it provisions (PROVIDERS.md §10 item 8, D-next). SPEC.md defines
+ * and what it provisions (PROVIDERS.md §10 item 8, D-74). SPEC.md defines
  * `version` as node-semver range syntax, so the comparison is node-semver's.
  *
  * The comparison only classifies. Each provider phrases its own report,
