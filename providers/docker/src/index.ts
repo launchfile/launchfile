@@ -49,6 +49,14 @@ export {
 	type UnboundOperatorVolume,
 	type UnsuppliedRequiredVar,
 } from "./compose-generator.js";
+export {
+	DEFAULT_RESOURCE_PORTS,
+	InvalidResourcePortError,
+	RESOURCE_PORT_TYPES,
+	type ResourcePortType,
+	type ResourcePorts,
+	validateResourcePorts,
+} from "./resource-ports.js";
 export { resolveSource, type ResolvedSource } from "./source-resolver.js";
 export { dockerBootstrap, type BootstrapResult } from "./bootstrap.js";
 export {
