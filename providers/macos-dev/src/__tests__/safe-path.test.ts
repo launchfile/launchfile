@@ -116,10 +116,19 @@ describe("ensureConfinedDir", () => {
 		).rejects.toThrow("env is not a directory; refusing to write");
 	});
 
-	it("refuses a path that leaves the project directory lexically", async () => {
+	it("refuses a `..` part rather than resolving it", async () => {
 		await expect(
 			ensureConfinedDir(projectDir, ["..", "elsewhere"], { mode: 0o700 }),
-		).rejects.toThrow("is outside");
+		).rejects.toThrow(".. is not a single path component; refusing to write");
+	});
+
+	it("refuses a part that carries a path separator", async () => {
+		await expect(
+			ensureConfinedDir(projectDir, [".launchfile/env"], { mode: 0o700 }),
+		).rejects.toThrow(
+			".launchfile/env is not a single path component; refusing to write",
+		);
+		await expect(readdir(projectDir)).resolves.toEqual([]);
 	});
 
 	it("refuses when the project directory does not exist", async () => {
@@ -185,6 +194,25 @@ describe("writeConfinedFile", () => {
 			`state.json is a symlink to ${victim}; refusing to write`,
 		);
 		expect(await readFile(victim, "utf8")).toBe("untouched\n");
+	});
+
+	it("refuses a file part with a separator before its symlinked segment is followed", async () => {
+		await mkdir(join(projectDir, ".launchfile"), { mode: 0o700 });
+		await symlink(victimDir, join(projectDir, ".launchfile", "env"));
+
+		await expect(
+			writeConfinedFile(
+				projectDir,
+				[".launchfile", "env/web.env"],
+				"SECRET=1\n",
+				{
+					mode: 0o600,
+				},
+			),
+		).rejects.toThrow(
+			"env/web.env is not a single path component; refusing to write",
+		);
+		await expect(readdir(victimDir)).resolves.toEqual([]);
 	});
 
 	it("refuses when the parent directory is a symlink out of the project", async () => {

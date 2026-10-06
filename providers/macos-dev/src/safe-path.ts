@@ -18,6 +18,14 @@
  * Only paths under the project directory are confined here. A volume marked
  * `content: operator` keeps the verbatim path the operator supplied (D-50)
  * and never comes through this module.
+ *
+ * What this does not cover: the parent is verified (`lstat` per component,
+ * then `realpath`) and the file is opened afterwards, as separate syscalls.
+ * Node has no `openat` or `O_RESOLVE_BENEATH`, so a process that swaps a
+ * verified parent for a symlink between those two calls is not caught. Such
+ * a process needs write access to the project directory, which is the
+ * operator's own access; the guard is against what the repository ships,
+ * not against a concurrent local writer.
  */
 
 import {
@@ -73,11 +81,25 @@ async function anchor(projectDir: string): Promise<string> {
 }
 
 /**
- * Lexical containment with the separator included, so a sibling whose name
- * merely starts with the root's (`.launchfile-evil`) does not pass.
+ * `<root>/<...parts>`, refusing any part that is not one plain path
+ * component. The per-component `lstat` below and `O_NOFOLLOW` on open only
+ * inspect the components they are handed: a part such as `env/web.env`
+ * would let `env` be a symlink that neither check sees, and `..` would walk
+ * out of the root before `join` reports anything.
  */
-function isUnder(path: string, root: string): boolean {
-	return path.startsWith(root.endsWith(sep) ? root : root + sep);
+function confinedPath(root: string, parts: readonly string[]): string {
+	for (const part of parts) {
+		if (
+			part === "" ||
+			part === "." ||
+			part === ".." ||
+			part.includes(sep) ||
+			part.includes("/")
+		) {
+			throw new ConfinementRefusal(part, "is not a single path component");
+		}
+	}
+	return join(root, ...parts);
 }
 
 async function describeLink(path: string): Promise<string> {
@@ -102,10 +124,7 @@ export async function ensureConfinedDir(
 	opts: ConfinedDirOpts,
 ): Promise<string> {
 	const root = await anchor(projectDir);
-	const path = join(root, ...parts);
-	if (!isUnder(path, root)) {
-		throw new ConfinementRefusal(path, `is outside ${root}`);
-	}
+	const path = confinedPath(root, parts);
 	let current = root;
 	for (const component of parts) {
 		current = join(current, component);
@@ -147,10 +166,7 @@ export async function openConfinedFile(
 					mode: opts.dirMode ?? 0o700,
 				})
 			: await anchor(projectDir);
-	const path = join(parent, ...parts.slice(-1));
-	if (!isUnder(path, parent)) {
-		throw new ConfinementRefusal(path, `is outside ${parent}`);
-	}
+	const path = confinedPath(parent, parts.slice(-1));
 	const { O_WRONLY, O_CREAT, O_TRUNC, O_APPEND, O_NOFOLLOW } = constants;
 	const flags =
 		O_WRONLY | O_CREAT | O_NOFOLLOW | (opts.append ? O_APPEND : O_TRUNC);
