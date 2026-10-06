@@ -125,6 +125,7 @@ function confinedPath(root: string, parts: readonly string[]): string {
 /** Escapes control characters in a repo-controlled string before it is printed (CWE-117). */
 function printable(text: string): string {
 	return Array.from(text, (c) => {
+		if (c === "\\") return "\\\\";
 		const code = c.charCodeAt(0);
 		return code < 0x20 || (code >= 0x7f && code <= 0x9f)
 			? `\\u${code.toString(16).padStart(4, "0")}`

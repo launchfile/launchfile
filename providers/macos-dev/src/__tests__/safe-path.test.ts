@@ -97,7 +97,7 @@ describe("ensureConfinedDir", () => {
 
 	it("escapes control characters in a symlink target before naming it", async () => {
 		await symlink(
-			"/tmp/x\nRefused: nothing\x1b[2K",
+			"/tmp/x\nRefused: nothing\x1b[2K\\u000a",
 			join(projectDir, ".launchfile"),
 		);
 
@@ -113,7 +113,7 @@ describe("ensureConfinedDir", () => {
 		expect(refusal).toBeInstanceOf(ConfinementRefusal);
 		const { message } = refusal as ConfinementRefusal;
 		expect(message).toContain(
-			"is a symlink to /tmp/x\\u000aRefused: nothing\\u001b[2K;",
+			"is a symlink to /tmp/x\\u000aRefused: nothing\\u001b[2K\\\\u000a;",
 		);
 		const controls = Array.from(message).filter((c) => {
 			const code = c.charCodeAt(0);
