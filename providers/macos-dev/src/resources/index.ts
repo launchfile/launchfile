@@ -59,6 +59,7 @@ export {
 	type ResourceProvisioner,
 	type ResourceProperties,
 	type ProvisionOpts,
+	type ProvisionResult,
 	type DestroyOpts,
 	ResourceRefusedError,
 	type ShellRunner,

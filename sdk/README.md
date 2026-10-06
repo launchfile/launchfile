@@ -268,6 +268,7 @@ job.
 | `MissingOperatorStoragePathError` | Thrown when an operator-supplied storage path does not exist or is not readable on the host (D-50 row 3); the directory is never created |
 | `collectHostCapabilities(launch)` | Collect the app's requested host capabilities (D-44) as `"name=value (required\|optional)"` strings |
 | `collectOperatorStorage(launch)` | Collect the volumes marked `content: operator` (D-50) as `"component.volume"` strings |
+| `checkVersionRange(declared, provided)` | Classify a `requires[].version` range against the version or version family a provider runs → `satisfied`, `unsatisfied`, `undecidable`, `unknown` (`provided` is `undefined`), or `invalid` (not a node-semver range). Each provider phrases its own report (D-74) |
 | `RESOURCE_PROPERTY_VOCABULARY` | Standard resource property vocabulary by resource type (SPEC.md § Resource Property Vocabulary, D-46) |
 
 ### Source mode

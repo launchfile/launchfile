@@ -13,6 +13,7 @@ import {
 	type AtDeclaration,
 	atDeclarations,
 	atEntryLabel,
+	checkVersionRange,
 	type DbIndexes,
 	effectiveListener,
 	endpointProperties,
@@ -34,7 +35,6 @@ import {
 	unsuppliedRequiredEnv,
 	useKeys,
 } from "@launchfile/sdk";
-import { intersects, subset, validRange } from "semver";
 import {
 	coverUse,
 	namedDatabases,
@@ -293,42 +293,40 @@ function checkVersionConstraint(
 	const key = req.name ?? req.type;
 	const quoted = JSON.stringify(declared);
 
-	if (validRange(declared) === null) {
-		warnings.push(
-			`requires[${key}]: declared version ${quoted} is not a valid semver range — ` +
-				`this provider cannot check it against ${image}.`,
-		);
-		return;
+	switch (checkVersionRange(declared, tagVersionRange(image))) {
+		case "satisfied":
+			return;
+		case "invalid":
+			warnings.push(
+				`requires[${key}]: declared version ${quoted} is not a valid semver range — ` +
+					`this provider cannot check it against ${image}.`,
+			);
+			return;
+		case "unknown": {
+			const tag = /:([^/:]+)$/.exec(image)?.[1];
+			const why =
+				tag === undefined || tag === "latest"
+					? "whose version is not fixed"
+					: `whose tag ${JSON.stringify(tag)} names no semver version`;
+			warnings.push(
+				`requires[${key}]: declared version ${quoted} cannot be checked — this provider provisions ` +
+					`${image}, ${why}, and does not select versions.`,
+			);
+			return;
+		}
+		case "unsatisfied":
+			warnings.push(
+				`requires[${key}]: declared version ${quoted} is not satisfied — this provider provisions the ` +
+					`fixed image ${image} and does not select versions.`,
+			);
+			return;
+		case "undecidable":
+			warnings.push(
+				`requires[${key}]: declared version ${quoted} cannot be checked against the fixed image ${image} — ` +
+					`this provider does not select versions.`,
+			);
+			return;
 	}
-
-	const tagRange = tagVersionRange(image);
-	if (tagRange === undefined) {
-		const tag = /:([^/:]+)$/.exec(image)?.[1];
-		const why =
-			tag === undefined || tag === "latest"
-				? "whose version is not fixed"
-				: `whose tag ${JSON.stringify(tag)} names no semver version`;
-		warnings.push(
-			`requires[${key}]: declared version ${quoted} cannot be checked — this provider provisions ` +
-				`${image}, ${why}, and does not select versions.`,
-		);
-		return;
-	}
-
-	if (subset(tagRange, declared)) return;
-
-	if (!intersects(tagRange, declared)) {
-		warnings.push(
-			`requires[${key}]: declared version ${quoted} is not satisfied — this provider provisions the ` +
-				`fixed image ${image} and does not select versions.`,
-		);
-		return;
-	}
-
-	warnings.push(
-		`requires[${key}]: declared version ${quoted} cannot be checked against the fixed image ${image} — ` +
-			`this provider does not select versions.`,
-	);
 }
 
 /**
