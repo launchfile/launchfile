@@ -366,6 +366,60 @@ function uncoveredUseRefusal(
 	);
 }
 
+/**
+ * The entrypoint of a MinIO-backed object store (`minio`, `s3`). MinIO
+ * creates no bucket on its own and a client cannot assume one: a directory
+ * under the data path is a bucket, so the one the `bucket` property names is
+ * created before the server starts. The name travels as a positional
+ * argument, never inside the script; `$$1` is what compose interpolation
+ * turns into the shell's `$1`.
+ */
+function objectStoreEntrypoint(bucket: string): string[] {
+	return [
+		"sh",
+		"-c",
+		'mkdir -p "/data/$$1" && exec minio server /data',
+		"sh",
+		bucket,
+	];
+}
+
+/** Resource types whose `bucket` property is an S3 bucket this provider creates. */
+const OBJECT_STORE_TYPES = new Set(["minio", "s3"]);
+
+/**
+ * Why an app name cannot be a bucket name on the MinIO server this provider
+ * runs, or null when it can. The app name grammar (`^[a-z][a-z0-9-]*$`, at
+ * most 63) already rules out every character S3 rejects. This checks the
+ * length floor and a trailing hyphen. AWS also reserves prefixes and suffixes
+ * such as `xn--` and `-s3alias`; the pinned MinIO accepts them, so they are
+ * not checked here.
+ */
+function invalidBucketName(name: string): string | null {
+	if (name.length < 3) return "shorter than 3 characters";
+	if (name.endsWith("-")) return "ends with a hyphen";
+	return null;
+}
+
+/**
+ * The surfaced refusal for a component whose `requires` entry names a bucket
+ * that cannot exist (D-64): launching with a `bucket` that no S3 server
+ * accepts is the unmet precondition D-64 forbids. Names the component, the
+ * entry, the bucket name, and the way out.
+ */
+function invalidBucketNameRefusal(
+	componentName: string,
+	entries: readonly string[],
+): string {
+	const noun = entries.length === 1 ? "a bucket" : "buckets";
+	return (
+		`refused: ${componentName} requires ${noun} this provider cannot create ` +
+		`(${entries.join("; ")}) — the bucket is named after the app, and S3 bucket names ` +
+		"are 3 to 63 characters and never end with a hyphen; rename the app, or supply the " +
+		"resource through the provider's supplied-resource channel (D-56) — component skipped"
+	);
+}
+
 /** The name one `at:` value stands for under `host` (D-68 rule 2). */
 function atName(value: string, host: string): string {
 	return value === AT_APP_HOST ? host : `${value}.${host}`;
@@ -644,7 +698,7 @@ function createBackingServices(
 				// MINIO_ROOT_* env, `server /data`, and /minio/health/live. It
 				// publishes only RELEASE tags, so the pin is an exact release.
 				image: "pgsty/minio:RELEASE.2026-08-04T00-00-00Z",
-				// Matches the `server /data` command below.
+				// Matches the `server /data` in the entrypoint below.
 				dataPath: "/data",
 				environment: {
 					MINIO_ROOT_USER: accessKey,
@@ -660,7 +714,7 @@ function createBackingServices(
 					region: "us-east-1",
 				},
 				extra: {
-					command: "server /data",
+					entrypoint: objectStoreEntrypoint(name),
 				},
 				healthcheck: {
 					test: [
@@ -683,7 +737,7 @@ function createBackingServices(
 				// MINIO_ROOT_* env, `server /data`, and /minio/health/live. It
 				// publishes only RELEASE tags, so the pin is an exact release.
 				image: "pgsty/minio:RELEASE.2026-08-04T00-00-00Z",
-				// Matches the `server /data` command below.
+				// Matches the `server /data` in the entrypoint below.
 				dataPath: "/data",
 				environment: {
 					MINIO_ROOT_USER: accessKey,
@@ -699,7 +753,7 @@ function createBackingServices(
 					region: "us-east-1",
 				},
 				extra: {
-					command: "server /data",
+					entrypoint: objectStoreEntrypoint(name),
 				},
 				healthcheck: {
 					test: [
@@ -1467,6 +1521,27 @@ export function launchToCompose(
 		}
 		if (uncoveredUses.length > 0) {
 			warnings.push(uncoveredUseRefusal(componentName, uncoveredUses));
+			continue;
+		}
+
+		// An object-store entry this provider would provision gets a bucket
+		// named after the app. A name no S3 server accepts as a bucket REFUSES
+		// the component the same way (D-64): the alternative is a launch that
+		// hands the app a `bucket` it can never use.
+		const uncreatableBuckets: string[] = [];
+		for (const req of component.requires ?? []) {
+			if (req.host || !OBJECT_STORE_TYPES.has(req.type)) continue;
+			if (opts.resources?.[req.name ?? req.type]) continue;
+			const why = invalidBucketName(launch.name);
+			if (why === null) continue;
+			uncreatableBuckets.push(
+				`${req.name ?? req.type}: bucket "${launch.name}" ${why}`,
+			);
+		}
+		if (uncreatableBuckets.length > 0) {
+			warnings.push(
+				invalidBucketNameRefusal(componentName, uncreatableBuckets),
+			);
 			continue;
 		}
 
