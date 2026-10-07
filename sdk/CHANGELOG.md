@@ -1,5 +1,21 @@
 # @launchfile/sdk
 
+## 0.14.0
+
+### Minor Changes
+
+- [#607](https://github.com/launchfile/launchfile/pull/607) [`6ec891b`](https://github.com/launchfile/launchfile/commit/6ec891bdfea097e436eb4c68f7dfe0d491830c22) Thanks [@launchfile-steward](https://github.com/apps/launchfile-steward)! - `lintLaunch` now warns when one env var name is declared with `generator: secret` or `generator: uuid` in two or more components ([#425](https://github.com/launchfile/launchfile/issues/425)). A `generator:` mints once per declaration (D-49), so each component gets a different value, which breaks apps whose components must share it (a Rails `SECRET_KEY_BASE`, a signing key). The warning names the variable, every declaring component, and the fix: declare the value once under top-level `secrets:` and reference `$secrets.<name>` from each component. `generator: port` is exempt, because a port is an allocation, not an identity (D-49). Warn-only: `valid` and the exit code are unchanged.
+
+### Patch Changes
+
+- [#640](https://github.com/launchfile/launchfile/pull/640) [`3632d48`](https://github.com/launchfile/launchfile/commit/3632d48ba09532cdf11908dbb23103c5a2a07a57) Thanks [@launchfile-steward](https://github.com/apps/launchfile-steward)! - The `lintLaunch` warning for a resource property outside the standard vocabulary (D-46) now names where it comes from: the component (`(top-level)` for a single-component file), the resource (`name (type)`, or just the type when the entry has no name), and the env key. Before, two bad references in different places produced byte-identical warnings ([#183](https://github.com/launchfile/launchfile/issues/183)). New format: `api: cache (redis): REDIS_URL: "$hoost" is not in the standard vocabulary (known: ...)`. A property repeated within one env value now warns once. Still warn-only: `valid` and the exit code are unchanged.
+
+- [#604](https://github.com/launchfile/launchfile/pull/604) [`91ca1a8`](https://github.com/launchfile/launchfile/commit/91ca1a84acfcfca20bcd4ba0c73e6fd5492b7692) Thanks [@launchfile-steward](https://github.com/apps/launchfile-steward)! - `readLaunch` gives each component its own copy of inherited `provides` and `storage`. Components that omit these fields previously shared the top-level array and map by reference, so mutating one component's entry changed every other inheriting component. The array, map and each entry are now copied. The copy is shallow: nested values of a `provides` entry (`spec`, `at`, and the object form of `tls`) stay shared.
+
+- [#729](https://github.com/launchfile/launchfile/pull/729) [`dff6745`](https://github.com/launchfile/launchfile/commit/dff67458457392e6d9b6ab15a2651ebbc2dbb412) Thanks [@launchfile-steward](https://github.com/apps/launchfile-steward)! - `lintLaunch` now prints the unrecognised-`uses` warning once per component when two same-name entries (one shared resource, D-24) declare the same bad use ([#726](https://github.com/launchfile/launchfile/issues/726)). Before, each entry repeated the identical line. Still warn-only: `valid` and the exit code are unchanged.
+
+- [#677](https://github.com/launchfile/launchfile/pull/677) [`2c7d895`](https://github.com/launchfile/launchfile/commit/2c7d895ea3033f77857b8458c0d095a111787f5e) Thanks [@launchfile-steward](https://github.com/apps/launchfile-steward)! - `lintLaunch` now prints each D-46 resource-vocabulary warning once per component. Before, two entries with the same `name` in one component (one shared resource under D-24) printed the identical warning twice ([#669](https://github.com/launchfile/launchfile/issues/669)). The same warning in two different components still prints once for each component. Still warn-only: `valid` and the exit code are unchanged.
+
 ## 0.13.0
 
 ### Patch Changes

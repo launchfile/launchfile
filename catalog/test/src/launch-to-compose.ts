@@ -12,12 +12,12 @@ import {
   isExpression,
   type ResolverContext,
 } from "../../../sdk/src/resolver.ts";
-import { suppliedAppAddress } from "../../../sdk/src/app-url.ts";
-import { indexOperatorStoragePaths } from "../../../sdk/src/operator-storage.ts";
 import {
-  computeAppProperties,
   httpsOriginSatisfied,
-} from "../../../providers/docker/src/app-url.ts";
+  suppliedAppAddress,
+} from "../../../sdk/src/app-url.ts";
+import { indexOperatorStoragePaths } from "../../../sdk/src/operator-storage.ts";
+import { computeAppProperties } from "../../../providers/docker/src/app-url.ts";
 import { unsuppliedRequiredEnv } from "../../../sdk/src/env.ts";
 import type {
   NormalizedLaunch,
@@ -864,7 +864,7 @@ function translateHealth(
   health: NormalizedHealth,
   provides?: Provides[],
 ): ComposeHealthcheck {
-  if (health.command) {
+  if (health.command && health.path === undefined) {
     return {
       test: ["CMD-SHELL", health.command],
       interval: health.interval ?? "10s",

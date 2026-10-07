@@ -1,6 +1,8 @@
 category: File Management
 tagline: "Web-based file manager for browsing and managing files"
 homepage: https://filebrowser.org
+test_storage:
+  data: test/data
 test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 11

@@ -18,11 +18,12 @@ export function parseDuration(duration: string): number {
 }
 
 /**
- * Whether a check can run without a port: only a `command` check can. A
- * `path` check and the no-check fallback both poll `http://localhost:<port>`.
+ * Whether a check can run without a port: only a `command`-only check can. A
+ * declared `path` wins over `command` (SPEC.md § health), so any block with a
+ * `path`, and the no-check fallback, poll `http://localhost:<port>`.
  */
 export function healthCheckNeedsPort(health: NormalizedHealth): boolean {
-	return !health.command;
+	return health.path !== undefined || !health.command;
 }
 
 /**
@@ -30,7 +31,7 @@ export function healthCheckNeedsPort(health: NormalizedHealth): boolean {
  * "did not become healthy" needs to know which probe was asked.
  */
 export function describeHealthCheck(health: NormalizedHealth, port: number | undefined): string {
-	if (health.command) return `command \`${redactSecrets(health.command)}\``;
+	if (health.path === undefined && health.command) return `command \`${redactSecrets(health.command)}\``;
 	const host = port === undefined ? "localhost:<unallocated>" : `localhost:${port}`;
 	return `GET http://${host}${health.path ?? "/"}`;
 }
@@ -76,7 +77,7 @@ export async function waitForHealthy(
 
 	while (Date.now() < deadline) {
 		try {
-			if (health.path) {
+			if (health.path !== undefined) {
 				const resp = await fetch(`http://localhost:${port}${health.path}`, {
 					signal: AbortSignal.timeout(checkTimeout),
 				});
