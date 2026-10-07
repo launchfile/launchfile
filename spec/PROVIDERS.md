@@ -213,7 +213,7 @@ local watcher ← emit ← diff() ← fs change ────┘
 - **Sources:** local path, catalog slug, remote URL (with a confirmation prompt for remote, bypassable via `yes`).
 - **Storage:** resolves `$storage.<name>.path` to the bind-mounted container path (D-39).
 - **State:** `DockerState` per slug (compose project/path, allocated ports, source info) under the provider state dir. Checked field by field on load: a malformed key is dropped with a warning naming the state file and the key, every other key is kept, unknown keys survive a load-and-save round trip, and an absent or malformed `ports` map loads as empty. The recorded Launchfile hash is recompared on `up`; a mismatch warns, naming the deployment, and the deploy continues.
-- **Selection:** honors the component selector; the post-`up` summary reports only the started subset.
+- **Selection:** honors the component selector: `compose up` receives the selected set's downward `depends_on` closure (`selectionClosure`, D-41), and the post-`up` summary reports only that subset. The compose file stays whole — `down` and `logs` read the persisted copy later — so under a selector `dryRun` prints it as the full project file and names the start-set beside it: `Selector:`, `Would start:` (the closure, port-less members included) and `Not started:`. A dry run's address lines read "would be reachable at", not "is running at". Without a selector the dry-run header is unchanged.
 
 ### `@launchfile/macos-dev` — source / native
 
