@@ -547,7 +547,7 @@ requires:
 		expect(keys.postgres).toEqual(["host", "port", "user", "password", "name", "url"]);
 	});
 
-	it("keeps the dotted-key → last-segment fallback for such an entry", () => {
+	it("resolves an unregistered multi-segment path empty for such an entry", () => {
 		const { doc } = compose(`
 name: app
 image: acme/app:1
@@ -556,7 +556,7 @@ requires:
     set_env:
       DEEP: $redis.deep.host
 `);
-		expect(doc.services.app!.environment).toEqual({ DEEP: "app-redis" });
+		expect(doc.services.app!.environment).toEqual({ DEEP: "" });
 	});
 });
 

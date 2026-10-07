@@ -1751,6 +1751,7 @@ export function launchToCompose(
 						expr,
 						resourceName,
 						properties,
+						Object.hasOwn(componentContext.uses ?? {}, resourceName),
 					)) {
 						warnings.push(
 							`${componentName}: set_env references ${resourceName}.${prop}, which the supplied resource does not provide — resolved to ""`,
@@ -2109,14 +2110,19 @@ const RESERVED_NAMESPACES = new Set([
 /**
  * The properties a `set_env` expression reads from THIS supplied resource that
  * its property map does not provide. Counted: scoped `$prop` references and
- * `$<resourceName>.<prop>` references; not counted: reserved namespaces, other
- * resources, and any reference carrying a `:-fallback` — the fallback fires
- * instead of the empty resolution this warning exists to flag.
+ * `$<resourceName>.<prop>` references, where `<prop>` is the whole path tail
+ * as one key (`$postgres.deep.host` reads `deep.host`, which resolves `""`
+ * unless the map registers it). Not counted: reserved namespaces, other
+ * resources, a three-or-more-segment reference on a resource that declares
+ * `uses` — that path resolves strictly or throws (D-65 rule 2), never `""` —
+ * and any reference carrying a `:-fallback`, which fires instead of the empty
+ * resolution this warning exists to flag.
  */
 function missingSuppliedRefs(
 	expr: string,
 	resourceName: string,
 	properties: Record<string, string>,
+	declaresUses: boolean,
 ): string[] {
 	const parsed = parseExpression(expr);
 	const refs: Array<{ path: string[]; fallback?: string }> = [];
@@ -2135,11 +2141,12 @@ function missingSuppliedRefs(
 		if (ref.path.length === 1) {
 			prop = ref.path[0];
 		} else if (
-			ref.path.length === 2 &&
+			ref.path.length >= 2 &&
 			ref.path[0] === resourceName &&
-			!RESERVED_NAMESPACES.has(resourceName)
+			!RESERVED_NAMESPACES.has(resourceName) &&
+			(ref.path.length === 2 || !declaresUses)
 		) {
-			prop = ref.path[1];
+			prop = ref.path.slice(1).join(".");
 		}
 		if (
 			prop !== undefined &&
