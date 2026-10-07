@@ -390,10 +390,12 @@ function objectStoreEntrypoint(bucket: string): string[] {
 const OBJECT_STORE_TYPES = new Set(["minio", "s3"]);
 
 /**
- * Why an app name cannot be an S3 bucket name, or null when it can. The app
- * name grammar (`^[a-z][a-z0-9-]*$`, at most 63) already rules out every
- * character S3 rejects; what remains is the length floor and a trailing
- * hyphen.
+ * Why an app name cannot be a bucket name on the MinIO server this provider
+ * runs, or null when it can. The app name grammar (`^[a-z][a-z0-9-]*$`, at
+ * most 63) already rules out every character S3 rejects. This checks the
+ * length floor and a trailing hyphen. AWS also reserves prefixes and suffixes
+ * such as `xn--` and `-s3alias`; the pinned MinIO accepts them, so they are
+ * not checked here.
  */
 function invalidBucketName(name: string): string | null {
 	if (name.length < 3) return "shorter than 3 characters";
