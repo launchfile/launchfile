@@ -15,6 +15,7 @@ import {
 	buildLaunchErrorContext,
 	CERTIFICATE,
 	certificateBindings,
+	httpsOriginSatisfied,
 	indexOperatorStoragePaths,
 	LaunchError,
 	MissingOperatorStoragePathError,
@@ -37,7 +38,6 @@ import { checkPrereqs } from "./prereqs.js";
 import {
 	declaredPrimary,
 	HTTPS_ORIGIN,
-	httpsOriginSatisfied,
 	httpsOriginShortfall,
 	uncoveredOriginUses,
 } from "./https-origin.js";
@@ -65,6 +65,7 @@ import {
 	allocateDbIndexes,
 	getProvisioner,
 	namedDatabases,
+	ResourceRefusedError,
 	uncoveredUses,
 	type ResourceProperties,
 } from "./resources/index.js";
@@ -75,6 +76,7 @@ import { prepareFingerprint } from "./prepare-fingerprint.js";
 import { provisionStorage, storagePaths } from "./storage.js";
 import { HealthGateError, ProcessManager } from "./process-manager.js";
 import { redactSecrets } from "./redact.js";
+import { withConfinementRefusal } from "./safe-path.js";
 import { stopRecordedProcesses } from "./process-stopper.js";
 import { shellScript } from "./shell.js";
 import { parseDuration } from "./bootstrap.js";
@@ -587,6 +589,12 @@ export async function runSourcePrepare(
 }
 
 export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
+	// A write under `.launchfile/` or to `.env.local` that finds a symlink the
+	// repository shipped (safe-path.ts) stops the run with a `Refused:` line.
+	return withConfinementRefusal(() => runUp(opts));
+}
+
+async function runUp(opts: LaunchUpOpts): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 
 	// Publication context (D-58): validated and normalized before anything is
@@ -933,6 +941,12 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		projectDir,
 		databases: namedDatabases(uses[resourceName] ?? []),
 	});
+	// A refusal is recorded by name, the way resourceMap records a success,
+	// so a resource several components share is tried once and named once.
+	// Only a `requires:` refusal stops the run; a `supports:` one is skipped
+	// (D-8), but is still remembered so a later component does not retry it.
+	const refused = new Map<string, ResourceRefusedError>();
+	const refusedRequired = new Set<string>();
 
 	for (const [_compName, component] of Object.entries(launch.components)) {
 		for (const req of component.requires ?? []) {
@@ -942,6 +956,12 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 			if (req.type === HTTPS_ORIGIN) continue;
 			const resourceName = req.name ?? req.type;
 			if (resourceMap[resourceName]) continue; // Already provisioned
+			if (refused.has(resourceName)) {
+				// Already refused, possibly as another component's optional
+				// resource; required here, so it now counts against the run.
+				refusedRequired.add(resourceName);
+				continue;
+			}
 
 			const provisioner = getProvisioner(req.type);
 			if (!provisioner) {
@@ -968,12 +988,26 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 
 			process.stdout.write(`  \u2193 Provisioning ${req.type}...`);
 			const existing = state.resources[resourceName];
-			const result = await provisioner.provision(req, provisionOpts(resourceName), existing);
+			let result: Awaited<ReturnType<typeof provisioner.provision>>;
+			try {
+				result = await provisioner.provision(req, provisionOpts(resourceName), existing);
+			} catch (err) {
+				// A refusal is printed by the provisioner. The resource is
+				// skipped so the remaining ones still provision, and the run
+				// exits non-zero below: a required resource that vanishes under
+				// a zero exit code is the silent success this guards against.
+				if (!(err instanceof ResourceRefusedError)) throw err;
+				console.log(" refused");
+				refused.set(resourceName, err);
+				refusedRequired.add(resourceName);
+				continue;
+			}
 			resourceMap[resourceName] = registerResource(req.type, resourceName, uses, result.properties, indexes);
 			// The indexes ride along in state so `env` answers `db.*` with the
 			// databases the running app was given.
 			state.resources[resourceName] = withRecordedDbIndexes(result.state, indexes);
 			console.log(" done");
+			for (const warning of result.warnings) console.warn(`  Warning: ${warning}`);
 		}
 
 		// Optional supports resources
@@ -982,7 +1016,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 				if (sup.host) continue; // capability, not a backing service (D-44)
 				if (sup.type === HTTPS_ORIGIN) continue; // publication context, step 8
 				const resourceName = sup.name ?? sup.type;
-				if (resourceMap[resourceName]) continue;
+				if (resourceMap[resourceName] || refused.has(resourceName)) continue;
 
 				const provisioner = getProvisioner(sup.type);
 				if (!provisioner) continue;
@@ -1021,11 +1055,24 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 					resourceMap[resourceName] = registerResource(sup.type, resourceName, uses, result.properties, indexes);
 					state.resources[resourceName] = withRecordedDbIndexes(result.state, indexes);
 					console.log(" done");
-				} catch {
+					for (const warning of result.warnings) console.warn(`  Warning: ${warning}`);
+				} catch (err) {
+					if (err instanceof ResourceRefusedError) refused.set(resourceName, err);
 					console.log(" skipped");
 				}
 			}
 		}
+	}
+
+	// A required resource the provisioner refused leaves its component with
+	// nothing to run against, so the run stops here, after every other
+	// resource has had its turn, and names each refusal.
+	if (refusedRequired.size > 0) {
+		console.error(
+			`Refused to provision ${refusedRequired.size === 1 ? "a required resource" : "required resources"}: ` +
+				[...refusedRequired].map((name) => `${name} (${refused.get(name)?.reason})`).join("; "),
+		);
+		process.exit(1);
 	}
 
 	// 7. Allocate ports
@@ -1138,12 +1185,10 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		}
 
 		if (isSingleComponent) {
-			await writeEnvFile(join(projectDir, ".env.local"), env);
+			await writeEnvFile(projectDir, [".env.local"], env);
 			console.log(`  \u2193 Wiring environment variables... done (${Object.keys(env).length} vars)`);
 		} else {
-			const { mkdir } = await import("node:fs/promises");
-			await mkdir(join(projectDir, ".launchfile", "env"), { recursive: true, mode: 0o700 });
-			await writeEnvFile(join(projectDir, ".launchfile", "env", `${name}.env`), env);
+			await writeEnvFile(projectDir, [".launchfile", "env", `${name}.env`], env);
 			console.log(`  \u2193 Wiring ${name} environment... done (${Object.keys(env).length} vars)`);
 		}
 	}
@@ -1156,7 +1201,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 
 	if (opts.dryRun) {
 		console.log("\n[dry-run] Would now run build, release, and start commands.");
-		printSummary(launch.name, componentPorts, state);
+		printSummary(launch.name, componentPorts, state, "would be reachable at");
 		return;
 	}
 
@@ -1294,16 +1339,19 @@ export function componentAddress(
 
 /**
  * The "<component> is running at …" lines `up` prints, one per `ports` key.
+ * `verb` is the phrase between the label and the address; a dry run passes
+ * "would be reachable at" because nothing has started.
  * Pure, so the placement of the supplied URL is testable without a launch.
  */
 export function summaryLines(
 	appName: string,
 	ports: Record<string, number>,
 	publication?: PrintedPublication,
+	verb = "is running at",
 ): string[] {
 	return Object.entries(ports).map(([name, port]) => {
 		const label = name === "default" ? appName : name;
-		return `  ${label} is running at ${componentAddress(name, port, publication)}`;
+		return `  ${label} ${verb} ${componentAddress(name, port, publication)}`;
 	});
 }
 
@@ -1321,15 +1369,20 @@ function printSummary(
 	appName: string,
 	ports: Record<string, number>,
 	publication: PrintedPublication,
+	verb?: string,
 ): void {
 	console.log("");
-	for (const line of summaryLines(appName, ports, publication)) {
+	for (const line of summaryLines(appName, ports, publication, verb)) {
 		console.log(line);
 	}
 	console.log("\n  Press Ctrl+C to stop all processes.");
 }
 
 export async function launchDown(opts: { destroy?: boolean; projectDir?: string } = {}): Promise<void> {
+	return withConfinementRefusal(() => runDown(opts));
+}
+
+async function runDown(opts: { destroy?: boolean; projectDir?: string }): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 	const state = await loadState(projectDir);
 	if (!state) {
@@ -1424,6 +1477,10 @@ export async function launchStatus(opts: { projectDir?: string } = {}): Promise<
 }
 
 export async function launchEnv(opts: { component?: string; projectDir?: string } = {}): Promise<void> {
+	return withConfinementRefusal(() => runEnv(opts));
+}
+
+async function runEnv(opts: { component?: string; projectDir?: string }): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 
 	const launchfileContent = await readFile(join(projectDir, "Launchfile"), "utf8");
