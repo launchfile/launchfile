@@ -217,6 +217,17 @@ describe("selectorRefusal (D-41, #232)", () => {
 		expect(singular?.[0]).toContain("--component limits `bootstrap` to a single component");
 	});
 
+	it("names --components when both spellings appear, whatever the argv order", () => {
+		for (const argv of [
+			["down", "--components", "web", "--component", "api"],
+			["down", "--component", "api", "--components", "web"],
+			["status", "--component=api", "--components=web"],
+		]) {
+			const lines = selectorRefusal(argv, "down", "x");
+			expect(lines?.[0]).toMatch(/^--components selects/);
+		}
+	});
+
 	it("stays out of the way when no selector is given", () => {
 		expect(selectorRefusal(["down", "--destroy"], "down", "x")).toBeUndefined();
 		expect(selectorRefusal(["status"], "status", "x")).toBeUndefined();
