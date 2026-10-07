@@ -137,6 +137,25 @@ export async function handleUp(
 
 	const upTarget = resolveUpTarget(target);
 	const provider = await detectProvider({ docker: flags.docker, native: flags.native });
+
+	// The native provider launches a directory, and only a local target has
+	// one. Falling back to the working directory would launch whatever
+	// Launchfile sits there and record it under the target the operator typed —
+	// state adopted from a different source, which D-55 rule 3 forbids.
+	// Refusing is D-55's floor. The key is the missing directory, not the
+	// target kind, so URL targets and any kind added later fail closed too.
+	// It runs before the index is read, so a refused command writes no row.
+	if (provider === "macos" && upTarget.dir === undefined) {
+		const kind = upTarget.type === "url" ? "a URL" : "a catalog slug";
+		console.error(
+			`The native provider launches a directory; "${upTarget.value}" is ${kind}.`,
+		);
+		console.error(
+			`Use the Docker provider (launchfile up ${upTarget.value} --docker), or run --native from the app's own directory.`,
+		);
+		process.exit(1);
+	}
+
 	const indexDir = deps.indexDir;
 	const recordDir = deps.recordDir ?? errorsDir();
 
