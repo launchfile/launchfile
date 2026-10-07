@@ -11,9 +11,11 @@ provides:
     port: 80
     exposed: true
 requires:
+  # Matomo splits the host value into host and port (plugins/Installation/FormDatabaseSetup.php:169-172);
+  # no separate port variable is read (:100).
   - type: mariadb
     set_env:
-      MATOMO_DATABASE_HOST: $host
+      MATOMO_DATABASE_HOST: "${host}:${port}"
       MATOMO_DATABASE_USERNAME: $user
       MATOMO_DATABASE_PASSWORD: $password
       MATOMO_DATABASE_DBNAME: $name

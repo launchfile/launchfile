@@ -20,6 +20,9 @@ bun run src/test-app.ts memos --keep
 # Test all apps in a tier
 bun run src/test-all.ts --tier 0
 
+# Regenerate the README app tables from the directories
+bun run build-index
+
 # Static checks only — schema + image-reference policy, nothing pulled or run
 bun run validate-catalog
 
@@ -42,13 +45,38 @@ warnings are not evaluated.
 
 ## Tiers
 
-| Tier | Description | Backing services |
-|------|-------------|-----------------|
-| 0 | Zero dependencies | None |
-| 1 | Postgres only | postgres |
-| 2 | Mixed databases | postgres, redis, mongodb, mysql |
-| 3 | Multi-component | Multiple images per app |
-| 4 | Complex (3+ components) | Multiple services + databases |
+Tiers are derived from each Launchfile (`tierOf` in `src/build-index.ts`), not listed
+by hand. Every directory under `catalog/{apps,drafts}/` runs, except the ones in
+`SKIPPED` (same file), which need something the harness cannot supply (host access, a
+GPU, a claim token).
+
+| Tier | Description | Rule |
+|------|-------------|------|
+| 0 | Zero dependencies | One component, no backing services |
+| 1 | Postgres only | One component, requires only `postgres` |
+| 2 | Mixed backing services | One component, any other set of required services |
+| 3 | Multi-component | Two components |
+| 4 | Complex | Three or more components |
+
+`https-origin` and host-capability requirements do not affect the tier. The harness
+cannot stand up a public HTTPS origin (a backing service under D-60), and host
+capabilities are granted or refused, not provisioned (D-53).
+
+## Catalog index
+
+`src/build-index.ts` rewrites the Tested Apps and Proposed Apps tables in
+`catalog/README.md` between their `BEGIN GENERATED` / `END GENERATED` markers, from the
+directories themselves: category and tagline from `metadata.yaml` (the Launchfile
+`description` when there is no tagline), services from every component's
+`requires[].type`, and gaps from the open `### G-N` entries in `catalog/GAPS.md`.
+
+```bash
+bun run build-index           # rewrite catalog/README.md
+bun run build-index --check   # exit 1 if catalog/README.md is stale
+```
+
+`src/build-index.test.ts` makes the same comparison, so `bun run test` fails on a stale
+table.
 
 ## What it does
 
@@ -93,6 +121,30 @@ guesses a value from a variable's name; a required variable with no `test_env:`
 entry **fails the app's test run by name**, before any image is pulled. If a
 value belongs in the Launchfile rather than in a fixture, give it a `default:`
 or a `generator:` instead.
+
+### `test_storage:` — the harness's operator channel for volumes
+
+A volume marked `content: operator` (D-50) holds content only a person can
+supply, so the provider binds a directory the operator passes at launch or
+refuses the component — it never starts the app over an empty directory. The
+harness is an operator, so it supplies that directory from a `test_storage:`
+block you write by hand:
+
+```yaml
+test_storage:
+  config: test/config
+```
+
+The key is the volume name (`<component>.<volume>` when the bare name is
+ambiguous). The value is a path **relative to the app's directory**; the
+harness resolves it to an absolute host path before the translator sees it, so
+no host path ever enters the `Launchfile` or `metadata.yaml`. Commit the
+fixture. A marked volume with no `test_storage:` entry — or one whose path is
+not readable — **fails the app's test run by name**, before any image is
+pulled, and the same check runs across every app in `catalog/apps/` in
+`launch-to-compose.test.ts`. A `test_storage:` key that matches no
+`content: operator` volume is ignored with a warning, so a misspelled volume
+name surfaces as the unbound volume it left behind, not as a silent success.
 
 ### `known_issues:` — why an app still does not come up
 

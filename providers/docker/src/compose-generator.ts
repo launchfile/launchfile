@@ -8,16 +8,20 @@
 
 import { resolve as resolvePath } from "node:path";
 import {
+	allocateDbIndexes,
 	AT_APP_HOST,
 	type AtDeclaration,
 	atDeclarations,
 	atEntryLabel,
+	checkVersionRange,
+	type DbIndexes,
 	effectiveListener,
 	endpointProperties,
 	httpsOriginSatisfied,
 	indexOperatorStoragePaths,
 	isExpression,
 	appEndpointReferences,
+	namedDatabase,
 	type NormalizedEnvVar,
 	type NormalizedHealth,
 	type NormalizedLaunch,
@@ -32,19 +36,15 @@ import {
 	unsuppliedRequiredEnv,
 	useKeys,
 } from "@launchfile/sdk";
-import { intersects, subset, validRange } from "semver";
 import {
-	allocateDbIndexes,
 	coverUse,
-	type DbIndexes,
-	namedDatabase,
 	namedDatabases,
 	uncoveredProvisionedUses,
 	uncoveredSuppliedUses,
 	usePropertyKeys,
 	withCoveredUses,
 } from "./resource-uses.js";
-import { stringify } from "yaml";
+import { Scalar, stringify } from "yaml";
 import {
 	computeAppContext,
 	HTTPS_ORIGIN,
@@ -137,6 +137,14 @@ function generatePort(): string {
 	const limit = Math.floor(0x1_0000_0000 / range) * range;
 	while (buf[0]! >= limit) crypto.getRandomValues(buf);
 	return String(10_000 + (buf[0]! % range));
+}
+
+// Forces double quotes on an emitted scalar. Compose values that are YAML 1.1
+// booleans (`no`, `yes`, `on`, `off`) round-trip as strings only when quoted.
+function quotedScalar(value: string): Scalar<string> {
+	const scalar = new Scalar(value);
+	scalar.type = Scalar.QUOTE_DOUBLE;
+	return scalar;
 }
 
 // --- requires.config handling ---
@@ -285,37 +293,40 @@ function checkVersionConstraint(
 	const key = req.name ?? req.type;
 	const quoted = JSON.stringify(declared);
 
-	if (validRange(declared) === null) {
-		warnings.push(
-			`requires[${key}]: declared version ${quoted} is not a valid semver range — ` +
-				`this provider cannot check it against ${image}.`,
-		);
-		return;
+	switch (checkVersionRange(declared, tagVersionRange(image))) {
+		case "satisfied":
+			return;
+		case "invalid":
+			warnings.push(
+				`requires[${key}]: declared version ${quoted} is not a valid semver range — ` +
+					`this provider cannot check it against ${image}.`,
+			);
+			return;
+		case "unknown": {
+			const tag = /:([^/:]+)$/.exec(image)?.[1];
+			const why =
+				tag === undefined || tag === "latest"
+					? "whose version is not fixed"
+					: `whose tag ${JSON.stringify(tag)} names no semver version`;
+			warnings.push(
+				`requires[${key}]: declared version ${quoted} cannot be checked — this provider provisions ` +
+					`${image}, ${why}, and does not select versions.`,
+			);
+			return;
+		}
+		case "unsatisfied":
+			warnings.push(
+				`requires[${key}]: declared version ${quoted} is not satisfied — this provider provisions the ` +
+					`fixed image ${image} and does not select versions.`,
+			);
+			return;
+		case "undecidable":
+			warnings.push(
+				`requires[${key}]: declared version ${quoted} cannot be checked against the fixed image ${image} — ` +
+					`this provider does not select versions.`,
+			);
+			return;
 	}
-
-	const tagRange = tagVersionRange(image);
-	if (tagRange === undefined) {
-		warnings.push(
-			`requires[${key}]: declared version ${quoted} cannot be checked — this provider provisions ` +
-				`${image}, whose version is not fixed, and does not select versions.`,
-		);
-		return;
-	}
-
-	if (subset(tagRange, declared)) return;
-
-	if (!intersects(tagRange, declared)) {
-		warnings.push(
-			`requires[${key}]: declared version ${quoted} is not satisfied — this provider provisions the ` +
-				`fixed image ${image} and does not select versions.`,
-		);
-		return;
-	}
-
-	warnings.push(
-		`requires[${key}]: declared version ${quoted} cannot be checked against the fixed image ${image} — ` +
-			`this provider does not select versions.`,
-	);
 }
 
 /**
@@ -628,7 +639,11 @@ function createBackingServices(
 			const accessKey = getPassword("minio-access");
 			const secretKey = getPassword("minio-secret");
 			return {
-				image: "minio/minio:latest",
+				// MinIO publishes no community images (minio/minio is gone).
+				// pgsty/minio is a maintained community fork of MinIO: same
+				// MINIO_ROOT_* env, `server /data`, and /minio/health/live. It
+				// publishes only RELEASE tags, so the pin is an exact release.
+				image: "pgsty/minio:RELEASE.2026-08-04T00-00-00Z",
 				// Matches the `server /data` command below.
 				dataPath: "/data",
 				environment: {
@@ -663,7 +678,11 @@ function createBackingServices(
 			const accessKey = getPassword("s3-access");
 			const secretKey = getPassword("s3-secret");
 			return {
-				image: "minio/minio:latest",
+				// MinIO publishes no community images (minio/minio is gone).
+				// pgsty/minio is a maintained community fork of MinIO: same
+				// MINIO_ROOT_* env, `server /data`, and /minio/health/live. It
+				// publishes only RELEASE tags, so the pin is an exact release.
+				image: "pgsty/minio:RELEASE.2026-08-04T00-00-00Z",
 				// Matches the `server /data` command below.
 				dataPath: "/data",
 				environment: {
@@ -1011,6 +1030,13 @@ export interface ComposeResult {
 	 */
 	healthchecks: Record<string, boolean>;
 	/**
+	 * Compose service names whose `restart` resolves to `no` or `on-failure`:
+	 * under either policy an exit 0 is the end state, not a crash (D-70). The
+	 * health gate passes such a service once it has exited 0, where every other
+	 * service must still be running.
+	 */
+	mayExit: string[];
+	/**
 	 * `required:` variables that arrived from neither the Launchfile nor
 	 * `opts.operatorEnv` (D-52, PROVIDERS.md §10 rule 8). Their keys are ABSENT
 	 * from the emitted compose — never `""`, never a substitute.
@@ -1079,6 +1105,7 @@ export function launchToCompose(
 	const generatedEnv = opts.generatedEnv ?? {};
 	const ports: Record<string, number> = {};
 	const componentServices: Record<string, string> = {};
+	const mayExit: string[] = [];
 	const unsuppliedRequired: UnsuppliedRequiredVar[] = [];
 	const endpoints: Record<string, StateEndpoint> = {};
 	const storageBinds: StorageBind[] = [];
@@ -1444,8 +1471,14 @@ export function launchToCompose(
 		}
 
 		if (component.schedule) {
+			// The restart clause is only true when the provider chose the policy.
+			// With an explicit `restart:` the author owns it, and claiming
+			// otherwise would make the warning false.
+			const restartClause = component.restart
+				? ""
+				: '; it runs once with `restart: "no"`, so the command is not re-run on exit';
 			warnings.push(
-				`${componentName}: declares a schedule (\`${component.schedule}\`) — this provider will not run it on a timer; if the component does not schedule itself, the job will not run`,
+				`${componentName}: declares a schedule (\`${component.schedule}\`) — this provider will not run it on a timer${restartClause}; if the component does not schedule itself, the job will not run`,
 			);
 		}
 
@@ -1808,6 +1841,10 @@ export function launchToCompose(
 		)) {
 			const supplied = opts.operatorEnv?.[key];
 			if (supplied !== undefined) {
+				// Registered on arrival, sensitive or not: the operator channel is
+				// credential material this provider never minted, so nothing else
+				// can have registered it before a capture sees it (D-52, D-18).
+				registerSuppliedEnv({ [key]: supplied });
 				env[key] = supplied;
 				continue;
 			}
@@ -1828,10 +1865,10 @@ export function launchToCompose(
 			}
 		}
 
-		// Register the credential-bearing values this provider did not mint —
-		// author-declared `sensitive: true` literals (D-18) and anything the
-		// operator supplied (D-52) — before any of them can reach a log line, an
-		// echoed command, or a captured failure record (CWE-532).
+		// Register the author-declared `sensitive: true` literals this provider
+		// did not mint (D-18) before any of them can reach a log line, an echoed
+		// command, or a captured failure record (CWE-532). Operator-supplied
+		// values were registered above, as they arrived (D-52).
 		registerSensitiveEnv(component.env, env);
 
 		if (Object.keys(env).length > 0) {
@@ -1892,11 +1929,16 @@ export function launchToCompose(
 			}
 		}
 
-		if (component.restart) {
-			service.restart = component.restart;
-		} else {
-			service.restart = "unless-stopped";
-		}
+		// A component carrying `schedule:` declares a one-shot job body, not a
+		// daemon. `unless-stopped` re-runs that body on every clean exit, so the
+		// job repeats in a backoff loop instead of running once (D-70). An
+		// explicit `restart:` always wins — a self-scheduling daemon stays
+		// authorable.
+		const restart =
+			component.restart ?? (component.schedule ? "no" : "unless-stopped");
+		// `no` is quoted: a YAML 1.1 loader reads the bare token as boolean false.
+		service.restart = restart === "no" ? quotedScalar("no") : restart;
+		if (restart === "no" || restart === "on-failure") mayExit.push(serviceName);
 
 		services[serviceName] = service;
 		componentServices[componentName] = serviceName;
@@ -1970,6 +2012,7 @@ export function launchToCompose(
 				service.healthcheck !== undefined,
 			]),
 		),
+		mayExit,
 		unsuppliedRequired,
 		storageBinds,
 		unboundOperatorVolumes,
@@ -2275,7 +2318,7 @@ function translateHealth(
 	health: NormalizedHealth,
 	provides?: { port: number; protocol: string }[],
 ): ComposeHealthcheck {
-	if (health.command) {
+	if (health.command && health.path === undefined) {
 		return {
 			test: ["CMD-SHELL", health.command],
 			interval: health.interval ?? "10s",

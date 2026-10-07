@@ -217,6 +217,17 @@ describe("selectorRefusal (D-41, #232)", () => {
 		expect(singular?.[0]).toContain("--component limits `bootstrap` to a single component");
 	});
 
+	it("names --components when both spellings appear, whatever the argv order", () => {
+		for (const argv of [
+			["down", "--components", "web", "--component", "api"],
+			["down", "--component", "api", "--components", "web"],
+			["status", "--component=api", "--components=web"],
+		]) {
+			const lines = selectorRefusal(argv, "down", "x");
+			expect(lines?.[0]).toMatch(/^--components selects/);
+		}
+	});
+
 	it("stays out of the way when no selector is given", () => {
 		expect(selectorRefusal(["down", "--destroy"], "down", "x")).toBeUndefined();
 		expect(selectorRefusal(["status"], "status", "x")).toBeUndefined();
@@ -536,5 +547,65 @@ describe("launchfile with an unknown long flag (built CLI, #510)", () => {
 	it("passes a declared flag on a verb that does not read it (one allowlist)", () => {
 		const { stderr } = run(["schema", "--url", "https://x.example.com", "--schema-path", "/nope"]);
 		expect(stderr).not.toContain("no such flag");
+	});
+
+	it("prints a flag name containing a newline as one escaped stderr line (#545)", () => {
+		const { stderr, exitCode } = run(["up", ".", "--evil\n✓ deployed"]);
+		expect(exitCode).toBe(1);
+		const [first, second] = stderr.split("\n");
+		expect(first).toBe("no such flag --evil\\n✓ deployed");
+		expect(second).toBe("Run `launchfile --help` for usage.");
+	});
+});
+
+describe("launchfile echoes argv to stderr escaped (built CLI, #545)", () => {
+	const CLI = join(resolve(import.meta.dirname, "..", ".."), "dist", "cli.js");
+
+	function run(cliArgs: string[]): { stdout: string; stderr: string; exitCode: number } {
+		try {
+			const stdout = execFileSync("node", [CLI, ...cliArgs], {
+				encoding: "utf-8",
+				stdio: ["ignore", "pipe", "pipe"],
+			});
+			return { stdout, stderr: "", exitCode: 0 };
+		} catch (err) {
+			const e = err as { stdout?: string; stderr?: string; status?: number };
+			return { stdout: e.stdout ?? "", stderr: e.stderr ?? "", exitCode: e.status ?? 1 };
+		}
+	}
+
+	it("strips an ANSI escape from an unknown flag name", () => {
+		const { stdout, stderr, exitCode } = run(["inspect", "--\x1b[2Jbogus\x1b[31m"]);
+		expect(exitCode).toBe(1);
+		expect(stderr).not.toContain("\x1b");
+		expect(stderr).toContain("no such flag --");
+		expect(stderr).toContain("bogus");
+		expect(stdout).toBe("");
+	});
+
+	it("refuses a bare -- and names the empty flag name", () => {
+		const { stdout, stderr, exitCode } = run(["up", ".", "--"]);
+		expect(exitCode).toBe(1);
+		expect(stderr).toBe(
+			"no such flag: `--` has an empty flag name\nRun `launchfile --help` for usage.\n",
+		);
+		expect(stdout).toBe("");
+	});
+
+	it("prints an unknown command containing a newline as one escaped stderr line", () => {
+		const { stdout, stderr, exitCode } = run(["evil\n✓ deployed"]);
+		expect(exitCode).toBe(1);
+		expect(stderr).toBe(
+			"Unknown command: evil\\n✓ deployed\nRun `launchfile --help` for usage.\n",
+		);
+		expect(stdout).toBe("");
+	});
+
+	it("strips an ANSI escape from an unknown command", () => {
+		const { stderr, exitCode } = run(["\x1b[2Jbogus"]);
+		expect(exitCode).toBe(1);
+		expect(stderr).not.toContain("\x1b");
+		expect(stderr).toContain("Unknown command: ");
+		expect(stderr).toContain("bogus");
 	});
 });

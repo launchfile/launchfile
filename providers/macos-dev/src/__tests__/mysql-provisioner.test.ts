@@ -1,5 +1,5 @@
 import type { NormalizedRequirement } from "@launchfile/sdk";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MysqlProvisioner } from "../resources/mysql.js";
 import type { DestroyOpts, ProvisionOpts } from "../resources/types.js";
 import type { ResourceState } from "../state.js";
@@ -126,22 +126,57 @@ describe("MysqlProvisioner reuses a clean state file", () => {
 });
 
 describe("MysqlProvisioner.destroy", () => {
-	it("skips the drop when the stored identifier is unsafe", async () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("skips the drop and warns once per rejected identifier, without echoing it", async () => {
 		const { commands, deps } = recorder();
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const dbName = "x`; DROP DATABASE victim; -- `";
+		const user = "u'; -- ";
 
 		await new MysqlProvisioner(deps).destroy(
-			state({ dbName: "x`; DROP DATABASE victim; -- `", user: "u'; -- " }),
+			state({ dbName, user }),
 			DESTROY_OPTS,
 		);
 
 		expect(commands).toEqual([]);
+		const warnings = warn.mock.calls.map((args) => args.join(" "));
+		expect(warnings).toEqual([
+			"  ! mysql: left a database in place — its name in state.json is not a safe identifier",
+			"  ! mysql: left the database user in place — its name in state.json is not a safe identifier",
+		]);
+		for (const w of warnings) {
+			expect(w).not.toContain(dbName);
+			expect(w).not.toContain(user);
+			expect(w).not.toContain("s3cret-base64url_value");
+		}
+	});
+
+	it("does not warn when the user is absent and the database is safe", async () => {
+		const { commands, deps } = recorder();
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+		await new MysqlProvisioner(deps).destroy(
+			state({ user: undefined }),
+			DESTROY_OPTS,
+		);
+
+		expect(commands).toEqual([
+			"mysql -h localhost -u root -e DROP DATABASE IF EXISTS `launchfile_my_app`;",
+		]);
+		expect(warn).not.toHaveBeenCalled();
 	});
 
 	it("drops the database and user when both are safe", async () => {
 		const { commands, deps } = recorder();
 
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
 		await new MysqlProvisioner(deps).destroy(state(), DESTROY_OPTS);
 
+		expect(warn).not.toHaveBeenCalled();
 		expect(commands).toEqual([
 			"mysql -h localhost -u root -e DROP DATABASE IF EXISTS `launchfile_my_app`;",
 			"mysql -h localhost -u root -e DROP USER IF EXISTS 'launchfile_my_app'@'localhost';",

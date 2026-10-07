@@ -664,10 +664,11 @@ function checkHttpsOrigin(
  * D-63 rule 4: a `provides[].name` is addressable app-wide through
  * `$app.endpoints.<name>.*`, by name alone, so the same name on two
  * components would give one expression two answers. Refused naming both.
+ * The same name twice within one component is refused too, naming both
+ * indexes: `$components.<c>.<name>.*` and the endpoint map are keyed by name,
+ * so the later entry would silently replace the earlier one.
  * Scoped to declaration sites — the top level and each component — the same
- * scopes `checkHttpsOrigin` reads; a name repeated within one component is
- * outside this rule (D-60 rule 2 already reports it where an `https-origin`
- * names it).
+ * scopes `checkHttpsOrigin` reads.
  */
 function checkEndpointNames(
 	launch: Record<string, unknown>,
@@ -693,12 +694,24 @@ function checkEndpointNames(
 	const seen = new Map<string, string>();
 	for (const scope of scopes) {
 		if (!Array.isArray(scope.provides)) continue;
-		const local = new Set<string>();
+		const local = new Map<string, number>();
 		for (const [index, raw] of (scope.provides as ProvidesLike[]).entries()) {
 			if (typeof raw !== "object" || raw === null) continue;
 			const name = raw.name;
-			if (typeof name !== "string" || local.has(name)) continue;
-			local.add(name);
+			if (typeof name !== "string") continue;
+			const first = local.get(name);
+			if (first !== undefined) {
+				ctx.addIssue({
+					code: "custom",
+					path: [...scope.prefix, "provides", index, "name"],
+					message:
+						`\`provides\` entry "${name}" is named twice on ${scope.label}, at ` +
+						`provides[${first}] and provides[${index}]; an endpoint name addresses ` +
+						"exactly one entry, and the later one would replace the earlier (D-63 rule 4). Rename one.",
+				});
+				continue;
+			}
+			local.set(name, index);
 			const owner = seen.get(name);
 			if (owner === undefined) {
 				seen.set(name, scope.label);
