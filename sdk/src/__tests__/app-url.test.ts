@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+	httpsOriginSatisfied,
 	InvalidAppUrlError,
 	normalizeAppUrl,
 	suppliedAppAddress,
@@ -191,6 +192,26 @@ describe("suppliedAppAddress (D-58 rule 2)", () => {
 
 	it("refuses a malformed value instead of returning a degraded address", () => {
 		expect(() => suppliedAppAddress("notes.example.com")).toThrow(
+			InvalidAppUrlError,
+		);
+	});
+});
+
+describe("httpsOriginSatisfied (D-60 rule 5)", () => {
+	it("is satisfied by an https publication URL, normalized or not", () => {
+		expect(httpsOriginSatisfied("https://vw.example.com")).toBe(true);
+		expect(httpsOriginSatisfied("https://vw.example.com/")).toBe(true);
+		expect(httpsOriginSatisfied("https://vw.example.com:8443/app")).toBe(true);
+	});
+
+	it("is not satisfied by an http URL, nor by nothing supplied", () => {
+		expect(httpsOriginSatisfied("http://vw.example.com")).toBe(false);
+		expect(httpsOriginSatisfied(undefined)).toBe(false);
+	});
+
+	it("refuses a malformed URL rather than answering false (D-58 rule 3)", () => {
+		expect(() => httpsOriginSatisfied("not a url")).toThrow(InvalidAppUrlError);
+		expect(() => httpsOriginSatisfied("https://u:p@vw.example.com")).toThrow(
 			InvalidAppUrlError,
 		);
 	});

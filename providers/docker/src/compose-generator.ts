@@ -17,6 +17,7 @@ import {
 	type DbIndexes,
 	effectiveListener,
 	endpointProperties,
+	httpsOriginSatisfied,
 	indexOperatorStoragePaths,
 	isExpression,
 	appEndpointReferences,
@@ -47,7 +48,6 @@ import { Scalar, stringify } from "yaml";
 import {
 	computeAppContext,
 	HTTPS_ORIGIN,
-	httpsOriginSatisfied,
 	publishedEndpointAddresses,
 } from "./app-url.js";
 import {

@@ -15,6 +15,7 @@ import {
 	buildLaunchErrorContext,
 	CERTIFICATE,
 	certificateBindings,
+	httpsOriginSatisfied,
 	indexOperatorStoragePaths,
 	LaunchError,
 	MissingOperatorStoragePathError,
@@ -37,7 +38,6 @@ import { checkPrereqs } from "./prereqs.js";
 import {
 	declaredPrimary,
 	HTTPS_ORIGIN,
-	httpsOriginSatisfied,
 	httpsOriginShortfall,
 	uncoveredOriginUses,
 } from "./https-origin.js";

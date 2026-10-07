@@ -12,12 +12,12 @@ import {
   isExpression,
   type ResolverContext,
 } from "../../../sdk/src/resolver.ts";
-import { suppliedAppAddress } from "../../../sdk/src/app-url.ts";
-import { indexOperatorStoragePaths } from "../../../sdk/src/operator-storage.ts";
 import {
-  computeAppProperties,
   httpsOriginSatisfied,
-} from "../../../providers/docker/src/app-url.ts";
+  suppliedAppAddress,
+} from "../../../sdk/src/app-url.ts";
+import { indexOperatorStoragePaths } from "../../../sdk/src/operator-storage.ts";
+import { computeAppProperties } from "../../../providers/docker/src/app-url.ts";
 import { unsuppliedRequiredEnv } from "../../../sdk/src/env.ts";
 import type {
   NormalizedLaunch,
