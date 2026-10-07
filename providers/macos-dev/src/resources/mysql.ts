@@ -183,16 +183,27 @@ export class MysqlProvisioner implements ResourceProvisioner {
 	}
 
 	async destroy(state: ResourceState, _opts: DestroyOpts): Promise<void> {
-		// Security: state values come from disk (state.json) — validate before SQL interpolation
+		// Security: state values come from disk (state.json) — validate before SQL
+		// interpolation. A rejected value is never echoed: it is attacker-controlled.
 		for (const database of [state.dbName, ...(state.databases ?? [])]) {
-			if (!database || !SAFE_IDENTIFIER.test(database)) continue;
+			if (!database) continue;
+			if (!SAFE_IDENTIFIER.test(database)) {
+				console.warn(
+					"  ! mysql: left a database in place — its name in state.json is not a safe identifier",
+				);
+				continue;
+			}
 			await this.#shell(
 				"mysql",
 				[...mysqlArgs(), "-e", `DROP DATABASE IF EXISTS \`${database}\`;`],
 				{ allowFailure: true },
 			);
 		}
-		if (state.user && SAFE_IDENTIFIER.test(state.user)) {
+		if (state.user && !SAFE_IDENTIFIER.test(state.user)) {
+			console.warn(
+				"  ! mysql: left the database user in place — its name in state.json is not a safe identifier",
+			);
+		} else if (state.user) {
 			await this.#shell(
 				"mysql",
 				[
