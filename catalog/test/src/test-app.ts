@@ -14,6 +14,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from "node
 import { resolve, dirname } from "node:path";
 import { parse, stringify } from "yaml";
 import { readLaunch } from "../../../sdk/src/reader.ts";
+import { collectFailureLogs } from "./failure-logs.ts";
 import { launchToCompose } from "./launch-to-compose.ts";
 
 // --- CLI args ---
@@ -311,9 +312,7 @@ if (upResult.exitCode === 0) {
 // --- Collect logs on failure ---
 
 if (!healthPassed) {
-  console.log("\n--- Container logs (last 30 lines per service) ---");
-  const logs = await run(["docker", "compose", "logs", "--tail", "30"]);
-  console.log(logs.stdout.slice(-2000));
+  console.log(await collectFailureLogs(run));
 }
 
 // --- Report ---
