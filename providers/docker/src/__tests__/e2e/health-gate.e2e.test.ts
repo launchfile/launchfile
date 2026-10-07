@@ -217,7 +217,7 @@ describe.skipIf(!ENABLED)("docker health gate against a real daemon", () => {
 		);
 
 		expect(outcome.ok).toBe(false);
-		expect(outcome.stuck).toContain("lf-e2e-crash-loop");
+		expect(outcome.stuck).toEqual(["lf-e2e-crash-loop"]);
 		// The failure is the crash loop, not a container that never started.
 		expect(await restartCount(app)).toBeGreaterThan(0);
 	}, 60_000);
