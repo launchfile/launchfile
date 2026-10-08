@@ -93,7 +93,7 @@ describe("up --components reaches the docker provider (D-41)", () => {
 		const calls: DockerUpOpts[] = [];
 		await handleUp(
 			projectDir,
-			{ components: ["web", "api"] },
+			{ docker: true, components: ["web", "api"] },
 			{ up: fakeUp(calls), indexDir, recordDir },
 		);
 		expect(calls).toHaveLength(1);
@@ -102,7 +102,7 @@ describe("up --components reaches the docker provider (D-41)", () => {
 
 	it("passes no selector when --components is absent, leaving today's opts unchanged", async () => {
 		const calls: DockerUpOpts[] = [];
-		await handleUp(projectDir, {}, { up: fakeUp(calls), indexDir, recordDir });
+		await handleUp(projectDir, { docker: true }, { up: fakeUp(calls), indexDir, recordDir });
 		expect(calls[0]!.components).toBeUndefined();
 	});
 });
@@ -141,7 +141,7 @@ describe("an unknown component name is the provider's refusal to make", () => {
 		const calls: DockerUpOpts[] = [];
 		await handleUp(
 			projectDir,
-			{ components: ["nope"] },
+			{ docker: true, components: ["nope"] },
 			{ up: fakeUp(calls), indexDir, recordDir },
 		);
 		expect(calls[0]!.components).toEqual(["nope"]);

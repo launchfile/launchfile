@@ -522,3 +522,91 @@ describe("PostgresProvisioner unnamed entry is unchanged (P-13)", () => {
 		});
 	});
 });
+
+describe("PostgresProvisioner.destroy", () => {
+	const STORED = {
+		type: "postgres",
+		name: "db",
+		brewService: "postgresql",
+		port: 5432,
+		dbName: "launchfile_my_app",
+		user: "launchfile_my_app",
+		password: "s3cret-base64url_value",
+	} as ResourceState;
+	const DESTROY_OPTS = { projectDir: "/tmp/lf-pg-test" };
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("drops the database and role when both are safe, without warning", async () => {
+		const { commands, deps } = recorder();
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+		await new PostgresProvisioner(deps).destroy(STORED, DESTROY_OPTS);
+
+		expect(commands).toEqual([
+			"dropdb -h localhost --if-exists launchfile_my_app",
+			"psql -h localhost postgres -c DROP ROLE IF EXISTS launchfile_my_app;",
+		]);
+		expect(warn).not.toHaveBeenCalled();
+	});
+
+	it("skips the drop and warns once per rejected database and role", async () => {
+		const { commands, deps } = recorder();
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+		await new PostgresProvisioner(deps).destroy(
+			{
+				...STORED,
+				dbName: "x; DROP DATABASE victim; --",
+				user: "u; DROP DATABASE victim; --",
+				databases: ["launchfile_my_app_reports", "y; DROP DATABASE victim"],
+			},
+			DESTROY_OPTS,
+		);
+
+		expect(commands).toEqual([
+			"dropdb -h localhost --if-exists launchfile_my_app_reports",
+		]);
+		expect(warn.mock.calls.map((args) => args.join(" "))).toEqual([
+			"  ! postgres: left a database in place — its name in state.json is not a safe identifier",
+			"  ! postgres: left a database in place — its name in state.json is not a safe identifier",
+			"  ! postgres: left the database role in place — its name in state.json is not a safe identifier",
+		]);
+	});
+
+	it("never echoes the rejected value or the stored password in a warning", async () => {
+		const { deps } = recorder();
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const hostile = "x; DROP DATABASE victim; --";
+
+		await new PostgresProvisioner(deps).destroy(
+			{ ...STORED, dbName: hostile, user: hostile },
+			DESTROY_OPTS,
+		);
+
+		expect(warn).toHaveBeenCalledTimes(2);
+		for (const args of warn.mock.calls) {
+			const line = args.join(" ");
+			expect(line).not.toContain(hostile);
+			expect(line).not.toContain("DROP DATABASE");
+			expect(line).not.toContain(STORED.password);
+		}
+	});
+
+	it("does not warn for an absent user", async () => {
+		const { commands, deps } = recorder();
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+		await new PostgresProvisioner(deps).destroy(
+			{ ...STORED, user: undefined },
+			DESTROY_OPTS,
+		);
+
+		expect(commands).toEqual([
+			"dropdb -h localhost --if-exists launchfile_my_app",
+		]);
+		expect(warn).not.toHaveBeenCalled();
+	});
+});

@@ -182,6 +182,19 @@ export function suppliedAppAddress(appUrl: string): SuppliedAppAddress {
 }
 
 /**
+ * Whether a supplied publication URL satisfies an `https-origin` entry: its
+ * scheme is `https` (D-60 rule 5). Syntactic only — `undefined` (nothing
+ * supplied) and an `http` URL both fail, and no request is made (D-56 rule
+ * 3). One predicate for every provider, so one file is refused under each
+ * (P-5).
+ *
+ * @throws InvalidAppUrlError when `appUrl` is supplied and malformed
+ */
+export function httpsOriginSatisfied(appUrl: string | undefined): boolean {
+	return appUrl !== undefined && suppliedAppAddress(appUrl).scheme === "https";
+}
+
+/**
  * The full `$app.*` set a supplied publication URL determines (D-58 rule 2):
  * `name` plus {@link suppliedAppAddress}. For a provider that resolves the
  * whole set in one step (`@launchfile/macos-dev`).

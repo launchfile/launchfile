@@ -21,11 +21,13 @@ import type { ResourceState } from "../state.js";
 import type {
 	DestroyOpts,
 	ProvisionOpts,
+	ProvisionResult,
 	ResourceProperties,
 	ResourceProvisioner,
 	ShellRunner,
 } from "./types.js";
 import { namedDatabase } from "./uses.js";
+import { serverVersion, versionWarning } from "./version.js";
 
 export type { ShellRunner };
 
@@ -84,7 +86,7 @@ export class PostgresProvisioner implements ResourceProvisioner {
 		req: NormalizedRequirement,
 		opts: ProvisionOpts,
 		existingState?: ResourceState,
-	): Promise<{ properties: ResourceProperties; state: ResourceState }> {
+	): Promise<ProvisionResult> {
 		// Ensure postgres is running
 		if (!(await this.isRunning())) {
 			console.log("  Starting PostgreSQL via brew...");
@@ -113,6 +115,8 @@ export class PostgresProvisioner implements ResourceProvisioner {
 					`Check \`brew services list\` and \`pg_isready\`.`,
 			);
 		}
+
+		const versionWarnings = req.version ? await this.#versionWarnings(req) : [];
 
 		// Determine database and user names
 		const resourceName = req.name ?? req.type;
@@ -246,20 +250,47 @@ export class PostgresProvisioner implements ResourceProvisioner {
 			...(databases.length > 0 ? { databases } : {}),
 		};
 
-		return { properties, state };
+		return { properties, state, warnings: versionWarnings };
+	}
+
+	/** The `requires[].version` report, against the version the server reports. */
+	async #versionWarnings(req: NormalizedRequirement): Promise<string[]> {
+		const result = await this.#shell(
+			"psql",
+			[...psqlArgs(DEFAULT_PORT, "postgres"), "-tAc", "SHOW server_version"],
+			{ allowFailure: true, silent: true },
+		);
+		const running = result.exitCode === 0 ? serverVersion(result.stdout) : undefined;
+		const warning = versionWarning(
+			req,
+			`the PostgreSQL server on ${DEFAULT_HOST}:${DEFAULT_PORT}`,
+			running,
+		);
+		return warning ? [warning] : [];
 	}
 
 	async destroy(state: ResourceState, _opts: DestroyOpts): Promise<void> {
-		// Security: state values come from disk (state.json) — validate before SQL interpolation
+		// Security: state values come from disk (state.json) — validate before SQL
+		// interpolation. A rejected value is never echoed: it is attacker-controlled.
 		for (const database of [state.dbName, ...(state.databases ?? [])]) {
-			if (!database || !SAFE_IDENTIFIER.test(database)) continue;
+			if (!database) continue;
+			if (!SAFE_IDENTIFIER.test(database)) {
+				console.warn(
+					"  ! postgres: left a database in place — its name in state.json is not a safe identifier",
+				);
+				continue;
+			}
 			await this.#shell(
 				"dropdb",
 				["-h", DEFAULT_HOST, "--if-exists", database],
 				{ allowFailure: true },
 			);
 		}
-		if (state.user && SAFE_IDENTIFIER.test(state.user)) {
+		if (state.user && !SAFE_IDENTIFIER.test(state.user)) {
+			console.warn(
+				"  ! postgres: left the database role in place — its name in state.json is not a safe identifier",
+			);
+		} else if (state.user) {
 			await this.#shell(
 				"psql",
 				[

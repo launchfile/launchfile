@@ -1,3 +1,6 @@
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import {
 	buildResolverContext,
@@ -5,10 +8,13 @@ import {
 	resolveComponentEnv,
 	resolveGenerators,
 	generateSecrets,
+	writeAllEnvFiles,
+	writeEnvFile,
 } from "../env-writer.js";
 import { readLaunch, resolveExpression } from "@launchfile/sdk";
 import type { NormalizedComponent, NormalizedLaunch, Secret } from "@launchfile/sdk";
 import type { ResourceProperties } from "../resources/types.js";
+import { ConfinementRefusal } from "../safe-path.js";
 import { storagePaths } from "../storage.js";
 
 const NO_APP: Record<string, string | number> = {};
@@ -605,5 +611,89 @@ describe("env-level generator preservation (D-49, #186)", () => {
 
 		const second = await run();
 		expect(second).toEqual(first); // both stable across runs
+	});
+});
+
+describe("env file modes (#683, CWE-276)", () => {
+	async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
+		const dir = await mkdtemp(join(tmpdir(), "launchfile-env-writer-"));
+		try {
+			return await fn(dir);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	}
+	const mode = async (path: string) => (await stat(path)).mode & 0o777;
+
+	const TWO_COMPONENTS = readLaunch(`version: launch/v1
+name: app
+components:
+  web:
+    env:
+      WEB_SECRET: { default: hunter2 }
+    commands: { start: run-web }
+  worker:
+    env:
+      WORKER_SECRET: { default: hunter3 }
+    commands: { start: run-worker }
+`);
+
+	it("writeEnvFile tightens a pre-existing .env.local left at 0o644 to 0o600", async () => {
+		await withTempDir(async (dir) => {
+			const file = join(dir, ".env.local");
+			await writeFile(file, "OLD=value\n");
+			// Loosen with an explicit chmod — never via a `mode` option, which
+			// the runner's umask can mask so the setup proves nothing (#410).
+			await chmod(file, 0o644);
+			expect(await mode(file)).toBe(0o644);
+
+			await writeEnvFile(dir, [".env.local"], { TOKEN: "s3cret" });
+
+			expect(await mode(file)).toBe(0o600);
+			const content = await readFile(file, "utf8");
+			expect(content).toContain("TOKEN=s3cret");
+			expect(content).not.toContain("OLD=value");
+		});
+	});
+
+	it("writeEnvFile refuses when the project directory is missing and leaves nothing behind", async () => {
+		await withTempDir(async (dir) => {
+			const missing = join(dir, "missing");
+			await expect(writeEnvFile(missing, [".env.local"], { A: "b" })).rejects.toThrow(
+				ConfinementRefusal,
+			);
+			await expect(stat(missing)).rejects.toThrow();
+		});
+	});
+
+	it("writeAllEnvFiles tightens a pre-existing .launchfile/env left at 0o755 and its files at 0o644", async () => {
+		await withTempDir(async (dir) => {
+			const envDir = join(dir, ".launchfile", "env");
+			await mkdir(envDir, { recursive: true });
+			await chmod(envDir, 0o755);
+			await writeFile(join(envDir, "web.env"), "OLD=1\n");
+			await chmod(join(envDir, "web.env"), 0o644);
+			expect(await mode(envDir)).toBe(0o755);
+			expect(await mode(join(envDir, "web.env"))).toBe(0o644);
+
+			const context = buildResolverContext({}, { web: 3000, worker: 3001 }, {}, NO_APP);
+			await writeAllEnvFiles(TWO_COMPONENTS, context, {}, { web: 3000, worker: 3001 }, dir, {});
+
+			expect(await mode(envDir)).toBe(0o700);
+			expect(await mode(join(envDir, "web.env"))).toBe(0o600);
+			expect(await mode(join(envDir, "worker.env"))).toBe(0o600);
+			expect(await readFile(join(envDir, "web.env"), "utf8")).toContain("WEB_SECRET=hunter2");
+		});
+	});
+
+	it("writeAllEnvFiles creates .launchfile/env at 0o700 without ensureDirs having run", async () => {
+		await withTempDir(async (dir) => {
+			const context = buildResolverContext({}, { web: 3000, worker: 3001 }, {}, NO_APP);
+			await writeAllEnvFiles(TWO_COMPONENTS, context, {}, { web: 3000, worker: 3001 }, dir, {});
+
+			const envDir = join(dir, ".launchfile", "env");
+			expect(await mode(envDir)).toBe(0o700);
+			expect(await mode(join(envDir, "worker.env"))).toBe(0o600);
+		});
 	});
 });

@@ -36,6 +36,10 @@ launchfile inspect path/to/Launchfile
 launchfile schema
 ```
 
+The CLI refuses any long flag it does not declare: it prints `Unknown flag: --<name>` to stderr and exits 1 before running anything, rather than ignoring the flag. `--schema-path` without a value exits 1 the same way.
+
+`npx launchfile` runs the separate `launchfile` package, not this CLI. This CLI is the `@launchfile/sdk/cli` export (`dist/cli.js`).
+
 ### Global flags
 
 - `--no-color` — Disable colored output (also respects `NO_COLOR` env var)
@@ -172,6 +176,7 @@ inside the deployment.
 | `appEndpointReferences(launch)` | Every `$app.endpoints…` reference in the file's `env:` defaults and `set_env:` values, in declaration order — so a provider can warn only about the endpoints the app actually asks for |
 | `APP_ENDPOINT_PROPERTIES` | The properties `$app.endpoints.<name>.*` addresses: the standard `$app.*` set (D-33, D-35) less `name` |
 | `UNPUBLISHED_APP_ENDPOINT` | The answer for an endpoint the provider publishes no address for (D-63 rule 4) — every property `""`, degrading as an unknown `$app.*` property does (L-4) |
+| `REFUSED_PRIMARY_ADDRESS` | The `$app.*` address of a primary whose component is refused (D-72): `UNPUBLISHED_APP_ENDPOINT` with `tls` reading `"false"`, so a literal on/off flag still receives a boolean. One object for every provider (P-5) |
 
 ### Publication context (D-58)
 
@@ -183,6 +188,7 @@ routing is owned upstream. A malformed value is refused, never degraded.
 | `normalizeAppUrl(value)` | Validate and normalize a supplied publication URL → the WHATWG serialization with a lone root path dropped. Idempotent; throws `InvalidAppUrlError` on anything but an absolute `http`/`https` URL with no userinfo, query, or fragment |
 | `suppliedAppAddress(appUrl)` | The address a supplied URL determines (D-58 rule 2): `{ host, port, url, authority, scheme, tls }` — the `$app.*` set less `name` |
 | `suppliedAppProperties(name, appUrl)` | `name` plus `suppliedAppAddress`, for a provider resolving the whole `$app.*` set in one step |
+| `httpsOriginSatisfied(appUrl)` | Whether a supplied URL satisfies an `https-origin` entry (D-60 rule 5): its scheme is `https`. Syntactic only — `undefined` and an `http` URL both fail; a malformed URL throws `InvalidAppUrlError`. One predicate for every provider (P-5) |
 | `InvalidAppUrlError` | Thrown for a refused `appUrl` (D-58 rule 3). The constructor masks userinfo in the displayed value, so no refusal path can echo an embedded credential (D-18, CWE-532) |
 
 ### Listeners and certificates (D-61)
@@ -216,6 +222,9 @@ addresses.
 | `useKeys(uses)` | The use keys of a `uses` list, in declaration order |
 | `parseUseKey(key)` | Split a use key back into `{ use, name? }` |
 | `formatUseKey(key)` | The spelling diagnostics use: `db` for a bare key, `db: cache` for a named one |
+| `allocateDbIndexes(launch)` | One numbered redis database per `db` use key, app-wide, keyed by resource name — the allocation every provider applies (D-65): blocks in the order of each resource's first `db`-declaring entry, `requires` before `supports`, the bare `db` first and named ones in name order |
+| `namedDatabase(instance, name)` | The database a named `database` use gets on a SQL server: `<instance>_<name>`, hyphens as underscores |
+| `withDatabasePath(url, database)` | `url` with its path replaced by `/<database>`, query and fragment kept |
 | `isRepeatableUse(type, use)` | Whether the standard vocabulary lets `use` occur more than once on one `type` entry; `undefined` outside the registry, where the provider decides (L-4) |
 | `RESOURCE_USE_VOCABULARY` | Standard use vocabulary by resource type → use → the properties it registers. Advisory: lint warns, the schema never rejects |
 | `UnresolvedUseError` | Thrown when a `$<resource>.<use>.<property>` path names a use the entry does not declare, or a property the use does not register. Not softened by `:-default` — the path is wrong, not empty |
@@ -265,6 +274,7 @@ job.
 | `MissingOperatorStoragePathError` | Thrown when an operator-supplied storage path does not exist or is not readable on the host (D-50 row 3); the directory is never created |
 | `collectHostCapabilities(launch)` | Collect the app's requested host capabilities (D-44) as `"name=value (required\|optional)"` strings |
 | `collectOperatorStorage(launch)` | Collect the volumes marked `content: operator` (D-50) as `"component.volume"` strings |
+| `checkVersionRange(declared, provided)` | Classify a `requires[].version` range against the version or version family a provider runs → `satisfied`, `unsatisfied`, `undecidable`, `unknown` (`provided` is `undefined`), or `invalid` (not a node-semver range). Each provider phrases its own report (D-74) |
 | `RESOURCE_PROPERTY_VOCABULARY` | Standard resource property vocabulary by resource type (SPEC.md § Resource Property Vocabulary, D-46) |
 
 ### Source mode

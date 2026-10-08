@@ -7,10 +7,7 @@
     "noUnusedLocals": true,
     "noUncheckedIndexedAccess": true,
     "isolatedModules": true,
-    // The typecheck program also holds src/__tests__, and the cross-provider
-    // $app.* agreement test reads the docker provider's source. Emit layout is
-    // not decided here — tsconfig.build.json pins rootDir to src/.
-    "rootDir": "..",
+    "rootDir": "src",
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,

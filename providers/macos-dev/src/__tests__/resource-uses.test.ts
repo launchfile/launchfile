@@ -343,7 +343,7 @@ describe("env resolution with declared uses", () => {
 		expect(() => resolveComponentEnv(wrong.components.default!, context, map)).toThrow(UnresolvedUseError);
 	});
 
-	it("keeps the last-segment fallback for a resource that declares no uses", () => {
+	it("resolves an unregistered multi-segment path empty for a resource that declares no uses", () => {
 		const plain = mk(`${START}requires:
   - type: redis
     set_env:
@@ -351,7 +351,7 @@ describe("env resolution with declared uses", () => {
 `);
 		const map: Record<string, ResourceProperties> = { redis: { url: "redis://localhost:6379/0", host: "localhost" } };
 		const context = buildResolverContext(map, {}, {}, {}, {}, declaredUses(plain));
-		expect(resolveComponentEnv(plain.components.default!, context, map).env).toEqual({ DEEP: "localhost" });
+		expect(resolveComponentEnv(plain.components.default!, context, map).env).toEqual({ DEEP: "" });
 	});
 });
 
