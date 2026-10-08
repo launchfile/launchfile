@@ -36,6 +36,10 @@ launchfile inspect path/to/Launchfile
 launchfile schema
 ```
 
+The CLI refuses any long flag it does not declare: it prints `Unknown flag: --<name>` to stderr and exits 1 before running anything, rather than ignoring the flag. `--schema-path` without a value exits 1 the same way.
+
+`npx launchfile` runs the separate `launchfile` package, not this CLI. This CLI is the `@launchfile/sdk/cli` export (`dist/cli.js`).
+
 ### Global flags
 
 - `--no-color` — Disable colored output (also respects `NO_COLOR` env var)
