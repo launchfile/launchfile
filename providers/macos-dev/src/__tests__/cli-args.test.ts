@@ -7,9 +7,16 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import { describe, expect, it } from "vitest";
-import { parseComponentsFlag, selectorRefusal } from "../cli-args.js";
+import {
+	parseComponentsFlag,
+	selectorRefusal,
+	upComponentRefusal,
+} from "../cli-args.js";
 
 describe("parseComponentsFlag (D-41)", () => {
 	it("splits a comma-separated value", () => {
@@ -96,6 +103,32 @@ describe("selectorRefusal", () => {
 	});
 });
 
+const UP_REFUSAL = [
+	"--component is not a `launch` flag; `up` selects components with `--components <name>[,<name>…]`.",
+	"Run `launch up --components <name>` instead.",
+] as const;
+
+describe("upComponentRefusal", () => {
+	it("refuses the singular in its bare and inline forms", () => {
+		expect(upComponentRefusal(["up", "--component", "web"])).toEqual(
+			UP_REFUSAL,
+		);
+		expect(upComponentRefusal(["up", "--component=web"])).toEqual(UP_REFUSAL);
+	});
+
+	it("leaves the plural selector to `up`", () => {
+		expect(upComponentRefusal(["up", "--components", "web"])).toBeUndefined();
+		expect(upComponentRefusal(["up", "--components=web"])).toBeUndefined();
+		expect(upComponentRefusal(["up"])).toBeUndefined();
+	});
+
+	it("names no verb `launch` lacks", () => {
+		expect(
+			upComponentRefusal(["up", "--component", "web"])?.join("\n"),
+		).not.toContain("bootstrap");
+	});
+});
+
 /**
  * The dispatch wiring: `cli.ts` must call the refusal before `launchDown` /
  * `launchStatus`. Only a spawned process proves that — importing `cli.ts` runs
@@ -139,6 +172,34 @@ describe("down/status refuse a selector before reaching the provider (spawned CL
 			expect(exitCode, `${verb} ${flags.join(" ")}`).toBe(1);
 			expect(stderr).toContain(`Run \`${verb}\` with no selector.`);
 			expect(stdout).toBe("");
+		}
+	}, 60_000);
+});
+
+/**
+ * `up` must refuse `--component` before `launchUp` runs. The spawn runs in an
+ * empty directory: every `launchUp` path writes to stderr first there (missing
+ * prerequisites, or no Launchfile), so stderr holding exactly the two refusal
+ * lines (Bun colours stderr, so escapes are stripped), with nothing on stdout and nothing written to the directory, means
+ * the provider never started.
+ */
+describe("up refuses --component before reaching the provider (spawned CLI)", () => {
+	const CLI = resolve(import.meta.dirname, "..", "cli.ts");
+
+	it("exits 1 with the refusal and starts nothing", () => {
+		for (const flags of [["--component", "web"], ["--component=web"]]) {
+			const cwd = mkdtempSync(resolve(tmpdir(), "launch-up-component-"));
+			const result = spawnSync("bun", ["run", CLI, "up", ...flags], {
+				cwd,
+				encoding: "utf-8",
+				stdio: ["ignore", "pipe", "pipe"],
+			});
+			expect(result.status, flags.join(" ")).toBe(1);
+			expect(stripVTControlCharacters(result.stderr)).toBe(
+				`${UP_REFUSAL.join("\n")}\n`,
+			);
+			expect(result.stdout).toBe("");
+			expect(readdirSync(cwd)).toEqual([]);
 		}
 	}, 60_000);
 });

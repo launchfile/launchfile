@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * CLI entry point for the macOS dev provider.
  *
@@ -9,8 +10,12 @@
  *   launch env [component]
  */
 
-import { launchUp, launchDown, launchStatus, launchEnv } from "./provider.js";
-import { parseComponentsFlag, selectorRefusal } from "./cli-args.js";
+import {
+	parseComponentsFlag,
+	selectorRefusal,
+	upComponentRefusal,
+} from "./cli-args.js";
+import { launchDown, launchEnv, launchStatus, launchUp } from "./provider.js";
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -30,7 +35,11 @@ function componentsFlag(): string[] | undefined {
 
 /** Exit 1 when the selector reaches a verb that acts on the whole deployment. */
 function refuseSelector(verb: string, action: string): void {
-	const lines = selectorRefusal(args, verb, action);
+	refuseWith(selectorRefusal(args, verb, action));
+}
+
+/** Print a refusal to stderr and exit 1; return when there is none. */
+function refuseWith(lines: readonly string[] | undefined): void {
 	if (lines === undefined) return;
 	for (const line of lines) console.error(line);
 	process.exit(1);
@@ -39,6 +48,7 @@ function refuseSelector(verb: string, action: string): void {
 async function main(): Promise<void> {
 	switch (command) {
 		case "up":
+			refuseWith(upComponentRefusal(args));
 			await launchUp({
 				withOptional: hasFlag("with-optional"),
 				noBuild: hasFlag("no-build"),

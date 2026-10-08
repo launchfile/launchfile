@@ -69,3 +69,23 @@ export function selectorRefusal(
 		`Run \`${verb}\` with no selector.`,
 	] as const;
 }
+
+/**
+ * The refusal `up` owes for the singular `--component`. `up` reads only
+ * `--components`, so accepting the singular would start every component while
+ * the operator named one (D-41). The unified CLI refuses it on `up` (D-67);
+ * this entry point must agree (P-5). The text names `launch` verbs only: this
+ * CLI has no `bootstrap`, the verb the singular limits in the unified CLI.
+ */
+export function upComponentRefusal(
+	args: readonly string[],
+): readonly [string, string] | undefined {
+	const spelled = args.some(
+		(arg) => arg === "--component" || arg.startsWith("--component="),
+	);
+	if (!spelled) return undefined;
+	return [
+		"--component is not a `launch` flag; `up` selects components with `--components <name>[,<name>…]`.",
+		"Run `launch up --components <name>` instead.",
+	] as const;
+}
