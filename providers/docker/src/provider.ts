@@ -145,7 +145,6 @@ export function initOnlyDatabasesWarning(
 }
 
 export interface DockerUpOpts {
-	detach?: boolean;
 	dryRun?: boolean;
 	/** Skip confirmation prompt for remote Launchfiles */
 	yes?: boolean;

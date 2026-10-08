@@ -364,6 +364,20 @@ export class ProcessManager {
 	}
 
 	/**
+	 * Let this session exit while every spawned component keeps running
+	 * (`up --detach`). Each child leads its own process group and writes its
+	 * own log file, so nothing it needs dies with this session; the handle's
+	 * ref is the only thing that keeps the event loop waiting on it. `down`
+	 * reaches the children later through the pids `getRecordedProcesses`
+	 * returns.
+	 */
+	detach(): void {
+		for (const proc of this.processes.values()) {
+			proc.process?.unref();
+		}
+	}
+
+	/**
 	 * Graceful shutdown in reverse dependency order.
 	 */
 	async stopAll(): Promise<void> {

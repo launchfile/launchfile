@@ -109,6 +109,12 @@ function declaredTimeout(timeout: string | undefined, label: string): number | u
 export interface LaunchUpOpts {
 	withOptional?: boolean;
 	noBuild?: boolean;
+	/**
+	 * Return once every component has started instead of staying in the
+	 * foreground. The components keep running in the background with their
+	 * pids recorded in state, so `down` stops them from any shell. No Ctrl+C
+	 * handler is installed.
+	 */
 	detach?: boolean;
 	dryRun?: boolean;
 	projectDir?: string;
@@ -1252,17 +1258,21 @@ async function runUp(opts: LaunchUpOpts): Promise<void> {
 		});
 	}
 
-	// Handle Ctrl+C gracefully
+	// A foreground session stops every component on Ctrl+C. A detached one
+	// installs no handler: `up` returns after launch and `down` stops the
+	// components through the pids recorded below.
 	const finalState = state;
-	process.on("SIGINT", async () => {
-		console.log("\n\nShutting down...");
-		await pm2.stopAll();
-		// Processes are now dead; clear the recorded pids so a later `launch down`
-		// doesn't try to signal stale (and possibly recycled) pids.
-		finalState.processes = {};
-		await saveState(projectDir, finalState);
-		process.exit(0);
-	});
+	if (!opts.detach) {
+		process.on("SIGINT", async () => {
+			console.log("\n\nShutting down...");
+			await pm2.stopAll();
+			// Processes are now dead; clear the recorded pids so a later `launch down`
+			// doesn't try to signal stale (and possibly recycled) pids.
+			finalState.processes = {};
+			await saveState(projectDir, finalState);
+			process.exit(0);
+		});
+	}
 
 	try {
 		await pm2.startAll();
@@ -1300,9 +1310,21 @@ async function runUp(opts: LaunchUpOpts): Promise<void> {
 	console.log(`  \u2713 All components started`);
 
 	// 17. Print summary
-	printSummary(launch.name, componentPorts, state);
+	printSummary(
+		launch.name,
+		componentPorts,
+		state,
+		undefined,
+		opts.detach ? DETACHED_FOOTER : FOREGROUND_FOOTER,
+	);
 	printAtReports(atReports(launch, componentPorts, suppliedAppUrl));
+
+	// The pids are saved above, so the session can let go of the children.
+	if (opts.detach) pm2.detach();
 }
+
+const FOREGROUND_FOOTER = "Press Ctrl+C to stop all processes.";
+const DETACHED_FOOTER = "Running in the background. `launchfile down` stops it.";
 
 /**
  * What a printout reads to place the orchestrator-supplied publication URL
@@ -1370,12 +1392,13 @@ function printSummary(
 	ports: Record<string, number>,
 	publication: PrintedPublication,
 	verb?: string,
+	footer = FOREGROUND_FOOTER,
 ): void {
 	console.log("");
 	for (const line of summaryLines(appName, ports, publication, verb)) {
 		console.log(line);
 	}
-	console.log("\n  Press Ctrl+C to stop all processes.");
+	console.log(`\n  ${footer}`);
 }
 
 export async function launchDown(opts: { destroy?: boolean; projectDir?: string } = {}): Promise<void> {
@@ -1440,12 +1463,6 @@ async function runDown(opts: { destroy?: boolean; projectDir?: string }): Promis
 		console.log("Stopped. Resources are still running (use --destroy to remove them).");
 	}
 }
-
-// --detach is intentionally left as a follow-up: persisting pids (this PR) is
-// the prerequisite for it. With pids now recorded and a working cross-session
-// `down`, detach becomes "spawn detached + unref + don't install the SIGINT
-// foreground loop, then return" — a self-contained change best done separately
-// so the kill-path fix lands reviewable on its own.
 
 export async function launchStatus(opts: { projectDir?: string } = {}): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();

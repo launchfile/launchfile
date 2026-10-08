@@ -204,7 +204,6 @@ export async function handleUp(
 			result = await withFailureRecord(
 				() =>
 					launch(dockerSource, {
-						detach: flags.detach,
 						dryRun: flags.dryRun,
 						name: flags.name,
 						components: flags.components,
