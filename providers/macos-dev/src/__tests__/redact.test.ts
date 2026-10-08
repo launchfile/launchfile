@@ -65,6 +65,70 @@ describe("redactSecrets", () => {
 		expect(performance.now() - t0).toBeLessThan(250);
 	});
 
+	it("masks a password-less userinfo token (#575)", () => {
+		expect(
+			redactSecrets(
+				"https://ghp_abc123@raw.githubusercontent.com/a/b/Launchfile",
+			),
+		).toBe(`https://${REDACTED}@raw.githubusercontent.com/a/b/Launchfile`);
+	});
+
+	it("masks a plain username in userinfo rather than risk a token", () => {
+		expect(redactSecrets("ssh://git@host/x")).toBe(`ssh://${REDACTED}@host/x`);
+	});
+
+	it("masks every query value and keeps every name", () => {
+		expect(redactSecrets("https://h/L?token=abc&v=2")).toBe(
+			`https://h/L?token=${REDACTED}&v=${REDACTED}`,
+		);
+	});
+
+	it("masks a query value behind a masked userinfo in one pass", () => {
+		expect(redactSecrets("https://alice:hunter2@h/L?sig=xyz")).toBe(
+			`https://alice:${REDACTED}@h/L?sig=${REDACTED}`,
+		);
+	});
+
+	it("is idempotent: a second pass leaves what follows the marker alone", () => {
+		const once = `Failed to fetch https://h/L?token=abc: 404 Not Found`;
+		const masked = redactSecrets(once);
+		expect(masked).toBe(
+			`Failed to fetch https://h/L?token=${REDACTED} 404 Not Found`,
+		);
+		const shown = `Failed to fetch ${redactSecrets("https://h/L?token=abc")}: 404 Not Found`;
+		expect(shown).toBe(
+			`Failed to fetch https://h/L?token=${REDACTED}: 404 Not Found`,
+		);
+		expect(redactSecrets(shown)).toBe(shown);
+	});
+
+	it("leaves a query parameter with no `=` and a fragment alone", () => {
+		expect(redactSecrets("https://h/L?debug#token=abc")).toBe(
+			"https://h/L?debug#token=abc",
+		);
+	});
+
+	it("leaves an scp-style remote and a bare URL unchanged", () => {
+		expect(redactSecrets("git@github.com:a/b")).toBe("git@github.com:a/b");
+		expect(redactSecrets("https://host/Launchfile")).toBe(
+			"https://host/Launchfile",
+		);
+	});
+
+	it("stays linear on a long authority that never reaches `@` (CWE-1333)", () => {
+		const hostile = `https://${"a".repeat(80_000)}`;
+		const t0 = performance.now();
+		expect(redactSecrets(hostile)).toBe(hostile);
+		expect(performance.now() - t0).toBeLessThan(250);
+	});
+
+	it("stays linear on a long query that never terminates (CWE-1333)", () => {
+		const hostile = `https://h/L?${"a".repeat(80_000)}`;
+		const t0 = performance.now();
+		expect(redactSecrets(hostile)).toBe(hostile);
+		expect(performance.now() - t0).toBeLessThan(250);
+	});
+
 	it("ignores values too short to be registered safely", () => {
 		registerSecret("abc");
 		expect(redactSecrets("abc def")).toBe("abc def");
