@@ -102,10 +102,45 @@ describe("redactSecrets", () => {
 		expect(redactSecrets(shown)).toBe(shown);
 	});
 
-	it("leaves a query parameter with no `=` and a fragment alone", () => {
-		expect(redactSecrets("https://h/L?debug#token=abc")).toBe(
-			"https://h/L?debug#token=abc",
+	it("leaves a query parameter with no `=` alone", () => {
+		expect(redactSecrets("https://h/L?debug#ref")).toBe(
+			"https://h/L?debug#ref",
 		);
+	});
+
+	it("masks every fragment value and keeps every name (#628)", () => {
+		expect(redactSecrets("https://host/cb#access_token=abc&state=xyz")).toBe(
+			`https://host/cb#access_token=${REDACTED}&state=${REDACTED}`,
+		);
+	});
+
+	it("leaves a D-43 baseline ref fragment unchanged", () => {
+		const branch = "https://github.com/hedgedoc/hedgedoc#develop";
+		const sha = `https://github.com/a/b#${"0123456789abcdef".repeat(2)}01234567`;
+		expect(redactSecrets(branch)).toBe(branch);
+		expect(redactSecrets(sha)).toBe(sha);
+	});
+
+	it("masks a query value and a fragment value in the same URL", () => {
+		expect(redactSecrets("https://h/p?a=1#b=2")).toBe(
+			`https://h/p?a=${REDACTED}#b=${REDACTED}`,
+		);
+	});
+
+	it("is idempotent on a masked fragment", () => {
+		const once = redactSecrets("see https://h/p?a=1#b=2&c and https://x/#t=9");
+		expect(redactSecrets(once)).toBe(once);
+	});
+
+	it("leaves a `#` outside a URL alone", () => {
+		expect(redactSecrets('sh -c "true #a=b"')).toBe('sh -c "true #a=b"');
+	});
+
+	it("stays linear on a long run of URL tokens with no `#` (CWE-1333)", () => {
+		const hostile = "a://".repeat(40_000);
+		const t0 = performance.now();
+		expect(redactSecrets(hostile)).toBe(hostile);
+		expect(performance.now() - t0).toBeLessThan(250);
 	});
 
 	it("leaves an scp-style remote and a bare URL unchanged", () => {

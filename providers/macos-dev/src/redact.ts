@@ -8,10 +8,10 @@
  *    itself at creation/load time; `redactSecrets` then scrubs those literals
  *    out of any string on its way to stdout/stderr or an Error message.
  * 2. A pattern scrub for credentials embedded in URLs
- *    (`scheme://user:pass@host`, `scheme://token@host`, `?key=value`), which
- *    catches secrets that never passed through this provider — e.g. a
- *    connection string written literally in a Launchfile `env:` value and
- *    interpolated into a bootstrap command.
+ *    (`scheme://user:pass@host`, `scheme://token@host`, `?key=value`,
+ *    `#key=value`), which catches secrets that never passed through this
+ *    provider — e.g. a connection string written literally in a Launchfile
+ *    `env:` value and interpolated into a bootstrap command.
  *
  * The registry is process-global on purpose: a command string is assembled in
  * one module and printed in another, so the scrub has to be reachable from the
@@ -119,6 +119,21 @@ const USERINFO_URL = /([a-zA-Z][a-zA-Z0-9+.-]{0,31}:\/\/)([^\s/:@]+)(@)/g;
 // masked with the last value rather than risk a value that ends in it.
 const URL_QUERY = /\?([^\s#?]*)/g;
 
+// `scheme://...#name=value&name=value` — a fragment's values, masked with the
+// same rule as a query (`#access_token=` in an OAuth callback is the usual
+// credential). The trigger is a `#` inside a URL token, never a bare `#`, so a
+// shell comment, a markdown heading, or a CSS colour in diagnostic text is
+// left alone. A fragment with no `=` is kept as it is: that is a D-43 baseline
+// ref (`#develop`, `#<sha>`), not a secret, and masking it would hide which
+// ref failed to fetch.
+//
+// Each URL token is matched once, to whitespace, and split at its first `#` in
+// the callback, so the scan stays linear. A pattern that looks ahead for the
+// `#` (`scheme://[^\s#]*#`) rescans the rest of the token from every `://` in
+// it, which is quadratic on `a://a://a://...` (CWE-1333). Same bounded scheme
+// as the patterns above.
+const URL_TOKEN = /([a-zA-Z][a-zA-Z0-9+.-]{0,31}:\/\/)(\S*)/g;
+
 // A value that already starts with the marker is left alone, so a second
 // pass over the same text (an error message re-scrubbed at a later sink) is a
 // no-op. The first pass consumed everything up to whitespace, so whatever
@@ -150,8 +165,13 @@ export function redactSecrets(text: string): string {
 	}
 	out = out.replace(CREDENTIAL_URL, `$1${REDACTED}$3`);
 	out = out.replace(USERINFO_URL, `$1${REDACTED}$3`);
-	return out.replace(
+	out = out.replace(
 		URL_QUERY,
 		(_match, query: string) => `?${redactQueryValues(query)}`,
 	);
+	return out.replace(URL_TOKEN, (match, scheme: string, rest: string) => {
+		const hash = rest.indexOf("#");
+		if (hash === -1) return match;
+		return `${scheme}${rest.slice(0, hash + 1)}${redactQueryValues(rest.slice(hash + 1))}`;
+	});
 }
