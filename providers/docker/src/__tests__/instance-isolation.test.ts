@@ -20,7 +20,11 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { checkPrereqs } from "../prereqs.js";
 import { allocatePorts } from "../port-allocator.js";
-import { dockerUp, ForeignSourceError } from "../provider.js";
+import {
+	dockerUp,
+	ForeignSourceError,
+	foreignSourceMessage,
+} from "../provider.js";
 import {
 	composeProject,
 	initState,
@@ -302,6 +306,31 @@ describe("foreign-source guard across source types (#240 review blocker)", () =>
 		}
 	});
 
+	it("masks credentials in a recorded source url on the dry-run warning (#575)", async () => {
+		const { createServer: createHttpServer } = await import("node:http");
+		const server = createHttpServer((_req, res) => {
+			res.writeHead(200, { "content-type": "text/yaml" });
+			res.end(LAUNCHFILE);
+		});
+		await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+		const address = server.address() as { port: number };
+		try {
+			const recorded = initState("isotest", "isotest", LAUNCHFILE, {
+				sourceType: "url",
+				sourceUrl: "http://alice:hunter2@other.example/Launchfile",
+			});
+			await saveState("isotest", recorded);
+
+			await dockerUp(`http://127.0.0.1:${address.port}/Launchfile`, { dryRun: true });
+			const printed = errors.join("\n");
+			expect(printed).toContain("already deployed from a different source");
+			expect(printed).not.toContain("hunter2");
+			expect(printed).toContain("http://alice:[REDACTED]@other.example/Launchfile");
+		} finally {
+			await new Promise((resolve) => server.close(resolve));
+		}
+	});
+
 	it("a catalog up over catalog-recorded state proceeds — same source, no warning", async () => {
 		const recorded = initState("ghost", "ghost", "name: ghost\n", {
 			sourceType: "catalog",
@@ -350,5 +379,34 @@ describe("port allocation is seeded per instance (D-55, #275 interaction)", () =
 		expect(a.default).not.toBe(b.default);
 		expect(a.default).not.toBe(28080);
 		expect(b.default).not.toBe(28080);
+	});
+});
+
+describe("foreignSourceMessage masks credentialed sources (#575)", () => {
+	it("masks a user:pass@ url on both the existing and the current source", () => {
+		const message = foreignSourceMessage({
+			slug: "shop",
+			project: "launchfile-shop",
+			existingSource: "https://alice:hunter2@old.example/Launchfile",
+			currentSource: "https://ghp_abc123@new.example/Launchfile?token=xyz",
+			existingIsLocal: false,
+		});
+		expect(message).not.toContain("hunter2");
+		expect(message).not.toContain("ghp_abc123");
+		expect(message).not.toContain("xyz");
+		expect(message).toContain("Existing source: https://alice:[REDACTED]@old.example/Launchfile");
+		expect(message).toContain("This source:     https://[REDACTED]@new.example/Launchfile?token=[REDACTED]");
+	});
+
+	it("carries the masked message on the thrown refusal", () => {
+		const err = new ForeignSourceError({
+			slug: "shop",
+			project: "launchfile-shop",
+			existingSource: "/some/checkout/Launchfile",
+			currentSource: "https://alice:hunter2@new.example/Launchfile",
+			existingIsLocal: true,
+		});
+		expect(err.message).not.toContain("hunter2");
+		expect(err.message).toContain("from its source directory");
 	});
 });

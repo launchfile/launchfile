@@ -3,41 +3,33 @@ version: launch/v1
 name: hoppscotch
 description: "Open-source API development ecosystem"
 
-components:
-  backend:
-    image: hoppscotch/hoppscotch-backend:2026.7.0
-    provides:
-      - protocol: http
-        port: 3170
-    requires:
-      - type: postgres
-        set_env:
-          DATABASE_URL: $url
-    env:
-      JWT_SECRET:
-        generator: secret
-        sensitive: true
-      SESSION_SECRET:
-        generator: secret
-        sensitive: true
-    health: /ping
-    restart: always
+# DATA_ENCRYPTION_KEY has no generator. The backend encrypts stored data with
+# aes-256-cbc and uses the key's raw UTF-8 bytes, so the key must be exactly 32
+# characters. `generator: secret` emits 64 hex characters (D-47) and `|base64`
+# emits 44 (D-32); both fail with "Invalid key length". The operator supplies
+# it (D-52). A `length:` generator option is tracked in
+# https://github.com/launchfile/launchfile/issues/709.
 
+components:
   frontend:
     image: hoppscotch/hoppscotch-frontend:2026.7.0
     provides:
       - protocol: http
         port: 3000
         exposed: true
+    # The browser, not the container, calls these URLs, so they use the backend's
+    # published host-side address. ws:// assumes a plain-HTTP launch. Under a
+    # supplied --url, or on providers that publish no per-endpoint address, they
+    # resolve empty (D-63 rules 4-5).
     env:
       VITE_BACKEND_GQL_URL:
-        default: "http://backend:3170/graphql"
+        default: "${app.endpoints.backend.url}/graphql"
         description: "Backend GraphQL endpoint"
       VITE_BACKEND_WS_URL:
-        default: "ws://backend:3170/graphql"
+        default: "ws://${app.endpoints.backend.authority}/graphql"
         description: "Backend WebSocket endpoint"
       VITE_BACKEND_API_URL:
-        default: "http://backend:3170/v1"
+        default: "${app.endpoints.backend.url}/v1"
         description: "Backend REST API endpoint"
     depends_on:
       - "backend"
@@ -52,11 +44,48 @@ components:
         exposed: true
     env:
       VITE_BACKEND_GQL_URL:
-        default: "http://backend:3170/graphql"
+        default: "${app.endpoints.backend.url}/graphql"
         description: "Backend GraphQL endpoint"
       VITE_BACKEND_API_URL:
-        default: "http://backend:3170/v1"
+        default: "${app.endpoints.backend.url}/v1"
         description: "Backend REST API endpoint"
     depends_on:
       - "backend"
+    restart: always
+
+  backend:
+    image: hoppscotch/hoppscotch-backend:2026.7.0
+    provides:
+      - name: backend
+        protocol: http
+        port: 3170
+        exposed: true
+    requires:
+      - type: postgres
+        set_env:
+          DATABASE_URL: $url
+    env:
+      JWT_SECRET:
+        generator: secret
+        sensitive: true
+      SESSION_SECRET:
+        generator: secret
+        sensitive: true
+      DATA_ENCRYPTION_KEY:
+        required: true
+        sensitive: true
+        description: "Key that encrypts data stored in the database. Exactly 32 characters. Never change it after first start: data encrypted with the old key becomes unreadable"
+      VITE_BASE_URL:
+        default: $app.url
+        description: "Public URL of the frontend; the backend derives secure-cookie behavior from it"
+      VITE_ADMIN_URL:
+        default: "${app.endpoints.admin.url}"
+        description: "Public URL of the admin dashboard"
+      WHITELISTED_ORIGINS:
+        default: "${app.url},${app.endpoints.admin.url},${app.endpoints.backend.url}"
+        description: "Browser origins allowed to call the backend"
+    # `prisma migrate deploy` is idempotent, so it runs on every deploy.
+    commands:
+      release: "cd /dist/backend && pnpm exec prisma migrate deploy"
+    health: /ping
     restart: always

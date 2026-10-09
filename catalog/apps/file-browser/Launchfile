@@ -13,6 +13,7 @@ provides:
 storage:
   data:
     path: /srv
+    content: operator
     persistent: true
   config:
     path: /database

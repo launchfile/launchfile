@@ -150,6 +150,8 @@ Provider flags:
 
 Options:
   --dry-run        Preview without starting anything
+  --detach         Return after launch. Native apps keep running in the
+                    background; Docker always detaches (with up, dev)
   --destroy        Remove all containers and data (with down)
   --follow, -f     Stream logs continuously
   --name <label>   Launch a separate named instance of the app — its own
@@ -171,8 +173,13 @@ Options:
   --component <n>  Limit bootstrap to a single component
   --reveal         (bootstrap) Print captures marked \`sensitive\` instead of
                     masking them — they never reach logs or state either way
+  --quiet          (validate) No output, only the exit code
   --detached       (validate) Evaluate as fetched standalone, not read from the
                     app's own checkout — enables the D-43 reduced-portability check
+  --no-color       Print without ANSI colour (with validate, inspect, schema;
+                    also set by NO_COLOR)
+  --schema-path <path>
+                   (schema) Print this JSON Schema file instead of the bundled one
   --json           Machine-readable output (with diagnose, validate)
   --help, -h       Show this help
   --version, -v    Show version
@@ -207,21 +214,26 @@ async function main(): Promise<void> {
 	// tell a typo'd optional flag from an omitted one, and the token after it
 	// would be read as the target (#510). A single-dash token outside
 	// SHORT_FLAGS is the same refusal, naming the long form(s) it could have
-	// meant (#529). The token is the operator's own bytes, so it is printed
-	// with control characters stripped.
+	// meant (#529). The token is argv text, so it is escaped before it reaches
+	// the terminal: a newline or ANSI escape in it would otherwise print as
+	// forged output (#545).
 	const [unknown] = unknownFlags(args);
 	if (unknown !== undefined) {
-		let hint = "";
-		if (unknown.startsWith("--")) {
-			const nearest = suggestFlag(unknown.slice(2));
-			if (nearest) hint = ` — did you mean --${nearest}?`;
+		if (unknown === "--") {
+			console.error("no such flag: `--` has an empty flag name");
 		} else {
-			const longForms = longFormsOf(unknown.slice(1));
-			if (longForms.length === 1) hint = ` — did you mean --${longForms[0]}?`;
-			else if (longForms.length > 1)
-				hint = ` — spell the flag out: ${longForms.map((flag) => `--${flag}`).join(", ")}`;
+			let hint = "";
+			if (unknown.startsWith("--")) {
+				const nearest = suggestFlag(unknown.slice(2));
+				if (nearest) hint = ` — did you mean --${nearest}?`;
+			} else {
+				const longForms = longFormsOf(unknown.slice(1));
+				if (longForms.length === 1) hint = ` — did you mean --${longForms[0]}?`;
+				else if (longForms.length > 1)
+					hint = ` — spell the flag out: ${longForms.map((flag) => `--${flag}`).join(", ")}`;
+			}
+			console.error(`no such flag ${stripControlInline(unknown)}${hint}`);
 		}
-		console.error(`no such flag ${stripControlInline(unknown)}${hint}`);
 		console.error("Run `launchfile --help` for usage.");
 		process.exit(1);
 	}
@@ -330,7 +342,7 @@ async function main(): Promise<void> {
 			break;
 
 		default:
-			console.error(`Unknown command: ${command}`);
+			console.error(`Unknown command: ${stripControlInline(command)}`);
 			console.error("Run `launchfile --help` for usage.");
 			process.exit(1);
 	}

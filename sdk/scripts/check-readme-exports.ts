@@ -7,23 +7,30 @@
  * Runs as a `pretest` hook (package.json), so `bun run test` and CI's
  * existing `sdk` job both exercise it with no separate wiring.
  *
- * Catches three real failure modes:
+ * Catches four real failure modes:
  *   1. A new value export lands with no README row and no exclusion entry
  *      (silent omission — issue #250).
  *   2. A README row or exclusion entry survives after its export is renamed
  *      or removed (stale documentation).
  *   3. The same name is both documented and excluded (contradictory record).
+ *   4. A row whose first cell lists parameters — `name(a, b?)` — disagrees
+ *      with the `export function` it documents on how many parameters there
+ *      are, or which positions are optional (issue #546). A signature the
+ *      check cannot map (overloads, rest, `this` or destructured parameters,
+ *      a const or class, a re-export leaving src/) fails too, naming the
+ *      export, unless ARITY_UNCHECKED lists it with a reason.
  *
- * Parses index.ts by regex rather than the TypeScript compiler API: sdk
- * pins `typescript@7`, the native ("Corsa") compiler, which does not ship
- * the classic `ts.createProgram`/`SymbolFlags` JS API this would otherwise
- * use. index.ts is barrel-only and biome-formatted, so a small regex over
- * its `export { … } from "…"` / `export type { … } from "…"` statements is
- * enough to classify every entry as value or type-only.
+ * It does not check the Description column, parameter names, or what a
+ * non-function export like CERTIFICATE means.
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import {
+	checkRowArity,
+	getReadmeApiTableRows,
+	getValueExportSources,
+} from "./readme-exports.ts";
 
 /**
  * Value exports that are intentionally not part of the README's curated API
@@ -86,114 +93,27 @@ const EXCLUDED_EXPORTS: Record<string, string> = {
 	REMOVED_IN: "deprecation-registry data, read via lintDeprecations",
 };
 
-interface ExportStatement {
-	/** Raw specifier list, e.g. ["type Deprecation", "lintDeprecations"]. */
-	specifiers: string[];
-	/** True for `export type { … }` and `export type * from …` statements. */
-	typeOnly: boolean;
-}
-
-function parseExportStatements(source: string): ExportStatement[] {
-	const statements: ExportStatement[] = [];
-
-	// `export type * from "…";` — wildcard type re-export, no named values.
-	const wildcardTypeRe = /export\s+type\s*\*\s*from\s*"[^"]+";/g;
-	const withoutWildcards = source.replace(wildcardTypeRe, "");
-
-	// `export type { A, B } from "…";` or `export { A, type B } from "…";`
-	const namedExportRe = /export\s+(type\s*)?\{([^}]*)\}\s*from\s*"[^"]+";/gs;
-	for (const match of withoutWildcards.matchAll(namedExportRe)) {
-		const statementIsTypeOnly = match[1] !== undefined;
-		const specifiers = match[2]!
-			.split(",")
-			.map((s) => s.trim())
-			.filter((s) => s.length > 0);
-		statements.push({ specifiers, typeOnly: statementIsTypeOnly });
-	}
-
-	// Any other export form — `export * from "…"`, `export const`,
-	// `export function`, `export default` — names values this parser cannot
-	// see, so the coverage check would pass while documenting nothing. The
-	// barrel-only shape of index.ts is what makes the two regexes above
-	// sufficient, so enforce it here rather than assuming it.
-	const leftover = withoutWildcards
-		.replace(namedExportRe, "")
-		.match(/^[ \t]*export\b.*$/m);
-	if (leftover) {
-		throw new Error(
-			`src/index.ts has an export form this check cannot parse: ${leftover[0].trim()}\n` +
-				`index.ts must stay barrel-only ('export { … } from "…";'), or parseExportStatements must learn the new form.`,
-		);
-	}
-
-	return statements;
-}
-
-/** Resolve one specifier (e.g. "type Foo", "Bar", "Baz as Qux") to its exported name + value/type-ness. */
-function resolveSpecifier(
-	spec: string,
-	statementIsTypeOnly: boolean,
-): { name: string; isValue: boolean } {
-	const isTypeSpecifier = statementIsTypeOnly || /^type\s+/.test(spec);
-	const withoutTypeKeyword = spec.replace(/^type\s+/, "");
-	// `X as Y` re-exports under the local name Y.
-	const asMatch = withoutTypeKeyword.match(/^(.+?)\s+as\s+(.+)$/);
-	const name = (asMatch ? asMatch[2] : withoutTypeKeyword)!.trim();
-	return { name, isValue: !isTypeSpecifier };
-}
-
-function getValueExports(indexTsPath: string): Set<string> {
-	const source = readFileSync(indexTsPath, "utf-8");
-	const statements = parseExportStatements(source);
-
-	const values = new Set<string>();
-	for (const stmt of statements) {
-		for (const spec of stmt.specifiers) {
-			const { name, isValue } = resolveSpecifier(spec, stmt.typeOnly);
-			if (isValue) values.add(name);
-		}
-	}
-	return values;
-}
-
-/** Extract the documented function/export names from README.md's "## API" table. */
-function getReadmeApiTableNames(readmePath: string): Set<string> {
-	const readme = readFileSync(readmePath, "utf-8");
-	const lines = readme.split("\n");
-
-	const headingIdx = lines.findIndex((l) => l.trim() === "## API");
-	if (headingIdx === -1) {
-		throw new Error(`${readmePath} has no "## API" heading.`);
-	}
-	const nextHeadingIdx = lines.findIndex(
-		(l, i) => i > headingIdx && /^##\s/.test(l),
-	);
-	const sectionEnd = nextHeadingIdx === -1 ? lines.length : nextHeadingIdx;
-	const section = lines.slice(headingIdx + 1, sectionEnd);
-
-	const names = new Set<string>();
-	for (const line of section) {
-		const trimmed = line.trim();
-		if (!trimmed.startsWith("|")) continue;
-		// Skip the header row and the `|---|---|` separator row.
-		if (/^\|\s*-+\s*\|/.test(trimmed)) continue;
-		if (/^\|\s*Function\s*\|/i.test(trimmed)) continue;
-		const cellMatch = trimmed.match(/^\|\s*`([^`]+)`/);
-		if (!cellMatch) continue;
-		const cell = cellMatch[1]!;
-		const name = cell.split("(")[0]!.trim();
-		names.add(name);
-	}
-	return names;
-}
+/**
+ * README rows whose declaration the arity check cannot map, each with the
+ * reason. The check still parses each one and fails if the entry goes stale:
+ * the row is gone, lists no parameters, or its declaration becomes mappable.
+ */
+const ARITY_UNCHECKED: Record<string, string> = {
+	useKeyOf:
+		"destructures its one DeclaredUse parameter ({ use, name }), which the regex parser cannot map",
+};
 
 async function main(): Promise<void> {
 	const sdkRoot = resolve(import.meta.dirname, "..");
 	const indexTsPath = resolve(sdkRoot, "src/index.ts");
 	const readmePath = resolve(sdkRoot, "README.md");
 
-	const valueExports = getValueExports(indexTsPath);
-	const documented = getReadmeApiTableNames(readmePath);
+	const exportSources = getValueExportSources(
+		readFileSync(indexTsPath, "utf-8"),
+	);
+	const valueExports = new Set(exportSources.keys());
+	const rows = getReadmeApiTableRows(readFileSync(readmePath, "utf-8"));
+	const documented = new Set(rows.keys());
 	const excluded = new Set(Object.keys(EXCLUDED_EXPORTS));
 
 	const errors: string[] = [];
@@ -234,17 +154,28 @@ async function main(): Promise<void> {
 		}
 	}
 
+	const arity = checkRowArity(
+		rows,
+		exportSources,
+		(declPath) => {
+			const absPath = resolve(sdkRoot, declPath);
+			return existsSync(absPath) ? readFileSync(absPath, "utf-8") : undefined;
+		},
+		ARITY_UNCHECKED,
+	);
+	errors.push(...arity.errors);
+
 	if (errors.length > 0) {
 		console.error("\n✗ README export coverage check failed:\n");
 		for (const err of errors) console.error(`  - ${err}`);
 		console.error(
-			'\nEvery value export of sdk/src/index.ts must be either a row in README.md\'s "## API" table or an entry in EXCLUDED_EXPORTS (sdk/scripts/check-readme-exports.ts) with a one-line reason.\n',
+			'\nEvery value export of sdk/src/index.ts must be either a row in README.md\'s "## API" table or an entry in EXCLUDED_EXPORTS (sdk/scripts/check-readme-exports.ts) with a one-line reason. A row that lists parameters must match its `export function` declaration in count and in which positions are optional.\n',
 		);
 		process.exit(1);
 	}
 
 	console.log(
-		`✓ README export coverage: ${valueExports.size} value exports — ${documented.size} documented, ${excluded.size} excluded, 0 unaccounted for.`,
+		`✓ README export coverage: ${valueExports.size} value exports — ${documented.size} documented, ${excluded.size} excluded, 0 unaccounted for. ${arity.checked} parameter lists match their declarations, ${arity.unchecked} listed in ARITY_UNCHECKED.`,
 	);
 }
 

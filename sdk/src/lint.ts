@@ -161,7 +161,11 @@ function checkResourceProperties(
 	launch: NormalizedLaunch,
 	warnings: string[],
 ): void {
-	for (const component of Object.values(launch.components)) {
+	for (const [componentName, component] of Object.entries(launch.components)) {
+		const where = componentName === "default" ? "(top-level)" : componentName;
+		// Same-name entries are one pooled resource (D-24), so two entries can
+		// produce an identical warning; each distinct message prints once.
+		const emitted = new Set<string>();
 		for (const req of [
 			...(component.requires ?? []),
 			...(component.supports ?? []),
@@ -172,13 +176,19 @@ function checkResourceProperties(
 				? RESOURCE_PROPERTY_VOCABULARY[req.type]
 				: undefined;
 			if (!vocabulary || !req.set_env) continue;
-			for (const value of Object.values(req.set_env)) {
+			const label = req.name ? `${req.name} (${req.type})` : req.type;
+			for (const [key, value] of Object.entries(req.set_env)) {
+				// A property repeated within one env value warns once.
+				const flagged = new Set<string>();
 				for (const { prop } of bareReferences(value)) {
-					if (vocabulary.includes(prop)) continue;
-					warnings.push(
-						`"$${prop}" is not in the standard vocabulary for ${req.type} ` +
-							`(known: ${vocabulary.join(", ")})`,
-					);
+					if (vocabulary.includes(prop) || flagged.has(prop)) continue;
+					flagged.add(prop);
+					const message =
+						`${where}: ${label}: ${key}: "$${prop}" is not in the standard ` +
+						`vocabulary (known: ${vocabulary.join(", ")})`;
+					if (emitted.has(message)) continue;
+					emitted.add(message);
+					warnings.push(message);
 				}
 			}
 		}
@@ -198,6 +208,8 @@ function checkResourceProperties(
 function checkResourceUses(launch: NormalizedLaunch, warnings: string[]): void {
 	for (const [componentName, component] of Object.entries(launch.components)) {
 		const where = componentName === "default" ? "(top-level)" : componentName;
+		// Same-name entries are one shared resource (D-24), so each can repeat a use.
+		const emitted = new Set<string>();
 		for (const [field, entries] of [
 			["requires", component.requires ?? []],
 			["supports", component.supports ?? []],
@@ -217,10 +229,12 @@ function checkResourceUses(launch: NormalizedLaunch, warnings: string[]): void {
 						field === "requires"
 							? "a provider refuses the component rather than cover a use it does not recognise"
 							: "a provider leaves the entry unfulfilled rather than cover a use it does not recognise";
-					warnings.push(
+					const message =
 						`${where}: use "${token}" is not in the standard use vocabulary for ${req.type} ` +
-							`(known: ${known.join(", ")}) — ${outcome}`,
-					);
+						`(known: ${known.join(", ")}) — ${outcome}`;
+					if (emitted.has(message)) continue;
+					emitted.add(message);
+					warnings.push(message);
 				}
 			}
 		}
@@ -263,6 +277,43 @@ function checkEnvBareReferences(
 				);
 			}
 		}
+	}
+}
+
+/**
+ * D-49 cross-component mint check: `generator:` mints once per declaration, so
+ * one env var name declared with `generator: secret` or `generator: uuid` in
+ * two or more components gets a different value in each. Groups `env:`
+ * declarations by name across components, the same way {@link lintLaunch}
+ * groups D-24 resources, and warns on every name minted in 2+ components.
+ * `generator: port` is exempt: a port is an allocation, not an identity
+ * (D-49). Warn-only — never affects `valid`.
+ */
+function checkRepeatedEnvGenerators(
+	launch: NormalizedLaunch,
+	warnings: string[],
+): void {
+	const byName = new Map<string, string[]>();
+	for (const [componentName, component] of Object.entries(launch.components)) {
+		for (const [key, envVar] of Object.entries(component.env ?? {})) {
+			if (envVar.generator !== "secret" && envVar.generator !== "uuid")
+				continue;
+			const places = byName.get(key) ?? [];
+			places.push(componentName);
+			byName.set(key, places);
+		}
+	}
+
+	for (const [key, places] of [...byName.entries()].sort((a, b) =>
+		a[0].localeCompare(b[0]),
+	)) {
+		if (places.length < 2) continue;
+		warnings.push(
+			`env "${key}" is minted by a generator in ${places.length} components ` +
+				`(${[...places].sort().join(", ")}); each declaration mints its own value (D-49), ` +
+				"so the components get different values — declare it once under top-level " +
+				"`secrets:` and reference `$secrets.<name>` from each component",
+		);
 	}
 }
 
@@ -559,6 +610,8 @@ function checkPrimaryWithoutAppHost(
  * - Non-standard resource properties (D-46): see {@link checkResourceProperties}.
  * - Bare references in `env:` values that can never resolve (#184): see
  *   {@link checkEnvBareReferences}.
+ * - The same env var minted by `generator: secret`/`uuid` in 2+ components
+ *   (D-49): see {@link checkRepeatedEnvGenerators}.
  * - Reduced-portability build path and source reachability (D-40, D-43): see
  *   {@link checkPortability}. Suppressible via `opts.suppressPortabilityWarnings`.
  *
@@ -628,6 +681,7 @@ export function lintLaunch(
 	checkResourceProperties(launch, warnings);
 	checkResourceUses(launch, warnings);
 	checkEnvBareReferences(launch, warnings);
+	checkRepeatedEnvGenerators(launch, warnings);
 	checkAppEndpointReferences(launch, warnings);
 	checkPrimaryWithoutAppHost(launch, warnings);
 	checkOperatorStorageContradiction(launch, warnings);

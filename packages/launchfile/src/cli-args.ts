@@ -251,7 +251,13 @@ export function parseComponentNames(values: readonly string[]): string[] {
 	return names;
 }
 
-/** What each selector spelling means, and to which verb it belongs. */
+/**
+ * What each selector spelling means, and to which verb it belongs.
+ *
+ * Tie-break: `selectorRefusal` searches this array in order and the plural is
+ * listed first, so when both spellings appear the message names
+ * `--components` whatever order they were typed in.
+ */
 const SELECTOR_OWNERS: ReadonlyArray<readonly [flag: string, meaning: string]> = [
 	["components", "selects which components `up`/`dev` start"],
 	["component", "limits `bootstrap` to a single component"],
