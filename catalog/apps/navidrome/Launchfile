@@ -23,6 +23,7 @@ storage:
     persistent: true
   music:
     path: /music
+    content: operator
     persistent: true
 health: /ping
 restart: always

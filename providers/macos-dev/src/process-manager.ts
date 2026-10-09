@@ -6,11 +6,14 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { closeSync, fchmodSync, mkdirSync, openSync, readSync, statSync } from "node:fs";
+import { closeSync, openSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { NormalizedHealth, NormalizedDependsOnEntry } from "@launchfile/sdk";
 import { describeHealthCheck, healthBudgetMs, healthCheckNeedsPort, waitForHealthy } from "./health.js";
 import { redactSecrets } from "./redact.js";
+import { ensureConfinedDir, openConfinedFile } from "./safe-path.js";
+
+const LOG_DIR = [".launchfile", "logs"] as const;
 
 /**
  * How long a component gets to report healthy before `up` fails. A
@@ -230,16 +233,14 @@ export interface RecordedProcessInfo {
 
 export class ProcessManager {
 	private processes = new Map<string, ManagedProcess>();
-	private logDir: string;
+	private readonly projectDir: string;
 	private healthTimeoutMs: number;
 	private exitWatchMs: number;
 
 	constructor(projectDir: string, opts: { healthTimeoutMs?: number; exitWatchMs?: number } = {}) {
-		this.logDir = join(projectDir, ".launchfile", "logs");
+		this.projectDir = projectDir;
 		this.healthTimeoutMs = opts.healthTimeoutMs ?? HEALTH_TIMEOUT_MS;
 		this.exitWatchMs = opts.exitWatchMs ?? EXIT_WATCH_MS;
-		// Security: restrict permissions — logs may contain sensitive output
-		mkdirSync(this.logDir, { recursive: true, mode: 0o700 });
 	}
 
 	register(
@@ -280,6 +281,10 @@ export class ProcessManager {
 	 * so the caller can record their pids for `status`/`logs`/`down`.
 	 */
 	async startAll(): Promise<void> {
+		// Security: logs may contain sensitive output, so the directory is
+		// owner-only, and `.launchfile/logs` ships with the repository, so a
+		// symlink there is refused before any component is started.
+		await ensureConfinedDir(this.projectDir, LOG_DIR, { mode: 0o700 });
 		const batches = this.topologicalSort();
 
 		for (const batch of batches) {
@@ -460,18 +465,19 @@ export class ProcessManager {
 		// held by this process would die with it, and a component left running
 		// after `up` fails (SPEC.md § Failure semantics) must survive its next
 		// write. The console view is a tail of that file.
-		const logPath = join(this.logDir, `${name}.log`);
-		const tail = new LogTail(logPath, (line) => {
+		const logParts = [...LOG_DIR, `${name}.log`];
+		const tail = new LogTail(join(this.projectDir, ...logParts), (line) => {
 			process.stdout.write(`${color}[${paddedName}]${RESET} ${line}\n`);
 		});
-		tail.start();
 
 		// The log holds the component's raw output, which can include a secret an
-		// app prints on first boot. The open mode covers a new file only, so a log
-		// left by an earlier run is tightened too.
-		const logFd = openSync(logPath, "a", 0o600);
+		// app prints on first boot: owner-only, a log left by an earlier run
+		// tightened too, and a symlink in its place refused rather than appended
+		// through (safe-path.ts). The tail starts once the log is open, so a
+		// refusal leaves no poller behind.
+		const log = await openConfinedFile(this.projectDir, logParts, { mode: 0o600, append: true });
+		tail.start();
 		try {
-			fchmodSync(logFd, 0o600);
 			// `detached: true` makes the child the leader of a new process group
 			// (pgid === pid). That lets `launch down` signal the whole group later via
 			// a negative pid, killing the app AND any children it spawned — matching
@@ -480,12 +486,12 @@ export class ProcessManager {
 			proc.process = spawn("sh", ["-c", proc.command], {
 				env: { ...process.env, ...proc.env },
 				cwd: proc.cwd,
-				stdio: ["ignore", logFd, logFd],
+				stdio: ["ignore", log.fd, log.fd],
 				detached: true,
 			});
 		} finally {
 			// The child holds its own copy of the descriptor.
-			closeSync(logFd);
+			await log.close();
 		}
 		if (proc.process.pid !== undefined) {
 			proc.startedAt = new Date().toISOString();
@@ -504,6 +510,20 @@ export class ProcessManager {
 		});
 
 		proc.status = "running";
+	}
+
+	/**
+	 * Let this session exit while every spawned component keeps running
+	 * (`up --detach`). Each child leads its own process group and writes its
+	 * own log file, so nothing it needs dies with this session; the handle's
+	 * ref is the only thing that keeps the event loop waiting on it. `down`
+	 * reaches the children later through the pids `getRecordedProcesses`
+	 * returns.
+	 */
+	detach(): void {
+		for (const proc of this.processes.values()) {
+			proc.process?.unref();
+		}
 	}
 
 	/**

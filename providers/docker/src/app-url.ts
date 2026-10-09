@@ -23,43 +23,30 @@ import {
 	type AppEndpointProperties,
 	deriveAppUrlProperties,
 	effectiveListener,
+	httpsOriginSatisfied,
 	InvalidAppUrlError,
 	type NormalizedLaunch,
 	normalizeAppUrl,
 	type Provides,
+	REFUSED_PRIMARY_ADDRESS,
 	suppliedAppAddress,
 	UNPUBLISHED_APP_ENDPOINT,
 } from "@launchfile/sdk";
 import { type PublishedEndpoint, publishedEndpoints } from "./port-allocator.js";
 
-// Re-exported so callers of this provider keep catching the refusal and
-// normalizing values through `@launchfile/docker` (the SDK owns both).
-export { InvalidAppUrlError, normalizeAppUrl };
+// Re-exported so callers of this provider keep catching the refusal,
+// normalizing values, testing `https-origin` satisfaction and reading the
+// refused primary's address through `@launchfile/docker` (the SDK owns all
+// four, so this provider and `@launchfile/macos-dev` answer alike — P-5).
+export {
+	httpsOriginSatisfied,
+	InvalidAppUrlError,
+	normalizeAppUrl,
+	REFUSED_PRIMARY_ADDRESS,
+};
 
 /** The backing-service type that declares the app's public HTTPS origin (D-60). */
 export const HTTPS_ORIGIN = "https-origin";
-
-/**
- * Whether a supplied publication URL satisfies an `https-origin` entry: its
- * scheme is `https` (D-60 rule 5). Syntactic only — `undefined` (nothing
- * supplied) and an `http` URL both fail. `@launchfile/macos-dev` applies the
- * same predicate, so one file is refused on both providers (P-5).
- *
- * @throws InvalidAppUrlError when `appUrl` is supplied and malformed
- */
-export function httpsOriginSatisfied(appUrl: string | undefined): boolean {
-	return appUrl !== undefined && suppliedAppAddress(appUrl).scheme === "https";
-}
-
-/**
- * The `$app.*` address of a primary whose component is refused (D-72):
- * every field `""` — the answer D-63 rule 4 gives an endpoint the provider
- * publishes no address for — with `tls` reading `false`, as D-63 rule 3 has
- * a listener with no origin read it, so a literal on/off flag
- * (`USE_SSL: $app.tls`) still receives a boolean.
- */
-export const REFUSED_PRIMARY_ADDRESS: Readonly<AppEndpointProperties> =
-	Object.freeze({ ...UNPUBLISHED_APP_ENDPOINT, tls: "false" });
 
 /** The published endpoint an `https-origin` entry names as the app's primary. */
 export interface DeclaredPrimaryEndpoint {

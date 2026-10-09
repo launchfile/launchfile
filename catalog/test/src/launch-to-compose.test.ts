@@ -21,6 +21,7 @@ import { parse } from "yaml";
 import { readLaunch } from "../../../sdk/src/reader.ts";
 import { resourcePropertyKeys } from "../../../providers/docker/src/compose-generator.ts";
 import { harnessBackingServiceTypes, launchToCompose } from "./launch-to-compose.ts";
+import { lintUnknownMetadataKeys } from "./lint-metadata.ts";
 
 /** Compose a Launchfile YAML and return the resolved `environment` for a service. */
 function envOf(yaml: string, serviceName: string): Record<string, string> {
@@ -454,6 +455,10 @@ env:
       const meta = existsSync(metaPath)
         ? ((parse(readFileSync(metaPath, "utf-8")) ?? {}) as Record<string, unknown>)
         : {};
+      // Warn only: an unknown key never fails this test (#422).
+      for (const warning of lintUnknownMetadataKeys(meta, `catalog/apps/${app}/metadata.yaml`)) {
+        console.warn(warning);
+      }
       const testEnv = Object.fromEntries(
         Object.entries((meta.test_env as Record<string, unknown>) ?? {}).map(([k, v]) => [
           k,
@@ -883,5 +888,33 @@ describe("catalog/drafts/plausible — TOTP_VAULT_KEY is base64 of 32 bytes (#41
 
   it("leaves SECRET_KEY_BASE as the generator's 64 hex characters", () => {
     expect(env.SECRET_KEY_BASE).toMatch(HEX64);
+  });
+});
+
+describe("health precedence (SPEC health: path over command)", () => {
+  function healthTest(healthYaml: string): string {
+    const launch = readLaunch(`version: launch/v1
+name: healthapp
+image: nginx:alpine
+provides:
+  - protocol: http
+    port: 8080
+health:
+${healthYaml}
+`);
+    const compose = parse(launchToCompose(launch).yaml) as {
+      services: Record<string, { healthcheck?: { test: string[] } }>;
+    };
+    return compose.services.healthapp!.healthcheck!.test.join(" ");
+  }
+
+  it("uses the HTTP probe when both path and command are declared", () => {
+    const test = healthTest("  path: /ready\n  command: pg_isready");
+    expect(test).toContain("http://localhost:8080/ready");
+    expect(test).not.toContain("pg_isready");
+  });
+
+  it("uses the command when only command is declared", () => {
+    expect(healthTest("  command: pg_isready")).toBe("CMD-SHELL pg_isready");
   });
 });

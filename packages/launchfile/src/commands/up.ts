@@ -158,13 +158,34 @@ export async function handleUp(
 
 	const upTarget = resolveUpTarget(target);
 	const provider = await detectProvider({ docker: flags.docker, native: flags.native });
+
+	// The native provider launches a directory, and only a local target has
+	// one. Falling back to the working directory would launch whatever
+	// Launchfile sits there and record it under the target the operator typed —
+	// state adopted from a different source, which D-55 rule 3 forbids.
+	// Refusing is D-55's floor. The key is the missing directory, not the
+	// target kind, so URL targets and any kind added later fail closed too.
+	// It runs before the index is read, so a refused command writes no row.
+	if (provider === "macos" && upTarget.dir === undefined) {
+		const kind = upTarget.type === "url" ? "a URL" : "a catalog slug";
+		console.error(
+			`The native provider launches a directory; "${upTarget.value}" is ${kind}.`,
+		);
+		console.error(
+			`Use the Docker provider (launchfile up ${upTarget.value} --docker), or run --native from the app's own directory.`,
+		);
+		process.exit(1);
+	}
+
 	const indexDir = deps.indexDir;
 	const recordDir = deps.recordDir ?? errorsDir();
 
-	// Determine source key for index lookup
+	// Index key by target kind: directory, `catalog:<slug>`, or the URL itself.
 	const sourceKey = upTarget.type === "local"
 		? upTarget.dir ?? resolve(upTarget.value, "..")
-		: `catalog:${upTarget.value}`;
+		: upTarget.type === "catalog"
+			? `catalog:${upTarget.value}`
+			: upTarget.value;
 
 	// Check for existing deployment. Identity is the (source, name) pair
 	// (D-55): an unnamed `up` and each `--name <label>` from one directory are
@@ -204,7 +225,6 @@ export async function handleUp(
 			result = await withFailureRecord(
 				() =>
 					launch(dockerSource, {
-						detach: flags.detach,
 						dryRun: flags.dryRun,
 						name: flags.name,
 						components: flags.components,
@@ -219,7 +239,10 @@ export async function handleUp(
 			// (D-58) is an operator's problem to fix, not a bug — it gets the
 			// provider's own message, not a stack trace. The URL refusal masks
 			// any userinfo in its own message (D-18), so the raw value the
-			// operator typed is never echoed here.
+			// operator typed is never echoed here. The D-52 refusal is also a
+			// `LaunchError`, so `withFailureRecord` has already written its
+			// record (phase `resolve`, `unsupplied[]` names only) for `diagnose`
+			// by the time this prints.
 			if (
 				err instanceof UnsuppliedRequiredEnvError ||
 				err instanceof UnboundOperatorStorageError ||

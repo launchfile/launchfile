@@ -1,0 +1,7 @@
+# Declares no health check. The gate must accept it once it is running.
+version: launch/v1
+name: lf-e2e-no-health
+image: busybox:1.37.0
+restart: always
+commands:
+  start: sleep 3600

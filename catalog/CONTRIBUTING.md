@@ -2,18 +2,33 @@
 
 ## Adding a New App
 
-1. Create a directory: `catalog/apps/<app-name>/`
-2. Add a `Launchfile` (no extension) with the app's deployment descriptor
-3. Open a PR with:
-   - The Launchfile
-   - A brief description of the app and what services it needs
-   - Confirmation that you tested it validates against the schema
-4. Regenerate the AWS conformance report and commit `providers/aws/CONFORMANCE.md` — the report covers every `catalog/apps/**/Launchfile`, and CI fails when it is stale. From a fresh clone the provider needs the SDK built first:
+New apps start in `drafts/` and move to `apps/` once they launch. `apps/` holds only
+entries verified to launch; see [Promoting a Draft](README.md#promoting-a-draft).
 
-   ```bash
-   cd sdk && bun install && bun run build
-   cd ../providers/aws && bun install && bun run conformance
-   ```
+1. Create a directory: `catalog/drafts/<app-name>/`
+2. Add a `Launchfile` (no extension) with the app's deployment descriptor
+3. Check it statically: `cd catalog/test && bun run validate-catalog`
+4. Regenerate the README tables: `cd catalog/test && bun run build-index`. It adds your
+   draft to the Proposed Apps table. CI runs `bun run test`, which fails when the tables
+   are stale.
+5. Open a PR with:
+   - The Launchfile and the regenerated `catalog/README.md`
+   - A brief description of the app and what services it needs
+   - Confirmation that it validates against the schema
+
+If you have launched it with the test harness (`cd catalog/test && bun run src/test-app.ts <app-name>`),
+promote it in the same PR instead: `git mv` the directory to `catalog/apps/`, commit the
+`metadata.yaml` the harness writes, and regenerate the tables.
+
+Any PR that adds or changes a directory under `catalog/apps/` — a promotion included — must
+also regenerate the AWS conformance report and commit `providers/aws/CONFORMANCE.md`. The
+report covers every `catalog/apps/**/Launchfile`, and CI fails when it is stale. From a fresh
+clone the provider needs the SDK built first:
+
+```bash
+cd sdk && bun install && bun run build
+cd ../providers/aws && bun install && bun run conformance
+```
 
 ## Launchfile Template
 
@@ -97,6 +112,9 @@ Keep it top level. `catalog/test/src/test-app.ts` rebuilds the `images:` and
 `test_results:` blocks from scratch and rewrites the file through a YAML round-trip.
 A per-image field or a YAML comment does not survive the next
 `bun run src/test-app.ts <app>`. Top-level keys do.
+
+`test_env:` and `test_storage:` supply the values and directories the harness
+provides as operator — see [`catalog/test/README.md`](test/README.md).
 
 **Do not pin by `@sha256` digest.** A digest freezes an app at the moment its entry
 landed, and this catalog has no mechanism to re-pin. Bumping an image is not a one-line
