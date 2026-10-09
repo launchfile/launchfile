@@ -294,10 +294,13 @@ jobs:
 
   # The root lockfile's own signal. Every other install here is `cd <subdir> &&
   # bun install --frozen-lockfile`, and a subdirectory install inside a root
-  # workspace member resolves the ROOT bun.lock — so root-only drift is real but
-  # has no dedicated check: it surfaces as five unrelated jobs failing at once at
+  # workspace member resolves the ROOT bun.lock, so root-only drift has no
+  # dedicated check: it surfaces as five unrelated jobs failing at once at
   # their first step, which reads like five broken packages instead of one stale
-  # lockfile. This job fails on that drift by itself, and says so in one place.
+  # lockfile. This job runs the frozen install (the lockfile is self-consistent)
+  # plus lint:lockfile-ranges (the recorded member versions and internal
+  # @launchfile/* ranges match package.json, which a frozen install does not
+  # check), and says so in one place.
   root-install:
     name: Root install
     runs-on: ubuntu-latest
@@ -314,6 +317,10 @@ jobs:
             echo "::error file=.bun-version::bun $actual is installed but .bun-version pins $expected"
             exit 1
           fi
+      - name: Lockfile range lint tests
+        run: node --test scripts/lint-lockfile-ranges.test.mjs
+      - name: Lockfile internal ranges match package.json
+        run: bun run lint:lockfile-ranges
       - run: bun install --frozen-lockfile
 
   # Catches invalid YAML in workflow files before it gets merged and breaks
