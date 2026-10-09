@@ -33,6 +33,7 @@ import {
 	flagPresent as argsFlagPresent,
 	valuedBooleanFlag,
 	unknownFlags,
+	longFormsOf,
 	suggestFlag,
 	parseComponentNames,
 	parseStoragePairs,
@@ -180,8 +181,8 @@ Options:
   --schema-path <path>
                    (schema) Print this JSON Schema file instead of the bundled one
   --json           Machine-readable output (with diagnose, validate)
-  --help           Show this help
-  --version        Show version
+  --help, -h       Show this help
+  --version, -v    Show version
 
 Environment:
   LAUNCHFILE_NO_PORTABILITY_WARNINGS   Set (to any value except "0"/"false") to silence validate's D-40/D-43 reduced-portability warnings
@@ -208,21 +209,30 @@ async function main(): Promise<void> {
 		process.exit(1);
 	}
 
-	// A long flag neither table declares is refused on every verb, before
+	// A flag no table declares is refused on every verb, before
 	// --version/--help and before any target resolves: nothing downstream can
 	// tell a typo'd optional flag from an omitted one, and the token after it
-	// would be read as the target (#510).
-	// The name is argv text, so it is escaped before it reaches the terminal: a
-	// newline or ANSI escape in it would otherwise print as forged output (#545).
+	// would be read as the target (#510). A single-dash token outside
+	// SHORT_FLAGS is the same refusal, naming the long form(s) it could have
+	// meant (#529). The token is argv text, so it is escaped before it reaches
+	// the terminal: a newline or ANSI escape in it would otherwise print as
+	// forged output (#545).
 	const [unknown] = unknownFlags(args);
 	if (unknown !== undefined) {
-		if (unknown === "") {
+		if (unknown === "--") {
 			console.error("no such flag: `--` has an empty flag name");
 		} else {
-			const nearest = suggestFlag(unknown);
-			console.error(
-				`no such flag --${stripControlInline(unknown)}${nearest ? ` — did you mean --${nearest}?` : ""}`,
-			);
+			let hint = "";
+			if (unknown.startsWith("--")) {
+				const nearest = suggestFlag(unknown.slice(2));
+				if (nearest) hint = ` — did you mean --${nearest}?`;
+			} else {
+				const longForms = longFormsOf(unknown.slice(1));
+				if (longForms.length === 1) hint = ` — did you mean --${longForms[0]}?`;
+				else if (longForms.length > 1)
+					hint = ` — spell the flag out: ${longForms.map((flag) => `--${flag}`).join(", ")}`;
+			}
+			console.error(`no such flag ${stripControlInline(unknown)}${hint}`);
 		}
 		console.error("Run `launchfile --help` for usage.");
 		process.exit(1);
@@ -284,7 +294,7 @@ async function main(): Promise<void> {
 
 		case "logs":
 			await handleLogs(target, {
-				follow: hasFlag("follow") || args.includes("-f"),
+				follow: hasFlag("follow"),
 			});
 			break;
 

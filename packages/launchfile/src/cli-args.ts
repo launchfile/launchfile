@@ -41,6 +41,24 @@ export const BOOLEAN_FLAGS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * The only single-dash spellings the CLI accepts, each naming exactly one
+ * long flag. A short form is never derived from a long flag's first letter:
+ * five `BOOLEAN_FLAGS` start with `d`, so a derived `-d` would name `docker`,
+ * `detach` and `dry-run` on `up` and `destroy` on `down` from one token
+ * (#529). `-f` is documented; `-h` and `-v` collide with nothing and are the
+ * universal convention. No other letter is an alias — D-62 already rejects a
+ * short `--reveal` as surface with no motivating case — and `unknownFlags`
+ * refuses every other single-dash token, so a letter that is not in this
+ * table fails loudly rather than launching without the flag the operator
+ * meant. The help text lists exactly these aliases.
+ */
+export const SHORT_FLAGS: ReadonlyMap<string, string> = new Map([
+	["f", "follow"],
+	["h", "help"],
+	["v", "version"],
+]);
+
+/**
  * The first boolean flag written as `--flag=value`, or undefined when none is.
  * Neither helper below reads the value after `=`: `flagPresent` counts
  * `--reveal=false` as present and `hasFlag` counts `--dry-run=true` as absent,
@@ -59,30 +77,44 @@ export function valuedBooleanFlag(args: readonly string[]): string | undefined {
 }
 
 /**
- * Every long flag in argv that neither table declares, as bare names in
- * argv order — `--name` and `--name=value` forms both count. The token after
- * a `VALUE_FLAGS` flag is its value and is skipped, the same rule
- * `getPositional` applies, so `--name --typo` reports nothing here (and
- * `--name` then refuses the value). Single-dash tokens are not judged: the
- * `-x` aliases are their own question (#529). The caller refuses the first
- * result and never dispatches — after an unknown flag `getPositional` does not
- * skip, so `up --typo xyz .` would otherwise target `xyz` (#510).
+ * Every flag token in argv that no table declares, as typed and in argv
+ * order: `--name` and `--name=value` both report `--name`; a single-dash
+ * token reports itself (`-d`, `-xyz`). The token after a `VALUE_FLAGS` flag
+ * written as `--flag value` is its value and is skipped, the same rule
+ * `getPositional` applies, so `--name --typo` and `--name -x` report nothing
+ * here (and `--name` then refuses the value). A bare `-` is not judged. The
+ * caller refuses the first result and never dispatches — after an unknown
+ * flag `getPositional` does not skip, so `up --typo xyz .` would otherwise
+ * target `xyz` (#510), and `up -d` would otherwise launch attached while the
+ * operator believes they asked to detach (#529).
  */
 export function unknownFlags(args: readonly string[]): string[] {
 	const unknown: string[] = [];
 	for (let i = 0; i < args.length; i++) {
 		const arg = args[i]!;
-		if (!arg.startsWith("--")) continue;
-		const eq = arg.indexOf("=");
-		const name = eq === -1 ? arg.slice(2) : arg.slice(2, eq);
-		if (VALUE_FLAGS.has(name)) {
-			if (eq === -1) i++;
-			continue;
+		if (arg.startsWith("--")) {
+			const eq = arg.indexOf("=");
+			const name = eq === -1 ? arg.slice(2) : arg.slice(2, eq);
+			if (VALUE_FLAGS.has(name)) {
+				if (eq === -1) i++;
+				continue;
+			}
+			if (!BOOLEAN_FLAGS.has(name)) unknown.push(`--${name}`);
+		} else if (arg.startsWith("-") && arg.length > 1) {
+			if (!SHORT_FLAGS.has(arg.slice(1))) unknown.push(arg);
 		}
-		if (BOOLEAN_FLAGS.has(name)) continue;
-		unknown.push(name);
 	}
 	return unknown;
+}
+
+/**
+ * The declared long flags a refused single-dash token could have meant:
+ * every table entry that starts with its letters, sorted. The caller prints
+ * them all so the operator picks — `-d` lists five — and never picks for
+ * them (D-67 rule 2).
+ */
+export function longFormsOf(short: string): string[] {
+	return [...VALUE_FLAGS, ...BOOLEAN_FLAGS].filter((flag) => flag.startsWith(short)).sort();
 }
 
 /**
@@ -126,8 +158,13 @@ function editDistance(a: string, b: string): number {
 	return previous[b.length]!;
 }
 
+/** True when `--flag` appears, or the one short alias `SHORT_FLAGS` gives it. */
 export function hasFlag(args: readonly string[], flag: string): boolean {
-	return args.includes(`--${flag}`) || args.includes(`-${flag[0]}`);
+	if (args.includes(`--${flag}`)) return true;
+	for (const [short, long] of SHORT_FLAGS) {
+		if (long === flag && args.includes(`-${short}`)) return true;
+	}
+	return false;
 }
 
 /** True when `--flag` or `--flag=…` appears — exact long form only, no short alias. */
