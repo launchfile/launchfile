@@ -2,7 +2,14 @@ import { chmod, mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it, expect, afterEach } from "vitest";
-import { initState, hashLaunchfile, loadState, saveState, ensureDirs, type LaunchState } from "../state.js";
+import {
+	initState,
+	hashLaunchfile,
+	loadState,
+	saveState,
+	ensureDirs,
+	type LaunchState,
+} from "../state.js";
 import { clearRegisteredSecrets, redactSecrets, REDACTED } from "../redact.js";
 
 describe("initState", () => {
@@ -206,6 +213,35 @@ describe("ensureDirs (issue #252, CWE-276)", () => {
 			for (const d of ["storage", "tmp", "logs", "data", "env"]) {
 				expect((await stat(join(dir, ".launchfile", d))).mode & 0o777).toBe(0o700);
 			}
+		});
+	});
+});
+
+describe("private file modes (#683, CWE-276)", () => {
+	async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
+		const dir = await mkdtemp(join(tmpdir(), "launchfile-state-"));
+		try {
+			return await fn(dir);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	}
+	const mode = async (path: string) => (await stat(path)).mode & 0o777;
+
+	it("saveState tightens a pre-existing state.json left at 0o644 to 0o600", async () => {
+		await withTempDir(async (dir) => {
+			const state = initState("app", "abc");
+			await saveState(dir, state);
+			const file = join(dir, ".launchfile", "state.json");
+			// Loosen with an explicit chmod — never via a `mode` option, which
+			// the runner's umask can mask so the setup proves nothing (#410).
+			await chmod(file, 0o644);
+			expect(await mode(file)).toBe(0o644);
+
+			await saveState(dir, state);
+
+			expect(await mode(file)).toBe(0o600);
+			expect((await loadState(dir))?.appName).toBe("app");
 		});
 	});
 });

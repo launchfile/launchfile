@@ -8,15 +8,20 @@
 
 import { resolve as resolvePath } from "node:path";
 import {
+	allocateDbIndexes,
 	AT_APP_HOST,
 	type AtDeclaration,
 	atDeclarations,
 	atEntryLabel,
+	checkVersionRange,
+	type DbIndexes,
 	effectiveListener,
 	endpointProperties,
+	httpsOriginSatisfied,
 	indexOperatorStoragePaths,
 	isExpression,
 	appEndpointReferences,
+	namedDatabase,
 	type NormalizedEnvVar,
 	type NormalizedHealth,
 	type NormalizedLaunch,
@@ -31,23 +36,18 @@ import {
 	unsuppliedRequiredEnv,
 	useKeys,
 } from "@launchfile/sdk";
-import { intersects, subset, validRange } from "semver";
 import {
-	allocateDbIndexes,
 	coverUse,
-	type DbIndexes,
-	namedDatabase,
 	namedDatabases,
 	uncoveredProvisionedUses,
 	uncoveredSuppliedUses,
 	usePropertyKeys,
 	withCoveredUses,
 } from "./resource-uses.js";
-import { stringify } from "yaml";
+import { Scalar, stringify } from "yaml";
 import {
 	computeAppContext,
 	HTTPS_ORIGIN,
-	httpsOriginSatisfied,
 	publishedEndpointAddresses,
 } from "./app-url.js";
 import {
@@ -137,6 +137,14 @@ function generatePort(): string {
 	const limit = Math.floor(0x1_0000_0000 / range) * range;
 	while (buf[0]! >= limit) crypto.getRandomValues(buf);
 	return String(10_000 + (buf[0]! % range));
+}
+
+// Forces double quotes on an emitted scalar. Compose values that are YAML 1.1
+// booleans (`no`, `yes`, `on`, `off`) round-trip as strings only when quoted.
+function quotedScalar(value: string): Scalar<string> {
+	const scalar = new Scalar(value);
+	scalar.type = Scalar.QUOTE_DOUBLE;
+	return scalar;
 }
 
 // --- requires.config handling ---
@@ -285,37 +293,40 @@ function checkVersionConstraint(
 	const key = req.name ?? req.type;
 	const quoted = JSON.stringify(declared);
 
-	if (validRange(declared) === null) {
-		warnings.push(
-			`requires[${key}]: declared version ${quoted} is not a valid semver range — ` +
-				`this provider cannot check it against ${image}.`,
-		);
-		return;
+	switch (checkVersionRange(declared, tagVersionRange(image))) {
+		case "satisfied":
+			return;
+		case "invalid":
+			warnings.push(
+				`requires[${key}]: declared version ${quoted} is not a valid semver range — ` +
+					`this provider cannot check it against ${image}.`,
+			);
+			return;
+		case "unknown": {
+			const tag = /:([^/:]+)$/.exec(image)?.[1];
+			const why =
+				tag === undefined || tag === "latest"
+					? "whose version is not fixed"
+					: `whose tag ${JSON.stringify(tag)} names no semver version`;
+			warnings.push(
+				`requires[${key}]: declared version ${quoted} cannot be checked — this provider provisions ` +
+					`${image}, ${why}, and does not select versions.`,
+			);
+			return;
+		}
+		case "unsatisfied":
+			warnings.push(
+				`requires[${key}]: declared version ${quoted} is not satisfied — this provider provisions the ` +
+					`fixed image ${image} and does not select versions.`,
+			);
+			return;
+		case "undecidable":
+			warnings.push(
+				`requires[${key}]: declared version ${quoted} cannot be checked against the fixed image ${image} — ` +
+					`this provider does not select versions.`,
+			);
+			return;
 	}
-
-	const tagRange = tagVersionRange(image);
-	if (tagRange === undefined) {
-		warnings.push(
-			`requires[${key}]: declared version ${quoted} cannot be checked — this provider provisions ` +
-				`${image}, whose version is not fixed, and does not select versions.`,
-		);
-		return;
-	}
-
-	if (subset(tagRange, declared)) return;
-
-	if (!intersects(tagRange, declared)) {
-		warnings.push(
-			`requires[${key}]: declared version ${quoted} is not satisfied — this provider provisions the ` +
-				`fixed image ${image} and does not select versions.`,
-		);
-		return;
-	}
-
-	warnings.push(
-		`requires[${key}]: declared version ${quoted} cannot be checked against the fixed image ${image} — ` +
-			`this provider does not select versions.`,
-	);
 }
 
 /**
@@ -352,6 +363,60 @@ function uncoveredUseRefusal(
 		`(${entries.join("; ")}) — a provider covers every declared use or refuses; declare only ` +
 		"what the app uses, supply a resource that covers it through the provider's " +
 		"supplied-resource channel (D-56), or use a provider that covers it — component skipped"
+	);
+}
+
+/**
+ * The entrypoint of a MinIO-backed object store (`minio`, `s3`). MinIO
+ * creates no bucket on its own and a client cannot assume one: a directory
+ * under the data path is a bucket, so the one the `bucket` property names is
+ * created before the server starts. The name travels as a positional
+ * argument, never inside the script; `$$1` is what compose interpolation
+ * turns into the shell's `$1`.
+ */
+function objectStoreEntrypoint(bucket: string): string[] {
+	return [
+		"sh",
+		"-c",
+		'mkdir -p "/data/$$1" && exec minio server /data',
+		"sh",
+		bucket,
+	];
+}
+
+/** Resource types whose `bucket` property is an S3 bucket this provider creates. */
+const OBJECT_STORE_TYPES = new Set(["minio", "s3"]);
+
+/**
+ * Why an app name cannot be a bucket name on the MinIO server this provider
+ * runs, or null when it can. The app name grammar (`^[a-z][a-z0-9-]*$`, at
+ * most 63) already rules out every character S3 rejects. This checks the
+ * length floor and a trailing hyphen. AWS also reserves prefixes and suffixes
+ * such as `xn--` and `-s3alias`; the pinned MinIO accepts them, so they are
+ * not checked here.
+ */
+function invalidBucketName(name: string): string | null {
+	if (name.length < 3) return "shorter than 3 characters";
+	if (name.endsWith("-")) return "ends with a hyphen";
+	return null;
+}
+
+/**
+ * The surfaced refusal for a component whose `requires` entry names a bucket
+ * that cannot exist (D-64): launching with a `bucket` that no S3 server
+ * accepts is the unmet precondition D-64 forbids. Names the component, the
+ * entry, the bucket name, and the way out.
+ */
+function invalidBucketNameRefusal(
+	componentName: string,
+	entries: readonly string[],
+): string {
+	const noun = entries.length === 1 ? "a bucket" : "buckets";
+	return (
+		`refused: ${componentName} requires ${noun} this provider cannot create ` +
+		`(${entries.join("; ")}) — the bucket is named after the app, and S3 bucket names ` +
+		"are 3 to 63 characters and never end with a hyphen; rename the app, or supply the " +
+		"resource through the provider's supplied-resource channel (D-56) — component skipped"
 	);
 }
 
@@ -628,8 +693,12 @@ function createBackingServices(
 			const accessKey = getPassword("minio-access");
 			const secretKey = getPassword("minio-secret");
 			return {
-				image: "minio/minio:latest",
-				// Matches the `server /data` command below.
+				// MinIO publishes no community images (minio/minio is gone).
+				// pgsty/minio is a maintained community fork of MinIO: same
+				// MINIO_ROOT_* env, `server /data`, and /minio/health/live. It
+				// publishes only RELEASE tags, so the pin is an exact release.
+				image: "pgsty/minio:RELEASE.2026-08-04T00-00-00Z",
+				// Matches the `server /data` in the entrypoint below.
 				dataPath: "/data",
 				environment: {
 					MINIO_ROOT_USER: accessKey,
@@ -645,7 +714,7 @@ function createBackingServices(
 					region: "us-east-1",
 				},
 				extra: {
-					command: "server /data",
+					entrypoint: objectStoreEntrypoint(name),
 				},
 				healthcheck: {
 					test: [
@@ -663,8 +732,12 @@ function createBackingServices(
 			const accessKey = getPassword("s3-access");
 			const secretKey = getPassword("s3-secret");
 			return {
-				image: "minio/minio:latest",
-				// Matches the `server /data` command below.
+				// MinIO publishes no community images (minio/minio is gone).
+				// pgsty/minio is a maintained community fork of MinIO: same
+				// MINIO_ROOT_* env, `server /data`, and /minio/health/live. It
+				// publishes only RELEASE tags, so the pin is an exact release.
+				image: "pgsty/minio:RELEASE.2026-08-04T00-00-00Z",
+				// Matches the `server /data` in the entrypoint below.
 				dataPath: "/data",
 				environment: {
 					MINIO_ROOT_USER: accessKey,
@@ -680,7 +753,7 @@ function createBackingServices(
 					region: "us-east-1",
 				},
 				extra: {
-					command: "server /data",
+					entrypoint: objectStoreEntrypoint(name),
 				},
 				healthcheck: {
 					test: [
@@ -1011,6 +1084,13 @@ export interface ComposeResult {
 	 */
 	healthchecks: Record<string, boolean>;
 	/**
+	 * Compose service names whose `restart` resolves to `no` or `on-failure`:
+	 * under either policy an exit 0 is the end state, not a crash (D-70). The
+	 * health gate passes such a service once it has exited 0, where every other
+	 * service must still be running.
+	 */
+	mayExit: string[];
+	/**
 	 * `required:` variables that arrived from neither the Launchfile nor
 	 * `opts.operatorEnv` (D-52, PROVIDERS.md §10 rule 8). Their keys are ABSENT
 	 * from the emitted compose — never `""`, never a substitute.
@@ -1079,6 +1159,7 @@ export function launchToCompose(
 	const generatedEnv = opts.generatedEnv ?? {};
 	const ports: Record<string, number> = {};
 	const componentServices: Record<string, string> = {};
+	const mayExit: string[] = [];
 	const unsuppliedRequired: UnsuppliedRequiredVar[] = [];
 	const endpoints: Record<string, StateEndpoint> = {};
 	const storageBinds: StorageBind[] = [];
@@ -1426,11 +1507,18 @@ export function launchToCompose(
 		// properties, a use no factory here can hand over, or a token this
 		// provider does not recognise — it cannot claim to cover a use it does
 		// not know. Never a warning that hands the app less than it declared.
+		// An `https-origin` entry is graded against the map its wiring below
+		// reads, `httpsOriginProperties` — the publication-context channel
+		// satisfies this type (D-60 rule 5), so a same-keyed entry in
+		// `opts.resources` is not what the app gets.
 		const uncoveredUses: string[] = [];
 		for (const req of component.requires ?? []) {
 			if (req.host || !req.uses) continue;
 			const resourceName = req.name ?? req.type;
-			const supplied = opts.resources?.[resourceName];
+			const supplied =
+				req.type === HTTPS_ORIGIN
+					? { properties: httpsOriginProperties }
+					: opts.resources?.[resourceName];
 			const uncovered = supplied
 				? uncoveredSuppliedUses(req.type, useKeys(req.uses), supplied.properties)
 				: uncoveredProvisionedUses(req.type, useKeys(req.uses));
@@ -1443,9 +1531,36 @@ export function launchToCompose(
 			continue;
 		}
 
-		if (component.schedule) {
+		// An object-store entry this provider would provision gets a bucket
+		// named after the app. A name no S3 server accepts as a bucket REFUSES
+		// the component the same way (D-64): the alternative is a launch that
+		// hands the app a `bucket` it can never use.
+		const uncreatableBuckets: string[] = [];
+		for (const req of component.requires ?? []) {
+			if (req.host || !OBJECT_STORE_TYPES.has(req.type)) continue;
+			if (opts.resources?.[req.name ?? req.type]) continue;
+			const why = invalidBucketName(launch.name);
+			if (why === null) continue;
+			uncreatableBuckets.push(
+				`${req.name ?? req.type}: bucket "${launch.name}" ${why}`,
+			);
+		}
+		if (uncreatableBuckets.length > 0) {
 			warnings.push(
-				`${componentName}: declares a schedule (\`${component.schedule}\`) — this provider will not run it on a timer; if the component does not schedule itself, the job will not run`,
+				invalidBucketNameRefusal(componentName, uncreatableBuckets),
+			);
+			continue;
+		}
+
+		if (component.schedule) {
+			// The restart clause is only true when the provider chose the policy.
+			// With an explicit `restart:` the author owns it, and claiming
+			// otherwise would make the warning false.
+			const restartClause = component.restart
+				? ""
+				: '; it runs once with `restart: "no"`, so the command is not re-run on exit';
+			warnings.push(
+				`${componentName}: declares a schedule (\`${component.schedule}\`) — this provider will not run it on a timer${restartClause}; if the component does not schedule itself, the job will not run`,
 			);
 		}
 
@@ -1643,6 +1758,7 @@ export function launchToCompose(
 						expr,
 						resourceName,
 						properties,
+						Object.hasOwn(componentContext.uses ?? {}, resourceName),
 					)) {
 						warnings.push(
 							`${componentName}: set_env references ${resourceName}.${prop}, which the supplied resource does not provide — resolved to ""`,
@@ -1808,6 +1924,10 @@ export function launchToCompose(
 		)) {
 			const supplied = opts.operatorEnv?.[key];
 			if (supplied !== undefined) {
+				// Registered on arrival, sensitive or not: the operator channel is
+				// credential material this provider never minted, so nothing else
+				// can have registered it before a capture sees it (D-52, D-18).
+				registerSuppliedEnv({ [key]: supplied });
 				env[key] = supplied;
 				continue;
 			}
@@ -1828,10 +1948,10 @@ export function launchToCompose(
 			}
 		}
 
-		// Register the credential-bearing values this provider did not mint —
-		// author-declared `sensitive: true` literals (D-18) and anything the
-		// operator supplied (D-52) — before any of them can reach a log line, an
-		// echoed command, or a captured failure record (CWE-532).
+		// Register the author-declared `sensitive: true` literals this provider
+		// did not mint (D-18) before any of them can reach a log line, an echoed
+		// command, or a captured failure record (CWE-532). Operator-supplied
+		// values were registered above, as they arrived (D-52).
 		registerSensitiveEnv(component.env, env);
 
 		if (Object.keys(env).length > 0) {
@@ -1892,11 +2012,16 @@ export function launchToCompose(
 			}
 		}
 
-		if (component.restart) {
-			service.restart = component.restart;
-		} else {
-			service.restart = "unless-stopped";
-		}
+		// A component carrying `schedule:` declares a one-shot job body, not a
+		// daemon. `unless-stopped` re-runs that body on every clean exit, so the
+		// job repeats in a backoff loop instead of running once (D-70). An
+		// explicit `restart:` always wins — a self-scheduling daemon stays
+		// authorable.
+		const restart =
+			component.restart ?? (component.schedule ? "no" : "unless-stopped");
+		// `no` is quoted: a YAML 1.1 loader reads the bare token as boolean false.
+		service.restart = restart === "no" ? quotedScalar("no") : restart;
+		if (restart === "no" || restart === "on-failure") mayExit.push(serviceName);
 
 		services[serviceName] = service;
 		componentServices[componentName] = serviceName;
@@ -1970,6 +2095,7 @@ export function launchToCompose(
 				service.healthcheck !== undefined,
 			]),
 		),
+		mayExit,
 		unsuppliedRequired,
 		storageBinds,
 		unboundOperatorVolumes,
@@ -1991,14 +2117,19 @@ const RESERVED_NAMESPACES = new Set([
 /**
  * The properties a `set_env` expression reads from THIS supplied resource that
  * its property map does not provide. Counted: scoped `$prop` references and
- * `$<resourceName>.<prop>` references; not counted: reserved namespaces, other
- * resources, and any reference carrying a `:-fallback` — the fallback fires
- * instead of the empty resolution this warning exists to flag.
+ * `$<resourceName>.<prop>` references, where `<prop>` is the whole path tail
+ * as one key (`$postgres.deep.host` reads `deep.host`, which resolves `""`
+ * unless the map registers it). Not counted: reserved namespaces, other
+ * resources, a three-or-more-segment reference on a resource that declares
+ * `uses` — that path resolves strictly or throws (D-65 rule 2), never `""` —
+ * and any reference carrying a `:-fallback`, which fires instead of the empty
+ * resolution this warning exists to flag.
  */
 function missingSuppliedRefs(
 	expr: string,
 	resourceName: string,
 	properties: Record<string, string>,
+	declaresUses: boolean,
 ): string[] {
 	const parsed = parseExpression(expr);
 	const refs: Array<{ path: string[]; fallback?: string }> = [];
@@ -2017,11 +2148,12 @@ function missingSuppliedRefs(
 		if (ref.path.length === 1) {
 			prop = ref.path[0];
 		} else if (
-			ref.path.length === 2 &&
+			ref.path.length >= 2 &&
 			ref.path[0] === resourceName &&
-			!RESERVED_NAMESPACES.has(resourceName)
+			!RESERVED_NAMESPACES.has(resourceName) &&
+			(ref.path.length === 2 || !declaresUses)
 		) {
-			prop = ref.path[1];
+			prop = ref.path.slice(1).join(".");
 		}
 		if (
 			prop !== undefined &&
@@ -2275,7 +2407,7 @@ function translateHealth(
 	health: NormalizedHealth,
 	provides?: { port: number; protocol: string }[],
 ): ComposeHealthcheck {
-	if (health.command) {
+	if (health.command && health.path === undefined) {
 		return {
 			test: ["CMD-SHELL", health.command],
 			interval: health.interval ?? "10s",

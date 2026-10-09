@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { KNOWN_FLAGS, parseArgs } from "../cli-args.js";
 
 const cli = resolve(dirname(fileURLToPath(import.meta.url)), "../cli.ts");
 
@@ -35,16 +36,20 @@ function scratch(): { launchfile: string; out: string } {
 	return { launchfile, out: join(d, "out") };
 }
 
-/** Runs the real CLI. Arguments go as an array — the shell is never invoked. */
-function translate(args: string[]): {
+interface Run {
 	status: number | null;
 	stdout: string;
 	stderr: string;
-} {
-	const r = spawnSync("bun", ["run", cli, "translate", ...args], {
-		encoding: "utf8",
-	});
+}
+
+/** Runs the real CLI. Arguments go as an array — the shell is never invoked. */
+function run(args: string[]): Run {
+	const r = spawnSync("bun", ["run", cli, ...args], { encoding: "utf8" });
 	return { status: r.status, stdout: r.stdout, stderr: r.stderr };
+}
+
+function translate(args: string[]): Run {
+	return run(["translate", ...args]);
 }
 
 describe("launchfile-aws translate (CLI)", () => {
@@ -139,6 +144,207 @@ describe("launchfile-aws translate (CLI)", () => {
 			expect(r.stderr).toContain(form);
 			expect(r.stderr).toContain("--rekey <value>");
 			expect(existsSync(out)).toBe(false);
+		}
+	});
+
+	it("honours --region on a valid invocation", () => {
+		const { launchfile, out } = scratch();
+		const r = translate([launchfile, "--out", out, "--region", "eu-north-1"]);
+		expect(r.status).toBe(0);
+		expect(r.stderr).toBe("");
+		expect(readFileSync(join(out, "main.tf"), "utf8")).toContain(
+			'region = "eu-north-1"',
+		);
+	});
+
+	it("refuses an unknown flag, names it, lists the known ones, and writes nothing (#528)", () => {
+		const { launchfile, out } = scratch();
+		for (const [args, name] of [
+			[[launchfile, "--out", out, "--regoin", "eu-north-1"], "regoin"],
+			[[launchfile, "--out", out, "--regoin=eu-north-1"], "regoin"],
+			[["--verbose", launchfile, "--out", out], "verbose"],
+		] as const) {
+			const r = translate([...args]);
+			expect(r.status, args.join(" ")).toBe(1);
+			expect(r.stdout, args.join(" ")).toBe("");
+			expect(r.stderr, args.join(" ")).toContain(`no such flag --${name}`);
+			expect(r.stderr, args.join(" ")).toContain(
+				"Known flags: --out, --region, --rekey, --help",
+			);
+			expect(r.stderr, args.join(" ")).toContain("Nothing was written.");
+			expect(existsSync(out), args.join(" ")).toBe(false);
+		}
+	});
+
+	it("refuses --out and --region with no value, and writes nothing", () => {
+		const { launchfile, out } = scratch();
+		for (const [args, flag] of [
+			[[launchfile, "--out", out, "--region"], "region"],
+			[[launchfile, "--region", "--out", out], "region"],
+			[[launchfile, "--out"], "out"],
+		] as const) {
+			const r = translate([...args]);
+			expect(r.status, args.join(" ")).toBe(1);
+			expect(r.stderr, args.join(" ")).toContain(
+				`--${flag} needs a value: \`--${flag} <value>\`.`,
+			);
+			expect(r.stderr, args.join(" ")).toContain("Nothing was written.");
+			expect(existsSync(out), args.join(" ")).toBe(false);
+		}
+	});
+
+	it("refuses the --out=<dir> form rather than dropping it", () => {
+		const { launchfile, out } = scratch();
+		const r = translate([launchfile, `--out=${out}`]);
+		expect(r.status).toBe(1);
+		expect(r.stderr).toContain(`--out=${out}: write it as \`--out <value>\``);
+		expect(existsSync(out)).toBe(false);
+		expect(existsSync("aws-out")).toBe(false);
+	});
+
+	it("reads the Launchfile path from the first positional, wherever the flags sit (#528)", () => {
+		const { launchfile, out } = scratch();
+		const r = translate(["--out", out, "--region", "eu-north-1", launchfile]);
+		expect(r.status).toBe(0);
+		expect(readFileSync(join(out, "main.tf"), "utf8")).toContain(
+			'region = "eu-north-1"',
+		);
+	});
+
+	it("refuses a --flag where the command belongs", () => {
+		const { launchfile, out } = scratch();
+		const r = run(["--out", out, launchfile]);
+		expect(r.status).toBe(1);
+		expect(r.stderr).toContain("the command comes before its flags");
+		expect(existsSync(out)).toBe(false);
+	});
+
+	it("refuses `translate` with no Launchfile path", () => {
+		const r = translate([]);
+		expect(r.status).toBe(1);
+		expect(r.stdout).toBe("");
+		expect(r.stderr).toContain("translate needs a Launchfile");
+	});
+});
+
+describe("launchfile-aws (CLI, verbs and help)", () => {
+	it("prints usage and exits 0 for a bare invocation and for --help only", () => {
+		for (const args of [[], ["--help"], ["translate", "--help"]]) {
+			const r = run(args);
+			expect(r.status, args.join(" ")).toBe(0);
+			expect(r.stdout, args.join(" ")).toContain("Usage:");
+			expect(r.stderr, args.join(" ")).toBe("");
+		}
+	});
+
+	it("refuses an unrecognised verb with a non-zero exit (#528)", () => {
+		const { launchfile } = scratch();
+		const r = run(["deploy", launchfile]);
+		expect(r.status).toBe(1);
+		expect(r.stdout).toBe("");
+		expect(r.stderr).toContain("Unknown command: deploy");
+		expect(r.stderr).toContain("Run `launchfile-aws --help` for usage.");
+	});
+
+	it("refuses an unknown flag before honouring --help", () => {
+		const r = run(["--bogus", "--help"]);
+		expect(r.status).toBe(1);
+		expect(r.stderr).toContain("no such flag --bogus");
+	});
+});
+
+describe("parseArgs", () => {
+	it("lists exactly the flags cli.ts reads", () => {
+		expect([...KNOWN_FLAGS]).toEqual(["out", "region", "rekey", "help"]);
+	});
+
+	it("collects every --rekey in order and each single flag once", () => {
+		expect(
+			parseArgs([
+				"translate",
+				"--rekey",
+				"random_uuid.a",
+				"app",
+				"--region",
+				"eu-north-1",
+				"--rekey",
+				"random_password.b",
+			]),
+		).toEqual({
+			kind: "translate",
+			args: {
+				file: "app",
+				out: undefined,
+				region: "eu-north-1",
+				rekey: ["random_uuid.a", "random_password.b"],
+			},
+		});
+	});
+
+	it("refuses a single-value flag given twice rather than dropping one", () => {
+		const r = parseArgs(["translate", "app", "--out", "a", "--out", "b"]);
+		expect(r).toEqual({
+			kind: "refuse",
+			message: "--out is given twice; it takes one value.",
+		});
+	});
+
+	it("refuses a second positional rather than ignoring it", () => {
+		const r = parseArgs(["translate", "app", "other"]);
+		expect(r.kind).toBe("refuse");
+		if (r.kind === "refuse")
+			expect(r.message).toContain("unexpected argument: other");
+	});
+
+	it("does not judge a value flag's value that starts with -- as a flag ([D-67] rule 3)", () => {
+		expect(parseArgs(["translate", "app", "--out", "--bogus"])).toEqual({
+			kind: "refuse",
+			message: "--out needs a value: `--out <value>`.",
+		});
+	});
+
+	it("reads --help only in a flag position, never as a value flag's value", () => {
+		expect(parseArgs(["translate", "app", "--out", "--help"])).toEqual({
+			kind: "refuse",
+			message: "--out needs a value: `--out <value>`.",
+		});
+		expect(parseArgs(["translate", "app", "--out", "o", "--help"])).toEqual({
+			kind: "help",
+		});
+	});
+
+	it("refuses a bare -- with its own message", () => {
+		for (const argv of [
+			["translate", "--", "app"],
+			["--", "translate", "app"],
+		]) {
+			const r = parseArgs(argv);
+			expect(r.kind, argv.join(" ")).toBe("refuse");
+			if (r.kind !== "refuse") continue;
+			expect(r.message).toContain("`--` on its own is not read");
+			expect(r.message).toContain(
+				"Known flags: --out, --region, --rekey, --help",
+			);
+		}
+	});
+
+	it("refuses --help=<value>", () => {
+		expect(parseArgs(["translate", "app", "--help=1"])).toEqual({
+			kind: "refuse",
+			message: "--help takes no value, e.g. --help",
+		});
+	});
+
+	it("echoes an operator token with control characters stripped", () => {
+		for (const r of [
+			parseArgs(["translate", "app", "--bo\u001b[31mgus\nfake"]),
+			parseArgs(["dep\u001b[31mloy\nfake", "app"]),
+			parseArgs(["translate", "app", "--out=\u001b[31mx\nfake"]),
+		]) {
+			expect(r.kind).toBe("refuse");
+			if (r.kind !== "refuse") continue;
+			expect(r.message).not.toContain("\u001b");
+			expect(r.message).toContain("\\nfake");
 		}
 	});
 });
