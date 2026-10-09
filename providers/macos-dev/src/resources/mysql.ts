@@ -110,18 +110,31 @@ export class MysqlProvisioner implements ResourceProvisioner {
 
 		// Named `database` uses (SPEC.md § Resource uses): one more database per
 		// name, `<instance>_<name>`, created and granted the same way as the
-		// app's own. Security: a use name is schema-validated
-		// (^[a-z][a-z0-9-]*$) and the hyphens become underscores, so the
-		// identifier check cannot fail on a name that reached here through the
-		// parser; it guards the SQL below all the same.
-		const databases = (opts.databases ?? []).map((name) => namedDatabase(dbName, name));
-		for (const database of databases) {
+		// app's own. A CREATE DATABASE that fails aborts `up`, naming the entry,
+		// the token and the name, the way any provisioning failure here does: a
+		// use the provider could not create is never handed to the app as a URL.
+		// Security: a use name is schema-validated (^[a-z][a-z0-9-]*$) and the
+		// hyphens become underscores, so the identifier check cannot fail on a
+		// name that reached here through the parser; it guards the SQL below
+		// all the same.
+		const databases: string[] = [];
+		for (const name of opts.databases ?? []) {
+			const database = namedDatabase(dbName, name);
 			assertSafeIdentifier(database, "database name");
-			await this.#shell(
-				"mysql",
-				[...mysqlArgs(), "-e", `CREATE DATABASE IF NOT EXISTS \`${database}\`;`],
-				{ allowFailure: true },
-			);
+			databases.push(database);
+			try {
+				await this.#shell("mysql", [
+					...mysqlArgs(),
+					"-e",
+					`CREATE DATABASE IF NOT EXISTS \`${database}\`;`,
+				]);
+			} catch (error) {
+				throw new Error(
+					`Refused: ${resourceName}: database: ${name} — could not create database "${database}" ` +
+						`(${error instanceof Error ? error.message : String(error)})`,
+					{ cause: error },
+				);
+			}
 			await this.#shell(
 				"mysql",
 				[
@@ -132,6 +145,23 @@ export class MysqlProvisioner implements ResourceProvisioner {
 				{ allowFailure: true },
 			);
 		}
+		// A database this entry named on an earlier run and no longer does
+		// stays recorded: dropping it here would destroy data on a one-line
+		// `uses:` edit with no undo. `destroy` is the only path that drops it.
+		const vanished = (existingState?.databases ?? []).filter(
+			(database) => !databases.includes(database),
+		);
+		for (const database of vanished) {
+			// Security: the stored name is unvalidated JSON (state.ts); an unsafe
+			// one is never echoed.
+			const label = SAFE_IDENTIFIER.test(database)
+				? `"${database}"`
+				: "(unsafe name in state.json)";
+			console.warn(
+				`  ! mysql: database ${label} is no longer a named use of ${resourceName} — kept; \`destroy\` drops it`,
+			);
+		}
+		databases.push(...vanished);
 
 		const url = `mysql://${user}:${password}@${DEFAULT_HOST}:${port}/${dbName}`;
 
