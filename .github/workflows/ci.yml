@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.2
+          bun-version-file: .bun-version
       - run: cd sdk && bun install --frozen-lockfile
       - run: cd sdk && bun run typecheck
       - run: cd sdk && bun run build
@@ -48,9 +48,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.2
+          bun-version-file: .bun-version
       - name: Build SDK (local dependency)
         run: cd sdk && bun install --frozen-lockfile && bun run build
+      - name: Build docker provider (macos-dev's test imports it)
+        if: matrix.provider == 'macos-dev'
+        run: cd providers/docker && bun install --frozen-lockfile && bun run build
       - run: cd providers/${{ matrix.provider }} && bun install --frozen-lockfile
       - run: cd providers/${{ matrix.provider }} && bun run typecheck
       - run: cd providers/${{ matrix.provider }} && bun run test
@@ -63,6 +66,28 @@ jobs:
       - name: AWS CONFORMANCE.md is up to date
         if: matrix.provider == 'aws'
         run: cd providers/aws && bun run conformance --check
+
+  # The docker provider's health gate against a real daemon (ubuntu-latest
+  # ships one). The `providers` job runs the same spec file, but skipped: it is
+  # opt-in through LAUNCHFILE_DOCKER_E2E, which this job sets, and with the flag
+  # set an unreachable daemon fails the run instead of skipping it. Runs on
+  # every pull request, which covers every change to providers/docker/**.
+  docker-e2e:
+    name: "Provider (docker) — health gate e2e"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+      - name: Build SDK (local dependency)
+        run: cd sdk && bun install --frozen-lockfile && bun run build
+      - run: cd providers/docker && bun install --frozen-lockfile
+      - name: Health gate e2e
+        env:
+          LAUNCHFILE_DOCKER_E2E: "1"
+        run: cd providers/docker && bun run test src/__tests__/e2e
 
   # The AWS provider is translation-only: prove the emitted HCL is valid Terraform
   # against the real AWS provider schema (no credentials — init only fetches the
@@ -79,7 +104,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.2
+          bun-version-file: .bun-version
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_wrapper: false
@@ -107,7 +132,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.2
+          bun-version-file: .bun-version
       - name: Build SDK and providers (local dependencies)
         run: |
           cd sdk && bun install --frozen-lockfile && bun run build
@@ -142,7 +167,7 @@ jobs:
           fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.2
+          bun-version-file: .bun-version
       - name: Build SDK and Docker provider (local dependencies)
         run: |
           cd sdk && bun install --frozen-lockfile && bun run build
@@ -182,7 +207,7 @@ jobs:
           node-version: "22"
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.2
+          bun-version-file: .bun-version
       # www-shared carries the shared Sätteri markdown plugins; the site configs
       # import them, so its deps (satteri, hast/mdast types) must be installed
       # before the site build/typecheck can resolve them.
@@ -280,7 +305,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.2
+          bun-version-file: .bun-version
+      - name: Check installed bun matches .bun-version
+        run: |
+          expected="$(tr -d '[:space:]' < .bun-version)"
+          actual="$(bun --version)"
+          if [ "$actual" != "$expected" ]; then
+            echo "::error file=.bun-version::bun $actual is installed but .bun-version pins $expected"
+            exit 1
+          fi
       - run: bun install --frozen-lockfile
 
   # Catches invalid YAML in workflow files before it gets merged and breaks
@@ -372,7 +405,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.2
+          bun-version-file: .bun-version
       - name: Build SDK and provider packages (local dependencies)
         run: |
           cd sdk && bun install --frozen-lockfile && bun run build
@@ -424,6 +457,7 @@ jobs:
     needs:
       - sdk
       - providers
+      - docker-e2e
       - aws-terraform-validate
       - cli
       - catalog

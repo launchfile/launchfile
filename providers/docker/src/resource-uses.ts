@@ -29,33 +29,29 @@
  * What each backing service gives:
  *
  * - **redis** — one instance per app, shared by every redis entry. `db` is one
- *   numbered database on it, allocated per use key by {@link allocateDbIndexes};
+ *   numbered database on it, allocated per use key by `allocateDbIndexes`
+ *   from `@launchfile/sdk`, the one allocation every provider applies;
  *   `pubsub` and `server` are covered by the instance itself, which nothing
  *   outside this app shares, and register nothing beyond the instance
  *   vocabulary.
  * - **postgres / mysql / mariadb** — one server per app with one database
  *   named after the app. A bare `database` is that database; each named
  *   `database` is one more database on the server, `<instance>_<name>`
- *   ({@link namedDatabase}), created by the init script the generator mounts;
+ *   (`namedDatabase` from `@launchfile/sdk`), created by the init script the
+ *   generator mounts;
  *   `server` is the instance.
  */
 
 import {
+	type DbIndexes,
 	formatUseKey,
-	type NormalizedLaunch,
+	namedDatabase,
 	parseUseKey,
-	useKeys,
+	withDatabasePath,
 } from "@launchfile/sdk";
 
 /** Property map a factory produced, or the orchestrator supplied. */
 export type Properties = Readonly<Record<string, string>>;
-
-/**
- * The redis database index allocated to each `db` use key of one resource —
- * `db` for the bare use, `db.<name>` for a named one. Produced per resource
- * by {@link allocateDbIndexes}.
- */
-export type DbIndexes = Readonly<Record<string, number>>;
 
 /** What one cover sees: the instance map, the occurrence's name, and its allocated redis index. */
 interface CoverInput {
@@ -71,26 +67,6 @@ interface UseCoverage {
 	readonly cover: Cover;
 	/** Whether the use may be named more than once on one entry (`- db: cache`). */
 	readonly repeatable: boolean;
-}
-
-/**
- * The database a named `database` use gets on the provisioned server:
- * `<instance database>_<name>`, hyphens as underscores so the name is one SQL
- * identifier on every engine. The same rule on both reference providers.
- */
-export function namedDatabase(instance: string, name: string): string {
-	return `${instance}_${name.replace(/-/g, "_")}`;
-}
-
-/**
- * `url` with its path replaced by `/<database>`, the query and fragment kept:
- * the instance URL selects the instance database, a named use's URL selects
- * its own.
- */
-export function withDatabasePath(url: string, database: string): string {
-	const match = /^([a-z][a-z0-9+.-]*:\/\/[^/?#]*)(?:\/[^?#]*)?(.*)$/i.exec(url);
-	if (!match) return url;
-	return `${match[1]}/${database}${match[2]}`;
 }
 
 const SQL_SERVER_USES: Readonly<Record<string, UseCoverage>> = {
@@ -287,54 +263,4 @@ export function namedDatabases(keys: readonly string[]): string[] {
 		if (use === "database" && name !== undefined) names.add(name);
 	}
 	return [...names].sort();
-}
-
-/**
- * One numbered redis database per `db` use key, app-wide, keyed by resource
- * name — the same allocation on both reference providers (D-65 conformance),
- * so one file yields the same `db.*` values under each:
- *
- * - redis resources take blocks in the order their first `db`-declaring entry
- *   appears, walking components in file order and `requires` before
- *   `supports` — a `supports` entry's `db` takes its index whether or not the
- *   entry is fulfilled;
- * - within a block the bare `db` (if any same-name entry declares it) takes
- *   the first index and the named `db` uses follow in name order, so
- *   `- db: sessions` beside `- db: cache` is the later index whichever is
- *   written first.
- *
- * Index 0 is the first allocated. Same-name entries pool their keys (D-24).
- * A resource that declares no `db` use has no entry.
- */
-export function allocateDbIndexes(
-	launch: NormalizedLaunch,
-): Record<string, DbIndexes> {
-	const pooled = new Map<string, Set<string>>();
-	for (const component of Object.values(launch.components)) {
-		for (const entry of [
-			...(component.requires ?? []),
-			...(component.supports ?? []),
-		]) {
-			if (entry.host || entry.type !== "redis" || !entry.uses) continue;
-			const dbKeys = useKeys(entry.uses).filter(
-				(key) => parseUseKey(key).use === "db",
-			);
-			if (dbKeys.length === 0) continue;
-			const key = entry.name ?? entry.type;
-			const keys = pooled.get(key) ?? new Set<string>();
-			for (const dbKey of dbKeys) keys.add(dbKey);
-			pooled.set(key, keys);
-		}
-	}
-	const allocation: Record<string, DbIndexes> = {};
-	let next = 0;
-	for (const [resource, keys] of pooled) {
-		const indexes: Record<string, number> = {};
-		if (keys.has("db")) indexes.db = next++;
-		for (const key of [...keys].filter((k) => k !== "db").sort()) {
-			indexes[key] = next++;
-		}
-		allocation[resource] = indexes;
-	}
-	return allocation;
 }

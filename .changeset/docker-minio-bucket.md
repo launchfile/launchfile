@@ -1,0 +1,5 @@
+---
+"@launchfile/docker": patch
+---
+
+The `minio` and `s3` backing services now create the bucket their `bucket` property names before the server starts (#759). MinIO creates no bucket on its own, so an app that read `$bucket` and used it at once got `NoSuchBucket` until someone created it by hand. A directory under the data path is a bucket, so the service entrypoint runs `mkdir -p /data/<bucket>` and then `minio server /data`; the bucket name is passed as a positional argument, never spliced into the script. `mkdir -p` runs at every start, so a bucket deleted from the volume comes back on the next start; existing `<app>-minio-data` and `<app>-s3-data` volumes are untouched apart from that directory. The bucket is named after the app, and an app name no S3 server accepts as a bucket name — shorter than 3 characters, or ending in a hyphen — now refuses the component before launch (D-64) instead of handing the app a `bucket` it can never use; a resource supplied through the orchestrator channel is not checked, because this provider does not create its bucket.

@@ -2,10 +2,11 @@
  * `launchfile list` — Show all managed deployments.
  */
 
-import { loadIndex } from "../state/index.js";
+import { entrySource, loadIndex } from "../state/index.js";
 
-export async function handleList(): Promise<void> {
-	const index = await loadIndex();
+/** `dir` is the deployment index directory; tests pass a temp one. */
+export async function handleList(dir?: string): Promise<void> {
+	const index = await loadIndex(dir);
 	const entries = Object.entries(index.deployments);
 
 	if (entries.length === 0) {
@@ -29,7 +30,7 @@ export async function handleList(): Promise<void> {
 	for (const [id, entry] of entries) {
 		const source = entry.sourceType === "local"
 			? entry.source.replace(process.env.HOME ?? "", "~")
-			: entry.source;
+			: entrySource(entry);
 		const port = entry.port ? String(entry.port) : "—";
 		const name = entry.name ? ` (${entry.name})` : "";
 

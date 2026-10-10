@@ -3,10 +3,11 @@
  * Static validation for every catalog Launchfile — schema plus image-reference
  * policy. Analysis only: nothing is pulled, built, or run.
  *
- * "Schema" here is the SDK's Zod schema (`sdk/src/schema.ts`), which is what
- * `readLaunch` checks — not the published JSON Schema at
- * `spec/schema/launchfile.schema.json`. The two are maintained separately and
- * nothing asserts they agree (issue #179).
+ * Every Launchfile is checked against two schemas: the SDK's Zod schema
+ * (`sdk/src/schema.ts`, via `readLaunch`) and the published JSON Schema at
+ * `spec/schema/launchfile.schema.json` (via ajv). The two are maintained
+ * separately. This catches the published schema rejecting a file Zod accepts;
+ * it does not catch the converse (issue #439).
  *
  * Two severities:
  *
@@ -26,6 +27,8 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import Ajv2020 from "ajv/dist/2020.js";
+import addFormats from "ajv-formats";
 import { parse } from "yaml";
 import { readLaunch } from "../../../sdk/src/reader.ts";
 
@@ -243,6 +246,16 @@ function discoverEntries(repoRoot: string): CatalogEntry[] {
 	return entries.sort((a, b) => a.file.localeCompare(b.file));
 }
 
+function countEntryDirectories(repoRoot: string): number {
+	let count = 0;
+	for (const tier of ["apps", "drafts"]) {
+		const dir = join(repoRoot, "catalog", tier);
+		if (!existsSync(dir)) continue;
+		count += readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).length;
+	}
+	return count;
+}
+
 /**
  * Repo-relative paths this change adds or edits, from `git diff` against `base`.
  * An empty set (no base, or a base this clone cannot resolve) scopes the
@@ -266,6 +279,44 @@ export function changedPaths(repoRoot: string, base: string | undefined): Set<st
 	}
 }
 
+/** Repo-relative path of the published JSON Schema the catalog is checked against. */
+export const PUBLISHED_SCHEMA_PATH = "spec/schema/launchfile.schema.json";
+
+/**
+ * Compile the published schema. Strict mode stays on, so a schema ajv cannot
+ * interpret throws here instead of silently accepting everything.
+ */
+export function collectExtensionKeywords(node: unknown, found = new Set<string>()): Set<string> {
+	if (Array.isArray(node)) {
+		for (const item of node) collectExtensionKeywords(item, found);
+	} else if (node && typeof node === "object") {
+		for (const [key, value] of Object.entries(node)) {
+			if (key.startsWith("x-")) found.add(key);
+			collectExtensionKeywords(value, found);
+		}
+	}
+	return found;
+}
+
+export function compilePublishedSchema(
+	schema: object,
+): (data: unknown) => { valid: true } | { valid: false; errors: string[] } {
+	const ajv = new Ajv2020({ strict: true, allErrors: true });
+	addFormats(ajv);
+	// `x-` keys are annotations; ajv strict mode needs each one declared.
+	for (const keyword of collectExtensionKeywords(schema)) ajv.addKeyword(keyword);
+	const validate = ajv.compile(schema);
+	return (data) => {
+		if (validate(data)) return { valid: true };
+		return {
+			valid: false,
+			errors: (validate.errors ?? []).map(
+				(e) => `${e.instancePath || "/"} ${e.message ?? "invalid"} (${e.schemaPath})`,
+			),
+		};
+	};
+}
+
 export interface ValidationReport {
 	files: number;
 	findings: Finding[];
@@ -275,8 +326,47 @@ export function validateCatalog(repoRoot: string, changed: Set<string>): Validat
 	const findings: Finding[] = [];
 	const entries = discoverEntries(repoRoot);
 
+	// A catalog directory without a Launchfile, or no Launchfiles at all, would
+	// otherwise shrink the checked set without failing.
+	const dirCount = countEntryDirectories(repoRoot);
+	if (entries.length === 0 || entries.length !== dirCount) {
+		findings.push({
+			severity: "error",
+			file: "catalog",
+			message:
+				`found ${entries.length} Launchfile(s) across ${dirCount} entry director(ies) ` +
+				"under catalog/{apps,drafts}; every entry directory must hold a Launchfile and " +
+				"the catalog must not be empty.",
+		});
+	}
+
+	const checkPublished = compilePublishedSchema(
+		JSON.parse(readFileSync(join(repoRoot, PUBLISHED_SCHEMA_PATH), "utf8")) as object,
+	);
+
 	for (const entry of entries) {
 		const text = readFileSync(entry.launchfilePath, "utf8");
+
+		try {
+			const result = checkPublished(parse(text));
+			if (!result.valid) {
+				findings.push({
+					severity: "error",
+					file: entry.file,
+					message:
+						`rejected by the published JSON Schema (${PUBLISHED_SCHEMA_PATH}): ` +
+						result.errors.join("; "),
+				});
+			}
+		} catch (err) {
+			findings.push({
+				severity: "error",
+				file: entry.file,
+				message: `cannot be checked against ${PUBLISHED_SCHEMA_PATH}: ${
+					err instanceof Error ? err.message : String(err)
+				}`,
+			});
+		}
 
 		try {
 			readLaunch(text);

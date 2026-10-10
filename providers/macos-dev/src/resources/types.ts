@@ -73,18 +73,46 @@ export interface DestroyOpts {
 	projectDir: string;
 }
 
+export interface ProvisionResult {
+	properties: ResourceProperties;
+	state: ResourceState;
+	warnings: string[];
+}
+
+/**
+ * Thrown by `provision()` when the resource cannot be handed out safely — a
+ * repo-controlled path the provisioner refuses to write through, for one.
+ * The provisioner prints the reason before throwing, so the caller records
+ * the refusal, provisions what remains, and exits non-zero naming every
+ * refused resource. Any other error still aborts the run.
+ */
+export class ResourceRefusedError extends Error {
+	constructor(
+		readonly resourceName: string,
+		readonly reason: string,
+	) {
+		super(`${resourceName}: ${reason}`);
+		this.name = "ResourceRefusedError";
+	}
+}
+
 export interface ResourceProvisioner {
 	readonly type: string;
 
 	/** Check if the service is already running */
 	isRunning(): Promise<boolean>;
 
-	/** Ensure the service is installed and running, create app-specific resources */
+	/**
+	 * Ensure the service is installed and running, create app-specific
+	 * resources. `warnings` carries every gap the provisioner found in the
+	 * entry it was given — a `requires[].version` it cannot show is met
+	 * (PROVIDERS.md §10 item 8) — for the caller to print.
+	 */
 	provision(
 		req: NormalizedRequirement,
 		opts: ProvisionOpts,
 		existingState?: ResourceState,
-	): Promise<{ properties: ResourceProperties; state: ResourceState }>;
+	): Promise<ProvisionResult>;
 
 	/** Drop app-specific databases/users (destroy mode) */
 	destroy(state: ResourceState, opts: DestroyOpts): Promise<void>;

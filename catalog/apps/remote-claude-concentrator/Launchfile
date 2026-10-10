@@ -37,14 +37,14 @@ env:
     description: "OpenRouter API key for voice transcript refinement (optional)"
 
 storage:
+  # Session cache, auth state (auth.json, auth.secret), invite codes
   cache:
     path: /data/cache
     persistent: true
-    description: "Session cache, auth state (auth.json, auth.secret), invite codes"
+  # Session transcript history
   transcripts:
     path: /data/transcripts
     persistent: true
-    description: "Session transcript history"
 
 health: /health
 restart: always
