@@ -1,5 +1,50 @@
 # @launchfile/aws
 
+## 0.6.2
+
+### Patch Changes
+
+- [#637](https://github.com/launchfile/launchfile/pull/637) [`39d9740`](https://github.com/launchfile/launchfile/commit/39d9740ea541db7be8e51efd5cdd5c9fad30c7fb) Thanks [@launchfile-steward](https://github.com/apps/launchfile-steward)! - `launchfile-aws` now refuses, before anything runs, an argument it does not
+  read — on stderr, exit 1, nothing written ([D-67] shape, [#528](https://github.com/launchfile/launchfile/issues/528)). It used to
+  read its two flags by position and drop the rest: `translate app --regoin
+  eu-north-1` wrote a `main.tf` for the default region with nothing to say so,
+  `--region` as the last token fell through to the default the same way,
+  `launchfile-aws deploy app` printed usage and exited 0, and `translate --out
+  dir app` tried to open a file named `--out`. The operator's next step after
+  each is `terraform apply`.
+  
+  Refused now:
+  
+  - an unknown `--` flag: `no such flag --regoin`, with the known flags listed
+    (`--out, --region, --rekey, --help`); a bare `--` has its own message
+  - `--out`, `--region` or `--rekey` with no value, or written `--flag=value`
+  - any verb but `translate` — `Unknown command: deploy`, exit 1
+  - a `--` token where the command belongs, a second Launchfile path, or a
+    single-value flag given twice
+  
+  Exit 0 is kept for a bare invocation and `--help` only. `--help` counts only
+  where a flag stands, never as the value after `--out`, `--region` or
+  `--rekey`. `translate` with no Launchfile path now prints its refusal on
+  stderr instead of usage on stdout; its exit code (1) is unchanged. The
+  Launchfile path is the first non-flag token, so flags may sit on either side
+  of it.
+  
+  A script that passed a stray or typo'd flag, or a verb other than
+  `translate`, and relied on exit 0 now fails. Single-dash tokens are unchanged
+  ([#529](https://github.com/launchfile/launchfile/issues/529)).
+
+- [#723](https://github.com/launchfile/launchfile/pull/723) [`277cde2`](https://github.com/launchfile/launchfile/commit/277cde2804089006c845612ee8939e8ccb377dc4) Thanks [@launchfile-steward](https://github.com/apps/launchfile-steward)! - A component whose `health` block declares only `command` no longer has its `/` ALB health check recorded as mapped ([#718](https://github.com/launchfile/launchfile/issues/718)). The probe now records a `workaround` conformance gap for `health`; the target group keeps its `/` probe with the `200-399` matcher. Every other `health` block, including one with only `start_period`, is mapped, and `health.path` is used as before.
+
+- [#701](https://github.com/launchfile/launchfile/pull/701) [`dca274b`](https://github.com/launchfile/launchfile/commit/dca274b2de2d359aad3d785f82296783c59a1dd1) Thanks [@launchfile-steward](https://github.com/apps/launchfile-steward)! - Report a `requires[].version` range a provider cannot show is met, in every reference provider ([#404](https://github.com/launchfile/launchfile/issues/404), D-74). `@launchfile/sdk` exports `checkVersionRange(declared, provided)`, the one range comparison all three providers use: it classifies a declared node-semver range against the version or version family a provider runs as `satisfied`, `unsatisfied`, `undecidable`, `unknown` or `invalid`. `semver` moves from `@launchfile/docker` to `@launchfile/sdk`.
+  
+  `@launchfile/docker` now calls the shared comparison. Its warnings are unchanged.
+  
+  `@launchfile/macos-dev` read no `requires[].version` at all. Each resource provisioner now returns `warnings`, and `up` prints them. Postgres, MySQL/MariaDB and Redis ask the running server for its version and compare the range with it; a satisfied range is silent. A `mariadb` range is compared only against a MariaDB server. A `sqlite` range always warns, because the provider creates the file and supplies no SQLite library.
+  
+  `@launchfile/aws` built `engine_version` by deleting every non-digit from the range, and fell back to `"16"` when nothing was left: `>=9.6` became an exact `9.6`, `^7.0` became `7.0`, `20.x` became `20.`. It now passes a bare dotted version of one to three parts (`16`, `16.4`, `8.0.35`) through unchanged as `engine_version`, emits no `engine_version` for any other range, and records a `requires:<name>.version` workaround gap. This covers postgres, mysql and mariadb. ElastiCache redis ranges are compared with the Redis 7 family its `default.redis7` parameter group fixes. `catalog/apps/hedgedoc` (`>=9.6`) no longer gets a pin to the retired RDS PostgreSQL 9.6. Instead it records the gap in `CONFORMANCE.md`.
+- Updated dependencies [[`2aa8017`](https://github.com/launchfile/launchfile/commit/2aa8017966832aa0f1e4ecd603349fa67089ea1f), [`6c27a10`](https://github.com/launchfile/launchfile/commit/6c27a108527fc46156805493c4986ec3fa04d631), [`e13e0c6`](https://github.com/launchfile/launchfile/commit/e13e0c621a03ac177e790d745eb6643e6310bfb0), [`891688d`](https://github.com/launchfile/launchfile/commit/891688d91926851403994b0c35c4237709bb2662), [`dca274b`](https://github.com/launchfile/launchfile/commit/dca274b2de2d359aad3d785f82296783c59a1dd1), [`420eca8`](https://github.com/launchfile/launchfile/commit/420eca84b4294623fcf33f477b8ace9ee2733dd5), [`10e7262`](https://github.com/launchfile/launchfile/commit/10e7262cf254816e233e5fde1f1f0bab9c47b2c4), [`11efd8d`](https://github.com/launchfile/launchfile/commit/11efd8dd1fb8bfd429c8a829642bc1e6c45cc913), [`4143948`](https://github.com/launchfile/launchfile/commit/414394866633a2c6f7f829d9ea4c8e460732fe5c)]:
+  - @launchfile/sdk@0.15.0
+
 ## 0.6.1
 
 ### Patch Changes

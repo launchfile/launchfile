@@ -1,6 +1,6 @@
 {
   "name": "@launchfile/macos-dev",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "macOS dev provider for Launchfile — run apps locally via brew services and native runtimes",
   "os": [
     "darwin"
@@ -42,12 +42,12 @@
     "directory": "providers/macos-dev"
   },
   "dependencies": {
-    "@launchfile/sdk": "^0.14.0",
+    "@launchfile/sdk": "^0.15.0",
     "semver": "^7.7.4"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
-    "@launchfile/docker": "^0.14.0",
+    "@launchfile/docker": "^0.15.0",
     "@types/bun": "^1.4.2",
     "@types/semver": "^7.7.1",
     "typescript": "^7.0.2",
