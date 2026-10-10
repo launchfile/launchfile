@@ -23,18 +23,27 @@ import {
 	type AppEndpointProperties,
 	deriveAppUrlProperties,
 	effectiveListener,
+	httpsOriginSatisfied,
 	InvalidAppUrlError,
 	type NormalizedLaunch,
 	normalizeAppUrl,
 	type Provides,
+	REFUSED_PRIMARY_ADDRESS,
 	suppliedAppAddress,
 	UNPUBLISHED_APP_ENDPOINT,
 } from "@launchfile/sdk";
 import { type PublishedEndpoint, publishedEndpoints } from "./port-allocator.js";
 
-// Re-exported so callers of this provider keep catching the refusal and
-// normalizing values through `@launchfile/docker` (the SDK owns both).
-export { InvalidAppUrlError, normalizeAppUrl };
+// Re-exported so callers of this provider keep catching the refusal,
+// normalizing values, testing `https-origin` satisfaction and reading the
+// refused primary's address through `@launchfile/docker` (the SDK owns all
+// four, so this provider and `@launchfile/macos-dev` answer alike — P-5).
+export {
+	httpsOriginSatisfied,
+	InvalidAppUrlError,
+	normalizeAppUrl,
+	REFUSED_PRIMARY_ADDRESS,
+};
 
 /** The backing-service type that declares the app's public HTTPS origin (D-60). */
 export const HTTPS_ORIGIN = "https-origin";
@@ -49,6 +58,13 @@ export interface DeclaredPrimaryEndpoint {
 	key: string;
 	/** Container port the endpoint listens on. */
 	port: number;
+	/**
+	 * The entry is `requires:` and the publication context does not satisfy
+	 * it, so the compose generator refuses the component and emits no service
+	 * for this endpoint (D-60 rule 5). It stays the primary; it has no address
+	 * (D-72).
+	 */
+	refused: boolean;
 }
 
 /**
@@ -56,22 +72,30 @@ export interface DeclaredPrimaryEndpoint {
  * (D-60 rule 3), else `undefined`.
  *
  * **Declaration** fixes the primary, not fulfillment: a `supports:` entry this
- * provider cannot satisfy still names the primary, so `$app.*` does not change
- * value with the provider's capability. `requires` and `supports` are read
- * alike for that reason. The SDK caps the app at one such entry and validates
- * that the name resolves on the owning component, so the first match found is
- * the only one; a file that somehow carries more is read in declaration order
- * rather than refused here.
+ * provider cannot satisfy still names the primary, and so does a `requires:`
+ * entry whose component this provider refuses — `refused` says which, and
+ * {@link computeAppContext} then resolves the empty address rather than a
+ * sibling's or one for a service it never emits (D-72). Either way `$app.*`
+ * does not move with the provider's capability, and `requires` and `supports`
+ * are read alike for that reason. The SDK caps the app at one such entry and
+ * validates that the name resolves on the owning component, so the first
+ * match found is the only one; a file that somehow carries more is read in
+ * declaration order rather than refused here.
+ *
+ * `appUrl` is the effective publication context; without it every `requires`
+ * entry reads as refused, which is what a launch with no URL does to it.
  */
 export function declaredPrimaryEndpoint(
 	launch: NormalizedLaunch,
+	appUrl?: string,
 ): DeclaredPrimaryEndpoint | undefined {
+	const satisfied = httpsOriginSatisfied(appUrl);
 	for (const [componentName, component] of Object.entries(launch.components)) {
 		const entries = [
-			...(component.requires ?? []),
-			...(component.supports ?? []),
+			...(component.requires ?? []).map((entry) => ({ entry, required: true })),
+			...(component.supports ?? []).map((entry) => ({ entry, required: false })),
 		];
-		for (const entry of entries) {
+		for (const { entry, required } of entries) {
 			if (entry.type !== HTTPS_ORIGIN || entry.endpoint === undefined) continue;
 			const match = publishedEndpoints(componentName, component.provides).find(
 				(e) => e.name === entry.endpoint,
@@ -82,6 +106,7 @@ export function declaredPrimaryEndpoint(
 				name: match.name ?? entry.endpoint,
 				key: match.key,
 				port: match.port,
+				refused: required && !satisfied,
 			};
 		}
 	}
@@ -188,10 +213,40 @@ export function publishedEndpointAddresses(
 }
 
 /**
+ * The `ports` key `up` records for `status` and both printouts to place the
+ * supplied publication URL on (§7): the primary endpoint's key, when a
+ * declared `https-origin` names it — that entry's `url` is the `https` origin
+ * for every listener it admits, `ws` and `grpc` included (D-60 rule 4) — or,
+ * with no such entry, when its effective listener is `http` or `https`.
+ * `undefined` for a positional `ws`, `tcp`, `udp` or `grpc` primary: a
+ * supplied URL is an `http`/`https` address and asserts nothing about what
+ * those listeners speak (D-58 rule 2), so that key keeps this provider's own
+ * printed form while `$app.url` still reads the supplied URL.
+ *
+ * @param primaryKey the primary's key as {@link computeAppContext} derives it
+ * @param effectiveProtocol that endpoint's effective listener (D-61 rule 2)
+ */
+export function printedPrimaryEndpoint(
+	launch: NormalizedLaunch,
+	primaryKey: string | undefined,
+	effectiveProtocol: string | undefined,
+): string | undefined {
+	if (primaryKey === undefined) return undefined;
+	if (declaredPrimaryEndpoint(launch)?.key === primaryKey) return primaryKey;
+	return effectiveProtocol === "http" || effectiveProtocol === "https"
+		? primaryKey
+		: undefined;
+}
+
+/**
  * The app's primary published endpoint: the one an `https-origin` entry names
  * when the file declares one (D-60 rule 3), else — positionally, as before —
  * the first `exposed: true` entry of the first component that has one.
  * `undefined` when the app publishes nothing.
+ *
+ * Selection only. A named endpoint whose component is refused is still the
+ * one returned — its address is {@link computeAppContext}'s business, and
+ * that is where the refusal is read (D-72).
  */
 export function primaryPublishedEndpoint(
 	launch: NormalizedLaunch,
@@ -233,7 +288,8 @@ export function primaryPublishedEndpoint(
  * {@link primaryPublishedEndpoint}), derived by {@link publishedAddress} —
  * the same call the `status`/`up` printout makes for that endpoint, so the two
  * surfaces always agree (#473). Apps with no exposed component get `port: 0`
- * and `url: ""` (and empty authority/scheme/tls).
+ * and `url: ""` (and empty authority/scheme/tls). An app whose declared
+ * primary is refused gets {@link REFUSED_PRIMARY_ADDRESS} (D-72).
  *
  * With an `appUrl` — the orchestrator-supplied publication context (D-58) —
  * the routing strategy has moved upstream and the supplied URL answers
@@ -296,6 +352,12 @@ export interface AppContext {
 	 * the primary endpoint's address only (D-58 rule 4, D-63 rule 5).
 	 */
 	fenced: string[];
+	/**
+	 * The `ports` key of the primary endpoint `app` describes — what a
+	 * printout needs to put the supplied URL on that key and no other (D-58
+	 * rule 4). `undefined` when the app publishes nothing.
+	 */
+	primaryEndpoint: string | undefined;
 }
 
 /**
@@ -309,7 +371,9 @@ export interface AppContext {
  * Under a supplied `appUrl` the fence holds (D-58 rule 4): the primary's
  * entry is the supplied address and every other named endpoint is
  * {@link UNPUBLISHED_APP_ENDPOINT}, listed in `fenced` so the caller can warn
- * about the ones the file references.
+ * about the ones the file references. A refused primary's entry is the same
+ * {@link REFUSED_PRIMARY_ADDRESS} `$app.*` carries (D-63 rule 2 holds);
+ * surviving siblings keep their own published addresses.
  *
  * Unnamed endpoints are not addressable (D-6) and get no entry. A name the
  * SDK's validation lets through twice keeps its first declaration.
@@ -321,11 +385,15 @@ export function computeAppContext(
 	activeCertificates?: ReadonlySet<string>,
 ): AppContext {
 	const primary = primaryPublishedEndpoint(launch, hostPorts, activeCertificates);
-	const primaryAddress = publishedAddress(
-		primary?.effectiveProtocol,
-		primary?.hostPort ?? 0,
-		appUrl,
-	);
+	// A refused primary keeps its place and has no address (D-72). The
+	// generator emits no service for it, so `localhost:<hostPort>` here would
+	// name an address nothing answers, and the supplied URL — when there is
+	// one — is the value that failed to satisfy the entry. Read here, on the
+	// one derivation, so `up`, `bootstrap` and `release` agree.
+	const primaryAddress: AppEndpointProperties = declaredPrimaryEndpoint(launch, appUrl)
+		?.refused
+		? REFUSED_PRIMARY_ADDRESS
+		: publishedAddress(primary?.effectiveProtocol, primary?.hostPort ?? 0, appUrl);
 	const app: Record<string, string | number> = { name: launch.name, ...primaryAddress };
 
 	const appEndpoints: Record<string, AppEndpointProperties> = {};
@@ -357,5 +425,5 @@ export function computeAppContext(
 			appEndpoints[endpoint.name] = endpointPublicAddress(endpoint);
 		}
 	}
-	return { app, appEndpoints, fenced };
+	return { app, appEndpoints, fenced, primaryEndpoint: primary?.key };
 }

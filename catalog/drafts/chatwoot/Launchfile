@@ -26,6 +26,7 @@ components:
         default: "$secrets.secret-key-base"
         sensitive: true
       FRONTEND_URL:
+        default: $app.url
         required: true
         description: "Public-facing URL for the Chatwoot instance"
       RAILS_ENV:

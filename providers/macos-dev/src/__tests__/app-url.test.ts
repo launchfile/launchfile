@@ -12,10 +12,9 @@
  */
 
 import {
-	chmodSync,
 	existsSync,
-	mkdirSync,
 	mkdtempSync,
+	readdirSync,
 	readFileSync,
 	rmSync,
 	writeFileSync,
@@ -28,34 +27,22 @@ import { computeAppProperties } from "../env-writer.js";
 
 const shellCalls: string[] = [];
 const startRegistrations: { name: string; env: Record<string, string> }[] = [];
-const writtenEnvFiles: { path: string; content: string }[] = [];
 const consoleLogs: string[] = [];
 
-vi.mock("node:fs/promises", () => ({
-	readFile: async (path: string, encoding?: BufferEncoding) =>
-		readFileSync(path, encoding ?? "utf8"),
-	writeFile: async (
-		path: string,
-		content: string,
-		opts?: { mode?: number },
-	) => {
-		writtenEnvFiles.push({ path: String(path), content: String(content) });
-		writeFileSync(
-			path,
-			content,
-			opts?.mode !== undefined ? { mode: opts.mode } : undefined,
-		);
-	},
-	mkdir: async (
-		path: string,
-		opts?: { recursive?: boolean; mode?: number },
-	) => {
-		mkdirSync(path, opts);
-	},
-	chmod: async (path: string, mode: number) => {
-		chmodSync(path, mode);
-	},
-}));
+/** The env files `up` wrote, read back off disk: `.env.local` and `.launchfile/env/*.env`. */
+function writtenEnvFiles(projectDir: string): { path: string; content: string }[] {
+	const files: { path: string; content: string }[] = [];
+	const local = join(projectDir, ".env.local");
+	if (existsSync(local)) files.push({ path: local, content: readFileSync(local, "utf8") });
+	const envDir = join(projectDir, ".launchfile", "env");
+	if (existsSync(envDir)) {
+		for (const name of readdirSync(envDir)) {
+			const path = join(envDir, name);
+			files.push({ path, content: readFileSync(path, "utf8") });
+		}
+	}
+	return files;
+}
 
 vi.mock("../prereqs.js", () => ({
 	checkPrereqs: async () => ({ ok: true, missing: [] }),
@@ -90,7 +77,7 @@ vi.mock("../process-manager.js", () => ({
 	},
 }));
 
-const { launchEnv, launchUp } = await import("../provider.js");
+const { launchEnv, launchStatus, launchUp } = await import("../provider.js");
 const { launchBootstrap } = await import("../bootstrap.js");
 
 const LAUNCHFILE = `version: launch/v1
@@ -168,7 +155,6 @@ describe("launchUp publication context (D-58)", () => {
 	beforeEach(() => {
 		shellCalls.length = 0;
 		startRegistrations.length = 0;
-		writtenEnvFiles.length = 0;
 		consoleLogs.length = 0;
 		projectDir = mkdtempSync(join(tmpdir(), "lf-macos-appurl-"));
 		writeFileSync(join(projectDir, "Launchfile"), LAUNCHFILE);
@@ -186,18 +172,22 @@ describe("launchUp publication context (D-58)", () => {
 	});
 
 	function envLocal(): string {
-		const file = writtenEnvFiles
+		const file = writtenEnvFiles(projectDir)
 			.filter((f) => f.path.endsWith(".env.local"))
 			.at(-1);
 		return file?.content ?? "";
 	}
 
-	function recordedAppUrl(): string | undefined {
+	function recordedState(): { appUrl?: string; primaryEndpoint?: string } {
 		const raw = readFileSync(
 			join(projectDir, ".launchfile", "state.json"),
 			"utf8",
 		);
-		return (JSON.parse(raw) as { appUrl?: string }).appUrl;
+		return JSON.parse(raw) as { appUrl?: string; primaryEndpoint?: string };
+	}
+
+	function recordedAppUrl(): string | undefined {
+		return recordedState().appUrl;
 	}
 
 	it("resolves $app.* from a supplied appUrl, in the env the component receives", async () => {
@@ -251,7 +241,7 @@ describe("launchUp publication context (D-58)", () => {
 
 		expect(shellCalls).toEqual([]);
 		expect(startRegistrations).toEqual([]);
-		expect(writtenEnvFiles).toEqual([]);
+		expect(writtenEnvFiles(projectDir)).toEqual([]);
 		expect(existsSync(join(projectDir, ".launchfile"))).toBe(false);
 	});
 
@@ -264,6 +254,36 @@ describe("launchUp publication context (D-58)", () => {
 		expect(err).toBeInstanceOf(InvalidAppUrlError);
 		expect((err as Error).message).not.toContain("hunter2");
 		expect((err as Error).message).toContain("***@");
+	});
+
+	it("`up` and `status` print the supplied URL for the primary component (#386)", async () => {
+		await launchUp({ projectDir, appUrl: "https://notes.example.com" });
+
+		expect(consoleLogs).toContain(
+			"  urltest is running at https://notes.example.com",
+		);
+		expect(consoleLogs.join("\n")).not.toMatch(
+			/urltest is running at http:\/\/localhost/,
+		);
+		expect(recordedState().primaryEndpoint).toBe("default");
+
+		consoleLogs.length = 0;
+		await launchStatus({ projectDir });
+		expect(consoleLogs).toContain("  default: https://notes.example.com");
+	});
+
+	it("`up` and `status` print localhost when no URL is recorded or supplied", async () => {
+		await launchUp({ projectDir });
+
+		expect(consoleLogs.join("\n")).toMatch(
+			/ {2}urltest is running at http:\/\/localhost:\d+/,
+		);
+
+		consoleLogs.length = 0;
+		await launchStatus({ projectDir });
+		expect(consoleLogs.join("\n")).toMatch(
+			/ {2}default: http:\/\/localhost:\d+/,
+		);
 	});
 
 	it("`env` and `bootstrap` answer with the same $app.* the run was configured with", async () => {
@@ -312,6 +332,45 @@ components:
       start: "node worker.js"
 `;
 
+/**
+ * The D-72 trigger shape: the declaring component is refused, and a sibling
+ * with its own `exposed: true` HTTP endpoint survives — the one a primary read
+ * after the refusal would fall back to.
+ */
+const ORIGIN_REQUIRED_SIBLING = `version: launch/v1
+name: origintest
+components:
+  web:
+    runtime: node
+    provides:
+      - name: ui
+        protocol: http
+        port: 3000
+        exposed: true
+    requires:
+      - type: https-origin
+        endpoint: ui
+    commands:
+      start: "node web.js"
+  admin:
+    runtime: node
+    provides:
+      - name: panel
+        protocol: http
+        port: 4000
+        exposed: true
+    env:
+      PUBLIC_URL:
+        default: $app.url
+      USE_TLS:
+        default: $app.tls
+      APP_NAME:
+        default: $app.name
+    commands:
+      start: "node admin.js"
+      bootstrap: "echo $app.url"
+`;
+
 const ORIGIN_OPTIONAL = `version: launch/v1
 name: origintest
 runtime: node
@@ -329,6 +388,32 @@ commands:
   start: "node web.js"
 `;
 
+// The issue #536 reproduction: a use token no registry entry covers for this
+// type. `uses:` is an open vocabulary, so the file validates; coverage decides.
+const ORIGIN_OPTIONAL_UNCOVERED_USE = `version: launch/v1
+name: origintest
+runtime: node
+provides:
+  - name: ui
+    protocol: http
+    port: 3000
+    exposed: true
+supports:
+  - type: https-origin
+    endpoint: ui
+    uses:
+      - anything: x
+    set_env:
+      SOME_URL: $https-origin.anything.x.url
+commands:
+  start: "node web.js"
+`;
+
+const ORIGIN_REQUIRED_UNCOVERED_USE = ORIGIN_REQUIRED.replace(
+	"        endpoint: ui\n        set_env:\n          DOMAIN: $url\n",
+	"        endpoint: ui\n        uses:\n          - anything: x\n        set_env:\n          SOME_URL: $https-origin.anything.x.url\n",
+);
+
 /**
  * `https-origin` rides the publication-context channel (D-60 rule 5,
  * PROVIDERS.md §7): an https `appUrl` satisfies a required entry and wires its
@@ -343,7 +428,6 @@ describe("launchUp https-origin through the publication context (D-60 rule 5)", 
 	beforeEach(() => {
 		shellCalls.length = 0;
 		startRegistrations.length = 0;
-		writtenEnvFiles.length = 0;
 		consoleLogs.length = 0;
 		consoleErrors.length = 0;
 		consoleWarns.length = 0;
@@ -376,7 +460,9 @@ describe("launchUp https-origin through the publication context (D-60 rule 5)", 
 		expect(registered("web")?.PUBLIC_URL).toBe("https://vw.example.com");
 		expect(registered("worker")).toBeDefined();
 		expect(consoleErrors.join("\n")).not.toContain("Refused");
-		expect(consoleWarns.join("\n")).not.toContain("No provisioner for resource type: https-origin");
+		expect(consoleWarns.join("\n")).not.toContain(
+			"No provisioner for resource type: https-origin",
+		);
 	});
 
 	it("refuses the component when the supplied URL is http, naming the scheme", async () => {
@@ -388,7 +474,7 @@ describe("launchUp https-origin through the publication context (D-60 rule 5)", 
 		expect(consoleErrors.join("\n")).toContain(
 			'Refused: web requires a public HTTPS origin this provider cannot supply (https-origin (endpoint "ui"): the supplied publication URL\'s scheme is "http", not https)',
 		);
-		expect(writtenEnvFiles.some((f) => f.path.endsWith("web.env"))).toBe(false);
+		expect(writtenEnvFiles(projectDir).some((f) => f.path.endsWith("web.env"))).toBe(false);
 	});
 
 	it("refuses the component when nothing is supplied or recorded, saying so", async () => {
@@ -420,11 +506,42 @@ describe("launchUp https-origin through the publication context (D-60 rule 5)", 
 		expect(consoleLogs.join("\n")).toContain("DOMAIN=https://vw.example.com");
 	});
 
+	it("keeps a refused primary in place: the surviving sibling reads $app.url as \"\", never its own port (D-72)", async () => {
+		writeFileSync(join(projectDir, "Launchfile"), ORIGIN_REQUIRED_SIBLING);
+		await launchUp({ projectDir });
+
+		expect(registered("web")).toBeUndefined();
+		const admin = registered("admin");
+		expect(admin).toBeDefined();
+		expect(admin?.PUBLIC_URL).toBe("");
+		expect(admin?.USE_TLS).toBe("false");
+		expect(admin?.APP_NAME).toBe("origintest");
+		expect(consoleErrors.join("\n")).toContain(
+			"Refused: web requires a public HTTPS origin this provider cannot supply",
+		);
+
+		// `env` and `bootstrap` read the file whole and answer the same.
+		consoleLogs.length = 0;
+		await launchEnv({ projectDir, component: "admin" });
+		expect(consoleLogs.join("\n")).toMatch(/^PUBLIC_URL=$/m);
+		const commands: string[] = [];
+		await launchBootstrap({
+			projectDir,
+			exec: async (_cmd: string, args: string[]) => {
+				commands.push(args.at(-1) ?? "");
+				return { exitCode: 0, stdout: "", stderr: "" };
+			},
+		});
+		expect(commands).toEqual(["echo "]);
+	});
+
 	it("wires a satisfied `supports:` entry and leaves an unsatisfied one absent with a note", async () => {
 		writeFileSync(join(projectDir, "Launchfile"), ORIGIN_OPTIONAL);
 		await launchUp({ projectDir, appUrl: "https://vw.example.com" });
 		expect(registered("default")?.DOMAIN).toBe("https://vw.example.com");
-		expect(consoleWarns.join("\n")).not.toContain("optional public HTTPS origin");
+		expect(consoleWarns.join("\n")).not.toContain(
+			"optional public HTTPS origin",
+		);
 
 		rmSync(join(projectDir, ".launchfile"), { recursive: true, force: true });
 		startRegistrations.length = 0;
@@ -434,5 +551,30 @@ describe("launchUp https-origin through the publication context (D-60 rule 5)", 
 		expect(consoleWarns.join("\n")).toContain(
 			'optional public HTTPS origin not satisfied (https-origin (endpoint "ui"): the supplied publication URL\'s scheme is "http", not https) — running degraded',
 		);
+	});
+
+	it("leaves a satisfied `supports:` entry unfulfilled when it declares a use it cannot cover (D-65 rule 4)", async () => {
+		writeFileSync(join(projectDir, "Launchfile"), ORIGIN_OPTIONAL_UNCOVERED_USE);
+		await launchUp({ projectDir, appUrl: "https://vw.example.com" });
+
+		expect(registered("default")).toBeDefined();
+		expect(registered("default")?.SOME_URL).toBeUndefined();
+		expect(consoleErrors.join("\n")).not.toContain("Refused");
+		expect(consoleWarns.join("\n")).toContain(
+			"optional public HTTPS origin https-origin not satisfied — this provider does not cover a use it declares (anything: x); running degraded",
+		);
+	});
+
+	it("refuses the component whose required entry declares a use it cannot cover; a sibling still starts (D-64, D-65 rule 3)", async () => {
+		expect(ORIGIN_REQUIRED_UNCOVERED_USE).toContain("anything: x");
+		writeFileSync(join(projectDir, "Launchfile"), ORIGIN_REQUIRED_UNCOVERED_USE);
+		await launchUp({ projectDir, appUrl: "https://vw.example.com" });
+
+		expect(registered("web")).toBeUndefined();
+		expect(registered("worker")).toBeDefined();
+		expect(consoleErrors.join("\n")).toContain(
+			"Refused: web requires a use of a resource this provider cannot cover (https-origin: anything: x)",
+		);
+		expect(writtenEnvFiles(projectDir).some((f) => f.path.endsWith("web.env"))).toBe(false);
 	});
 });

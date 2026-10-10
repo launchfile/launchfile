@@ -24,7 +24,7 @@ import { handleLogs } from "./commands/logs.js";
 import { handleList } from "./commands/list.js";
 import { handleBootstrap } from "./commands/bootstrap.js";
 import { handleDiagnose } from "./commands/diagnose.js";
-import { cmdValidate, cmdInspect, cmdSchema } from "@launchfile/sdk";
+import { cmdValidate, cmdInspect, cmdSchema, stripControlInline } from "@launchfile/sdk";
 import {
 	hasFlag as argsHasFlag,
 	getFlagValue as argsGetFlagValue,
@@ -33,8 +33,11 @@ import {
 	flagPresent as argsFlagPresent,
 	valuedBooleanFlag,
 	unknownFlags,
+	longFormsOf,
 	suggestFlag,
+	parseComponentNames,
 	parseStoragePairs,
+	selectorRefusal,
 } from "./cli-args.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -90,6 +93,36 @@ const storageFlag = (): Record<string, string> | undefined => {
 	return values.length > 0 ? parseStoragePairs(values) : undefined;
 };
 
+/**
+ * The D-41 `--components` selector, or undefined when no name is given —
+ * an absent flag and an empty value both mean every component.
+ */
+const componentsFlag = (): string[] | undefined => {
+	const names = parseComponentNames(argsGetFlagValues(args, "components"));
+	return names.length > 0 ? names : undefined;
+};
+
+/**
+ * A flag's value as typed when the long form is present (empty string when it
+ * carries none), or undefined when it is absent. Presence is what the two
+ * wrong-command refusals key on: `--component` on `up`/`dev` and `--components`
+ * on `bootstrap` both parse, so each command must see them to reject them.
+ */
+const flagAsTyped = (flag: string): string | undefined =>
+	argsFlagPresent(args, flag) ? (getFlagValue(flag) ?? "") : undefined;
+
+/**
+ * Exit 1 when a selector spelling reaches a verb that acts on the whole
+ * deployment. The declared-flag table is global, so the flag parses here and
+ * its value would otherwise be dropped without a word.
+ */
+const refuseSelector = (verb: string, action: string): void => {
+	const lines = selectorRefusal(args, verb, action);
+	if (lines === undefined) return;
+	for (const line of lines) console.error(line);
+	process.exit(1);
+};
+
 const command = getPositional(0);
 const target = getPositional(1);
 
@@ -117,6 +150,8 @@ Provider flags:
 
 Options:
   --dry-run        Preview without starting anything
+  --detach         Return after launch. Native apps keep running in the
+                    background; Docker always detaches (with up, dev)
   --destroy        Remove all containers and data (with down)
   --follow, -f     Stream logs continuously
   --name <label>   Launch a separate named instance of the app — its own
@@ -130,14 +165,24 @@ Options:
                    Public URL the app is reached at when a reverse proxy,
                     tunnel, or edge in front of it owns routing — $app.* then
                     resolves from it instead of the local address (with up, dev)
+  --components <a,b>
+                   Start only these components plus their downward dependency
+                    closure — their depends_on targets and every closure
+                    member's required services (D-41). Comma-separated and
+                    repeatable; omit it to start every component (with up, dev)
   --component <n>  Limit bootstrap to a single component
   --reveal         (bootstrap) Print captures marked \`sensitive\` instead of
                     masking them — they never reach logs or state either way
+  --quiet          (validate) No output, only the exit code
   --detached       (validate) Evaluate as fetched standalone, not read from the
                     app's own checkout — enables the D-43 reduced-portability check
+  --no-color       Print without ANSI colour (with validate, inspect, schema;
+                    also set by NO_COLOR)
+  --schema-path <path>
+                   (schema) Print this JSON Schema file instead of the bundled one
   --json           Machine-readable output (with diagnose, validate)
-  --help           Show this help
-  --version        Show version
+  --help, -h       Show this help
+  --version, -v    Show version
 
 Environment:
   LAUNCHFILE_NO_PORTABILITY_WARNINGS   Set (to any value except "0"/"false") to silence validate's D-40/D-43 reduced-portability warnings
@@ -147,6 +192,7 @@ Examples:
   launchfile up                      Run the app in the current directory
   launchfile up --url https://notes.example.com
                                      Run it behind your own proxy at that URL
+  launchfile up --components api     Run api and what it depends on, nothing else
   launchfile diagnose                Explain the last failed launch
   launchfile diagnose --json         The same record, for a script
   launchfile down --destroy          Stop and remove everything
@@ -163,16 +209,31 @@ async function main(): Promise<void> {
 		process.exit(1);
 	}
 
-	// A long flag neither table declares is refused on every verb, before
+	// A flag no table declares is refused on every verb, before
 	// --version/--help and before any target resolves: nothing downstream can
 	// tell a typo'd optional flag from an omitted one, and the token after it
-	// would be read as the target (#510).
+	// would be read as the target (#510). A single-dash token outside
+	// SHORT_FLAGS is the same refusal, naming the long form(s) it could have
+	// meant (#529). The token is argv text, so it is escaped before it reaches
+	// the terminal: a newline or ANSI escape in it would otherwise print as
+	// forged output (#545).
 	const [unknown] = unknownFlags(args);
 	if (unknown !== undefined) {
-		const nearest = suggestFlag(unknown);
-		console.error(
-			`no such flag --${unknown}${nearest ? ` — did you mean --${nearest}?` : ""}`,
-		);
+		if (unknown === "--") {
+			console.error("no such flag: `--` has an empty flag name");
+		} else {
+			let hint = "";
+			if (unknown.startsWith("--")) {
+				const nearest = suggestFlag(unknown.slice(2));
+				if (nearest) hint = ` — did you mean --${nearest}?`;
+			} else {
+				const longForms = longFormsOf(unknown.slice(1));
+				if (longForms.length === 1) hint = ` — did you mean --${longForms[0]}?`;
+				else if (longForms.length > 1)
+					hint = ` — spell the flag out: ${longForms.map((flag) => `--${flag}`).join(", ")}`;
+			}
+			console.error(`no such flag ${stripControlInline(unknown)}${hint}`);
+		}
 		console.error("Run `launchfile --help` for usage.");
 		process.exit(1);
 	}
@@ -196,6 +257,8 @@ async function main(): Promise<void> {
 				detach: hasFlag("detach"),
 				dryRun: hasFlag("dry-run"),
 				name: getNameFlag(),
+				components: componentsFlag(),
+				component: flagAsTyped("component"),
 				storage: storageFlag(),
 				url: getUrlFlag(),
 			});
@@ -210,24 +273,28 @@ async function main(): Promise<void> {
 				detach: hasFlag("detach"),
 				dryRun: hasFlag("dry-run"),
 				name: getNameFlag(),
+				components: componentsFlag(),
+				component: flagAsTyped("component"),
 				storage: storageFlag(),
 				url: getUrlFlag(),
 			});
 			break;
 
 		case "down":
+			refuseSelector("down", "stops the whole deployment");
 			await handleDown(target, {
 				destroy: hasFlag("destroy"),
 			});
 			break;
 
 		case "status":
+			refuseSelector("status", "reports the whole deployment");
 			await handleStatus(target);
 			break;
 
 		case "logs":
 			await handleLogs(target, {
-				follow: hasFlag("follow") || args.includes("-f"),
+				follow: hasFlag("follow"),
 			});
 			break;
 
@@ -245,6 +312,7 @@ async function main(): Promise<void> {
 		case "bootstrap":
 			await handleBootstrap(target, {
 				component: getFlagValue("component"),
+				components: flagAsTyped("components"),
 				// D-62 spells `--reveal` as a bare boolean with no alias, so it reads
 				// through `flagPresent` (exact long form) rather than `hasFlag`, which
 				// would also match a `-r` the decision refuses by name.
@@ -274,7 +342,7 @@ async function main(): Promise<void> {
 			break;
 
 		default:
-			console.error(`Unknown command: ${command}`);
+			console.error(`Unknown command: ${stripControlInline(command)}`);
 			console.error("Run `launchfile --help` for usage.");
 			process.exit(1);
 	}

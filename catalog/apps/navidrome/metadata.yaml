@@ -1,6 +1,8 @@
 category: Music
 tagline: "Modern music server compatible with Subsonic"
 homepage: https://www.navidrome.org
+test_storage:
+  music: test/music
 test_results:
   last_tested: 2026-04-06
   pull_time_seconds: 2

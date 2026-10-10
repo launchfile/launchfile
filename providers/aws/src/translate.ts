@@ -15,6 +15,7 @@
 import {
 	atDeclarations,
 	atEntryLabel,
+	checkVersionRange,
 	deriveAppUrlProperties,
 	endpointProperties,
 	isExpression,
@@ -42,6 +43,12 @@ import {
 	ref,
 	tfName,
 } from "./hcl.js";
+import type {
+	GeneratorResource,
+	PriorSource,
+	PriorStack,
+} from "./prior-stack.js";
+import { registerDeclaredSecret } from "./redact.js";
 
 /** The backing-service type that declares the app's public HTTPS origin (D-60). */
 const HTTPS_ORIGIN = "https-origin";
@@ -63,8 +70,8 @@ const RESTART_DIRECTIVE: Record<RestartPolicy, string> = {
 
 /**
  * The directive used when a component declares no `restart:`. A long-running
- * service the file says nothing about stays supervised; the cross-provider
- * default for an undeclared `restart:` is decided in #234, not here.
+ * service the file says nothing about stays supervised. D-70 settled docker's
+ * default for a scheduled component; aws's is open in #573, not decided here.
  */
 const DEFAULT_RESTART_DIRECTIVE = "always";
 
@@ -74,6 +81,15 @@ const CERTIFICATE = "certificate";
 export interface TranslateOptions {
 	/** AWS region for the provider block. Default: us-east-1. */
 	region?: string;
+	/**
+	 * What an earlier translation or apply already minted, read from the output
+	 * directory by `readPriorStack()`. Omitting it asserts a fresh stack: every
+	 * generator is minted for the first time and D-47 governs the output. A
+	 * caller writing into a directory an earlier stack already used must call
+	 * `readPriorStack(outDir)` first, as `cli.ts` does — without it a deployed
+	 * secret is re-minted and destroyed on the next apply (D-49).
+	 */
+	priorStack?: PriorStack;
 }
 
 export interface TranslateResult {
@@ -81,6 +97,110 @@ export interface TranslateResult {
 	hcl: string;
 	/** The conformance ledger: what mapped, gapped, and was ignored. */
 	conformance: Conformance;
+	/**
+	 * Terraform addresses of secrets kept in their pre-D-47 shape because
+	 * re-minting them would destroy the deployed value (D-49).
+	 */
+	preservedSecrets: string[];
+}
+
+/** Where a `generator:` was declared — named in a refusal so the operator can find it. */
+export interface GeneratorSite {
+	/** The app the Launchfile names. */
+	app: string;
+	/** The owning component, or absent for an app-wide `secrets:` entry. */
+	component?: string;
+	/** The secret name or env key. */
+	variable: string;
+}
+
+/** One minted value this translation cannot preserve. */
+export interface SecretConflict {
+	site: GeneratorSite;
+	/** The Terraform resource name, shared by the old and the new type. */
+	name: string;
+	/** The Terraform address it is minted under: `<had>.<name>`. */
+	address: string;
+	had: GeneratorResource;
+	wants: GeneratorResource;
+}
+
+/**
+ * A minted value already exists under a Terraform resource type this
+ * translation would not emit, and no `moved` block bridges a type change — so
+ * applying would destroy the value. The provider refuses instead (D-49,
+ * PROVIDERS.md §10 rule 8's never-fabricate posture applied to a destructive
+ * change). Every conflict in the stack is named in the one refusal, so the
+ * operator re-keys them together and none is left to rotate silently after the
+ * first is dealt with. Carries the coordinates rather than only a rendered
+ * string so a caller can present them its own way.
+ */
+export class SecretRotationError extends Error {
+	readonly conflicts: readonly SecretConflict[];
+	readonly source: PriorSource;
+
+	constructor(
+		app: string,
+		conflicts: readonly SecretConflict[],
+		source: PriorSource,
+	) {
+		const addresses = conflicts.map((c) => c.address);
+		const plural = conflicts.length > 1;
+		super(
+			[
+				`Refusing to translate ${app}: this would destroy ${plural ? `${conflicts.length} secrets` : "a secret"} that already exist${plural ? "" : "s"}.`,
+				...conflicts.flatMap((c) => [
+					"",
+					`  app:       ${c.site.app}`,
+					`  scope:     ${c.site.component ? `component ${c.site.component}` : "app-wide `secrets:` entry"}`,
+					`  variable:  ${c.site.variable}`,
+					`  minted as: ${c.address}`,
+					`  would be:  ${c.wants}.${c.name}`,
+				]),
+				"",
+				`  read from: ${source.path}`,
+				"",
+				"Terraform cannot migrate state across a resource-type change — a `moved`",
+				"block only bridges renames of the same type — so the next `terraform apply`",
+				`would destroy the old value${plural ? "s" : ""} and create ${plural ? "new ones" : "a new one"}. Anything encrypted under`,
+				`the old value${plural ? "s" : ""} becomes unreadable. A minted value is generated once and then`,
+				"preserved (spec/DESIGN.md D-49). Nothing was written.",
+				"",
+				`To re-key deliberately, after backing up anything encrypted under ${plural ? "them" : "it"}:`,
+				...rekeySteps(addresses, source).map(
+					(step, i) => `  ${i + 1}. ${step}`,
+				),
+			].join("\n"),
+		);
+		this.name = "SecretRotationError";
+		this.conflicts = conflicts;
+		this.source = source;
+	}
+}
+
+/**
+ * The steps that take the minted values at `addresses` to fresh D-47 mints.
+ * They depend on where the record was read: `terraform state rm` clears a
+ * state record, but when the record came from `main.tf` (no state file — a
+ * remote backend, or apply run from another directory) that file
+ * still names the removed resource and would be read again. `--rekey` skips
+ * exactly those addresses and keeps every other record, so no other minted
+ * value in the stack is touched.
+ */
+function rekeySteps(
+	addresses: readonly string[],
+	source: PriorSource,
+): string[] {
+	const quoted = addresses.map((a) => `'${a}'`).join(" ");
+	const rerun =
+		source.kind === "hcl"
+			? `re-run \`launchfile-aws translate\` with ${addresses.map((a) => `--rekey '${a}'`).join(" ")} — with no state file, ${source.path} is the record, and \`--rekey\` drops only ${addresses.length > 1 ? "these" : "this one"} from it`
+			: "re-run `launchfile-aws translate`";
+	return [
+		`terraform state rm ${quoted}`,
+		`${rerun}, then \`terraform apply\``,
+		`re-key the app with the new value${addresses.length > 1 ? "s" : ""}`,
+	];
 }
 
 // --- AWS sizing defaults (a probe never applies, so these are illustrative) ---
@@ -117,13 +237,20 @@ export function resourcePropertyKeys(): Record<string, string[]> {
 			spec.kind === "rds"
 				? emitRds(
 						discarded,
+						new Conformance(),
 						"probe",
 						type,
 						{ type } as NormalizedRequirement,
 						spec.engine,
 						spec.port,
 					)
-				: emitElastiCache(discarded, "probe", type);
+				: emitElastiCache(
+						discarded,
+						new Conformance(),
+						"probe",
+						type,
+						{ type } as NormalizedRequirement,
+					);
 		keys[type] = Object.keys(properties);
 	}
 	return keys;
@@ -240,6 +367,14 @@ export function translate(
 	const blocks: string[] = [];
 	const region = opts.region ?? "us-east-1";
 	const appTf = tfName(launch.name);
+	const preservedSecrets: string[] = [];
+	const mint: MintContext = {
+		app: launch.name,
+		c,
+		prior: opts.priorStack,
+		preserved: preservedSecrets,
+		conflicts: [],
+	};
 
 	// --- Determine the exposed/primary component for $app.* and the ALB ---
 	const exposedComponents: string[] = [];
@@ -280,11 +415,15 @@ export function translate(
 	if (launch.secrets) {
 		for (const [name, secret] of Object.entries(launch.secrets)) {
 			const tf = `lf_secret_${tfName(name)}`;
-			secretValues[name] = emitGenerator(blocks, tf, secret.generator);
-			c.map(
-				`secrets.${name}`,
-				secret.generator === "uuid" ? "random_uuid" : "random_bytes",
+			const emitted = emitGenerator(
+				blocks,
+				tf,
+				secret.generator,
+				{ app: launch.name, variable: name },
+				mint,
 			);
+			secretValues[name] = emitted.value;
+			c.map(`secrets.${name}`, emitted.resource);
 		}
 	}
 
@@ -392,6 +531,7 @@ export function translate(
 				needsDbSubnetGroup = true;
 				resourceMap[resourceName] = emitRds(
 					blocks,
+					c,
 					appTf,
 					resourceName,
 					req,
@@ -403,8 +543,10 @@ export function translate(
 				needsCacheSubnetGroup = true;
 				resourceMap[resourceName] = emitElastiCache(
 					blocks,
+					c,
 					appTf,
 					resourceName,
+					req,
 				);
 				c.map(`requires:${req.type}`, "aws_elasticache_cluster");
 			}
@@ -491,6 +633,7 @@ export function translate(
 			appTf,
 			baseContext,
 			targetGroupFor,
+			mint,
 		);
 	}
 
@@ -499,7 +642,17 @@ export function translate(
 		emitAlb(blocks, c, appTf, launch, exposedComponents, targetGroupFor);
 	}
 
-	return { hcl: document(blocks), conformance: c };
+	// Refuse once, naming every conflict, so nothing is emitted for a stack
+	// with a value this translation would destroy.
+	if (mint.conflicts.length > 0 && mint.prior !== undefined) {
+		throw new SecretRotationError(
+			launch.name,
+			mint.conflicts,
+			mint.prior.source,
+		);
+	}
+
+	return { hcl: document(blocks), conformance: c, preservedSecrets };
 }
 
 // ---------------------------------------------------------------------------
@@ -507,14 +660,111 @@ export function translate(
 // for expression resolution.
 // ---------------------------------------------------------------------------
 
+/** The resource type this provider mints each generator as today. */
+const GENERATOR_RESOURCE: Record<string, GeneratorResource> = {
+	uuid: "random_uuid",
+	port: "random_integer",
+	secret: "random_bytes",
+};
+
+/**
+ * Minted-class resources (D-49 class 1): generated once, then preserved.
+ * `random_integer` is absent deliberately — D-49 exempts `generator: port`,
+ * because a port is an allocation, not an identity.
+ */
+const MINTED_RESOURCES: readonly GeneratorResource[] = [
+	"random_bytes",
+	"random_password",
+	"random_uuid",
+];
+
+interface GeneratorEmission {
+	/** The Terraform interpolation that carries the value. */
+	value: string;
+	/** The resource type actually emitted. */
+	resource: GeneratorResource;
+}
+
+/** Everything the generator emitters need beyond the block list. */
+interface MintContext {
+	app: string;
+	c: Conformance;
+	prior: PriorStack | undefined;
+	preserved: string[];
+	/** Minted values this translation cannot preserve; any one makes it refuse. */
+	conflicts: SecretConflict[];
+}
+
+/**
+ * Emit a `generator:` value, preserving anything already minted.
+ *
+ * The value of a minted secret lives in Terraform state under a resource's type
+ * *and* name, so changing the type destroys it. Three outcomes:
+ *
+ *   - nothing minted before, or the same type → emit today's shape (D-47).
+ *   - a pre-D-47 `random_password` under a `generator: secret` → keep emitting
+ *     `random_password`, unchanged, so the deployed value survives.
+ *   - any other type change over a minted value → record the conflict; the
+ *     translation refuses (`SecretRotationError`) once every generator has
+ *     been seen, so the refusal names all of them.
+ *
+ * The preserved value itself is never read and never written into the HCL — the
+ * resource stays and Terraform keeps its own state.
+ */
 function emitGenerator(
 	blocks: string[],
 	tf: string,
 	generator: string,
-): string {
+	site: GeneratorSite,
+	m: MintContext,
+): GeneratorEmission {
+	const wants = GENERATOR_RESOURCE[generator] ?? "random_bytes";
+	const prior = m.prior;
+	const had = prior?.generators[tf];
+
+	if (prior !== undefined && had !== undefined && had !== wants) {
+		if (generator === "secret" && had === "random_password") {
+			// Byte-for-byte the pre-D-47 block, so `terraform plan` shows no diff
+			// for it. D-47's output governs secrets minted from here on.
+			blocks.push(
+				block(
+					"resource",
+					["random_password", tf],
+					[attr("length", 32), attr("special", false)],
+				),
+			);
+			m.preserved.push(`random_password.${tf}`);
+			m.c.gap(
+				site.component ? `env.${site.variable}` : `secrets.${site.variable}`,
+				"workaround",
+				"already minted before D-47, so the deployed value is 32 alphanumeric characters, not 64 hex — preserved as `random_password` because a minted value must survive (D-49) and Terraform cannot migrate state across a resource-type change",
+				`re-key deliberately when the app can take it: back up anything encrypted under it, then ${rekeySteps([`random_password.${tf}`], prior.source).join("; ")}`,
+				site.component,
+			);
+			return {
+				value: `\${random_password.${tf}.result}`,
+				resource: "random_password",
+			};
+		}
+		if (MINTED_RESOURCES.includes(had)) {
+			// Keep going so the refusal can list every conflict; the blocks
+			// emitted from here on are discarded when translate() throws.
+			m.conflicts.push({
+				site,
+				name: tf,
+				address: `${had}.${tf}`,
+				had,
+				wants,
+			});
+		}
+	}
+
 	if (generator === "uuid") {
 		blocks.push(block("resource", ["random_uuid", tf], []));
-		return `\${random_uuid.${tf}.result}`;
+		return {
+			value: `\${random_uuid.${tf}.result}`,
+			resource: "random_uuid",
+		};
 	}
 	if (generator === "port") {
 		blocks.push(
@@ -524,14 +774,20 @@ function emitGenerator(
 				[attr("min", 1024), attr("max", 65535)],
 			),
 		);
-		return `\${random_integer.${tf}.result}`;
+		return {
+			value: `\${random_integer.${tf}.result}`,
+			resource: "random_integer",
+		};
 	}
 	// "secret" — spec-defined output: 32 bytes of cryptographically random
 	// data, hex-encoded (64 characters). See spec/DESIGN.md D-47.
 	// random_bytes (hashicorp/random >= 3.6) marks its outputs sensitive in
 	// state and plan; random_id's .hex would be stored and shown in plain.
 	blocks.push(block("resource", ["random_bytes", tf], [attr("length", 32)]));
-	return `\${random_bytes.${tf}.hex}`;
+	return {
+		value: `\${random_bytes.${tf}.hex}`,
+		resource: "random_bytes",
+	};
 }
 
 function emitFoundation(
@@ -746,8 +1002,54 @@ function emitFoundation(
 	return out;
 }
 
+/**
+ * The `engine_version` this probe emits for a declared `requires[].version`,
+ * or `undefined` for none. Only a bare dotted version of one to three parts
+ * passes through: `16` or `16.4` names the same family to RDS (a version
+ * prefix it completes to a minor) as it does to node-semver (`16` is `16.x`),
+ * and `8.0.35` names one exact version to both, so the pin is the author's
+ * own constraint, not a narrowing of it. Every other range has no offline
+ * translation — RDS's version list is not consulted — so none is emitted. A
+ * passed-through version RDS does not offer fails at apply.
+ */
+function rdsEngineVersion(declared: string | undefined): string | undefined {
+	return declared && /^\d+(?:\.\d+){0,2}$/.test(declared)
+		? declared
+		: undefined;
+}
+
+/**
+ * Report a `requires[].version` this probe does not meet as a gap
+ * (PROVIDERS.md §10 item 8, D-74). `emitted` names the engine version or
+ * family the emitted Terraform runs, `undefined` when it leaves the choice to
+ * AWS; `what` names that engine for the reason. Through the SDK's shared
+ * comparison, a range `emitted` satisfies records nothing. The reason states
+ * what this probe emits, never what the app will do (the D-51 constraint).
+ */
+function reportEngineVersion(
+	c: Conformance,
+	req: NormalizedRequirement,
+	emitted: string | undefined,
+	what: string,
+	suggestion: string,
+): void {
+	const declared = req.version;
+	if (!declared) return;
+	const field = `requires:${req.name ?? req.type}.version`;
+	const quoted = JSON.stringify(declared);
+	const reason = {
+		satisfied: undefined,
+		invalid: `declared version ${quoted} is not a valid semver range; this probe emits ${what}`,
+		unknown: `declared version ${quoted} is a range this probe does not resolve to an engine version; it emits ${what}`,
+		unsatisfied: `declared version ${quoted} is not satisfied: this probe emits ${what} and selects no other version`,
+		undecidable: `declared version ${quoted} cannot be checked against ${what}, which this probe emits and selects no narrower version of`,
+	}[checkVersionRange(declared, emitted)];
+	if (reason) c.gap(field, "workaround", reason, suggestion);
+}
+
 function emitRds(
 	blocks: string[],
+	c: Conformance,
 	appTf: string,
 	resourceName: string,
 	req: NormalizedRequirement,
@@ -777,12 +1079,15 @@ function emitRds(
 		attr("publicly_accessible", false),
 		attr("skip_final_snapshot", true),
 	];
-	if (req.version)
-		body.splice(
-			2,
-			0,
-			attr("engine_version", req.version.replace(/[^0-9.]/g, "") || "16"),
-		);
+	const engineVersion = rdsEngineVersion(req.version);
+	if (engineVersion) body.splice(2, 0, attr("engine_version", engineVersion));
+	reportEngineVersion(
+		c,
+		req,
+		engineVersion,
+		`no engine_version, so RDS uses its default ${engine} version`,
+		`set engine_version on aws_db_instance.${tf} to an RDS ${engine} version that satisfies ${JSON.stringify(req.version)}`,
+	);
 	blocks.push(block("resource", ["aws_db_instance", tf], body));
 
 	const host = `\${aws_db_instance.${tf}.address}`;
@@ -800,10 +1105,22 @@ function emitRds(
 
 function emitElastiCache(
 	blocks: string[],
+	c: Conformance,
 	appTf: string,
 	resourceName: string,
+	req: NormalizedRequirement,
 ): Record<string, string | number> {
 	const tf = `${appTf}_${tfName(resourceName)}`;
+	// No engine_version is emitted; the `default.redis7` parameter group fixes
+	// the cluster to the Redis 7 family, so that family is what a declared
+	// range is compared with.
+	reportEngineVersion(
+		c,
+		req,
+		"7.x",
+		"a Redis 7 cluster (parameter group default.redis7, any 7.x)",
+		`set engine_version and a matching parameter_group_name on aws_elasticache_cluster.${tf} that satisfy ${JSON.stringify(req.version)}`,
+	);
 	blocks.push(
 		block(
 			"resource",
@@ -839,6 +1156,7 @@ function emitComponent(
 	appTf: string,
 	baseContext: ResolverContext,
 	targetGroupFor: Record<string, string>,
+	m: MintContext,
 ): void {
 	const compTf = tfName(name);
 	const instanceTf = `${appTf}_${compTf}`;
@@ -1079,6 +1397,8 @@ function emitComponent(
 				key,
 				envVar,
 				storageCtx,
+				name,
+				m,
 			);
 			if (resolved) resolvedEnv[key] = resolved;
 		}
@@ -1115,8 +1435,20 @@ function emitComponent(
 	if (Object.keys(resolvedEnv).length > 0)
 		c.map("env", "aws_ssm_parameter", name);
 
-	// health → recorded; the ALB target group carries the actual check.
-	if (comp.health) c.map("health", "aws_lb_target_group health_check", name);
+	// health → recorded. The ALB target group probes HTTP only: a declared
+	// path is used, otherwise "/" (SPEC "Health"). A command-only block has
+	// no AWS equivalent, so it is a gap, never a silent mapping (P-5).
+	if (comp.health?.command && !comp.health.path) {
+		c.gap(
+			"health",
+			"workaround",
+			"health.command has no AWS equivalent: no command-based check runs, and an exposed component's ALB target group probes HTTP \"/\" (matcher 200-399) instead",
+			"declare health.path so the ALB probes the app's real readiness endpoint",
+			name,
+		);
+	} else if (comp.health) {
+		c.map("health", "aws_lb_target_group health_check", name);
+	}
 
 	if (comp.schedule) {
 		c.gap(
@@ -1174,15 +1506,26 @@ function resolveEnvVar(
 	key: string,
 	envVar: NormalizedEnvVar,
 	context: ResolverContext,
+	component: string,
+	m: MintContext,
 ): { value: string; sensitive: boolean } | undefined {
 	if (envVar.generator) {
 		const tf = `${instanceTf}_${tfName(key)}_gen`;
-		const value = emitGenerator(blocks, tf, envVar.generator);
+		const { value } = emitGenerator(
+			blocks,
+			tf,
+			envVar.generator,
+			{ app: m.app, component, variable: key },
+			m,
+		);
 		return { value, sensitive: true };
 	}
 	if (envVar.default !== undefined) {
 		const raw = String(envVar.default);
 		const value = isExpression(raw) ? resolveExpression(raw, context) : raw;
+		// D-18: a declared-sensitive value is masked in every log line from here on.
+		// No length floor — the author, not a heuristic, said this value is a secret.
+		if (envVar.sensitive === true) registerDeclaredSecret(value);
 		return { value, sensitive: envVar.sensitive === true };
 	}
 	// PROVIDERS.md §10 rule 8 (D-52): an unsupplied `required` value is a gap to

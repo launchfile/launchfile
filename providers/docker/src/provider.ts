@@ -3,16 +3,21 @@
  */
 
 import { accessSync, constants as fsConstants, realpathSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
 import { createInterface } from "node:readline";
 import {
+	buildLaunchErrorContext,
+	LaunchError,
 	MissingOperatorStoragePathError,
 	readLaunch,
 	selectionClosure,
 	UnboundOperatorStorageError,
 } from "@launchfile/sdk";
-import { normalizeAppUrl, publishedAddress } from "./app-url.js";
+import {
+	normalizeAppUrl,
+	printedPrimaryEndpoint,
+	publishedAddress,
+} from "./app-url.js";
 import { checkPrereqs, composeSupportsIgnoreBuildable } from "./prereqs.js";
 import { resolveSource } from "./source-resolver.js";
 import {
@@ -26,8 +31,11 @@ import {
 	stateDir,
 	stateBaseDir,
 	hashLaunchfile,
+	writePrivateFile,
+	type DockerState,
 	type StateEndpoint,
 } from "./state.js";
+import { ownPublishedSlots } from "./own-ports.js";
 import { allocatePorts } from "./port-allocator.js";
 import {
 	launchToCompose,
@@ -36,12 +44,14 @@ import {
 	type StorageBind,
 	type UnsuppliedRequiredVar,
 } from "./compose-generator.js";
+import { redactSecrets } from "./redact.js";
 import { planReleases, runReleases } from "./release.js";
 import { shell, shellStream } from "./shell.js";
 import { getLogger, withSpan } from "./logger.js";
 import {
 	captureComposeLogs,
 	declaredEnvKeys,
+	DOCKER_PROVIDER,
 	dockerErrorKey,
 	dockerLaunchError,
 	inPhase,
@@ -135,7 +145,6 @@ export function initOnlyDatabasesWarning(
 }
 
 export interface DockerUpOpts {
-	detach?: boolean;
 	dryRun?: boolean;
 	/** Skip confirmation prompt for remote Launchfiles */
 	yes?: boolean;
@@ -186,27 +195,67 @@ export interface DockerUpOpts {
  * The message names every offending component and variable in one go, and never
  * prints a value — for a `sensitive: true` var it would be a credential, and for
  * the rest it would be noise the operator already knows.
+ *
+ * It is a `LaunchError` so the CLI persists it as a failure record with
+ * `unsupplied[]` filled in, which `launchfile diagnose` renders — otherwise a
+ * refusal would leave the previous, unrelated failure on disk as if it were
+ * current. The record carries names only: no value ever enters this class. The
+ * phase is `resolve`, the pre-deploy slot the refusal fires in — nothing has
+ * been provisioned when it throws — and the `expectedRefusal` marker still keeps
+ * the CLI's print-and-exit UX and keeps the span log at debug.
  */
-export class UnsuppliedRequiredEnvError extends Error {
+export class UnsuppliedRequiredEnvError extends LaunchError {
 	/** An operator-fixable precondition, not a crash — see `ExpectedRefusal`. */
 	readonly expectedRefusal = true as const;
 	readonly vars: UnsuppliedRequiredVar[];
 
-	constructor(vars: UnsuppliedRequiredVar[]) {
+	constructor(vars: UnsuppliedRequiredVar[], record: PhaseContext) {
 		const lines = vars.map(
 			({ component, key, sensitive }) =>
 				`  - ${component}: ${key}${sensitive ? " (sensitive)" : ""}`,
 		);
-		super(
+		const message =
 			`Cannot launch: ${vars.length} required environment variable${vars.length === 1 ? "" : "s"} ` +
-				"had no value.\n" +
-				`${lines.join("\n")}\n` +
-				"The Launchfile declares them `required:` with no `default:`, `generator:`, or resource\n" +
-				"binding, so you supply them. Set them in the environment and run `up` again, e.g.\n" +
-				`  ${vars[0]!.key}=<value> launchfile up`,
+			"had no value.\n" +
+			`${lines.join("\n")}\n` +
+			"The Launchfile declares them `required:` with no `default:`, `generator:`, or resource\n" +
+			"binding, so you supply them. Set them in the environment and run `up` again, e.g.\n" +
+			`  ${vars[0]!.key}=<value> launchfile up`;
+		super(
+			buildLaunchErrorContext(
+				{
+					phase: "resolve",
+					provider: DOCKER_PROVIDER,
+					key: record.key,
+					slug: record.slug,
+					app: record.app,
+					message,
+					env: record.env,
+					unsupplied: vars.map(({ component, key }) => ({ component, variable: key })),
+				},
+				redactSecrets,
+			),
 		);
 		this.name = "UnsuppliedRequiredEnvError";
 		this.vars = vars;
+	}
+}
+
+/**
+ * A launch stopped because no selected component survived the generator's
+ * refusals and skips (D-44, D-60, D-61, D-64, D-65 — every kind alike). Each
+ * refusal has already printed its own reason, so this names only the outcome.
+ * Thrown before any compose file is written and before compose runs: given
+ * `services: {}`, `up` would fail with compose's error in place of the
+ * provider's, and `--dry-run` would print an empty plan as if it were valid.
+ */
+export class NothingToStartError extends Error {
+	/** An operator-fixable precondition, not a crash — see `ExpectedRefusal`. */
+	readonly expectedRefusal = true as const;
+
+	constructor() {
+		super("nothing to start: every selected component was refused or skipped");
+		this.name = "NothingToStartError";
 	}
 }
 
@@ -240,7 +289,12 @@ export interface ForeignSourceDetails {
 	existingIsLocal: boolean;
 }
 
-/** Shared by the refusal and the dry-run warning, so both say the same thing. */
+/**
+ * Shared by the refusal and the dry-run warning, so both say the same thing.
+ * Either source may be a URL carrying credentials; they are masked here, where
+ * the message is built (D-18, D-71). The raw `sourceUrl` the D-55 comparison
+ * and the state file use is not touched.
+ */
 export function foreignSourceMessage(details: ForeignSourceDetails): string {
 	const remedies = [
 		"  - launch a separate instance from here: launchfile up --name <label>",
@@ -253,8 +307,8 @@ export function foreignSourceMessage(details: ForeignSourceDetails): string {
 	];
 	return (
 		`"${details.slug}" (compose project ${details.project}) is already deployed from a different source.\n` +
-		`  Existing source: ${details.existingSource}\n` +
-		`  This source:     ${details.currentSource}\n` +
+		`  Existing source: ${redactSecrets(details.existingSource)}\n` +
+		`  This source:     ${redactSecrets(details.currentSource)}\n` +
 		`Refusing to adopt that deployment's containers, volumes, and secrets. Either:\n` +
 		remedies.join("\n")
 	);
@@ -512,8 +566,14 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// distinct ports before probing (D-55). Unnamed deployments keep the
 		// historical `launch.name` seed — changing it would move existing
 		// deployments' fallback ports.
+		// A live deployment's own containers hold their saved ports on the
+		// wildcard address; allocation must not read that as a collision.
+		const hasSavedPorts = Object.keys(state.ports ?? {}).length > 0;
+		const ownPorts = hasSavedPorts
+			? await inPhase("provision", failure(), () => ownPublishedSlots(composeProject(slug)))
+			: undefined;
 		const hostPorts = await inPhase("provision", failure(), () =>
-			allocatePorts(launch.components, opts.name ? slug : launch.name, state.ports),
+			allocatePorts(launch.components, opts.name ? slug : launch.name, state.ports, ownPorts),
 		);
 
 		// Generate compose. `process.env` is this provider's operator channel for
@@ -554,7 +614,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		);
 		const blocking = result.unsuppliedRequired.filter((v) => launching.has(v.component));
 		if (blocking.length > 0) {
-			throw new UnsuppliedRequiredEnvError(blocking);
+			throw new UnsuppliedRequiredEnvError(blocking, failure());
 		}
 
 		// D-50 rule 2, rows 2 and 3 — refused before the compose file is
@@ -625,6 +685,13 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 			}
 		}
 
+		// Nothing left to start (D-64 rule 3): stop here, dry run included.
+		// Keyed on what the generator emitted for the start-set, never on a
+		// refusal kind, so every refusal above reaches it alike.
+		if (launching.size === 0) {
+			throw new NothingToStartError();
+		}
+
 		// Update state. The full ports map (composite keys included) is what
 		// the allocator reads back on the next `up` — persisting only the
 		// primary would let every secondary endpoint move across restarts.
@@ -633,6 +700,13 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		state.generatedEnv = result.generatedEnv;
 		state.ports = result.ports;
 		state.endpoints = result.endpoints;
+		state.primaryEndpoint = printedPrimaryEndpoint(
+			launch,
+			result.primaryEndpoint,
+			result.primaryEndpoint === undefined
+				? undefined
+				: result.endpoints[result.primaryEndpoint]?.protocol,
+		);
 
 		const upResult: DockerUpResult = {
 			slug,
@@ -643,9 +717,32 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		};
 
 		if (opts.dryRun) {
-			console.log("\n--- docker-compose.yml ---\n");
+			// The YAML is always the whole project: `down` and `logs` read the
+			// persisted copy later, so a selector never narrows it. Under a
+			// selector the header says so, and the start-set is named beside it
+			// (D-41) — from the closure, not the ports map, so a closure member
+			// with no published port is still listed.
+			console.log(
+				selectorActive
+					? "\n--- docker-compose.yml (full project file) ---\n"
+					: "\n--- docker-compose.yml ---\n",
+			);
 			console.log(result.yaml);
-			printSummary(launch.name, result.ports, summaryOnly, result.endpoints);
+			if (selectorActive) {
+				console.log("");
+				const wouldStart = selection.start.filter((name) => launching.has(name));
+				for (const line of selectionLines(opts.components ?? [], wouldStart, componentNames)) {
+					console.log(line);
+				}
+			}
+			printSummary(
+				launch.name,
+				result.ports,
+				summaryOnly,
+				result.endpoints,
+				state,
+				"would be reachable at",
+			);
 			return upResult;
 		}
 
@@ -658,7 +755,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 			withSpan("up:compose", { slug }, async () => {
 				// Security: compose file contains passwords in environment variables
 				const file = composePath(slug);
-				await writeFile(file, result.yaml, { mode: 0o600 });
+				await writePrivateFile(file, result.yaml);
 			}),
 		);
 
@@ -779,7 +876,9 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		// the deployment on this path so `status`/`logs`/`down` reach them.
 		await inPhase("health", withLogs(), () =>
 			withSpan("up:health", { project }, async () => {
-				const health = await waitForHealth(project, composeFile, result.healthchecks);
+				const health = await waitForHealth(project, composeFile, result.healthchecks, {
+					mayExit: result.mayExit,
+				});
 				if (!health.ok) {
 					const message = healthFailureMessage(
 						health.stuck,
@@ -795,7 +894,7 @@ export async function dockerUp(source: string, opts: DockerUpOpts = {}): Promise
 		);
 
 		// Print summary
-		printSummary(launch.name, result.ports, summaryOnly, result.endpoints);
+		printSummary(launch.name, result.ports, summaryOnly, result.endpoints, state);
 
 		return upResult;
 	}),
@@ -864,8 +963,8 @@ export async function dockerStatus(slug?: string): Promise<void> {
 
 		if (Object.keys(state.ports).length > 0) {
 			console.log("\nAccess URLs:");
-			for (const [key, port] of Object.entries(state.ports)) {
-				console.log(`  ${key}: ${endpointAddress(port, state.endpoints?.[key]?.protocol)}`);
+			for (const line of statusLines(state.ports, state.endpoints, state)) {
+				console.log(line);
 			}
 		}
 	});
@@ -965,6 +1064,7 @@ export interface PsContainer {
 	Health: string;
 	Name?: string;
 	Service?: string;
+	ExitCode?: number;
 }
 
 /**
@@ -986,15 +1086,24 @@ export interface PsContainer {
  * services ({@link healthPsArgs}), so an orphan left behind by a rename never
  * reaches here; a row that still does is a gap to report, not one to absorb
  * into a pass (the D-51/D-52 posture).
+ *
+ * A service in `ComposeResult.mayExit` (restart `no` or `on-failure`) is
+ * allowed to end: Docker leaves it stopped after an exit 0, so that row passes.
+ * An exited row with a non-zero or missing exit code fails, and a row that is
+ * still running or restarting gates like any other service.
  */
 export function isContainerHealthy(
 	container: PsContainer,
 	healthchecks: Readonly<Record<string, boolean>>,
+	mayExit: ReadonlySet<string> = new Set(),
 ): boolean {
-	if (container.State !== "running") return false;
-
 	const service = container.Service;
 	if (service === undefined || !Object.hasOwn(healthchecks, service)) return false;
+
+	if (container.State === "exited" && mayExit.has(service)) {
+		return container.ExitCode === 0;
+	}
+	if (container.State !== "running") return false;
 
 	return healthchecks[service] ? container.Health === "healthy" : true;
 }
@@ -1013,6 +1122,10 @@ export type ComposePs = () => Promise<{ exitCode: number; stdout: string }>;
  * component the app no longer has. Naming the generated services keeps the poll
  * to what this `up` wrote.
  *
+ * `--all` keeps exited containers in the list. Without it a job that has
+ * already finished drops out of the rows, and a project whose only service is
+ * that job reports no container at all for the whole budget.
+ *
  * With no generated services there is nothing the gate can accept, so the bare
  * poll it returns then costs nothing: every row fails closed either way.
  */
@@ -1028,6 +1141,7 @@ export function healthPsArgs(
 		"-f",
 		composeFile,
 		"ps",
+		"--all",
 		"--format",
 		"json",
 		...Object.keys(healthchecks),
@@ -1041,6 +1155,8 @@ export interface WaitForHealthOpts {
 	pollIntervalMs?: number;
 	/** How to read container status. Defaults to `docker compose ps`. */
 	ps?: ComposePs;
+	/** Services that pass by exiting 0 (`ComposeResult.mayExit`). */
+	mayExit?: readonly string[];
 }
 
 export async function waitForHealth(
@@ -1059,6 +1175,7 @@ export async function waitForHealth(
 				allowFailure: true,
 				silent: true,
 			}));
+	const mayExit = new Set(opts.mayExit ?? []);
 	const start = Date.now();
 	let stuck: string[] = [];
 
@@ -1082,7 +1199,7 @@ export async function waitForHealth(
 			try {
 				const container = JSON.parse(line) as PsContainer;
 				hasContainers = true;
-				if (!isContainerHealthy(container, healthchecks)) {
+				if (!isContainerHealthy(container, healthchecks, mayExit)) {
 					unhealthy.push(container.Service || container.Name || "(unnamed container)");
 				}
 			} catch {
@@ -1110,6 +1227,14 @@ export function componentOfPortKey(
 }
 
 /**
+ * What a printout reads to place the orchestrator-supplied publication URL
+ * (D-58): the URL, and the `ports` key it asserts. One URL asserts the
+ * primary endpoint only (D-58 rule 4), so every other key keeps this
+ * provider's own address; with no URL every key does.
+ */
+export type PrintedPublication = Pick<DockerState, "appUrl" | "primaryEndpoint">;
+
+/**
  * Human-readable address for a published endpoint. HTTP-family protocols get
  * a browsable URL; raw tcp/udp/grpc endpoints get `localhost:<port> (<proto>)`
  * because an `http://` link to an SMTP or DNS port would be wrong. Keys with
@@ -1122,18 +1247,61 @@ export function componentOfPortKey(
  * (#473). `protocol` is the endpoint's EFFECTIVE protocol as persisted in
  * state (D-61 rule 2), which is why an active certificate needs no second
  * branch here.
+ *
+ * `appUrl` is the supplied publication URL, passed only for the key `up`
+ * recorded as `primaryEndpoint` — an `http`/`https` primary, or one a declared
+ * `https-origin` names (`printedPrimaryEndpoint`, §7). It prints as stored:
+ * `normalizeAppUrl` ran once, when `up` recorded it, and `$app.url` is that
+ * same string, so nothing re-derives here. A `tcp` or `udp` listener keeps
+ * its own form even then: it has no origin (D-60 rule 2), so an
+ * `http`/`https` URL asserts nothing about it.
  */
-export function endpointAddress(port: number, protocol?: string): string {
+export function endpointAddress(port: number, protocol?: string, appUrl?: string): string {
 	switch (protocol) {
-		case "ws":
-			return `ws://localhost:${port}`;
 		case "tcp":
 		case "udp":
-		case "grpc":
 			return `localhost:${port} (${protocol})`;
+		case "ws":
+			return appUrl ?? `ws://localhost:${port}`;
+		case "grpc":
+			return appUrl ?? `localhost:${port} (${protocol})`;
 		default:
-			return publishedAddress(protocol, port).url;
+			return appUrl ?? publishedAddress(protocol, port).url;
 	}
+}
+
+/**
+ * The address to print for one `ports` key: the supplied publication URL on
+ * the primary endpoint's key, this provider's own address on every other
+ * (D-58 rule 4). With no publication context, the provider's own address
+ * throughout — byte-identical to a run with no URL supplied.
+ */
+function printedAddress(
+	key: string,
+	port: number,
+	endpoints: Record<string, StateEndpoint> | undefined,
+	publication: PrintedPublication | undefined,
+): string {
+	const appUrl =
+		publication?.primaryEndpoint !== undefined && key === publication.primaryEndpoint
+			? publication.appUrl
+			: undefined;
+	return endpointAddress(port, endpoints?.[key]?.protocol, appUrl);
+}
+
+/**
+ * The "Access URLs" lines `status` prints, one per `ports` key. Pure, so the
+ * placement of the supplied URL can be tested without state on disk or a
+ * compose project.
+ */
+export function statusLines(
+	ports: Record<string, number>,
+	endpoints?: Record<string, StateEndpoint>,
+	publication?: PrintedPublication,
+): string[] {
+	return Object.entries(ports).map(
+		([key, port]) => `  ${key}: ${printedAddress(key, port, endpoints, publication)}`,
+	);
 }
 
 /**
@@ -1145,14 +1313,17 @@ export function endpointAddress(port: number, protocol?: string): string {
  * components it never started are running. Composite keys (`caddy:https`)
  * match through their component (`caddy`), so a selected component reports
  * every endpoint it publishes. An undefined `only` means "report everything"
- * (the all-components default). Pure and side-effect-free so it can be
- * unit-tested without spinning Docker.
+ * (the all-components default). `verb` is the tense: a dry run has started
+ * nothing, so it reports what "would be reachable at" an address. Pure and
+ * side-effect-free so it can be unit-tested without spinning Docker.
  */
 export function summaryLines(
 	appName: string,
 	ports: Record<string, number>,
 	only?: ReadonlySet<string>,
 	endpoints?: Record<string, StateEndpoint>,
+	publication?: PrintedPublication,
+	verb: SummaryVerb = "is running at",
 ): string[] {
 	const lines: string[] = [];
 	for (const [key, port] of Object.entries(ports)) {
@@ -1162,9 +1333,35 @@ export function summaryLines(
 		// Secondary endpoints carry their endpoint name (D-6) or container
 		// port as a qualifier so multi-endpoint components stay tellable apart.
 		const qualifier = key === component ? "" : ` (${endpoints?.[key]?.name ?? key.slice(component.length + 1)})`;
-		lines.push(`  ${base}${qualifier} is running at ${endpointAddress(port, endpoints?.[key]?.protocol)}`);
+		lines.push(
+			`  ${base}${qualifier} ${verb} ${printedAddress(key, port, endpoints, publication)}`,
+		);
 	}
 	return lines;
+}
+
+export type SummaryVerb = "is running at" | "would be reachable at";
+
+/**
+ * The start-set lines a dry run prints under an active selector: the
+ * components the selector named, the ones the run would start — the D-41
+ * closure, minus any member refused earlier in the run — and the ones that
+ * stay down. The summary lines only cover published ports, so this is the
+ * one place a port-less closure member is named. Pure so it can be
+ * unit-tested without spinning Docker.
+ */
+export function selectionLines(
+	selector: readonly string[],
+	wouldStart: readonly string[],
+	all: readonly string[],
+): string[] {
+	const starting = new Set(wouldStart);
+	const rest = all.filter((name) => !starting.has(name));
+	return [
+		`Selector: ${selector.join(", ")}`,
+		`Would start: ${wouldStart.join(", ")}`,
+		`Not started: ${rest.length > 0 ? rest.join(", ") : "none"}`,
+	];
 }
 
 function printSummary(
@@ -1172,9 +1369,11 @@ function printSummary(
 	ports: Record<string, number>,
 	only?: ReadonlySet<string>,
 	endpoints?: Record<string, StateEndpoint>,
+	publication?: PrintedPublication,
+	verb?: SummaryVerb,
 ): void {
 	console.log("");
-	for (const line of summaryLines(appName, ports, only, endpoints)) {
+	for (const line of summaryLines(appName, ports, only, endpoints, publication, verb)) {
 		console.log(line);
 	}
 }

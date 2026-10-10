@@ -27,6 +27,7 @@ import {
 	type NormalizedLaunch,
 	type ResolverContext,
 } from "@launchfile/sdk";
+import { withConfinementRefusal } from "./safe-path.js";
 import { loadState, saveState } from "./state.js";
 import {
 	resolveComponentEnv,
@@ -53,6 +54,13 @@ export const BOOTSTRAP_SHELL = "/bin/sh";
  */
 export interface BootstrapResult {
 	component: string;
+	/**
+	 * The resolved command in redacted form — never the pre-scrub string
+	 * (D-18, D-71). `$secrets.*` and `$<resource>.password` resolve to live
+	 * credentials before the command runs, and this type is a public export:
+	 * a consumer in another process holds an empty redaction registry and
+	 * cannot scrub what it is handed.
+	 */
 	command: string;
 	ok: boolean;
 	exitCode: number;
@@ -68,9 +76,34 @@ export interface BootstrapResult {
  * CLI tools that detect a TTY will emit color codes that would otherwise
  * break simple patterns like `https?://\S+`.
  */
-function stripAnsi(s: string): string {
+// CSI, OSC, and the single-character escapes a terminal writes into captured
+// output. Every repetition is bounded, and the OSC payload stops at ESC.
+//
+// Unbounded, the OSC branch `\][^\u0007]*` is quadratic: each `ESC ]` in the
+// input rescans the whole remainder looking for a BEL that a hostile log line
+// never supplies, and bootstrap stdout is exactly where a hostile log line
+// arrives (CWE-1333). Through `extractCaptures`, 40 000 `ESC ]` pairs took
+// 366 ms under Bun 1.4.0 on an Apple-silicon Mac; bounded they take 0 ms.
+//
+// Excluding ESC from the payload also closes a swallow: ECMA-48 ends an OSC
+// string at BEL or ST (`ESC \`), and nothing between may contain ESC. The
+// unbounded class ran straight past an ST into the next OSC, so an OSC 8
+// hyperlink lost its link text — and with it the URL a `capture` pattern is
+// looking for.
+//
+// The parameter bound is 64 because 32 is not enough: one SGR that sets a
+// truecolor foreground and background together —
+// `ESC [ 38;2;255;255;255;48;2;240;240;240 m` — carries 33 parameter bytes, and a
+// theme-aware CLI emits it. Past the bound the sequence is not stripped at all
+// and its bytes reach the string `extractCaptures` matches against. ECMA-48
+// permits only a few intermediates; an OSC 8 hyperlink URL is the longest
+// realistic payload and sits far under 1024.
+const ANSI_ESCAPE =
 	// biome-ignore lint/suspicious/noControlCharactersInRegex: intentional ANSI match
-	return s.replace(/\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07/g, "");
+	/\u001B(?:\[[0-9;?]{0,64}[ -/]{0,8}[@-~]|\][^\u0007\u001B]{0,1024}(?:\u0007|\u001B\\)|[@-Z\\-_])/g;
+
+function stripAnsi(s: string): string {
+	return s.replace(ANSI_ESCAPE, "");
 }
 
 /**
@@ -252,6 +285,19 @@ const defaultExec: BootstrapExec = (cmd, args, opts) =>
 		});
 	});
 
+export interface LaunchBootstrapOpts {
+	component?: string;
+	projectDir?: string;
+	/**
+	 * Print sensitive captures instead of masking them — the operator's
+	 * explicit act on the invoking command (`launchfile bootstrap
+	 * --reveal`). Display only: the values are registered with the
+	 * redactor either way.
+	 */
+	reveal?: boolean;
+	exec?: BootstrapExec;
+}
+
 /**
  * Public entry point for `launch bootstrap`. Loads the Launchfile, rebuilds
  * the resolver context from persisted state (so $app.url resolves to the
@@ -261,21 +307,17 @@ const defaultExec: BootstrapExec = (cmd, args, opts) =>
  *
  * Does not fail the process on command error — the caller (CLI) decides
  * how to display failures. This matches the "reported, not deploy-failing"
- * semantics in SPEC.md § Bootstrap stage.
+ * semantics in SPEC.md § Bootstrap stage. A state write refused by
+ * safe-path.ts does stop the process: one `Refused:` line and exit 1.
  */
 export async function launchBootstrap(
-	opts: {
-		component?: string;
-		projectDir?: string;
-		/**
-		 * Print sensitive captures instead of masking them — the operator's
-		 * explicit act on the invoking command (`launchfile bootstrap
-		 * --reveal`). Display only: the values are registered with the
-		 * redactor either way.
-		 */
-		reveal?: boolean;
-		exec?: BootstrapExec;
-	} = {},
+	opts: LaunchBootstrapOpts = {},
+): Promise<BootstrapResult[]> {
+	return withConfinementRefusal(() => runBootstrap(opts));
+}
+
+async function runBootstrap(
+	opts: LaunchBootstrapOpts,
 ): Promise<BootstrapResult[]> {
 	const projectDir = opts.projectDir ?? process.cwd();
 	const reveal = opts.reveal === true;
@@ -310,7 +352,7 @@ export async function launchBootstrap(
 			console.error(`  \u2717 Bootstrap [${name}]: ${item.error}`);
 			results.push({
 				component: name,
-				command: item.command,
+				command: redactSecrets(item.command),
 				ok: false,
 				exitCode: 1,
 				captures: {},
@@ -365,7 +407,7 @@ export async function launchBootstrap(
 
 		results.push({
 			component: name,
-			command: item.command,
+			command: redactSecrets(item.command),
 			ok: exitCode === 0,
 			exitCode,
 			captures,

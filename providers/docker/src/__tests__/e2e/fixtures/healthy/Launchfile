@@ -1,0 +1,13 @@
+# Passes its declared check on the first probe.
+version: launch/v1
+name: lf-e2e-healthy
+image: busybox:1.37.0
+restart: always
+commands:
+  start: sleep 3600
+health:
+  command: "true"
+  interval: 1s
+  timeout: 2s
+  retries: 3
+  start_period: 30s

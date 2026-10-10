@@ -1,4 +1,8 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { cmdValidate } from "../commands.js";
 import { lintDeprecations, lintLaunch, lintUnknownStorageKeys } from "../lint.js";
 import { parseLaunchYaml, readLaunch } from "../reader.js";
 
@@ -238,7 +242,7 @@ components:
 		const warnings = lintLaunch(launch, { suppressPortabilityWarnings: true });
 		expect(warnings).toHaveLength(1);
 		expect(warnings[0]).toBe(
-			'"$hoost" is not in the standard vocabulary for postgres ' +
+			'api: postgres: DB_HOST: "$hoost" is not in the standard vocabulary ' +
 				"(known: url, host, port, user, password, name)",
 		);
 	});
@@ -311,12 +315,104 @@ components:
 		const warnings = lintLaunch(launch, { suppressPortabilityWarnings: true });
 		expect(warnings).toHaveLength(2);
 		expect(warnings.join("\n")).toContain(
-			'"$hoost" is not in the standard vocabulary for postgres',
+			'api: postgres: DB_HOST: "$hoost" is not in the standard vocabulary',
 		);
 		expect(warnings.join("\n")).toContain(
-			'"$uri" is not in the standard vocabulary for redis ' +
+			'worker: redis: REDIS_URL: "$uri" is not in the standard vocabulary ' +
 				"(known: url, host, port, password)",
 		);
+	});
+
+	it("names the component, resource and env key so sibling resources stay distinct", () => {
+		const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    requires:
+      - type: redis
+        name: cache
+        set_env:
+          CACHE_URI: $uri
+      - type: redis
+        name: sessions
+        set_env:
+          SESSION_URI: $uri
+          SESSION_DSN: $dsn
+          SESSION_BOTH: $dsn $dsn
+`);
+		const warnings = lintLaunch(launch, { suppressPortabilityWarnings: true });
+		expect(warnings).toEqual([
+			'api: cache (redis): CACHE_URI: "$uri" is not in the standard vocabulary (known: url, host, port, password)',
+			'api: sessions (redis): SESSION_URI: "$uri" is not in the standard vocabulary (known: url, host, port, password)',
+			'api: sessions (redis): SESSION_DSN: "$dsn" is not in the standard vocabulary (known: url, host, port, password)',
+			'api: sessions (redis): SESSION_BOTH: "$dsn" is not in the standard vocabulary (known: url, host, port, password)',
+		]);
+		expect(new Set(warnings).size).toBe(warnings.length);
+	});
+
+	it("labels a top-level requirement as (top-level)", () => {
+		const warnings = lintLaunch(
+			readLaunch("name: acme\nimage: a:1\nrequires:\n  - type: redis\n    set_env:\n      R: $uri\n"),
+			{ suppressPortabilityWarnings: true },
+		);
+		expect(warnings).toEqual([
+			'(top-level): redis: R: "$uri" is not in the standard vocabulary (known: url, host, port, password)',
+		]);
+	});
+
+	it("warns once when two same-name entries emit the identical warning (D-24)", () => {
+		const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    requires:
+      - type: redis
+        name: cache
+        set_env:
+          CACHE_URI: $uri
+      - type: redis
+        name: cache
+        set_env:
+          CACHE_URI: $uri
+`);
+		const warnings = lintLaunch(launch, { suppressPortabilityWarnings: true });
+		expect(warnings).toEqual([
+			'api: cache (redis): CACHE_URI: "$uri" is not in the standard vocabulary (known: url, host, port, password)',
+		]);
+	});
+
+	it("keeps distinct warnings from same-name entries and the same warning in another component", () => {
+		const launch = readLaunch(`
+name: acme
+components:
+  api:
+    image: api:latest
+    requires:
+      - type: redis
+        name: cache
+        set_env:
+          CACHE_URI: $uri
+      - type: redis
+        name: cache
+        set_env:
+          CACHE_URI: $uri
+          CACHE_DSN: $dsn
+  worker:
+    image: worker:latest
+    requires:
+      - type: redis
+        name: cache
+        set_env:
+          CACHE_URI: $uri
+`);
+		const warnings = lintLaunch(launch, { suppressPortabilityWarnings: true });
+		expect(warnings).toEqual([
+			'api: cache (redis): CACHE_URI: "$uri" is not in the standard vocabulary (known: url, host, port, password)',
+			'api: cache (redis): CACHE_DSN: "$dsn" is not in the standard vocabulary (known: url, host, port, password)',
+			'worker: cache (redis): CACHE_URI: "$uri" is not in the standard vocabulary (known: url, host, port, password)',
+		]);
 	});
 
 	it("warns inside template expressions on a supports entry", () => {
@@ -356,6 +452,39 @@ requires:
 				"(known: db, pubsub, server) — a provider refuses the component rather than " +
 				"cover a use it does not recognise",
 		]);
+	});
+
+	it("warns once when two same-name entries in one component carry the same bad use", () => {
+		const warnings = useWarnings(`
+name: app
+image: app:1
+requires:
+  - type: redis
+    name: cache
+    uses: [streams]
+  - type: redis
+    name: cache
+    uses: [streams]
+`);
+		expect(warnings).toHaveLength(1);
+	});
+
+	it("still warns once per component when the same bad use appears in two components", () => {
+		const warnings = useWarnings(`
+name: app
+components:
+  web:
+    image: app:1
+    requires:
+      - type: redis
+        uses: [streams]
+  worker:
+    image: app:1
+    requires:
+      - type: redis
+        uses: [streams]
+`);
+		expect(warnings).toHaveLength(2);
 	});
 
 	it("says a supports token leaves the entry unfulfilled instead", () => {
@@ -971,5 +1100,161 @@ storage:
 			{ suppressPortabilityWarnings: true },
 		);
 		expect(clean).toEqual([]);
+	});
+});
+
+describe("lintLaunch — env var minted by a generator in 2+ components (D-49)", () => {
+	const lint = (yaml: string): string[] =>
+		lintLaunch(readLaunch(yaml), { suppressPortabilityWarnings: true }).filter(
+			(w) => w.includes("minted by a generator"),
+		);
+
+	it("warns on the chatwoot shape: generator: secret in web and sidekiq", () => {
+		const warnings = lint(`
+name: chatwoot
+components:
+  web:
+    image: chatwoot/chatwoot:latest
+    env:
+      SECRET_KEY_BASE: { generator: secret, sensitive: true }
+  sidekiq:
+    image: chatwoot/chatwoot:latest
+    env:
+      SECRET_KEY_BASE: { generator: secret, sensitive: true }
+`);
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toContain('"SECRET_KEY_BASE"');
+		expect(warnings[0]).toContain("(sidekiq, web)");
+		expect(warnings[0]).toContain("`secrets:`");
+		expect(warnings[0]).toContain("`$secrets.<name>`");
+	});
+
+	it("warns on the dify shape even when the descriptions differ", () => {
+		const warnings = lint(`
+name: dify
+components:
+  api:
+    image: langgenius/dify-api:latest
+    env:
+      SECRET_KEY: { generator: secret, description: "Application secret key" }
+  worker:
+    image: langgenius/dify-api:latest
+    env:
+      SECRET_KEY: { generator: secret, description: "Application secret key (must match api)" }
+  web:
+    image: langgenius/dify-web:latest
+`);
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toContain('"SECRET_KEY"');
+		expect(warnings[0]).toContain("(api, worker)");
+	});
+
+	it("warns on generator: uuid, and on a secret/uuid mix, naming every component", () => {
+		const warnings = lint(`
+name: acme
+components:
+  a:
+    image: a:1
+    env:
+      INSTANCE_ID: { generator: uuid }
+  b:
+    image: b:1
+    env:
+      INSTANCE_ID: { generator: secret }
+  c:
+    image: c:1
+    env:
+      INSTANCE_ID: { generator: uuid }
+`);
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toContain("in 3 components (a, b, c)");
+	});
+
+	it("does not warn on the $secrets shape", () => {
+		const warnings = lint(`
+name: chatwoot
+secrets:
+  secret-key-base: { generator: secret }
+components:
+  web:
+    image: chatwoot/chatwoot:latest
+    env:
+      SECRET_KEY_BASE: { default: "$secrets.secret-key-base", sensitive: true }
+  sidekiq:
+    image: chatwoot/chatwoot:latest
+    env:
+      SECRET_KEY_BASE: { default: "$secrets.secret-key-base", sensitive: true }
+`);
+		expect(warnings).toEqual([]);
+	});
+
+	it("does not warn on a name repeated with generator: port", () => {
+		const warnings = lint(`
+name: acme
+components:
+  api:
+    image: api:1
+    env:
+      PORT: { generator: port }
+  worker:
+    image: worker:1
+    env:
+      PORT: { generator: port }
+`);
+		expect(warnings).toEqual([]);
+	});
+
+	it("does not warn when only one component mints the name", () => {
+		const warnings = lint(`
+name: acme
+components:
+  api:
+    image: api:1
+    env:
+      SECRET_KEY: { generator: secret }
+  worker:
+    image: worker:1
+    env:
+      SECRET_KEY: { default: "fixed" }
+`);
+		expect(warnings).toEqual([]);
+	});
+
+	it("does not warn on a single-component app", () => {
+		const warnings = lint(`
+name: acme
+image: app:1
+env:
+  SECRET_KEY: { generator: secret }
+  SESSION_ID: { generator: uuid }
+`);
+		expect(warnings).toEqual([]);
+	});
+
+	it("keeps valid true when the warning fires", () => {
+		const dir = mkdtempSync(join(tmpdir(), "sdk-lint-mint-"));
+		const path = join(dir, "Launchfile");
+		writeFileSync(
+			path,
+			`version: launch/v1
+name: dify
+components:
+  api:
+    image: langgenius/dify-api:latest
+    env:
+      SECRET_KEY: { generator: secret }
+  worker:
+    image: langgenius/dify-api:latest
+    env:
+      SECRET_KEY: { generator: secret }
+`,
+			"utf-8",
+		);
+		const result = cmdValidate(path, { quiet: true, noColor: true });
+		expect(result.valid).toBe(true);
+		expect(result.errors ?? []).toEqual([]);
+		expect(
+			result.warnings?.some((w) => w.includes('env "SECRET_KEY" is minted')),
+		).toBe(true);
 	});
 });

@@ -5,11 +5,12 @@
  * so credentials and ports are stable across restarts.
  */
 
-import { readFile, writeFile, mkdir, chmod } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { registerSecrets } from "./redact.js";
 import type { DbIndexes } from "./resources/uses.js";
+import { ensureConfinedDir, writeConfinedFile } from "./safe-path.js";
 
 export interface ResourceState {
 	type: string;
@@ -137,6 +138,32 @@ export interface LaunchState {
 	 * answers.
 	 */
 	appUrl?: string;
+	/**
+	 * The `ports` key — this provider allocates one port per component, so a
+	 * component name — of the app's primary endpoint, the one `$app.*` reads,
+	 * when a declared `https-origin` names that endpoint (any protocol, D-60
+	 * rule 4) or its effective listener is `http` or `https`; absent for a
+	 * positional `ws`/`tcp`/`udp`/`grpc` primary (§7, D-58 rule 2). See
+	 * `printedPrimaryEndpoint`. Recorded at `up` beside `appUrl`
+	 * so `status`, which never reads the Launchfile, prints the supplied URL on
+	 * that one key and no other (D-58 rule 4). Optional for backward
+	 * compatibility: a state file without it prints this provider's own address
+	 * on every key.
+	 */
+	primaryEndpoint?: string;
+	/**
+	 * Fingerprint of the prepare inputs (`install ?? build` command plus the
+	 * dependency manifests and lockfiles in its working directory) at the last
+	 * successful prepare, keyed by component name. It is what makes prepare run
+	 * on demand rather than on every `up` (D-38): a component whose current
+	 * fingerprint matches its recorded one has nothing to install.
+	 *
+	 * An entry is written only after its command exits zero, so a failed prepare
+	 * is retried on the next `up`. Optional for backward compatibility: a state
+	 * file written before this existed has no entries, so the next `up` prepares
+	 * every component once and records them.
+	 */
+	prepared?: Record<string, string>;
 }
 
 const STATE_DIR = ".launchfile";
@@ -193,26 +220,25 @@ export function initState(appName: string, launchfileContent: string): LaunchSta
 export async function saveState(projectDir: string, state: LaunchState): Promise<void> {
 	state.updatedAt = new Date().toISOString();
 	// Security: restrict directory/file permissions — state.json contains
-	// database passwords and generated secrets in plaintext.
-	await mkdir(stateDir(projectDir), { recursive: true, mode: 0o700 });
-	await writeFile(statePath(projectDir), JSON.stringify(state, null, 2) + "\n", { mode: 0o600 });
+	// database passwords and generated secrets in plaintext. Both `.launchfile/`
+	// and the file ship with the repository, so the write is confined to the
+	// real project directory and refused through a symlink (safe-path.ts).
+	await writeConfinedFile(projectDir, [STATE_DIR, STATE_FILE], `${JSON.stringify(state, null, 2)}\n`, {
+		mode: 0o600,
+		dirMode: 0o700,
+	});
 }
 
 /** Ensure .launchfile directories exist */
 export async function ensureDirs(projectDir: string): Promise<void> {
 	const dirs = ["storage", "tmp", "logs", "data", "env"];
-	// Security: these dirs hold secrets, logs, and env files. mkdir applies the
-	// mode only when it creates the directory, so chmod unconditionally — a dir
-	// left by an earlier version or a looser umask must not stay world-readable
-	// (CWE-276). Mirrors packages/launchfile/src/state/errors.ts.
-	await Promise.all(
-		dirs.map(async (d) => {
-			const dir = join(projectDir, STATE_DIR, d);
-			await mkdir(dir, { recursive: true, mode: 0o700 });
-			await chmod(dir, 0o700);
-		}),
-	);
+	// Security: these dirs hold secrets, logs, and env files, and are
+	// owner-only whatever mode an earlier version or a looser umask left them
+	// with (CWE-276). This is the first write `up` makes, so a `.launchfile/`
+	// the repository ships as a symlink is refused here, before anything else
+	// can go through it.
+	await Promise.all(dirs.map((d) => ensureConfinedDir(projectDir, [STATE_DIR, d], { mode: 0o700 })));
 	// Safety net: write a .gitignore inside .launchfile/ so secrets aren't
 	// accidentally committed even if the project's .gitignore doesn't exclude it.
-	await writeFile(join(projectDir, STATE_DIR, ".gitignore"), "*\n", { mode: 0o644 });
+	await writeConfinedFile(projectDir, [STATE_DIR, ".gitignore"], "*\n", { mode: 0o644 });
 }

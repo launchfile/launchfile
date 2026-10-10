@@ -15,7 +15,11 @@ import {
 	getFlagValues,
 	getPositional,
 	hasFlag,
+	longFormsOf,
+	parseComponentNames,
 	parseStoragePairs,
+	SHORT_FLAGS,
+	selectorRefusal,
 	suggestFlag,
 	unknownFlags,
 	VALUE_FLAGS,
@@ -57,6 +61,14 @@ describe("getPositional (#248)", () => {
 		expect(getPositional(args, 0)).toBe("up");
 		expect(getPositional(args, 1)).toBeUndefined();
 		expect(getPositional(["up", "--url", "https://x.example.com", "ghost"], 1)).toBe("ghost");
+	});
+
+	it("skips --components values so a name is never the up target (D-41)", () => {
+		const args = ["up", "--components", "web"];
+		expect(getPositional(args, 0)).toBe("up");
+		// `web` is the selector's value; the target stays the cwd.
+		expect(getPositional(args, 1)).toBeUndefined();
+		expect(getPositional(["up", "--components", "web", "ghost"], 1)).toBe("ghost");
 	});
 
 	it("skips --storage values so a pair is never the up target (D-50)", () => {
@@ -123,10 +135,62 @@ describe("getFlagValue", () => {
 });
 
 describe("hasFlag", () => {
-	it("matches long and short forms", () => {
+	it("matches the long form and the one tabled short alias", () => {
 		expect(hasFlag(["logs", "--follow"], "follow")).toBe(true);
 		expect(hasFlag(["logs", "-f"], "follow")).toBe(true);
 		expect(hasFlag(["logs"], "follow")).toBe(false);
+		expect(hasFlag(["-h"], "help")).toBe(true);
+		expect(hasFlag(["-v"], "version")).toBe(true);
+	});
+
+	it("derives no alias from a flag's first letter (#529)", () => {
+		// The data-loss path: `down -d` read as --destroy, `up -d` as three flags at once.
+		for (const flag of ["docker", "detach", "detached", "destroy", "dry-run"]) {
+			expect(hasFlag(["up", "-d"], flag)).toBe(false);
+			expect(hasFlag(["down", "-d"], flag)).toBe(false);
+		}
+		expect(hasFlag(["up", "-n"], "native")).toBe(false);
+		expect(hasFlag(["up", "-n"], "no-color")).toBe(false);
+		expect(hasFlag(["diagnose", "-j"], "json")).toBe(false);
+		expect(hasFlag(["validate", "-q"], "quiet")).toBe(false);
+		expect(hasFlag(["bootstrap", "-r"], "reveal")).toBe(false);
+	});
+});
+
+describe("SHORT_FLAGS (#529)", () => {
+	it("holds -f, -h and -v and nothing else", () => {
+		expect([...SHORT_FLAGS.entries()]).toEqual([
+			["f", "follow"],
+			["h", "help"],
+			["v", "version"],
+		]);
+	});
+
+	it("maps every alias onto a declared boolean flag", () => {
+		for (const long of SHORT_FLAGS.values()) expect(BOOLEAN_FLAGS.has(long)).toBe(true);
+	});
+
+	/**
+	 * The help text is the operator's only list of aliases: it must name
+	 * every one the table holds and none the table lacks.
+	 */
+	it("is exactly the set of aliases the help text lists", () => {
+		const source = readFileSync(resolve(import.meta.dirname, "..", "cli.ts"), "utf-8");
+		const listed = new Map<string, string>();
+		for (const [, long, short] of source.matchAll(/^ {2}--([a-z-]+), -([a-z])\b/gm)) {
+			if (long && short) listed.set(short, long);
+		}
+		expect([...listed.entries()].sort()).toEqual([...SHORT_FLAGS.entries()].sort());
+	});
+});
+
+describe("longFormsOf (#529)", () => {
+	it("lists every declared flag that starts with the letters, sorted", () => {
+		expect(longFormsOf("d")).toEqual(["destroy", "detach", "detached", "docker", "dry-run"]);
+		expect(longFormsOf("n")).toEqual(["name", "native", "no-color"]);
+		expect(longFormsOf("r")).toEqual(["reveal"]);
+		expect(longFormsOf("x")).toEqual([]);
+		expect(longFormsOf("df")).toEqual([]);
 	});
 });
 
@@ -164,6 +228,98 @@ describe("launchfile up --name with no value (built CLI)", () => {
 			const { output, exitCode } = run(argv);
 			expect(exitCode).toBe(1);
 			expect(output).toContain("--name requires a value");
+		}
+	});
+});
+
+describe("parseComponentNames (--components, D-41)", () => {
+	it("splits a comma-separated value", () => {
+		expect(parseComponentNames(["web,api"])).toEqual(["web", "api"]);
+	});
+
+	it("composes repeated flags with comma lists, in order", () => {
+		expect(parseComponentNames(["web,api", "worker"])).toEqual(["web", "api", "worker"]);
+	});
+
+	it("trims spacing and drops blanks and duplicates", () => {
+		expect(parseComponentNames([" web , ,api", "web"])).toEqual(["web", "api"]);
+	});
+
+	it("returns no names for an empty value — D-41's select-nothing means all", () => {
+		expect(parseComponentNames([""])).toEqual([]);
+		expect(parseComponentNames([])).toEqual([]);
+	});
+});
+
+describe("selectorRefusal (D-41, #232)", () => {
+	it("refuses both spellings on a verb that acts on the whole deployment", () => {
+		for (const argv of [
+			["down", "--components", "web"],
+			["down", "--components=web"],
+			["down", "--component", "web"],
+		]) {
+			const lines = selectorRefusal(argv, "down", "stops the whole deployment");
+			expect(lines).toBeDefined();
+			expect(lines?.[0]).toContain("`down` stops the whole deployment");
+		}
+	});
+
+	it("names the spelling typed and the verb that spelling belongs to", () => {
+		const plural = selectorRefusal(["down", "--components", "web"], "down", "x");
+		const singular = selectorRefusal(["down", "--component", "web"], "down", "x");
+		expect(plural?.[0]).toContain("--components selects which components `up`/`dev` start");
+		expect(singular?.[0]).toContain("--component limits `bootstrap` to a single component");
+	});
+
+	it("names --components when both spellings appear, whatever the argv order", () => {
+		for (const argv of [
+			["down", "--components", "web", "--component", "api"],
+			["down", "--component", "api", "--components", "web"],
+			["status", "--component=api", "--components=web"],
+		]) {
+			const lines = selectorRefusal(argv, "down", "x");
+			expect(lines?.[0]).toMatch(/^--components selects/);
+		}
+	});
+
+	it("stays out of the way when no selector is given", () => {
+		expect(selectorRefusal(["down", "--destroy"], "down", "x")).toBeUndefined();
+		expect(selectorRefusal(["status"], "status", "x")).toBeUndefined();
+	});
+});
+
+describe("down/status refuse a selector rather than swallowing it (built CLI)", () => {
+	const CLI = join(resolve(import.meta.dirname, "..", ".."), "dist", "cli.js");
+
+	function run(cliArgs: string[]): { output: string; exitCode: number } {
+		try {
+			const output = execFileSync("node", [CLI, ...cliArgs], {
+				encoding: "utf-8",
+				stdio: ["ignore", "pipe", "pipe"],
+			});
+			return { output, exitCode: 0 };
+		} catch (err) {
+			const e = err as { stdout?: string; stderr?: string; status?: number };
+			return { output: `${e.stdout ?? ""}${e.stderr ?? ""}`, exitCode: e.status ?? 1 };
+		}
+	}
+
+	// `--components` is in the global VALUE_FLAGS table, so it parses on every
+	// verb. Without the refusal, `down --destroy --components web` would drop
+	// `web` and destroy the whole app the operator was narrowing.
+	it("exits 1 and never reaches the provider", () => {
+		for (const argv of [
+			["down", "--components", "web"],
+			["down", "--destroy", "--components", "web"],
+			["down", "--component", "web"],
+			["status", "--components", "web"],
+			["status", "--components=web"],
+		]) {
+			const { output, exitCode } = run(argv);
+			expect(exitCode).toBe(1);
+			expect(output).toMatch(/^--components?\s/);
+			// Nothing was resolved, stopped, or reported behind the ignored flag.
+			expect(output).not.toContain("No deployment");
 		}
 	});
 });
@@ -307,13 +463,13 @@ describe("launchfile --flag=value on a boolean flag (built CLI, #485)", () => {
 describe("unknownFlags (#510)", () => {
 	it("reports an unknown flag in the --flag value form", () => {
 		expect(unknownFlags(["up", ".", "--docker", "--totally-bogus-flag", "xyz"])).toEqual([
-			"totally-bogus-flag",
+			"--totally-bogus-flag",
 		]);
 	});
 
 	it("reports an unknown flag in the --flag=value form", () => {
 		expect(unknownFlags(["up", ".", "--totally-bogus-flag=xyz"])).toEqual([
-			"totally-bogus-flag",
+			"--totally-bogus-flag",
 		]);
 	});
 
@@ -333,36 +489,54 @@ describe("unknownFlags (#510)", () => {
 		expect(unknownFlags(["up", "--url", "--dry-run"])).toEqual([]);
 	});
 
-	it("judges long flags only — positionals and single-dash tokens pass", () => {
-		expect(unknownFlags(["up", "ghost", "KEY=value", "-f", "-d"])).toEqual([]);
+	it("judges flags only — positionals and tabled short aliases pass", () => {
+		expect(unknownFlags(["up", "ghost", "KEY=value", "-f", "-h", "-v"])).toEqual([]);
 		expect(unknownFlags([])).toEqual([]);
+	});
+
+	it("reports a single-dash token outside SHORT_FLAGS, as typed (#529)", () => {
+		expect(unknownFlags(["up", "-d", "."])).toEqual(["-d"]);
+		expect(unknownFlags(["down", "-d"])).toEqual(["-d"]);
+		expect(unknownFlags(["up", "-n"])).toEqual(["-n"]);
+		expect(unknownFlags(["up", "-x"])).toEqual(["-x"]);
+		expect(unknownFlags(["up", "-df"])).toEqual(["-df"]);
+		expect(unknownFlags(["bootstrap", "-r"])).toEqual(["-r"]);
+	});
+
+	it("leaves a bare - alone and skips a value-position single-dash token (#529)", () => {
+		expect(unknownFlags(["validate", "-"])).toEqual([]);
+		for (const flag of VALUE_FLAGS) {
+			// `--flag`'s own missing-value check owns the token; it is not judged here.
+			expect(unknownFlags(["up", `--${flag}`, "-x"])).toEqual([]);
+		}
+		expect(unknownFlags(["up", "--name=-x"])).toEqual([]);
 	});
 
 	it("is one allowlist for every verb — a declared flag a verb does not read is not unknown", () => {
 		expect(unknownFlags(["up", "--url", "https://x.example.com"])).toEqual([]);
 		expect(unknownFlags(["down", "--url", "https://x.example.com"])).toEqual([]);
 		expect(unknownFlags(["schema", "--url=https://x.example.com"])).toEqual([]);
-		expect(unknownFlags(["inspect", "--jsonn"])).toEqual(["jsonn"]);
+		expect(unknownFlags(["inspect", "--jsonn"])).toEqual(["--jsonn"]);
 	});
 
 	it("names the flag that would otherwise make xyz the up target", () => {
 		const args = ["up", "--totally-bogus-flag", "xyz", "."];
 		// Without the refusal, getPositional reads the unknown flag's value as the target.
 		expect(getPositional(args, 1)).toBe("xyz");
-		expect(unknownFlags(args)).toEqual(["totally-bogus-flag"]);
+		expect(unknownFlags(args)).toEqual(["--totally-bogus-flag"]);
 	});
 
 	it("returns every unknown flag in argv order", () => {
 		expect(unknownFlags(["up", "--storagex", "a=b", "--env", "FOO=bar"])).toEqual([
-			"storagex",
-			"env",
+			"--storagex",
+			"--env",
 		]);
 	});
 });
 
 describe("suggestFlag (#510)", () => {
 	it("suggests the one declared flag within edit distance 2", () => {
-		expect(suggestFlag("components")).toBe("component");
+		expect(suggestFlag("compnent")).toBe("component");
 		expect(suggestFlag("storagex")).toBe("storage");
 		expect(suggestFlag("jsonn")).toBe("json");
 		expect(suggestFlag("detac")).toBe("detach");
@@ -445,5 +619,134 @@ describe("launchfile with an unknown long flag (built CLI, #510)", () => {
 	it("passes a declared flag on a verb that does not read it (one allowlist)", () => {
 		const { stderr } = run(["schema", "--url", "https://x.example.com", "--schema-path", "/nope"]);
 		expect(stderr).not.toContain("no such flag");
+	});
+
+	it("prints a flag name containing a newline as one escaped stderr line (#545)", () => {
+		const { stderr, exitCode } = run(["up", ".", "--evil\n✓ deployed"]);
+		expect(exitCode).toBe(1);
+		const [first, second] = stderr.split("\n");
+		expect(first).toBe("no such flag --evil\\n✓ deployed");
+		expect(second).toBe("Run `launchfile --help` for usage.");
+	});
+});
+
+describe("launchfile echoes argv to stderr escaped (built CLI, #545)", () => {
+	const CLI = join(resolve(import.meta.dirname, "..", ".."), "dist", "cli.js");
+
+	function run(cliArgs: string[]): { stdout: string; stderr: string; exitCode: number } {
+		try {
+			const stdout = execFileSync("node", [CLI, ...cliArgs], {
+				encoding: "utf-8",
+				stdio: ["ignore", "pipe", "pipe"],
+			});
+			return { stdout, stderr: "", exitCode: 0 };
+		} catch (err) {
+			const e = err as { stdout?: string; stderr?: string; status?: number };
+			return { stdout: e.stdout ?? "", stderr: e.stderr ?? "", exitCode: e.status ?? 1 };
+		}
+	}
+
+	it("strips an ANSI escape from an unknown flag name", () => {
+		const { stdout, stderr, exitCode } = run(["inspect", "--\x1b[2Jbogus\x1b[31m"]);
+		expect(exitCode).toBe(1);
+		expect(stderr).not.toContain("\x1b");
+		expect(stderr).toContain("no such flag --");
+		expect(stderr).toContain("bogus");
+		expect(stdout).toBe("");
+	});
+
+	it("refuses a bare -- and names the empty flag name", () => {
+		const { stdout, stderr, exitCode } = run(["up", ".", "--"]);
+		expect(exitCode).toBe(1);
+		expect(stderr).toBe(
+			"no such flag: `--` has an empty flag name\nRun `launchfile --help` for usage.\n",
+		);
+		expect(stdout).toBe("");
+	});
+
+	it("prints an unknown command containing a newline as one escaped stderr line", () => {
+		const { stdout, stderr, exitCode } = run(["evil\n✓ deployed"]);
+		expect(exitCode).toBe(1);
+		expect(stderr).toBe(
+			"Unknown command: evil\\n✓ deployed\nRun `launchfile --help` for usage.\n",
+		);
+		expect(stdout).toBe("");
+	});
+
+	it("strips an ANSI escape from an unknown command", () => {
+		const { stderr, exitCode } = run(["\x1b[2Jbogus"]);
+		expect(exitCode).toBe(1);
+		expect(stderr).not.toContain("\x1b");
+		expect(stderr).toContain("Unknown command: ");
+		expect(stderr).toContain("bogus");
+	});
+});
+
+describe("launchfile with a single-dash token (built CLI, #529)", () => {
+	const CLI = join(resolve(import.meta.dirname, "..", ".."), "dist", "cli.js");
+
+	function run(cliArgs: string[]): { stdout: string; stderr: string; exitCode: number } {
+		try {
+			const stdout = execFileSync("node", [CLI, ...cliArgs], {
+				encoding: "utf-8",
+				stdio: ["ignore", "pipe", "pipe"],
+			});
+			return { stdout, stderr: "", exitCode: 0 };
+		} catch (err) {
+			const e = err as { stdout?: string; stderr?: string; status?: number };
+			return { stdout: e.stdout ?? "", stderr: e.stderr ?? "", exitCode: e.status ?? 1 };
+		}
+	}
+
+	it("refuses up -d and down -d, spelling out every d flag, exit 1", () => {
+		for (const argv of [["up", "-d", "."], ["down", "-d"], ["dev", "-d"]]) {
+			const { stdout, stderr, exitCode } = run(argv);
+			expect(exitCode).toBe(1);
+			expect(stderr).toContain(
+				"no such flag -d — spell the flag out: --destroy, --detach, --detached, --docker, --dry-run\n",
+			);
+			expect(stderr).toContain("Run `launchfile --help` for usage.");
+			expect(stdout).toBe("");
+		}
+	});
+
+	it("names the one long form when only one fits", () => {
+		const { stderr, exitCode } = run(["bootstrap", "-r"]);
+		expect(exitCode).toBe(1);
+		expect(stderr).toContain("no such flag -r — did you mean --reveal?\n");
+	});
+
+	it("refuses an unknown -x with no hint, before --help is honoured", () => {
+		const { stdout, stderr, exitCode } = run(["up", "-x", "--help"]);
+		expect(exitCode).toBe(1);
+		expect(stderr).toContain("no such flag -x\n");
+		expect(stderr).not.toContain("did you mean");
+		expect(stderr).not.toContain("spell the flag out");
+		expect(stdout).toBe("");
+	});
+
+	it("prints the refused token with control characters stripped", () => {
+		const { stderr, exitCode } = run(["up", "-x\u001b[31m\nfake line"]);
+		expect(exitCode).toBe(1);
+		expect(stderr).toContain("no such flag -x\\nfake line\n");
+		expect(stderr).not.toContain("\u001b");
+	});
+
+	it("honours -h and -v", () => {
+		const help = run(["-h"]);
+		expect(help.exitCode).toBe(0);
+		expect(help.stdout).toContain("--help, -h");
+		expect(help.stdout).toContain("--version, -v");
+		expect(help.stdout).toContain("--follow, -f");
+		const version = run(["-v"]);
+		expect(version.exitCode).toBe(0);
+		expect(version.stdout).toMatch(/^launchfile \d+\.\d+\.\d+/);
+	});
+
+	it("passes -f through the refusal", () => {
+		const { stdout, stderr, exitCode } = run(["logs", "-f", "--help"]);
+		expect(exitCode).toBe(0);
+		expect(stderr).not.toContain("no such flag");
+		expect(stdout).toContain("Usage:");
 	});
 });

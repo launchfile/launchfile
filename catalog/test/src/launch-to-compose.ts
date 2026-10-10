@@ -12,9 +12,15 @@ import {
   isExpression,
   type ResolverContext,
 } from "../../../sdk/src/resolver.ts";
+import {
+  httpsOriginSatisfied,
+  suppliedAppAddress,
+} from "../../../sdk/src/app-url.ts";
 import { indexOperatorStoragePaths } from "../../../sdk/src/operator-storage.ts";
 import { computeAppProperties } from "../../../providers/docker/src/app-url.ts";
+import { uncoveredSuppliedUses } from "../../../providers/docker/src/resource-uses.ts";
 import { unsuppliedRequiredEnv } from "../../../sdk/src/env.ts";
+import { useKeys } from "../../../sdk/src/uses.ts";
 import type {
   NormalizedLaunch,
   NormalizedRequirement,
@@ -43,7 +49,10 @@ interface ComposeHealthcheck {
   start_period?: string;
 }
 
-const BACKING_SERVICES: Record<string, (name: string) => BackingService> = {
+// Null prototype, like the docker provider's map: a `requires[].type` read out
+// of a Launchfile is looked up here, so `constructor` or `toString` must
+// resolve to nothing rather than an `Object.prototype` member.
+const BACKING_SERVICES: Record<string, (name: string) => BackingService> = Object.assign(Object.create(null), {
   postgres: (name) => ({
     image: "postgres:16-alpine",
     environment: {
@@ -210,7 +219,7 @@ const BACKING_SERVICES: Record<string, (name: string) => BackingService> = {
       ],
     },
   }),
-};
+} satisfies Record<string, (name: string) => BackingService>);
 
 // --- Generator helpers ---
 
@@ -260,8 +269,9 @@ export interface ComposeResult {
   storageRefusals: { component: string; volume: string; message: string }[];
   /**
    * `https-origin` entries in `requires:` that this run cannot satisfy
-   * (D-60 rule 5): no `appUrl` was supplied, or the supplied one is not
-   * `https://`. The component is ABSENT from the emitted compose — the same
+   * (D-60 rule 5): no `appUrl` was supplied, the supplied one is not
+   * `https://`, or the origin does not cover every use the entry declares
+   * (D-65 rule 3). The component is ABSENT from the emitted compose — the same
    * refusal `@launchfile/docker` performs. The runner turns a non-empty list
    * into a hard failure naming the app and the entry, exactly as it does for
    * `unsuppliedRequired`: starting the app anyway would record
@@ -326,18 +336,18 @@ export interface ComposeOpts {
 const HTTPS_ORIGIN = "https-origin";
 
 /**
- * Wire one satisfied `https-origin` entry: register its single property and
- * resolve its `set_env` against it, exactly as the Docker provider does for a
- * supplied resource. `url` IS `$app.url` — one derivation, one value.
+ * Wire one satisfied `https-origin` entry whose declared uses the origin
+ * covers: register its single property and resolve its `set_env` against it,
+ * exactly as the Docker provider does for a supplied resource. Callers grade
+ * `uses` first; an uncovered use never reaches here.
  */
 function applyHttpsOrigin(
   entry: NormalizedRequirement,
   env: Record<string, string>,
   baseCtx: ResolverContext,
   resources: Record<string, Record<string, string>>,
-  appCtx: Record<string, string | number>,
+  properties: Record<string, string>,
 ): void {
-  const properties = { url: String(appCtx.url) };
   resources[entry.name ?? entry.type] = properties;
   if (!entry.set_env) return;
   const scopedCtx: ResolverContext = { ...baseCtx, resource: properties, resources };
@@ -374,11 +384,31 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
 
   // Whether an `https-origin` entry can be satisfied at all on this run
   // (D-60 rule 5). The harness runs no edge, so the only satisfaction is an
-  // `https://` URL the caller supplied; the probe is computed once, from the
-  // same derivation every component's $app.* uses.
-  const appPropertiesProbe = computeAppProperties(launch, undefined, opts.appUrl);
-  const httpsOriginSatisfied =
-    opts.appUrl !== undefined && appPropertiesProbe.scheme === "https";
+  // `https://` URL the caller supplied — the shipped Docker provider's own
+  // predicate, read once for the whole run.
+  const originSatisfied = httpsOriginSatisfied(opts.appUrl);
+
+  // $app.* context (D-33/D-35) — the docker provider's own derivation,
+  // imported so this harness cannot drift from the rule it exercises (P-9).
+  // Host ports here are runtime-ephemeral ("0:<port>" mappings), so none are
+  // passed: the provider's documented fallback answers — the declared
+  // container port of the first `exposed: true` component,
+  // http://localhost:<port>. App-wide, like the provider's: the same answer
+  // for every component.
+  const appCtx: Record<string, string | number> = computeAppProperties(
+    launch,
+    undefined,
+    opts.appUrl,
+  );
+
+  // The one property a satisfied `https-origin` entry registers (D-60 rule
+  // 4), holding the same string as `$app.url` — one derivation, one value.
+  // Declared uses are graded against this map, as the Docker provider grades
+  // them, with coverage read from its use registry (never a list kept here:
+  // the vocabulary is open, L-4).
+  const httpsOriginProperties: Record<string, string> = { url: String(appCtx.url) };
+  const uncoveredHttpsOriginUses = (entry: NormalizedRequirement): string[] =>
+    uncoveredSuppliedUses(entry.type, useKeys(entry.uses), httpsOriginProperties);
 
   // App-wide resource properties for $<resource>.prop set_env resolution, shared
   // across components like the Docker provider's resourceMap (compose-generator).
@@ -425,17 +455,40 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
     // component, as the shipped Docker provider does. The harness has no edge
     // of its own; the only satisfaction it can offer is an `https://` appUrl
     // the caller supplied. No probe — the check is on the scheme alone.
+    // The scheme is read off the supplied URL itself: `$app.scheme` is `""`
+    // once this refusal empties the primary's address (D-72).
+    //
+    // A satisfied origin that does not cover every declared use REFUSES the
+    // component the same way (D-65 rule 3, D-64's refuse branch): the entry
+    // is satisfied only when the origin's one property covers each use, and
+    // a token the registry does not know is uncovered — never a warning that
+    // starts the component with less than it declared.
     const originRefused = (component.requires ?? [])
       .filter((r) => r.type === HTTPS_ORIGIN)
-      .filter(() => !httpsOriginSatisfied)
-      .map((r) => ({
-        component: componentName,
-        entry: `${r.name ?? r.type} (endpoint "${r.endpoint ?? "?"}")`,
-        message:
-          opts.appUrl === undefined
-            ? "no publication URL supplied — pass --url https://<host>"
-            : `the supplied publication URL's scheme is "${String(appPropertiesProbe.scheme)}", not https`,
-      }));
+      .flatMap((r) => {
+        const entry = `${r.name ?? r.type} (endpoint "${r.endpoint ?? "?"}")`;
+        if (!originSatisfied) {
+          return [
+            {
+              component: componentName,
+              entry,
+              message:
+                opts.appUrl === undefined
+                  ? "no publication URL supplied — pass --url https://<host>"
+                  : `the supplied publication URL's scheme is "${suppliedAppAddress(opts.appUrl).scheme}", not https`,
+            },
+          ];
+        }
+        const uncovered = uncoveredHttpsOriginUses(r);
+        if (uncovered.length === 0) return [];
+        return [
+          {
+            component: componentName,
+            entry,
+            message: `the supplied origin does not cover every declared use (${uncovered.join("; ")})`,
+          },
+        ];
+      });
     if (originRefused.length > 0) {
       originRefusals.push(...originRefused);
       continue;
@@ -448,7 +501,9 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
     // resource is exactly what let `health_check_passed: true` certify an
     // app the provider could not run.
     const resourceRefused = (component.requires ?? [])
-      .filter((r) => !r.host && r.type !== HTTPS_ORIGIN && !BACKING_SERVICES[r.type])
+      .filter(
+        (r) => !r.host && r.type !== HTTPS_ORIGIN && !Object.hasOwn(BACKING_SERVICES, r.type),
+      )
       .map((r) => ({
         component: componentName,
         entry: r.name === undefined ? r.type : `${r.name} (type "${r.type}")`,
@@ -534,19 +589,8 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
       }
     }
 
-    // $app.* context (D-33/D-35) — the docker provider's own derivation,
-    // imported so this harness cannot drift from the rule it exercises (P-9).
-    // Host ports here are runtime-ephemeral ("0:<port>" mappings), so none are
-    // passed: the provider's documented fallback answers — the declared
-    // container port of the first `exposed: true` component,
-    // http://localhost:<port>. The component context (secrets, storage, app)
-    // is shared by both `env:` defaults and `set_env`, exactly as the
-    // providers resolve them.
-    const appCtx: Record<string, string | number> = computeAppProperties(
-      launch,
-      undefined,
-      opts.appUrl,
-    );
+    // The component context (secrets, storage, app) is shared by both `env:`
+    // defaults and `set_env`, exactly as the providers resolve them.
     const baseCtx: ResolverContext = { secrets: secretValues, storage: storageCtx, app: appCtx, components };
 
     // Resolve env vars from the Launchfile
@@ -566,10 +610,9 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
       for (const req of component.requires) {
         if (req.host) continue; // capability, not a backing service (D-44)
         if (req.type === HTTPS_ORIGIN) {
-          // Reached only when satisfied — the refusal above skipped the
-          // component otherwise. One registered property, `url` (D-60 rule
-          // 4), holding the same string as `$app.url`.
-          applyHttpsOrigin(req, env, baseCtx, resources, appCtx);
+          // Reached only when satisfied and every declared use is covered —
+          // the refusal above skipped the component otherwise.
+          applyHttpsOrigin(req, env, baseCtx, resources, httpsOriginProperties);
           continue;
         }
         const backingResult = addBackingService(
@@ -607,11 +650,21 @@ export function launchToCompose(launch: NormalizedLaunch, opts: ComposeOpts = {}
 
     // `supports: https-origin` (D-60 rule 6) — the optional mood. Satisfied,
     // it wires like any other resource; unsatisfied, the component still runs
-    // and its set_env bindings are simply absent.
+    // and its set_env bindings are simply absent. A declared use the origin's
+    // one property does not cover leaves it unfulfilled the same way (D-65
+    // rule 4): bindings absent, a warning naming the use, the component
+    // deploys — never a refusal.
     for (const sup of component.supports ?? []) {
       if (sup.type !== HTTPS_ORIGIN) continue;
-      if (httpsOriginSatisfied) {
-        applyHttpsOrigin(sup, env, baseCtx, resources, appCtx);
+      const uncovered = originSatisfied ? uncoveredHttpsOriginUses(sup) : [];
+      if (uncovered.length > 0) {
+        warnings.push(
+          `${componentName}: optional public HTTPS origin ${sup.name ?? sup.type} is not satisfied — ` +
+            `the supplied origin does not cover every declared use (${uncovered.join("; ")}); ` +
+            "its set_env bindings are omitted and the app runs degraded",
+        );
+      } else if (originSatisfied) {
+        applyHttpsOrigin(sup, env, baseCtx, resources, httpsOriginProperties);
       } else {
         warnings.push(
           `${componentName}: optional public HTTPS origin ${sup.name ?? sup.type} ` +
@@ -810,7 +863,7 @@ function addBackingService(
   warnings: string[],
 ): { serviceName: string; properties: Record<string, string> } | null {
   const type = req.type;
-  const factory = BACKING_SERVICES[type];
+  const factory = Object.hasOwn(BACKING_SERVICES, type) ? BACKING_SERVICES[type] : undefined;
 
   if (!factory) {
     // The component loop refuses a component with such an entry before it
@@ -865,7 +918,7 @@ function translateHealth(
   health: NormalizedHealth,
   provides?: Provides[],
 ): ComposeHealthcheck {
-  if (health.command) {
+  if (health.command && health.path === undefined) {
     return {
       test: ["CMD-SHELL", health.command],
       interval: health.interval ?? "10s",

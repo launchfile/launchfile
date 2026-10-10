@@ -199,20 +199,23 @@ export const MAX_LINE_CHARS = 2000;
 // Unbounded, the OSC branch `\][^\u0007]*` is quadratic: each `ESC ]` in the input
 // rescans the whole remainder looking for a BEL that a hostile log line never
 // supplies, and captured output is exactly where a hostile log line arrives
-// (CWE-1333). A tail of 40 000 `ESC ]` pairs took 1.8s; bounded it takes 0ms.
+// (CWE-1333). Through an unbounded `stripControl`, 40 000 `ESC ]` pairs took
+// 1.7s under Bun 1.4.2 on arm64; bounded they take 0 ms.
 //
 // Excluding ESC from the payload also closes a swallow: ECMA-48 ends an OSC
 // string at BEL or ST (`ESC \`), and nothing between may contain ESC. The
 // unbounded class ran straight past an ST into the next OSC, so an OSC 8
 // hyperlink lost its link text along with its escapes.
 //
-// The bounds exclude nothing a terminal writes. A CSI carries a handful of
-// parameter bytes (`ESC [ 38;2;255;255;255 m` is 18) and ECMA-48 permits only a
-// few intermediates; an OSC 8 hyperlink URL is the longest realistic payload and
-// sits far under 1024. Past a bound the sequence falls through to CONTROL_CHARS
-// below, which drops the ESC and the BEL regardless.
+// The parameter bound is 64 because 32 is not enough: one SGR that sets a
+// truecolor foreground and background together —
+// `ESC [ 38;2;255;255;255;48;2;240;240;240 m` — carries 33 parameter bytes, and a
+// theme-aware CLI emits it. Past the bound CONTROL_CHARS below still drops the
+// ESC, but the parameter bytes are printable and survive as visible `[38;2;...m`
+// litter in the message. ECMA-48 permits only a few intermediates; an OSC 8
+// hyperlink URL is the longest realistic payload and sits far under 1024.
 const ANSI_ESCAPE =
-	/\u001B(?:\[[0-9;?]{0,32}[ -/]{0,8}[@-~]|\][^\u0007\u001B]{0,1024}(?:\u0007|\u001B\\)|[@-Z\\-_])/g;
+	/\u001B(?:\[[0-9;?]{0,64}[ -/]{0,8}[@-~]|\][^\u0007\u001B]{0,1024}(?:\u0007|\u001B\\)|[@-Z\\-_])/g;
 
 // Everything unprintable except \t and \n. \r is included: a log aggregator
 // consuming --json treats a stray CR as a record separator (CWE-117).
@@ -308,7 +311,7 @@ export interface LaunchErrorContext {
 	readonly serviceLogs?: Readonly<Record<string, string>>;
 	/** Declared env var **names**. There is no field for a value (see {@link EnvKeyList}). */
 	readonly envKeys?: EnvKeyList;
-	/** Unsupplied `required:` vars (D-52). Reserved — neither reference provider fails on these yet (#192). */
+	/** Unsupplied `required:` vars (D-52). Names only — set by a provider whose deploying verb refused because the operator channel did not supply them. */
 	readonly unsupplied?: readonly UnsuppliedRequirement[];
 	/** What the launch reported alongside what killed it — e.g. the D-51 unexecuted-`schedule` warning. */
 	readonly warnings?: readonly string[];

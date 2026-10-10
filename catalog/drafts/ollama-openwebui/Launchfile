@@ -8,8 +8,10 @@ components:
     image: ollama/ollama:latest
     platform: linux/amd64
     provides:
-      - protocol: http
+      - name: api
+        protocol: http
         port: 11434
+        exposed: true
     health:
       path: /api/tags
       interval: 30s

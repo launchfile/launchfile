@@ -24,6 +24,9 @@ bun run src/test-app.ts posthog --wait-timeout 360
 # Test all apps in a tier
 bun run src/test-all.ts --tier 0
 
+# Regenerate the README app tables from the directories
+bun run build-index
+
 # Static checks only — schema + image-reference policy, nothing pulled or run
 bun run validate-catalog
 
@@ -33,9 +36,14 @@ bun run typecheck && bun run test
 
 ## Static validation
 
-`src/validate-catalog.ts` reads every `catalog/{apps,drafts}/*/Launchfile`, parses it
-with the SDK's `readLaunch` — the Zod schema in `sdk/src/schema.ts`, not the published
-JSON Schema, which nothing yet asserts agrees with it (issue #179) — and applies the
+`src/validate-catalog.ts` reads every `catalog/{apps,drafts}/*/Launchfile` and checks it
+against two schemas: the SDK's `readLaunch` (the Zod schema in `sdk/src/schema.ts`) and
+the published JSON Schema at `spec/schema/launchfile.schema.json`, via ajv (draft 2020-12,
+strict mode). A rejection names the file and the schema that rejected it. The run also
+fails when the catalog is empty or an entry directory holds no Launchfile, so the checked
+set cannot shrink silently. There is no allowlist. The published-schema check catches the
+published schema rejecting a file Zod accepts; it does not catch the converse, a file the
+published schema accepts and Zod rejects (issue #439). The script then applies the
 image-reference policy in
 [`catalog/CONTRIBUTING.md`](../CONTRIBUTING.md#image-references). A missing tag or an
 `@sha256` digest is an error anywhere in the catalog; the `:latest`-without-rationale
@@ -46,13 +54,38 @@ warnings are not evaluated.
 
 ## Tiers
 
-| Tier | Description | Backing services |
-|------|-------------|-----------------|
-| 0 | Zero dependencies | None |
-| 1 | Postgres only | postgres |
-| 2 | Mixed databases | postgres, redis, mongodb, mysql |
-| 3 | Multi-component | Multiple images per app |
-| 4 | Complex (3+ components) | Multiple services + databases |
+Tiers are derived from each Launchfile (`tierOf` in `src/build-index.ts`), not listed
+by hand. Every directory under `catalog/{apps,drafts}/` runs, except the ones in
+`SKIPPED` (same file), which need something the harness cannot supply (host access, a
+GPU, a claim token).
+
+| Tier | Description | Rule |
+|------|-------------|------|
+| 0 | Zero dependencies | One component, no backing services |
+| 1 | Postgres only | One component, requires only `postgres` |
+| 2 | Mixed backing services | One component, any other set of required services |
+| 3 | Multi-component | Two components |
+| 4 | Complex | Three or more components |
+
+`https-origin` and host-capability requirements do not affect the tier. The harness
+cannot stand up a public HTTPS origin (a backing service under D-60), and host
+capabilities are granted or refused, not provisioned (D-53).
+
+## Catalog index
+
+`src/build-index.ts` rewrites the Tested Apps and Proposed Apps tables in
+`catalog/README.md` between their `BEGIN GENERATED` / `END GENERATED` markers, from the
+directories themselves: category and tagline from `metadata.yaml` (the Launchfile
+`description` when there is no tagline), services from every component's
+`requires[].type`, and gaps from the open `### G-N` entries in `catalog/GAPS.md`.
+
+```bash
+bun run build-index           # rewrite catalog/README.md
+bun run build-index --check   # exit 1 if catalog/README.md is stale
+```
+
+`src/build-index.test.ts` makes the same comparison, so `bun run test` fails on a stale
+table.
 
 ## What it does
 
@@ -80,6 +113,29 @@ images:
     platform: [linux/arm64]
 ```
 
+### Top-level keys
+
+These are the top-level keys the catalog and this harness read. Any other key
+prints a warning when `bun run src/test-app.ts <app>` or the unit suite reads the
+file, and is otherwise ignored — a typo does not fail a run, but it is no longer
+silent. The set lives in `src/lint-metadata.ts`, and a test keeps it equal to
+this table.
+
+| Key            | Written by                                                 |
+|----------------|------------------------------------------------------------|
+| `tagline`      | hand                                                       |
+| `homepage`     | hand                                                       |
+| `category`     | hand                                                       |
+| `publisher`    | hand ([CONTRIBUTING](../CONTRIBUTING.md#image-references)) |
+| `known_issues` | hand (below)                                               |
+| `test_env`     | hand (below)                                               |
+| `test_storage` | hand (below)                                               |
+| `test_results` | the harness, rebuilt on every run                          |
+| `images`       | the harness, rebuilt on every run                          |
+
+The harness rewrites the file after a run. It replaces `test_results:` and
+`images:` and keeps every other top-level key, unknown ones included.
+
 ### `test_env:` — the harness's operator channel
 
 An `env.<NAME>: { required: true }` with no `default:`, no `generator:`, and no
@@ -97,6 +153,45 @@ guesses a value from a variable's name; a required variable with no `test_env:`
 entry **fails the app's test run by name**, before any image is pulled. If a
 value belongs in the Launchfile rather than in a fixture, give it a `default:`
 or a `generator:` instead.
+
+### `test_storage:` — the harness's operator channel for volumes
+
+A volume marked `content: operator` (D-50) holds content only a person can
+supply, so the provider binds a directory the operator passes at launch or
+refuses the component — it never starts the app over an empty directory. The
+harness is an operator, so it supplies that directory from a `test_storage:`
+block you write by hand:
+
+```yaml
+test_storage:
+  config: test/config
+```
+
+The key is the volume name (`<component>.<volume>` when the bare name is
+ambiguous). The value is a path **relative to the app's directory**; the
+harness resolves it to an absolute host path before the translator sees it, so
+no host path ever enters the `Launchfile` or `metadata.yaml`. Commit the
+fixture. A marked volume with no `test_storage:` entry — or one whose path is
+not readable — **fails the app's test run by name**, before any image is
+pulled, and the same check runs across every app in `catalog/apps/` in
+`launch-to-compose.test.ts`. A `test_storage:` key that matches no
+`content: operator` volume is ignored with a warning, so a misspelled volume
+name surfaces as the unbound volume it left behind, not as a silent success.
+
+### `known_issues:` — why an app still does not come up
+
+A draft can be declaration-correct and still fail to deploy, for a reason the
+Launchfile cannot express. Record that in a top-level `known_issues:` list:
+
+```yaml
+known_issues:
+  - "Does not deploy. The three Postgres DSNs point at a hand-authored sibling
+    component, which `requires:` cannot bind to. Tracked by #236."
+```
+
+It is top level on purpose. `test_results:` and `images:` are rebuilt from
+scratch on every run, so a note written inside `test_results.notes` does not
+survive the next `bun run src/test-app.ts <app>`.
 
 ## Known Limitations
 

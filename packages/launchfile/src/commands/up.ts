@@ -41,6 +41,21 @@ export interface UpFlags {
 	dryRun?: boolean;
 	name?: string;
 	/**
+	 * Component selector (D-41): these components plus their transitive downward
+	 * `depends_on` closure are started, and every closure member's `requires`
+	 * comes along. Passed to whichever provider runs the launch, which resolves
+	 * it through the SDK's shared `selectionClosure` so both produce the same
+	 * running topology (P-5). Absent or empty selects all components.
+	 */
+	components?: string[];
+	/**
+	 * The singular `--component` as typed, present only so `up` can refuse it.
+	 * It is `bootstrap`'s single-component limiter, and the CLI's declared-flag
+	 * table is global, so `up . --component web` parses and consumes `web` here.
+	 * Without this the operator would get a whole-app start with no error.
+	 */
+	component?: string;
+	/**
 	 * Host paths for `content: operator` volumes (D-50), keyed as typed on the
 	 * repeatable `--storage <volume>=<path>` / `--storage <component>.<volume>=<path>`
 	 * flag — the component/volume split happens in the provider, against the
@@ -110,15 +125,46 @@ export async function handleUp(
 	flags: UpFlags,
 	deps: UpDeps = {},
 ): Promise<void> {
+	if (flags.component !== undefined) {
+		console.error(
+			"--component is `bootstrap`'s single-component limiter; `up` does not select with it.",
+		);
+		console.error(
+			"Use --components <name>[,<name>...] to start only the named components and their dependencies.",
+		);
+		process.exit(1);
+	}
+
 	const upTarget = resolveUpTarget(target);
 	const provider = await detectProvider({ docker: flags.docker, native: flags.native });
+
+	// The native provider launches a directory, and only a local target has
+	// one. Falling back to the working directory would launch whatever
+	// Launchfile sits there and record it under the target the operator typed —
+	// state adopted from a different source, which D-55 rule 3 forbids.
+	// Refusing is D-55's floor. The key is the missing directory, not the
+	// target kind, so URL targets and any kind added later fail closed too.
+	// It runs before the index is read, so a refused command writes no row.
+	if (provider === "macos" && upTarget.dir === undefined) {
+		const kind = upTarget.type === "url" ? "a URL" : "a catalog slug";
+		console.error(
+			`The native provider launches a directory; "${upTarget.value}" is ${kind}.`,
+		);
+		console.error(
+			`Use the Docker provider (launchfile up ${upTarget.value} --docker), or run --native from the app's own directory.`,
+		);
+		process.exit(1);
+	}
+
 	const indexDir = deps.indexDir;
 	const recordDir = deps.recordDir ?? errorsDir();
 
-	// Determine source key for index lookup
+	// Index key by target kind: directory, `catalog:<slug>`, or the URL itself.
 	const sourceKey = upTarget.type === "local"
 		? upTarget.dir ?? resolve(upTarget.value, "..")
-		: `catalog:${upTarget.value}`;
+		: upTarget.type === "catalog"
+			? `catalog:${upTarget.value}`
+			: upTarget.value;
 
 	// Check for existing deployment. Identity is the (source, name) pair
 	// (D-55): an unnamed `up` and each `--name <label>` from one directory are
@@ -158,9 +204,9 @@ export async function handleUp(
 			result = await withFailureRecord(
 				() =>
 					launch(dockerSource, {
-						detach: flags.detach,
 						dryRun: flags.dryRun,
 						name: flags.name,
+						components: flags.components,
 						storage: flags.storage,
 						appUrl: flags.url,
 					}),
@@ -172,7 +218,10 @@ export async function handleUp(
 			// (D-58) is an operator's problem to fix, not a bug — it gets the
 			// provider's own message, not a stack trace. The URL refusal masks
 			// any userinfo in its own message (D-18), so the raw value the
-			// operator typed is never echoed here.
+			// operator typed is never echoed here. The D-52 refusal is also a
+			// `LaunchError`, so `withFailureRecord` has already written its
+			// record (phase `resolve`, `unsupplied[]` names only) for `diagnose`
+			// by the time this prints.
 			if (
 				err instanceof UnsuppliedRequiredEnvError ||
 				err instanceof UnboundOperatorStorageError ||
@@ -260,6 +309,7 @@ export async function handleUp(
 						projectDir,
 						dryRun: flags.dryRun,
 						detach: flags.detach,
+						components: flags.components,
 						storage: flags.storage,
 						appUrl: flags.url,
 					}),
@@ -276,6 +326,24 @@ export async function handleUp(
 			) {
 				console.error(`\n${err.message}`);
 				process.exit(1);
+			}
+			// A failed health gate leaves the app processes running (SPEC.md
+			// § Failure semantics fails the invocation, not the processes), so
+			// the deployment is registered before re-throwing — the same row
+			// the docker branch writes — and `status`/`logs`/`down` reach it.
+			// Every earlier phase of this provider stops before a process
+			// exists, so only `health` earns a row.
+			if (!flags.dryRun && isLaunchError(err) && err.context.phase === "health") {
+				await record({
+					appName: inferAppName(upTarget.value),
+					provider: "macos",
+					source: sourceKey,
+					sourceType: upTarget.type,
+					status: "unhealthy",
+				});
+				console.error(
+					`  Deployment ${deployId} is recorded as unhealthy — \`launchfile down\` stops it.`,
+				);
 			}
 			throw err;
 		}

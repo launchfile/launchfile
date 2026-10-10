@@ -117,6 +117,51 @@ requires:
 	});
 });
 
+describe("a type that names an Object.prototype key is refused, not thrown", () => {
+	// The factory map is looked up by a string read out of the Launchfile. A
+	// prototype key must take the same refuse branch as any other type with no
+	// factory — never resolve to an inherited member and crash the generator.
+	it.each(["constructor", "toString", "valueOf", "hasOwnProperty"])(
+		"refuses `type: %s` with the D-64 message",
+		(type) => {
+			const { doc, warnings } = compose(`
+name: app
+image: acme/app:1
+requires:
+  - type: ${type}
+`);
+			expect(doc.services.app).toBeUndefined();
+			expect(refusals(warnings)).toHaveLength(1);
+			expect(refusals(warnings)[0]).toContain(
+				`requires a resource this provider cannot provision (${type})`,
+			);
+		},
+	);
+
+	it("refuses only that component — the sibling still launches (D-64 rule 3)", () => {
+		// A throw here would abort the whole launch, which is the "hard failure
+		// of the whole launch" D-64 rejected: the sibling requires nothing this
+		// provider lacks and must come up.
+		const { doc, warnings } = compose(`
+name: app
+components:
+  web:
+    image: acme/web:1
+    requires:
+      - type: postgres
+  worker:
+    image: acme/worker:1
+    requires:
+      - type: constructor
+`);
+		expect(doc.services["app-web"]).toBeDefined();
+		expect(doc.services["app-postgres"]).toBeDefined();
+		expect(doc.services["app-worker"]).toBeUndefined();
+		expect(refusals(warnings)).toHaveLength(1);
+		expect(refusals(warnings)[0]).toMatch(/^refused: worker .*\(constructor\)/);
+	});
+});
+
 describe("the D-56 supplied-resource channel is checked first", () => {
 	it("a supplied entry satisfies the type and nothing is refused", () => {
 		const { doc, warnings } = compose(

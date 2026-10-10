@@ -21,6 +21,7 @@ import { parse } from "yaml";
 import { readLaunch } from "../../../sdk/src/reader.ts";
 import { resourcePropertyKeys } from "../../../providers/docker/src/compose-generator.ts";
 import { harnessBackingServiceTypes, launchToCompose } from "./launch-to-compose.ts";
+import { lintUnknownMetadataKeys } from "./lint-metadata.ts";
 
 /** Compose a Launchfile YAML and return the resolved `environment` for a service. */
 function envOf(yaml: string, serviceName: string): Record<string, string> {
@@ -486,6 +487,10 @@ env:
       const meta = existsSync(metaPath)
         ? ((parse(readFileSync(metaPath, "utf-8")) ?? {}) as Record<string, unknown>)
         : {};
+      // Warn only: an unknown key never fails this test (#422).
+      for (const warning of lintUnknownMetadataKeys(meta, `catalog/apps/${app}/metadata.yaml`)) {
+        console.warn(warning);
+      }
       const testEnv = Object.fromEntries(
         Object.entries((meta.test_env as Record<string, unknown>) ?? {}).map(([k, v]) => [
           k,
@@ -811,6 +816,34 @@ components:
     expect(resourceRefusals.map((r) => r.component)).toEqual(["worker"]);
   });
 
+  it.each(["constructor", "toString", "valueOf"])(
+    "refuses `type: %s` rather than resolving an Object.prototype member as a factory",
+    (type) => {
+      // The map is looked up by a string read out of the Launchfile, so a
+      // prototype key must take the same refuse branch as any other type
+      // with no factory — the shipped provider refuses it the same way.
+      const { services, resourceRefusals } = compose(`
+version: launch/v1
+name: app
+components:
+  web:
+    image: acme/web:1
+  worker:
+    image: acme/worker:1
+    requires:
+      - type: ${type}
+`);
+      expect(services).toEqual(["app-web"]);
+      expect(resourceRefusals).toEqual([
+        {
+          component: "worker",
+          entry: type,
+          message: `this harness has no factory for type "${type}"`,
+        },
+      ]);
+    },
+  );
+
   it("does not refuse a `supports:` entry — optional resources are not preconditions", () => {
     const { services, resourceRefusals } = compose(`
 version: launch/v1
@@ -865,5 +898,55 @@ provides:
       expect.arrayContaining(["0:51820/udp", "0:51821"]),
     );
     expect(compose.services["wg-easy"]!.ports).not.toContain("0:51820");
+  });
+});
+
+describe("catalog/drafts/plausible — TOTP_VAULT_KEY is base64 of 32 bytes (#416)", () => {
+  // Plausible's runtime.exs refuses to boot unless TOTP_VAULT_KEY Base64-decodes
+  // to exactly 32 bytes. `generator: secret` yields 64 hex characters, which
+  // decode to 48 bytes; `|base64` hex-decodes first (SPEC.md, `base64` encoding
+  // behavior), so the piped secret carries the 32 bytes the app wants.
+  const file = fileURLToPath(new URL("../../drafts/plausible/Launchfile", import.meta.url));
+  const launch = readLaunch(readFileSync(file, "utf-8"));
+  const { yaml } = launchToCompose(launch, { testEnv: { BASE_URL: "http://localhost:8000" } });
+  const env = (
+    parse(yaml) as { services: Record<string, { environment: Record<string, string> }> }
+  ).services.plausible!.environment;
+
+  it("resolves TOTP_VAULT_KEY to standard base64 that decodes to 32 bytes", () => {
+    expect(env.TOTP_VAULT_KEY).toMatch(/^[A-Za-z0-9+/]{43}=$/);
+    expect(Buffer.from(env.TOTP_VAULT_KEY!, "base64")).toHaveLength(32);
+  });
+
+  it("leaves SECRET_KEY_BASE as the generator's 64 hex characters", () => {
+    expect(env.SECRET_KEY_BASE).toMatch(HEX64);
+  });
+});
+
+describe("health precedence (SPEC health: path over command)", () => {
+  function healthTest(healthYaml: string): string {
+    const launch = readLaunch(`version: launch/v1
+name: healthapp
+image: nginx:alpine
+provides:
+  - protocol: http
+    port: 8080
+health:
+${healthYaml}
+`);
+    const compose = parse(launchToCompose(launch).yaml) as {
+      services: Record<string, { healthcheck?: { test: string[] } }>;
+    };
+    return compose.services.healthapp!.healthcheck!.test.join(" ");
+  }
+
+  it("uses the HTTP probe when both path and command are declared", () => {
+    const test = healthTest("  path: /ready\n  command: pg_isready");
+    expect(test).toContain("http://localhost:8080/ready");
+    expect(test).not.toContain("pg_isready");
+  });
+
+  it("uses the command when only command is declared", () => {
+    expect(healthTest("  command: pg_isready")).toBe("CMD-SHELL pg_isready");
   });
 });

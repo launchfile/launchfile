@@ -154,10 +154,22 @@ function deepRedact(value: unknown, seen = new WeakSet<object>()): unknown {
 	if (seen.has(value)) return "[Circular]";
 	seen.add(value);
 	if (Array.isArray(value)) return value.map((item) => deepRedact(item, seen));
-	const entries = Object.entries(value);
 	// Date, Map, Set and Buffer expose no own enumerable string leaves to
 	// scrub, and rebuilding them from entries() erases or explodes them.
-	if (entries.length === 0 || Buffer.isBuffer(value)) return value;
+	if (
+		value instanceof Date ||
+		value instanceof Map ||
+		value instanceof Set ||
+		Buffer.isBuffer(value)
+	) {
+		return value;
+	}
+	// Any other object with no own entries (a URL, a class instance with
+	// private fields) can still serialize through toJSON() or a getter, e.g. a
+	// URL's href carries its userinfo. Rebuild it empty instead of passing it
+	// through by identity.
+	const entries = Object.entries(value);
+	if (entries.length === 0) return {};
 	return Object.fromEntries(
 		entries.map(([key, val]) => [key, deepRedact(val, seen)]),
 	);

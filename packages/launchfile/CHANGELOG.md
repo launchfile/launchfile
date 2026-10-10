@@ -1,5 +1,28 @@
 # launchfile
 
+## 0.14.0
+
+### Patch Changes
+
+- Updated dependencies [[`6ec891b`](https://github.com/launchfile/launchfile/commit/6ec891bdfea097e436eb4c68f7dfe0d491830c22), [`3632d48`](https://github.com/launchfile/launchfile/commit/3632d48ba09532cdf11908dbb23103c5a2a07a57), [`91ca1a8`](https://github.com/launchfile/launchfile/commit/91ca1a84acfcfca20bcd4ba0c73e6fd5492b7692), [`dff6745`](https://github.com/launchfile/launchfile/commit/dff67458457392e6d9b6ab15a2651ebbc2dbb412), [`2c7d895`](https://github.com/launchfile/launchfile/commit/2c7d895ea3033f77857b8458c0d095a111787f5e)]:
+  - @launchfile/sdk@0.14.0
+  - @launchfile/docker@0.14.0
+
+## 0.13.0
+
+### Minor Changes
+
+- [#352](https://github.com/launchfile/launchfile/pull/352) [`295b883`](https://github.com/launchfile/launchfile/commit/295b8837043c756db662d7cce7dde137d9a33027) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - Wire the D-41 component selector through to the providers as `--components <name>[,<name>…]` on `launchfile up` / `launchfile dev` and on the macOS provider's own `launch up`. Both providers already resolved a selector into the D-41 start-set through the SDK's `selectionClosure`; no entry point ever passed one, so every `up` started the whole app. The names are forwarded verbatim, so an unknown one still gets the provider's existing `Cannot select:` refusal. The flag is comma-separated and repeatable; omitting it starts every component, exactly as before.
+  
+  `--component` (singular) stays `bootstrap`'s single-component limiter. The CLI's flag table is global, so a verb that does not read a selector would still consume its value and drop it. The verbs a selector can apply to now refuse the spelling they do not implement: `up`/`dev` refuse `--component`, `bootstrap` refuses `--components`, and `down`/`status` refuse both rather than acting on every component while the operator named one. The remaining verbs (`logs`, `diagnose`, `list`, `validate`, `inspect`, `schema`) still parse either spelling and ignore it.
+
+### Patch Changes
+
+- [#527](https://github.com/launchfile/launchfile/pull/527) [`a47c3d3`](https://github.com/launchfile/launchfile/commit/a47c3d38135fdc8811cebb07f3c54f4e0a61a93d) Thanks [@ziadsawalha](https://github.com/ziadsawalha)! - `launchfile up --native` now registers the deployment as `unhealthy` when the macOS provider's health gate fails, the same row the docker branch writes for its gate. The provider leaves the app processes running on that path, so `status` and `down` need the row to reach them; a failure before any process exists still records nothing.
+- Updated dependencies [[`c4a8761`](https://github.com/launchfile/launchfile/commit/c4a87617d0b80764afbe6815df1e5552263f24c3), [`3418a57`](https://github.com/launchfile/launchfile/commit/3418a57d7fffd5a6a90b94f064795dae34913c72), [`45fba1a`](https://github.com/launchfile/launchfile/commit/45fba1ab9bb618f8336d7cf11107adef735c8ad6), [`c27dfb9`](https://github.com/launchfile/launchfile/commit/c27dfb9f2be782e1116323816562ce71a86cd251), [`95df039`](https://github.com/launchfile/launchfile/commit/95df0392bdf474842cca95e6d9715c13a21e7c64), [`2e8a8ab`](https://github.com/launchfile/launchfile/commit/2e8a8ab8018fb21c10cd882ab4f59688d0bd9626), [`a2c4b18`](https://github.com/launchfile/launchfile/commit/a2c4b1882d97b3ddbc442d180fcc6e69512a585f)]:
+  - @launchfile/docker@0.13.0
+  - @launchfile/sdk@0.13.0
+
 ## 0.12.0
 
 ### Patch Changes

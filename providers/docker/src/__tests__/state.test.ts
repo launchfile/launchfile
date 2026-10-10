@@ -1,15 +1,28 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync } from "node:fs";
+import {
+	chmodSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	statSync,
+	symlinkSync,
+	lstatSync,
+	writeFileSync,
+} from "node:fs";
+import { chmod, mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
 	initState,
 	saveState,
+	ensureStateDir,
 	loadState,
 	loadDockerSource,
 	hashLaunchfile,
 	stateDir,
 	composeProject,
+	writePrivateFile,
 	type DockerState,
 } from "../state.js";
 import { dockerUp } from "../provider.js";
@@ -98,6 +111,26 @@ describe("docker state — publication context (#290)", () => {
 		const loaded = await loadState("plain");
 		expect(loaded).not.toBeNull();
 		expect(loaded!.appUrl).toBeUndefined();
+	});
+
+	it("round-trips the primary endpoint's ports key beside appUrl (#386)", async () => {
+		const state = initState("proxied", "proxied", "name: proxied\n");
+		state.appUrl = "https://notes.example.com";
+		state.primaryEndpoint = "default:web";
+		await saveState("proxied", state);
+
+		const loaded = await loadState("proxied");
+		expect(loaded?.primaryEndpoint).toBe("default:web");
+	});
+
+	it("loads a state file without a primaryEndpoint key (every key prints localhost)", async () => {
+		const state = initState("plain", "plain", "name: plain\n");
+		expect("primaryEndpoint" in state).toBe(false);
+		await saveState("plain", state);
+
+		const loaded = await loadState("plain");
+		expect(loaded).not.toBeNull();
+		expect(loaded?.primaryEndpoint).toBeUndefined();
 	});
 });
 
@@ -483,5 +516,103 @@ commands:
 	it("stays silent on a first deployment, which has no recorded hash", async () => {
 		await dockerUp(projectDir, { dryRun: true });
 		expect(warnings.join("\n")).not.toContain("differs from the one");
+	});
+});
+
+describe("docker state — private file modes (#683, CWE-276)", () => {
+	const mode = (path: string) => statSync(path).mode & 0o777;
+
+	it("saveState tightens a pre-existing state.json left at 0o644 to 0o600", async () => {
+		const state = initState("acme", "acme", "name: acme\n");
+		await saveState("acme", state);
+		const file = join(stateDir("acme"), "state.json");
+		// Loosen with an explicit chmod — never via a `mode` option, which the
+		// runner's umask can mask so the setup silently proves nothing (#410).
+		chmodSync(file, 0o644);
+		expect(mode(file)).toBe(0o644);
+
+		await saveState("acme", state);
+
+		expect(mode(file)).toBe(0o600);
+		expect(JSON.parse(readFileSync(file, "utf8")).slug).toBe("acme");
+	});
+
+	it("writePrivateFile tightens an existing 0o644 file and replaces its content", async () => {
+		const file = join(tmpHome, "secret.txt");
+		writeFileSync(file, "old and longer content\n");
+		chmodSync(file, 0o644);
+		expect(mode(file)).toBe(0o644);
+
+		await writePrivateFile(file, "new\n");
+
+		expect(mode(file)).toBe(0o600);
+		expect(readFileSync(file, "utf8")).toBe("new\n");
+	});
+
+	it("writePrivateFile creates a missing file at 0o600", async () => {
+		const file = join(tmpHome, "fresh.txt");
+		await writePrivateFile(file, "x\n");
+		expect(mode(file)).toBe(0o600);
+		expect(readFileSync(file, "utf8")).toBe("x\n");
+	});
+
+	it("writePrivateFile writes through a symlink instead of replacing it", async () => {
+		const target = join(tmpHome, "target.env");
+		const link = join(tmpHome, "link.env");
+		writeFileSync(target, "old\n");
+		chmodSync(target, 0o644);
+		symlinkSync(target, link);
+
+		await writePrivateFile(link, "new\n");
+
+		expect(lstatSync(link).isSymbolicLink()).toBe(true);
+		expect(readFileSync(target, "utf8")).toBe("new\n");
+		expect(mode(target)).toBe(0o600);
+	});
+
+	it("writePrivateFile rejects when the parent directory is missing and leaves nothing behind", async () => {
+		const missingDir = join(tmpHome, "missing");
+		await expect(writePrivateFile(join(missingDir, "x.txt"), "x\n")).rejects.toThrow(/ENOENT/);
+		expect(() => statSync(missingDir)).toThrow();
+	});
+
+	it("writePrivateFile rejects a directory path", async () => {
+		const dir = join(tmpHome, "a-dir");
+		mkdirSync(dir);
+		await expect(writePrivateFile(dir, "x\n")).rejects.toThrow(/EISDIR/);
+	});
+});
+
+describe("state directory mode (#408, CWE-276)", () => {
+	// Loose modes are set with an explicit chmod, never mkdir's mode: that one
+	// is masked by the umask, so under a restrictive umask the fixture would
+	// be born 0o700 and the assertion would pass without the retrofit running.
+	async function mode(path: string): Promise<number> {
+		return (await stat(path)).mode & 0o777;
+	}
+
+	async function looseStateDir(slug: string): Promise<string> {
+		const dir = stateDir(slug);
+		await mkdir(dir, { recursive: true });
+		await chmod(dir, 0o755);
+		return dir;
+	}
+
+	it("saveState creates the state dir at 0o700 and state.json at 0o600", async () => {
+		await saveState("cool-app", initState("cool-app", "cool-app", "name: cool-app\n"));
+		expect(await mode(stateDir("cool-app"))).toBe(0o700);
+		expect(await mode(join(stateDir("cool-app"), "state.json"))).toBe(0o600);
+	});
+
+	it("saveState tightens a pre-existing state dir left at 0o755", async () => {
+		const dir = await looseStateDir("cool-app");
+		await saveState("cool-app", initState("cool-app", "cool-app", "name: cool-app\n"));
+		expect(await mode(dir)).toBe(0o700);
+	});
+
+	it("ensureStateDir tightens a pre-existing state dir left at 0o755", async () => {
+		const dir = await looseStateDir("cool-app");
+		await ensureStateDir("cool-app");
+		expect(await mode(dir)).toBe(0o700);
 	});
 });

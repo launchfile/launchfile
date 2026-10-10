@@ -19,9 +19,11 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { resolve, dirname } from "node:path";
-import { parse, stringify } from "yaml";
+import { parse } from "yaml";
 import { readLaunch } from "../../../sdk/src/reader.ts";
+import { collectFailureLogs } from "./failure-logs.ts";
 import { launchToCompose } from "./launch-to-compose.ts";
+import { lintUnknownMetadataKeys, rewriteMetadata } from "./lint-metadata.ts";
 
 // --- CLI args ---
 
@@ -122,6 +124,9 @@ const metadataPath = resolve(appDir, "metadata.yaml");
 let metadata: Record<string, unknown> = {};
 if (existsSync(metadataPath)) {
   metadata = parse(readFileSync(metadataPath, "utf-8")) ?? {};
+}
+for (const warning of lintUnknownMetadataKeys(metadata, metadataPath)) {
+  console.warn(`Warning: ${warning}`);
 }
 const testEnv: Record<string, string> = Object.fromEntries(
   Object.entries((metadata.test_env as Record<string, unknown>) ?? {}).map(([k, v]) => [
@@ -341,9 +346,7 @@ if (upResult.exitCode === 0) {
 // --- Collect logs on failure ---
 
 if (!healthPassed) {
-  console.log("\n--- Container logs (last 30 lines per service) ---");
-  const logs = await run(["docker", "compose", "logs", "--tail", "30"]);
-  console.log(logs.stdout.slice(-2000));
+  console.log(await collectFailureLogs(run));
 }
 
 // --- Report ---
@@ -356,22 +359,24 @@ console.log(`  Disk usage:   ${totalDiskMb} MB`);
 
 // --- Write/update metadata.yaml ---
 
-metadata.test_results = {
-  last_tested: new Date().toISOString().split("T")[0],
-  pull_time_seconds: pullTimeSeconds,
-  startup_time_seconds: startupTimeSeconds,
-  total_disk_mb: totalDiskMb,
-  health_check_passed: healthPassed,
-  notes: statusNote,
-};
-
-metadata.images = imageInfos.map((i) => ({
-  name: i.name,
-  size_mb: i.size_mb,
-  platform: i.platform,
-}));
-
-writeFileSync(metadataPath, stringify(metadata, { lineWidth: 120 }));
+writeFileSync(
+  metadataPath,
+  rewriteMetadata(metadata, {
+    test_results: {
+      last_tested: new Date().toISOString().split("T")[0],
+      pull_time_seconds: pullTimeSeconds,
+      startup_time_seconds: startupTimeSeconds,
+      total_disk_mb: totalDiskMb,
+      health_check_passed: healthPassed,
+      notes: statusNote,
+    },
+    images: imageInfos.map((i) => ({
+      name: i.name,
+      size_mb: i.size_mb,
+      platform: i.platform,
+    })),
+  }),
+);
 console.log(`\nMetadata written: ${metadataPath}`);
 
 // --- Teardown ---
