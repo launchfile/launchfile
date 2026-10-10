@@ -102,7 +102,8 @@ describe("ProcessManager.detach (#597)", () => {
 			[
 				`import { writeFileSync } from "node:fs";`,
 				`import { ProcessManager } from ${JSON.stringify(PROCESS_MANAGER)};`,
-				`const pm = new ProcessManager(${JSON.stringify(projectDir)});`,
+				// A short exit watch keeps `startAll` well inside the session deadlines below.
+				`const pm = new ProcessManager(${JSON.stringify(projectDir)}, { exitWatchMs: 100 });`,
 				`pm.register("web", { command: "sleep 30", env: {}, cwd: ${JSON.stringify(projectDir)} });`,
 				`await pm.startAll();`,
 				`writeFileSync(${JSON.stringify(pidFile)}, String(pm.getRecordedProcesses().web?.pid));`,

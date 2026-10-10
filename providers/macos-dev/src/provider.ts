@@ -74,7 +74,7 @@ import { getRuntimeInstaller } from "./runtimes/index.js";
 import { detectPackageManager } from "./lockfile-detect.js";
 import { prepareFingerprint } from "./prepare-fingerprint.js";
 import { provisionStorage, storagePaths } from "./storage.js";
-import { HealthGateError, ProcessManager } from "./process-manager.js";
+import { ComponentExitError, HealthGateError, ProcessManager } from "./process-manager.js";
 import { redactSecrets } from "./redact.js";
 import { withConfinementRefusal } from "./safe-path.js";
 import { stopRecordedProcesses } from "./process-stopper.js";
@@ -1277,15 +1277,16 @@ async function runUp(opts: LaunchUpOpts): Promise<void> {
 	try {
 		await pm2.startAll();
 	} catch (err) {
-		// A failed health gate fails the invocation with the `health` phase
-		// (SPEC.md § Failure semantics), the same record the docker provider
-		// raises: the CLI registers the deployment as unhealthy so `down`
-		// reaches the processes left running, and `diagnose` finds the record.
-		if (err instanceof HealthGateError) {
+		// A failed health gate fails the invocation with the `health` phase and
+		// a component that exited before coming up with the `run` phase (SPEC.md
+		// § Failure semantics), the same records the docker provider raises: the
+		// CLI registers the deployment so `down` reaches the processes left
+		// running, and `diagnose` finds the record.
+		if (err instanceof HealthGateError || err instanceof ComponentExitError) {
 			throw new LaunchError(
 				buildLaunchErrorContext(
 					{
-						phase: "health",
+						phase: err instanceof HealthGateError ? "health" : "run",
 						provider: "macos-dev",
 						key: launch.name,
 						app: launch.name,
