@@ -21,12 +21,12 @@
     "astro": "7.3.5",
     "marked": "^18.0.14",
     "satteri": "^0.10.5",
-    "shiki": "^4.4.3",
+    "shiki": "^4.5.0",
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
-    "@types/node": "^26.6.3",
+    "@types/node": "^26.6.4",
     "pagefind": "^1.5.2",
     "typescript": "^6.0.3"
   }

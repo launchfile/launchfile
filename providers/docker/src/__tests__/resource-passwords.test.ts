@@ -221,6 +221,53 @@ describe("migrateResourcePasswords", () => {
 		expect(resourcePasswords.postgres).toBe("authoritative");
 		expect(secrets.postgres).toBeUndefined();
 	});
+
+	it("warns once, naming the app and the key, when the recorded password differs from the carried one", () => {
+		const secrets = { postgres: "stale-copy" };
+		const resourcePasswords = { postgres: "authoritative" };
+		const warnings = migrateResourcePasswords(
+			secrets,
+			resourcePasswords,
+			new Set(),
+			"acme",
+		);
+		expect(warnings).toHaveLength(1);
+		expect(warnings[0]).toContain("acme");
+		expect(warnings[0]).toContain('"postgres"');
+		expect(warnings[0]).toContain("deleted");
+		// The discard is named, never silent — the carried value is gone
+		// from both maps.
+		expect(resourcePasswords.postgres).toBe("authoritative");
+		expect(secrets.postgres).toBeUndefined();
+	});
+
+	it("stays silent on the declared path when the declared secret was rotated away from the recorded password", () => {
+		const secrets = { postgres: "rotated-app-secret" };
+		const resourcePasswords = { postgres: "authoritative" };
+		const warnings = migrateResourcePasswords(
+			secrets,
+			resourcePasswords,
+			new Set(["postgres"]),
+			"acme",
+		);
+		expect(warnings).toEqual([]);
+		expect(resourcePasswords.postgres).toBe("authoritative");
+		expect(secrets.postgres).toBe("rotated-app-secret");
+	});
+
+	it("stays silent when the recorded password equals the carried one", () => {
+		const secrets = { postgres: "same-value" };
+		const resourcePasswords = { postgres: "same-value" };
+		const warnings = migrateResourcePasswords(
+			secrets,
+			resourcePasswords,
+			new Set(),
+			"acme",
+		);
+		expect(warnings).toEqual([]);
+		expect(resourcePasswords.postgres).toBe("same-value");
+		expect(secrets.postgres).toBeUndefined();
+	});
 });
 
 describe("declaredSecrets", () => {

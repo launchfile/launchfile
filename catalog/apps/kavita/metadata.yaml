@@ -1,6 +1,8 @@
 category: Media
 tagline: Fast ebook and manga library supporting a wide array of file formats
 homepage: https://www.kavitareader.com
+test_storage:
+  manga: test/manga
 test_results:
   last_tested: 2026-04-09
   pull_time_seconds: 17

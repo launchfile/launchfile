@@ -7,17 +7,30 @@
  * Runs as a `pretest` hook (package.json), so `bun run test` and CI's
  * existing `sdk` job both exercise it with no separate wiring.
  *
- * Catches three real failure modes:
+ * Catches four real failure modes:
  *   1. A new value export lands with no README row and no exclusion entry
  *      (silent omission — issue #250).
  *   2. A README row or exclusion entry survives after its export is renamed
  *      or removed (stale documentation).
  *   3. The same name is both documented and excluded (contradictory record).
+ *   4. A row whose first cell lists parameters — `name(a, b?)` — disagrees
+ *      with the `export function` it documents on how many parameters there
+ *      are, or which positions are optional (issue #546). A signature the
+ *      check cannot map (overloads, rest, `this` or destructured parameters,
+ *      a const or class, a re-export leaving src/) fails too, naming the
+ *      export, unless ARITY_UNCHECKED lists it with a reason.
+ *
+ * It does not check the Description column, parameter names, or what a
+ * non-function export like CERTIFICATE means.
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { getReadmeApiTableNames, getValueExports } from "./readme-exports.ts";
+import {
+	checkRowArity,
+	getReadmeApiTableRows,
+	getValueExportSources,
+} from "./readme-exports.ts";
 
 /**
  * Value exports that are intentionally not part of the README's curated API
@@ -80,13 +93,27 @@ const EXCLUDED_EXPORTS: Record<string, string> = {
 	REMOVED_IN: "deprecation-registry data, read via lintDeprecations",
 };
 
+/**
+ * README rows whose declaration the arity check cannot map, each with the
+ * reason. The check still parses each one and fails if the entry goes stale:
+ * the row is gone, lists no parameters, or its declaration becomes mappable.
+ */
+const ARITY_UNCHECKED: Record<string, string> = {
+	useKeyOf:
+		"destructures its one DeclaredUse parameter ({ use, name }), which the regex parser cannot map",
+};
+
 async function main(): Promise<void> {
 	const sdkRoot = resolve(import.meta.dirname, "..");
 	const indexTsPath = resolve(sdkRoot, "src/index.ts");
 	const readmePath = resolve(sdkRoot, "README.md");
 
-	const valueExports = getValueExports(readFileSync(indexTsPath, "utf-8"));
-	const documented = getReadmeApiTableNames(readFileSync(readmePath, "utf-8"));
+	const exportSources = getValueExportSources(
+		readFileSync(indexTsPath, "utf-8"),
+	);
+	const valueExports = new Set(exportSources.keys());
+	const rows = getReadmeApiTableRows(readFileSync(readmePath, "utf-8"));
+	const documented = new Set(rows.keys());
 	const excluded = new Set(Object.keys(EXCLUDED_EXPORTS));
 
 	const errors: string[] = [];
@@ -127,17 +154,28 @@ async function main(): Promise<void> {
 		}
 	}
 
+	const arity = checkRowArity(
+		rows,
+		exportSources,
+		(declPath) => {
+			const absPath = resolve(sdkRoot, declPath);
+			return existsSync(absPath) ? readFileSync(absPath, "utf-8") : undefined;
+		},
+		ARITY_UNCHECKED,
+	);
+	errors.push(...arity.errors);
+
 	if (errors.length > 0) {
 		console.error("\n✗ README export coverage check failed:\n");
 		for (const err of errors) console.error(`  - ${err}`);
 		console.error(
-			'\nEvery value export of sdk/src/index.ts must be either a row in README.md\'s "## API" table or an entry in EXCLUDED_EXPORTS (sdk/scripts/check-readme-exports.ts) with a one-line reason.\n',
+			'\nEvery value export of sdk/src/index.ts must be either a row in README.md\'s "## API" table or an entry in EXCLUDED_EXPORTS (sdk/scripts/check-readme-exports.ts) with a one-line reason. A row that lists parameters must match its `export function` declaration in count and in which positions are optional.\n',
 		);
 		process.exit(1);
 	}
 
 	console.log(
-		`✓ README export coverage: ${valueExports.size} value exports — ${documented.size} documented, ${excluded.size} excluded, 0 unaccounted for.`,
+		`✓ README export coverage: ${valueExports.size} value exports — ${documented.size} documented, ${excluded.size} excluded, 0 unaccounted for. ${arity.checked} parameter lists match their declarations, ${arity.unchecked} listed in ARITY_UNCHECKED.`,
 	);
 }
 

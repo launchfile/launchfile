@@ -1,5 +1,12 @@
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+	PUBLISHED_SCHEMA_PATH,
+	collectExtensionKeywords,
+	compilePublishedSchema,
+	validateCatalog,
 	collectImageLines,
 	lintImageReferences,
 	metadataImageNames,
@@ -135,5 +142,86 @@ describe("lintImageReferences — metadata drift warning", () => {
 describe("metadataImageNames", () => {
 	it("returns an empty list for metadata with no images block", () => {
 		expect(metadataImageNames("category: CMS\n")).toEqual([]);
+	});
+});
+
+const REPO_ROOT = resolve(import.meta.dirname, "../../..");
+
+function publishedSchema(): object {
+	return JSON.parse(readFileSync(join(REPO_ROOT, PUBLISHED_SCHEMA_PATH), "utf8")) as object;
+}
+
+describe("compilePublishedSchema", () => {
+	const check = compilePublishedSchema(publishedSchema());
+
+	it("accepts a minimal Launchfile", () => {
+		expect(check({ name: "x" })).toEqual({ valid: true });
+	});
+
+	it("rejects a field the schema does not declare and names the schema location", () => {
+		const result = check({ name: "x", storage: { data: { path: "/d", description: "no" } } });
+		expect(result.valid).toBe(false);
+		if (result.valid) return;
+		expect(result.errors.join(" ")).toContain("/storage/data");
+		expect(result.errors.join(" ")).toContain("#/$defs/storageVolume/additionalProperties");
+	});
+});
+
+describe("collectExtensionKeywords", () => {
+	it("finds nested x- keys", () => {
+		expect([...collectExtensionKeywords({ a: [{ "x-one": 1 }], b: { "x-two": 2 } })].sort()).toEqual([
+			"x-one",
+			"x-two",
+		]);
+	});
+});
+
+describe("validateCatalog — published schema", () => {
+	function fixtureRoot(files: Record<string, string>): string {
+		const root = mkdtempSync(join(tmpdir(), "catalog-"));
+		const schemaPath = join(root, PUBLISHED_SCHEMA_PATH);
+		mkdirSync(dirname(schemaPath), { recursive: true });
+		writeFileSync(schemaPath, JSON.stringify(publishedSchema()));
+		for (const [path, text] of Object.entries(files)) {
+			mkdirSync(dirname(join(root, path)), { recursive: true });
+			writeFileSync(join(root, path), text);
+		}
+		return root;
+	}
+
+	it("passes a conforming entry", () => {
+		const root = fixtureRoot({
+			"catalog/apps/ok/Launchfile": "name: ok\n",
+		});
+		const report = validateCatalog(root, new Set());
+		expect(report.files).toBe(1);
+		expect(report.findings.filter((f) => f.message.includes("published JSON Schema"))).toEqual([]);
+	});
+
+	it("fails naming the file and the published schema when the schema rejects it", () => {
+		const root = fixtureRoot({
+			"catalog/apps/bad/Launchfile":
+				"name: bad\nstorage:\n  d:\n    path: /d\n    description: undeclared\n",
+		});
+		const finding = validateCatalog(root, new Set()).findings.find((f) =>
+			f.message.includes("published JSON Schema"),
+		);
+		expect(finding?.severity).toBe("error");
+		expect(finding?.file).toBe("catalog/apps/bad/Launchfile");
+		expect(finding?.message).toContain(PUBLISHED_SCHEMA_PATH);
+	});
+
+	it("fails on an empty catalog", () => {
+		const report = validateCatalog(fixtureRoot({}), new Set());
+		expect(report.findings.some((f) => f.severity === "error" && f.file === "catalog")).toBe(true);
+	});
+
+	it("fails when an entry directory has no Launchfile", () => {
+		const root = fixtureRoot({
+			"catalog/apps/ok/Launchfile": "name: ok\n",
+			"catalog/drafts/empty/metadata.yaml": "images: []\n",
+		});
+		const report = validateCatalog(root, new Set());
+		expect(report.findings.some((f) => f.severity === "error" && f.file === "catalog")).toBe(true);
 	});
 });

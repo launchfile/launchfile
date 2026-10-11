@@ -18,11 +18,12 @@ export function parseDuration(duration: string): number {
 }
 
 /**
- * Whether a check can run without a port: only a `command` check can. A
- * `path` check and the no-check fallback both poll `http://localhost:<port>`.
+ * Whether a check can run without a port: only a `command`-only check can. A
+ * declared `path` wins over `command` (SPEC.md § health), so any block with a
+ * `path`, and the no-check fallback, poll `http://localhost:<port>`.
  */
 export function healthCheckNeedsPort(health: NormalizedHealth): boolean {
-	return !health.command;
+	return health.path !== undefined || !health.command;
 }
 
 /**
@@ -30,7 +31,7 @@ export function healthCheckNeedsPort(health: NormalizedHealth): boolean {
  * "did not become healthy" needs to know which probe was asked.
  */
 export function describeHealthCheck(health: NormalizedHealth, port: number | undefined): string {
-	if (health.command) return `command \`${redactSecrets(health.command)}\``;
+	if (health.path === undefined && health.command) return `command \`${redactSecrets(health.command)}\``;
 	const host = port === undefined ? "localhost:<unallocated>" : `localhost:${port}`;
 	return `GET http://${host}${health.path ?? "/"}`;
 }
@@ -53,14 +54,18 @@ export function healthBudgetMs(health: NormalizedHealth, fallbackMs: number): nu
 
 /**
  * Wait for a component to become healthy.
- * Returns true if healthy, false if timed out. `overallTimeout` is the polling
- * window after `start_period`; callers derive it with `healthBudgetMs`.
+ * Returns true if healthy, false if timed out or if `exited` aborts first.
+ * `overallTimeout` is the polling window after `start_period`; callers derive
+ * it with `healthBudgetMs`. `exited` is aborted when the component's process
+ * exits: a process that is gone will never answer, so the poll stops there
+ * instead of spending the rest of the window on a port nothing listens on.
  */
 export async function waitForHealthy(
 	name: string,
 	health: NormalizedHealth,
 	port: number,
 	overallTimeout: number = 60_000,
+	exited?: AbortSignal,
 ): Promise<boolean> {
 	const startPeriod = parseDuration(health.start_period ?? "0s");
 	const interval = parseDuration(health.interval ?? "3s");
@@ -69,14 +74,15 @@ export async function waitForHealthy(
 	// Wait for start period
 	if (startPeriod > 0) {
 		console.log(`  [${name}] Waiting ${health.start_period} start period...`);
-		await sleep(startPeriod);
+		if (!(await sleep(startPeriod, exited))) return gaveUp(name);
 	}
 
 	const deadline = Date.now() + overallTimeout;
 
 	while (Date.now() < deadline) {
+		if (exited?.aborted) return gaveUp(name);
 		try {
-			if (health.path) {
+			if (health.path !== undefined) {
 				const resp = await fetch(`http://localhost:${port}${health.path}`, {
 					signal: AbortSignal.timeout(checkTimeout),
 				});
@@ -98,13 +104,33 @@ export async function waitForHealthy(
 		} catch {
 			// Expected — service not ready yet
 		}
-		await sleep(interval);
+		if (!(await sleep(interval, exited))) return gaveUp(name);
 	}
 
 	console.error(`  [${name}] Health check timed out after ${overallTimeout}ms`);
 	return false;
 }
 
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
+/** The poll's answer once the process it polls is gone. */
+function gaveUp(name: string): false {
+	console.error(`  [${name}] Process exited before its health check passed`);
+	return false;
+}
+
+/** Resolves true after `ms`, or false as soon as `abort` fires. */
+function sleep(ms: number, abort?: AbortSignal): Promise<boolean> {
+	return new Promise((resolve) => {
+		if (abort?.aborted) {
+			resolve(false);
+			return;
+		}
+		const done = (slept: boolean): void => {
+			clearTimeout(timer);
+			abort?.removeEventListener("abort", onAbort);
+			resolve(slept);
+		};
+		const onAbort = (): void => done(false);
+		const timer = setTimeout(() => done(true), ms);
+		abort?.addEventListener("abort", onAbort);
+	});
 }

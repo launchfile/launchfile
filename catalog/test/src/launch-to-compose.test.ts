@@ -21,6 +21,7 @@ import { parse } from "yaml";
 import { readLaunch } from "../../../sdk/src/reader.ts";
 import { resourcePropertyKeys } from "../../../providers/docker/src/compose-generator.ts";
 import { harnessBackingServiceTypes, launchToCompose } from "./launch-to-compose.ts";
+import { lintUnknownMetadataKeys } from "./lint-metadata.ts";
 
 /** Compose a Launchfile YAML and return the resolved `environment` for a service. */
 function envOf(yaml: string, serviceName: string): Record<string, string> {
@@ -183,6 +184,38 @@ requires:
     // shares the provider's derivation and must not invent a localhost origin.
     expect(env.ORIGIN).toBe("");
     expect(env.REDIS_URL).toBe("redis://mixapp-redis:6379");
+  });
+});
+
+describe("clickhouse factory: credentials the app can bind (#512)", () => {
+  const yaml = `version: launch/v1
+name: analytics
+image: nginx:alpine
+requires:
+  - type: clickhouse
+    set_env:
+      CLICKHOUSE_HOST: "$host"
+      CLICKHOUSE_USER: "$user"
+      CLICKHOUSE_PASSWORD: "$password"
+      CLICKHOUSE_URL: "$url"
+`;
+
+  it("starts the server with CLICKHOUSE_USER/CLICKHOUSE_PASSWORD and hands the app the same pair", () => {
+    const server = envOf(yaml, "analytics-clickhouse");
+    const app = envOf(yaml, "analytics");
+    expect(server.CLICKHOUSE_USER).toBe("default");
+    expect(server.CLICKHOUSE_PASSWORD).toBeTruthy();
+    expect(app.CLICKHOUSE_USER).toBe(server.CLICKHOUSE_USER);
+    expect(app.CLICKHOUSE_PASSWORD).toBe(server.CLICKHOUSE_PASSWORD);
+    expect(app.CLICKHOUSE_HOST).toBe("analytics-clickhouse");
+  });
+
+  it("carries the credentials in $url", () => {
+    const app = envOf(yaml, "analytics");
+    const url = new URL(app.CLICKHOUSE_URL ?? "");
+    expect(url.username).toBe("default");
+    expect(url.password).toBe(app.CLICKHOUSE_PASSWORD);
+    expect(url.host).toBe("analytics-clickhouse:8123");
   });
 });
 
@@ -454,6 +487,10 @@ env:
       const meta = existsSync(metaPath)
         ? ((parse(readFileSync(metaPath, "utf-8")) ?? {}) as Record<string, unknown>)
         : {};
+      // Warn only: an unknown key never fails this test (#422).
+      for (const warning of lintUnknownMetadataKeys(meta, `catalog/apps/${app}/metadata.yaml`)) {
+        console.warn(warning);
+      }
       const testEnv = Object.fromEntries(
         Object.entries((meta.test_env as Record<string, unknown>) ?? {}).map(([k, v]) => [
           k,
@@ -883,5 +920,33 @@ describe("catalog/drafts/plausible — TOTP_VAULT_KEY is base64 of 32 bytes (#41
 
   it("leaves SECRET_KEY_BASE as the generator's 64 hex characters", () => {
     expect(env.SECRET_KEY_BASE).toMatch(HEX64);
+  });
+});
+
+describe("health precedence (SPEC health: path over command)", () => {
+  function healthTest(healthYaml: string): string {
+    const launch = readLaunch(`version: launch/v1
+name: healthapp
+image: nginx:alpine
+provides:
+  - protocol: http
+    port: 8080
+health:
+${healthYaml}
+`);
+    const compose = parse(launchToCompose(launch).yaml) as {
+      services: Record<string, { healthcheck?: { test: string[] } }>;
+    };
+    return compose.services.healthapp!.healthcheck!.test.join(" ");
+  }
+
+  it("uses the HTTP probe when both path and command are declared", () => {
+    const test = healthTest("  path: /ready\n  command: pg_isready");
+    expect(test).toContain("http://localhost:8080/ready");
+    expect(test).not.toContain("pg_isready");
+  });
+
+  it("uses the command when only command is declared", () => {
+    expect(healthTest("  command: pg_isready")).toBe("CMD-SHELL pg_isready");
   });
 });
