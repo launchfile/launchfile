@@ -133,6 +133,29 @@ export class PostgresProvisioner implements ResourceProvisioner {
 		assertSafePassword(password);
 		const port = DEFAULT_PORT;
 
+		const named = (opts.databases ?? []).map((name) => namedDatabase(dbName, name));
+		// A database this entry named on an earlier run and no longer does
+		// stays recorded: dropping it here would destroy data on a one-line
+		// `uses:` edit with no undo. `destroy` is the only path that drops it.
+		const vanished = (existingState?.databases ?? []).filter(
+			(database) => !named.includes(database),
+		);
+		const databases = [...named, ...vanished];
+		const state: ResourceState = {
+			type: "postgres",
+			name: resourceName,
+			brewService: "postgresql",
+			port,
+			dbName,
+			user,
+			password,
+			...(databases.length > 0 ? { databases } : {}),
+		};
+		// The record is complete once the password exists. Saving it before the
+		// role is created means a throw anywhere after that point leaves the
+		// password on disk for the next provision() to reuse.
+		await opts.persist?.(state);
+
 		// Create user (idempotent)
 		await this.#shell(
 			"psql",
@@ -186,11 +209,9 @@ export class PostgresProvisioner implements ResourceProvisioner {
 		// hyphens become underscores, so the identifier check cannot fail on a
 		// name that reached here through the parser; it guards the SQL below
 		// all the same.
-		const databases: string[] = [];
 		for (const name of opts.databases ?? []) {
 			const database = namedDatabase(dbName, name);
 			assertSafeIdentifier(database, "database name");
-			databases.push(database);
 			if (await this.#databaseExists(port, database)) continue;
 			try {
 				await this.#shell("createdb", [
@@ -210,12 +231,6 @@ export class PostgresProvisioner implements ResourceProvisioner {
 				);
 			}
 		}
-		// A database this entry named on an earlier run and no longer does
-		// stays recorded: dropping it here would destroy data on a one-line
-		// `uses:` edit with no undo. `destroy` is the only path that drops it.
-		const vanished = (existingState?.databases ?? []).filter(
-			(database) => !databases.includes(database),
-		);
 		for (const database of vanished) {
 			// Security: the stored name is unvalidated JSON (state.ts); an unsafe
 			// one is never echoed.
@@ -226,7 +241,6 @@ export class PostgresProvisioner implements ResourceProvisioner {
 				`  ! postgres: database ${label} is no longer a named use of ${resourceName} — kept; \`destroy\` drops it`,
 			);
 		}
-		databases.push(...vanished);
 
 		const url = `postgresql://${user}:${password}@${DEFAULT_HOST}:${port}/${dbName}`;
 
@@ -237,17 +251,6 @@ export class PostgresProvisioner implements ResourceProvisioner {
 			user,
 			password,
 			name: dbName,
-		};
-
-		const state: ResourceState = {
-			type: "postgres",
-			name: resourceName,
-			brewService: "postgresql",
-			port,
-			dbName,
-			user,
-			password,
-			...(databases.length > 0 ? { databases } : {}),
 		};
 
 		return { properties, state, warnings: versionWarnings };

@@ -67,6 +67,7 @@ import {
 	namedDatabases,
 	ResourceRefusedError,
 	uncoveredUses,
+	type ProvisionOpts,
 	type ResourceProperties,
 } from "./resources/index.js";
 import { allocatePorts } from "./port-allocator.js";
@@ -942,10 +943,17 @@ async function runUp(opts: LaunchUpOpts): Promise<void> {
 	const resourceMap: Record<string, ResourceProperties> = {};
 	const uses = declaredUses(launch);
 	const dbIndexes = allocateDbIndexes(launch);
-	const provisionOpts = (resourceName: string) => ({
+	// `persist` writes the record to state.json before the provisioner creates
+	// a role or user, so a throw later in this `up` cannot lose the password
+	// that role was created with.
+	const provisionOpts = (resourceName: string): ProvisionOpts => ({
 		appName: launch.name,
 		projectDir,
 		databases: namedDatabases(uses[resourceName] ?? []),
+		persist: async (record) => {
+			state.resources[resourceName] = withRecordedDbIndexes(record, dbIndexes[resourceName] ?? {});
+			await saveState(projectDir, state);
+		},
 	});
 	// A refusal is recorded by name, the way resourceMap records a success,
 	// so a resource several components share is tried once and named once.
@@ -1199,7 +1207,9 @@ async function runUp(opts: LaunchUpOpts): Promise<void> {
 		}
 	}
 
-	// 13. Save state before build (in case build fails, we still have resource state)
+	// 13. Save state before build, so a failed build keeps the ports, env
+	// wiring and resource records gathered above. Credential-bearing resource
+	// records were already saved as each was provisioned (`persist`).
 	// The bound operator paths ride along so `env` can report the directory the
 	// app actually reads (D-50); a later `up` still has to supply them again.
 	state.operatorStorage = operatorStorage;
