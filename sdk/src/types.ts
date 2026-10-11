@@ -237,7 +237,7 @@ export interface Build {
 export interface Health {
 	/** HTTP path to check */
 	path?: string;
-	/** Command to run for non-HTTP checks */
+	/** Shell command run as the check; exit status 0 means healthy. May probe an HTTP endpoint when a path check cannot run for the app. `path` takes precedence if both are set. */
 	command?: string;
 	/** Check interval (e.g., "30s", "1m") */
 	interval?: string;

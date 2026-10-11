@@ -11,9 +11,10 @@ provides:
     port: 80
     exposed: true
 supports:
+  # FreshRSS splits the host value into host and port (lib/Minz/ModelPdo.php:41, :83-84).
   - type: postgres
     set_env:
-      DB_HOST: $host
+      DB_HOST: "${host}:${port}"
       DB_BASE: $name
       DB_USER: $user
       DB_PASSWORD: $password

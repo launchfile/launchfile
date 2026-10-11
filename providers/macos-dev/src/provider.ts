@@ -15,6 +15,7 @@ import {
 	buildLaunchErrorContext,
 	CERTIFICATE,
 	certificateBindings,
+	httpsOriginSatisfied,
 	indexOperatorStoragePaths,
 	LaunchError,
 	MissingOperatorStoragePathError,
@@ -37,13 +38,13 @@ import { checkPrereqs } from "./prereqs.js";
 import {
 	declaredPrimary,
 	HTTPS_ORIGIN,
-	httpsOriginSatisfied,
 	httpsOriginShortfall,
 	uncoveredOriginUses,
 } from "./https-origin.js";
 import {
 	loadState,
 	initState,
+	hashLaunchfile,
 	saveState,
 	ensureDirs,
 	withRecordedDbIndexes,
@@ -65,7 +66,9 @@ import {
 	allocateDbIndexes,
 	getProvisioner,
 	namedDatabases,
+	ResourceRefusedError,
 	uncoveredUses,
+	type ProvisionOpts,
 	type ResourceProperties,
 } from "./resources/index.js";
 import { allocatePorts } from "./port-allocator.js";
@@ -73,8 +76,9 @@ import { getRuntimeInstaller } from "./runtimes/index.js";
 import { detectPackageManager } from "./lockfile-detect.js";
 import { prepareFingerprint } from "./prepare-fingerprint.js";
 import { provisionStorage, storagePaths } from "./storage.js";
-import { HealthGateError, ProcessManager } from "./process-manager.js";
+import { ComponentExitError, HealthGateError, ProcessManager } from "./process-manager.js";
 import { redactSecrets } from "./redact.js";
+import { withConfinementRefusal } from "./safe-path.js";
 import { stopRecordedProcesses } from "./process-stopper.js";
 import { shellScript } from "./shell.js";
 import { parseDuration } from "./bootstrap.js";
@@ -107,6 +111,12 @@ function declaredTimeout(timeout: string | undefined, label: string): number | u
 export interface LaunchUpOpts {
 	withOptional?: boolean;
 	noBuild?: boolean;
+	/**
+	 * Return once every component has started instead of staying in the
+	 * foreground. The components keep running in the background with their
+	 * pids recorded in state, so `down` stops them from any shell. No Ctrl+C
+	 * handler is installed.
+	 */
 	detach?: boolean;
 	dryRun?: boolean;
 	projectDir?: string;
@@ -587,6 +597,12 @@ export async function runSourcePrepare(
 }
 
 export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
+	// A write under `.launchfile/` or to `.env.local` that finds a symlink the
+	// repository shipped (safe-path.ts) stops the run with a `Refused:` line.
+	return withConfinementRefusal(() => runUp(opts));
+}
+
+async function runUp(opts: LaunchUpOpts): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 
 	// Publication context (D-58): validated and normalized before anything is
@@ -648,6 +664,22 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	let state = await loadState(projectDir);
 	if (!state) {
 		state = initState(launch.name, launchfileContent);
+	} else {
+		// The recorded hash detects an edit; it does not authenticate one. A
+		// mismatch is reported and the recorded state is kept: discarding it
+		// would re-mint every `generatedEnv` value on an ordinary edit, against
+		// D-49's generate-once-then-preserve rule, and buys nothing against a
+		// shipped file whose author can compute the matching hash.
+		const currentHash = hashLaunchfile(launchfileContent);
+		const recordedHash = state.launchfileHash;
+		if (recordedHash !== undefined && recordedHash !== currentHash) {
+			console.warn(
+				"  Warning: .launchfile/state.json was recorded for different " +
+					`Launchfile content (recorded ${recordedHash}, current ` +
+					`${currentHash}) — continuing with the recorded state.`,
+			);
+		}
+		state.launchfileHash = currentHash;
 	}
 	// Publication context (D-58), the same preservation rule the docker provider
 	// applies: a supplied value replaces the recorded one — the derived $app.*
@@ -928,11 +960,24 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const resourceMap: Record<string, ResourceProperties> = {};
 	const uses = declaredUses(launch);
 	const dbIndexes = allocateDbIndexes(launch);
-	const provisionOpts = (resourceName: string) => ({
+	// `persist` writes the record to state.json before the provisioner creates
+	// a role or user, so a throw later in this `up` cannot lose the password
+	// that role was created with.
+	const provisionOpts = (resourceName: string): ProvisionOpts => ({
 		appName: launch.name,
 		projectDir,
 		databases: namedDatabases(uses[resourceName] ?? []),
+		persist: async (record) => {
+			state.resources[resourceName] = withRecordedDbIndexes(record, dbIndexes[resourceName] ?? {});
+			await saveState(projectDir, state);
+		},
 	});
+	// A refusal is recorded by name, the way resourceMap records a success,
+	// so a resource several components share is tried once and named once.
+	// Only a `requires:` refusal stops the run; a `supports:` one is skipped
+	// (D-8), but is still remembered so a later component does not retry it.
+	const refused = new Map<string, ResourceRefusedError>();
+	const refusedRequired = new Set<string>();
 
 	for (const [_compName, component] of Object.entries(launch.components)) {
 		for (const req of component.requires ?? []) {
@@ -942,6 +987,12 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 			if (req.type === HTTPS_ORIGIN) continue;
 			const resourceName = req.name ?? req.type;
 			if (resourceMap[resourceName]) continue; // Already provisioned
+			if (refused.has(resourceName)) {
+				// Already refused, possibly as another component's optional
+				// resource; required here, so it now counts against the run.
+				refusedRequired.add(resourceName);
+				continue;
+			}
 
 			const provisioner = getProvisioner(req.type);
 			if (!provisioner) {
@@ -968,12 +1019,26 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 
 			process.stdout.write(`  \u2193 Provisioning ${req.type}...`);
 			const existing = state.resources[resourceName];
-			const result = await provisioner.provision(req, provisionOpts(resourceName), existing);
+			let result: Awaited<ReturnType<typeof provisioner.provision>>;
+			try {
+				result = await provisioner.provision(req, provisionOpts(resourceName), existing);
+			} catch (err) {
+				// A refusal is printed by the provisioner. The resource is
+				// skipped so the remaining ones still provision, and the run
+				// exits non-zero below: a required resource that vanishes under
+				// a zero exit code is the silent success this guards against.
+				if (!(err instanceof ResourceRefusedError)) throw err;
+				console.log(" refused");
+				refused.set(resourceName, err);
+				refusedRequired.add(resourceName);
+				continue;
+			}
 			resourceMap[resourceName] = registerResource(req.type, resourceName, uses, result.properties, indexes);
 			// The indexes ride along in state so `env` answers `db.*` with the
 			// databases the running app was given.
 			state.resources[resourceName] = withRecordedDbIndexes(result.state, indexes);
 			console.log(" done");
+			for (const warning of result.warnings) console.warn(`  Warning: ${warning}`);
 		}
 
 		// Optional supports resources
@@ -982,7 +1047,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 				if (sup.host) continue; // capability, not a backing service (D-44)
 				if (sup.type === HTTPS_ORIGIN) continue; // publication context, step 8
 				const resourceName = sup.name ?? sup.type;
-				if (resourceMap[resourceName]) continue;
+				if (resourceMap[resourceName] || refused.has(resourceName)) continue;
 
 				const provisioner = getProvisioner(sup.type);
 				if (!provisioner) continue;
@@ -1021,11 +1086,24 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 					resourceMap[resourceName] = registerResource(sup.type, resourceName, uses, result.properties, indexes);
 					state.resources[resourceName] = withRecordedDbIndexes(result.state, indexes);
 					console.log(" done");
-				} catch {
+					for (const warning of result.warnings) console.warn(`  Warning: ${warning}`);
+				} catch (err) {
+					if (err instanceof ResourceRefusedError) refused.set(resourceName, err);
 					console.log(" skipped");
 				}
 			}
 		}
+	}
+
+	// A required resource the provisioner refused leaves its component with
+	// nothing to run against, so the run stops here, after every other
+	// resource has had its turn, and names each refusal.
+	if (refusedRequired.size > 0) {
+		console.error(
+			`Refused to provision ${refusedRequired.size === 1 ? "a required resource" : "required resources"}: ` +
+				[...refusedRequired].map((name) => `${name} (${refused.get(name)?.reason})`).join("; "),
+		);
+		process.exit(1);
 	}
 
 	// 7. Allocate ports
@@ -1138,17 +1216,17 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		}
 
 		if (isSingleComponent) {
-			await writeEnvFile(join(projectDir, ".env.local"), env);
+			await writeEnvFile(projectDir, [".env.local"], env);
 			console.log(`  \u2193 Wiring environment variables... done (${Object.keys(env).length} vars)`);
 		} else {
-			const { mkdir } = await import("node:fs/promises");
-			await mkdir(join(projectDir, ".launchfile", "env"), { recursive: true, mode: 0o700 });
-			await writeEnvFile(join(projectDir, ".launchfile", "env", `${name}.env`), env);
+			await writeEnvFile(projectDir, [".launchfile", "env", `${name}.env`], env);
 			console.log(`  \u2193 Wiring ${name} environment... done (${Object.keys(env).length} vars)`);
 		}
 	}
 
-	// 13. Save state before build (in case build fails, we still have resource state)
+	// 13. Save state before build, so a failed build keeps the ports, env
+	// wiring and resource records gathered above. Credential-bearing resource
+	// records were already saved as each was provisioned (`persist`).
 	// The bound operator paths ride along so `env` can report the directory the
 	// app actually reads (D-50); a later `up` still has to supply them again.
 	state.operatorStorage = operatorStorage;
@@ -1156,7 +1234,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 
 	if (opts.dryRun) {
 		console.log("\n[dry-run] Would now run build, release, and start commands.");
-		printSummary(launch.name, componentPorts, state);
+		printSummary(launch.name, componentPorts, state, "would be reachable at");
 		return;
 	}
 
@@ -1207,30 +1285,35 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		});
 	}
 
-	// Handle Ctrl+C gracefully
+	// A foreground session stops every component on Ctrl+C. A detached one
+	// installs no handler: `up` returns after launch and `down` stops the
+	// components through the pids recorded below.
 	const finalState = state;
-	process.on("SIGINT", async () => {
-		console.log("\n\nShutting down...");
-		await pm2.stopAll();
-		// Processes are now dead; clear the recorded pids so a later `launch down`
-		// doesn't try to signal stale (and possibly recycled) pids.
-		finalState.processes = {};
-		await saveState(projectDir, finalState);
-		process.exit(0);
-	});
+	if (!opts.detach) {
+		process.on("SIGINT", async () => {
+			console.log("\n\nShutting down...");
+			await pm2.stopAll();
+			// Processes are now dead; clear the recorded pids so a later `launch down`
+			// doesn't try to signal stale (and possibly recycled) pids.
+			finalState.processes = {};
+			await saveState(projectDir, finalState);
+			process.exit(0);
+		});
+	}
 
 	try {
 		await pm2.startAll();
 	} catch (err) {
-		// A failed health gate fails the invocation with the `health` phase
-		// (SPEC.md § Failure semantics), the same record the docker provider
-		// raises: the CLI registers the deployment as unhealthy so `down`
-		// reaches the processes left running, and `diagnose` finds the record.
-		if (err instanceof HealthGateError) {
+		// A failed health gate fails the invocation with the `health` phase and
+		// a component that exited before coming up with the `run` phase (SPEC.md
+		// § Failure semantics), the same records the docker provider raises: the
+		// CLI registers the deployment so `down` reaches the processes left
+		// running, and `diagnose` finds the record.
+		if (err instanceof HealthGateError || err instanceof ComponentExitError) {
 			throw new LaunchError(
 				buildLaunchErrorContext(
 					{
-						phase: "health",
+						phase: err instanceof HealthGateError ? "health" : "run",
 						provider: "macos-dev",
 						key: launch.name,
 						app: launch.name,
@@ -1255,9 +1338,21 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	console.log(`  \u2713 All components started`);
 
 	// 17. Print summary
-	printSummary(launch.name, componentPorts, state);
+	printSummary(
+		launch.name,
+		componentPorts,
+		state,
+		undefined,
+		opts.detach ? DETACHED_FOOTER : FOREGROUND_FOOTER,
+	);
 	printAtReports(atReports(launch, componentPorts, suppliedAppUrl));
+
+	// The pids are saved above, so the session can let go of the children.
+	if (opts.detach) pm2.detach();
 }
+
+const FOREGROUND_FOOTER = "Press Ctrl+C to stop all processes.";
+const DETACHED_FOOTER = "Running in the background. `launchfile down` stops it.";
 
 /**
  * What a printout reads to place the orchestrator-supplied publication URL
@@ -1294,16 +1389,19 @@ export function componentAddress(
 
 /**
  * The "<component> is running at …" lines `up` prints, one per `ports` key.
+ * `verb` is the phrase between the label and the address; a dry run passes
+ * "would be reachable at" because nothing has started.
  * Pure, so the placement of the supplied URL is testable without a launch.
  */
 export function summaryLines(
 	appName: string,
 	ports: Record<string, number>,
 	publication?: PrintedPublication,
+	verb = "is running at",
 ): string[] {
 	return Object.entries(ports).map(([name, port]) => {
 		const label = name === "default" ? appName : name;
-		return `  ${label} is running at ${componentAddress(name, port, publication)}`;
+		return `  ${label} ${verb} ${componentAddress(name, port, publication)}`;
 	});
 }
 
@@ -1321,15 +1419,21 @@ function printSummary(
 	appName: string,
 	ports: Record<string, number>,
 	publication: PrintedPublication,
+	verb?: string,
+	footer = FOREGROUND_FOOTER,
 ): void {
 	console.log("");
-	for (const line of summaryLines(appName, ports, publication)) {
+	for (const line of summaryLines(appName, ports, publication, verb)) {
 		console.log(line);
 	}
-	console.log("\n  Press Ctrl+C to stop all processes.");
+	console.log(`\n  ${footer}`);
 }
 
 export async function launchDown(opts: { destroy?: boolean; projectDir?: string } = {}): Promise<void> {
+	return withConfinementRefusal(() => runDown(opts));
+}
+
+async function runDown(opts: { destroy?: boolean; projectDir?: string }): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 	const state = await loadState(projectDir);
 	if (!state) {
@@ -1388,12 +1492,6 @@ export async function launchDown(opts: { destroy?: boolean; projectDir?: string 
 	}
 }
 
-// --detach is intentionally left as a follow-up: persisting pids (this PR) is
-// the prerequisite for it. With pids now recorded and a working cross-session
-// `down`, detach becomes "spawn detached + unref + don't install the SIGINT
-// foreground loop, then return" — a self-contained change best done separately
-// so the kill-path fix lands reviewable on its own.
-
 export async function launchStatus(opts: { projectDir?: string } = {}): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 	const state = await loadState(projectDir);
@@ -1424,6 +1522,10 @@ export async function launchStatus(opts: { projectDir?: string } = {}): Promise<
 }
 
 export async function launchEnv(opts: { component?: string; projectDir?: string } = {}): Promise<void> {
+	return withConfinementRefusal(() => runEnv(opts));
+}
+
+async function runEnv(opts: { component?: string; projectDir?: string }): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 
 	const launchfileContent = await readFile(join(projectDir, "Launchfile"), "utf8");

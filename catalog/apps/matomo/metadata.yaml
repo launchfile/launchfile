@@ -1,16 +1,21 @@
 test_results:
-  last_tested: 2026-04-09
-  pull_time_seconds: 30
-  startup_time_seconds: 12
-  total_disk_mb: 919
+  last_tested: 2026-10-03
+  pull_time_seconds: 1
+  startup_time_seconds: 6
+  total_disk_mb: 1299
   health_check_passed: true
-  notes: ""
+  notes: >-
+    2026-10-03: launched with mariadb:11 on the default port 3306. MATOMO_DATABASE_HOST=matomo-mariadb:3306
+    in the container; the install wizard's Database Setup step prefilled host "matomo-mariadb:3306".
+    Submitting that step unchanged reached "Creating the Tables"; MariaDB then held 26 matomo_ tables and
+    config/config.ini.php had host = "matomo-mariadb". pull_time_seconds is 1 because the images were
+    cached locally. Non-default port not tested (needs #568).
 images:
   - name: matomo:latest
-    size_mb: 575
+    size_mb: 834
     platform:
       - linux/arm64
   - name: mariadb:11
-    size_mb: 344
+    size_mb: 465
     platform:
       - linux/arm64

@@ -8,10 +8,12 @@ import type { ResourceState } from "../state.js";
 import type {
 	DestroyOpts,
 	ProvisionOpts,
+	ProvisionResult,
 	ResourceProperties,
 	ResourceProvisioner,
 	ShellRunner,
 } from "./types.js";
+import { serverVersion, versionWarning } from "./version.js";
 
 const DEFAULT_PORT = 6379;
 const DEFAULT_HOST = "localhost";
@@ -34,7 +36,7 @@ export class RedisProvisioner implements ResourceProvisioner {
 		req: NormalizedRequirement,
 		_opts: ProvisionOpts,
 		_existingState?: ResourceState,
-	): Promise<{ properties: ResourceProperties; state: ResourceState }> {
+	): Promise<ProvisionResult> {
 		if (!(await this.isRunning())) {
 			console.log("  Starting Redis via brew...");
 			const started = await this.#shellOk("brew", [
@@ -47,6 +49,8 @@ export class RedisProvisioner implements ResourceProvisioner {
 				await this.#shell("brew", ["services", "start", "redis"]);
 			}
 		}
+
+		const versionWarnings = req.version ? await this.#versionWarnings(req) : [];
 
 		const port = DEFAULT_PORT;
 		const resourceName = req.name ?? req.type;
@@ -65,7 +69,25 @@ export class RedisProvisioner implements ResourceProvisioner {
 			port,
 		};
 
-		return { properties, state };
+		return { properties, state, warnings: versionWarnings };
+	}
+
+	/** The `requires[].version` report, against the version the server reports. */
+	async #versionWarnings(req: NormalizedRequirement): Promise<string[]> {
+		const result = await this.#shell(
+			"redis-cli",
+			["-h", DEFAULT_HOST, "-p", String(DEFAULT_PORT), "INFO", "server"],
+			{ allowFailure: true, silent: true },
+		);
+		const line = /^redis_version:(.*)$/m.exec(result.stdout)?.[1];
+		const running =
+			result.exitCode === 0 && line ? serverVersion(line) : undefined;
+		const warning = versionWarning(
+			req,
+			`the Redis server on ${DEFAULT_HOST}:${DEFAULT_PORT}`,
+			running,
+		);
+		return warning ? [warning] : [];
 	}
 
 	async destroy(_state: ResourceState, _opts: DestroyOpts): Promise<void> {

@@ -376,10 +376,12 @@ function endpointProp(
  *
  * Unknown references return "" — mirroring the `$`-expression resolver's
  * general rule that an unresolved reference is the caller's `:-default` or the
- * empty string. The resolver's one throwing case, a `$<resource>.<use>.<prop>`
- * reference on an entry that declares `uses` (`UnresolvedUseError`, D-65),
- * has no counterpart here: deployment state records resolved values, not
- * declared uses.
+ * empty string. The resolver's two throwing cases have no counterpart here.
+ * One is a `$<resource>.<use>.<prop>` reference on an entry that declares
+ * `uses` (`UnresolvedUseError`, D-65). The other is the `parseDotPath` depth
+ * cap (more than 10 dot or bracket segments), a plain `Error`, not an SDK
+ * error class. `resolveRef` throws neither: deployment state records resolved
+ * values, not declared uses or expression paths.
  */
 export function resolveRef(
 	state: DeploymentState,

@@ -3,20 +3,21 @@
  * CLI entry point for the Launchfile Docker provider.
  *
  * Usage:
- *   launchfile up <slug|path|url> [--detach] [--dry-run]
+ *   launchfile up <slug|path|url> [--dry-run]   (compose always runs detached)
  *   launchfile down [--destroy]
  *   launchfile status [slug]
  *   launchfile logs [--follow]
  *   launchfile list
  */
 
+import { hasFlag as hasLongFlag } from "./cli-flags.js";
 import { dockerUp, dockerDown, dockerStatus, dockerLogs, dockerList } from "./provider.js";
 
 const args = process.argv.slice(2);
 const command = args[0];
 
 function hasFlag(flag: string): boolean {
-	return args.includes(`--${flag}`);
+	return hasLongFlag(args, flag);
 }
 
 function getPositional(index: number): string | undefined {
@@ -45,9 +46,8 @@ async function main(): Promise<void> {
 				process.exit(1);
 			}
 			await dockerUp(source, {
-				detach: hasFlag("detach"),
 				dryRun: hasFlag("dry-run"),
-				yes: hasFlag("yes") || hasFlag("y"),
+				yes: hasFlag("yes"),
 			});
 			break;
 		}
@@ -65,7 +65,7 @@ async function main(): Promise<void> {
 
 		case "logs":
 			await dockerLogs({
-				follow: hasFlag("follow") || hasFlag("f"),
+				follow: hasFlag("follow"),
 				slug: getPositional(0),
 			});
 			break;

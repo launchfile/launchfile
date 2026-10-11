@@ -1,3 +1,4 @@
+import { exec, execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { chmod, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -6,7 +7,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NodeInstaller } from "../runtimes/node.js";
 import { PythonInstaller } from "../runtimes/python.js";
 import { RubyInstaller } from "../runtimes/ruby.js";
-import { shell } from "../shell.js";
+import { shell, shellScript } from "../shell.js";
+
+// Spies that call straight through to the real functions, so every test in
+// this file still spawns real processes while the argv each spawn received
+// stays inspectable.
+vi.mock("node:child_process", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:child_process")>();
+	return {
+		...actual,
+		exec: vi.fn(actual.exec),
+		execFile: vi.fn(actual.execFile),
+	};
+});
 
 /**
  * A runtime version is read verbatim out of the target repo (`.nvmrc`,
@@ -99,6 +112,76 @@ describe("shell() argument handling", () => {
 		// The payload survives as one argument — proof it was handed over
 		// rather than parsed.
 		expect(result.stdout.trim()).toBe(`x; touch ${marker}`);
+	});
+});
+
+describe("shellScript() command-string handling", () => {
+	it("hands the command string to /bin/sh as a single -c argument", async () => {
+		const command = "echo one | tr a-z A-Z && echo two";
+
+		const result = await shellScript(command, { silent: true });
+
+		expect(vi.mocked(execFile)).toHaveBeenCalledWith(
+			"/bin/sh",
+			["-c", command],
+			expect.any(Object),
+			expect.any(Function),
+		);
+		expect(vi.mocked(exec)).not.toHaveBeenCalled();
+		// Pipes and `&&` still work: the author's string is shell syntax by
+		// contract (SPEC.md § Command interpretation, D-48).
+		expect(result).toEqual({ exitCode: 0, stdout: "ONE\ntwo\n", stderr: "" });
+	});
+
+	it("passes cwd, env and timeout through to the spawn", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "lf-script-cwd-"));
+
+		const result = await shellScript('printf "%s|%s" "$PWD" "$LF_PROBE"', {
+			silent: true,
+			cwd: dir,
+			env: { LF_PROBE: "probe-value" },
+			timeout: 5_000,
+		});
+
+		const [, , opts] = vi.mocked(execFile).mock.calls.at(-1) ?? [];
+		expect(opts).toMatchObject({ cwd: dir, timeout: 5_000 });
+		expect(result.stdout.endsWith(`|probe-value`)).toBe(true);
+	});
+
+	it("rejects on a non-zero exit, naming the command and stderr", async () => {
+		await expect(
+			shellScript("echo boom >&2; exit 3", { silent: true }),
+		).rejects.toMatchObject({
+			message: "Command failed: echo boom >&2; exit 3\nboom\n",
+			result: { exitCode: 3, stdout: "", stderr: "boom\n" },
+		});
+	});
+
+	it("resolves with the exit code when allowFailure is set", async () => {
+		const result = await shellScript("exit 7", {
+			silent: true,
+			allowFailure: true,
+		});
+
+		expect(result.exitCode).toBe(7);
+	});
+
+	it("reports a timeout as a failure", async () => {
+		const result = await shellScript("sleep 5", {
+			silent: true,
+			allowFailure: true,
+			timeout: 100,
+		});
+
+		expect(result.exitCode).not.toBe(0);
+	});
+
+	it("echoes the command string, not the /bin/sh wrapper", async () => {
+		const log = vi.mocked(console.log);
+
+		await shellScript("true");
+
+		expect(log).toHaveBeenCalledWith("  $ true");
 	});
 });
 

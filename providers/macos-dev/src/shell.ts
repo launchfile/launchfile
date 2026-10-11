@@ -14,10 +14,8 @@
  */
 
 import {
-	exec as cpExec,
 	execFile as cpExecFile,
 	type ExecFileOptions,
-	type ExecOptions,
 } from "node:child_process";
 import { redactSecrets } from "./redact.js";
 
@@ -67,15 +65,15 @@ function failure(display: string, result: ShellResult): Error {
 }
 
 /**
- * Run a command with an argument array. Arguments reach the OS directly, so
- * they are never parsed as shell syntax.
+ * Spawn `cmd` with `args` via `execFile` and settle with a structured result.
+ * `display` is what the user sees echoed and what a failure message names.
  */
-export async function shell(
+function run(
 	cmd: string,
 	args: string[],
-	opts: ShellOpts & { allowFailure?: boolean } = {},
+	display: string,
+	opts: ShellOpts & { allowFailure?: boolean },
 ): Promise<ShellResult> {
-	const display = [cmd, ...args].join(" ");
 	if (!opts.silent) {
 		// An argument can carry a resolved secret (a generated DB password, a
 		// credential-bearing URL). Scrub before echo.
@@ -96,6 +94,18 @@ export async function shell(
 			else resolve(result);
 		});
 	});
+}
+
+/**
+ * Run a command with an argument array. Arguments reach the OS directly, so
+ * they are never parsed as shell syntax.
+ */
+export async function shell(
+	cmd: string,
+	args: string[],
+	opts: ShellOpts & { allowFailure?: boolean } = {},
+): Promise<ShellResult> {
+	return run(cmd, args, [cmd, ...args].join(" "), opts);
 }
 
 /** Run a command with an argument array, return true if exit code is 0. */
@@ -124,22 +134,8 @@ export async function shellScript(
 	command: string,
 	opts: ShellOpts & { allowFailure?: boolean } = {},
 ): Promise<ShellResult> {
-	if (!opts.silent) {
-		console.log(`  $ ${redactSecrets(command)}`);
-	}
-
-	const execOpts: ExecOptions = {
-		cwd: opts.cwd,
-		env: opts.env ? { ...process.env, ...opts.env } : undefined,
-		timeout: opts.timeout ?? DEFAULT_TIMEOUT_MS,
-		maxBuffer: MAX_BUFFER,
-	};
-
-	return new Promise((resolve, reject) => {
-		cpExec(command, execOpts, (error, stdout, stderr) => {
-			const result = toResult(error, stdout, stderr);
-			if (error && !opts.allowFailure) reject(failure(command, result));
-			else resolve(result);
-		});
-	});
+	// The command string is one argv element of an explicit `/bin/sh -c`, the
+	// same shape `@launchfile/docker` uses. The shell parses the author's
+	// string; nothing this provider adds is ever spliced into it.
+	return run("/bin/sh", ["-c", command], command, opts);
 }
