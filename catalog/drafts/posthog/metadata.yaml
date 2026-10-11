@@ -2,7 +2,7 @@ test_results:
   last_tested: 2026-09-25
   pull_time_seconds: 2
   startup_time_seconds: 369
-  total_disk_mb: 11906
+  total_download_mb: 2592
   health_check_passed: false
   notes: >-
     Health check timed out at a 360s wait budget (declared start_period 300s),
@@ -15,22 +15,22 @@ test_results:
     ./bin/docker is `set -e`, so the web server never starts.
 images:
   - name: posthog/posthog:latest
-    size_mb: 9745
+    size_mb: 2041
     platform:
       - linux/arm64
   - name: postgres:16-alpine
-    size_mb: 392
+    size_mb: 109
     platform:
       - linux/arm64
   - name: redis:7-alpine
-    size_mb: 56
+    size_mb: 16
     platform:
       - linux/arm64
   - name: clickhouse/clickhouse-server:latest
-    size_mb: 1117
+    size_mb: 260
     platform:
       - linux/arm64
   - name: redpandadata/redpanda:v25.1.12
-    size_mb: 596
+    size_mb: 166
     platform:
       - linux/arm64

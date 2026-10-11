@@ -5,11 +5,11 @@ test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 8
   startup_time_seconds: 1
-  total_disk_mb: 255
+  total_download_mb: 105
   health_check_passed: true
   notes: ""
 images:
   - name: ghcr.io/imputnet/cobalt:latest
-    size_mb: 255
+    size_mb: 105
     platform:
       - linux/arm64

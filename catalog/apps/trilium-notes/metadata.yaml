@@ -5,11 +5,11 @@ test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 16
   startup_time_seconds: 6
-  total_disk_mb: 301
+  total_download_mb: 125
   health_check_passed: true
   notes: ""
 images:
   - name: triliumnext/notes:latest
-    size_mb: 301
+    size_mb: 125
     platform:
       - linux/arm64

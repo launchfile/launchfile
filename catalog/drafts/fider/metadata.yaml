@@ -8,7 +8,7 @@ test_results:
   last_tested: 2026-10-03
   pull_time_seconds: 1
   startup_time_seconds: 106
-  total_disk_mb: 891
+  total_download_mb: 298
   health_check_passed: false
   notes: "Containers running but health check timed out"
 known_issues:
@@ -19,10 +19,10 @@ known_issues:
     All three required vars tracked in #231 are set (BASE_URL from its Launchfile default, the two EMAIL vars from test_env)."
 images:
   - name: getfider/fider:stable
-    size_mb: 499
+    size_mb: 189
     platform:
       - linux/arm64
   - name: postgres:16-alpine
-    size_mb: 392
+    size_mb: 109
     platform:
       - linux/arm64
