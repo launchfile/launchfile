@@ -400,6 +400,29 @@ describe("the macOS branch's try-split", () => {
 		expect(output.join("\n")).toContain("recorded as unhealthy");
 	});
 
+	it("records a component exit as unknown — the other processes are left running (#526)", async () => {
+		const fake = {
+			launchUp: () =>
+				Promise.reject(
+					launchError("run", "component(s) exited before coming up: web (exit code 1)"),
+				),
+		} as unknown as typeof import("@launchfile/macos-dev");
+
+		await expect(
+			handleUp(
+				projectDir,
+				{ native: true },
+				{ importMacos: async () => fake, indexDir, recordDir },
+			),
+		).rejects.toThrow("exited before coming up");
+
+		const entries = Object.values((await index()).deployments);
+		expect(entries).toHaveLength(1);
+		expect(entries[0]!.provider).toBe("macos");
+		expect(entries[0]!.status).toBe("unknown");
+		expect(output.join("\n")).toContain("recorded as unknown");
+	});
+
 	it("records nothing for a failure before any process exists", async () => {
 		const fake = {
 			launchUp: () => Promise.reject(launchError("release", "release [web] failed")),
