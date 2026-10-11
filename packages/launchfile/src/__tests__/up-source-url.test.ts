@@ -2,7 +2,8 @@
  * A URL target's credentials never reach the deployment index (#627, D-55
  * rule 3). The index keys a URL deployment by its canonical form, and a lookup
  * compares canonical forms on both sides, so a rotated token re-ups the same
- * row and an older row holding the raw URL still matches.
+ * row and an older row holding the raw URL — even under the `catalog:` prefix
+ * older CLIs wrote — still matches.
  *
  * Directories are injected temp paths — nothing touches the real
  * ~/.launchfile and nothing talks to docker. Every `handleUp` call passes
@@ -21,8 +22,7 @@ import type { DeploymentIndex } from "../state/types.js";
 
 const TOKEN_URL =
 	"https://user:tok-USERINFO-627@host.example/apps/notes/Launchfile?token=tok-QUERY-627&ref=v1";
-const CANONICAL_KEY =
-	"catalog:https://host.example/apps/notes/Launchfile?ref=v1";
+const CANONICAL_KEY = "https://host.example/apps/notes/Launchfile?ref=v1";
 
 let indexDir: string;
 let recordDir: string;
@@ -133,7 +133,7 @@ describe("a URL up writes no credential to index.json (#627)", () => {
 		await handleUp(`${base}?ref=release/1.0`, { docker: true }, deps);
 		const entries = Object.values((await loadIndex(indexDir)).deployments);
 		expect(entries).toHaveLength(1);
-		expect(entries[0]!.source).toBe(`catalog:${base}?ref=release/1.0`);
+		expect(entries[0]!.source).toBe(`${base}?ref=release/1.0`);
 	});
 
 	it("a different ?ref= is a different row", async () => {
@@ -149,7 +149,7 @@ describe("a URL up writes no credential to index.json (#627)", () => {
 		);
 	});
 
-	it("matches an older row holding the raw URL and rewrites it canonical", async () => {
+	it("matches an older catalog:-prefixed row holding the raw URL and rewrites it canonical", async () => {
 		const legacy: DeploymentIndex = {
 			version: 1,
 			deployments: {

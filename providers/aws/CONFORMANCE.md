@@ -12,9 +12,9 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ## Summary
 
-- **86** Launchfile(s) translated
-- **169** field mappings
-- **98** gaps logged (never silently dropped)
+- **85** Launchfile(s) translated
+- **166** field mappings
+- **97** gaps logged (never silently dropped)
 - **8** specializations safely ignored
 
 ### Distinct gaps
@@ -25,8 +25,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 | `supports:postgres` | 🟢 nice-to-have | optional resources (supports) are not provisioned by this probe | provision behind a Terraform variable toggle |
 | `supports:certificate` | 🟢 nice-to-have | the app can serve TLS on its own listener 'web' with the certificate 'server-cert', and this probe has no way to place one in the task | mount the certificate into the task and supply cert_file/key_file, or terminate TLS at the ALB instead — a different arrangement, not this entry |
 | `supports:https-origin` | 🟢 nice-to-have | the app would use a public HTTPS origin in front of endpoint 'web', and this probe emits an http-only load balancer | terminate TLS at the ALB (aws_acm_certificate + an HTTPS listener) |
-| `requires:clickhouse` | 🟡 workaround | no managed AWS service mapping for resource type 'clickhouse' | model as a self-hosted component, or extend MANAGED_RESOURCES |
-| `requires:kafka` | 🟡 workaround | no managed AWS service mapping for resource type 'kafka' | model as a self-hosted component, or extend MANAGED_RESOURCES |
+| `requires:postgres.version` | 🟡 workaround | declared version ">=9.6" is a range this probe does not resolve to an engine version; it emits no engine_version, so RDS uses its default postgres version | set engine_version on aws_db_instance.hedgedoc_postgres to an RDS postgres version that satisfies ">=9.6" |
 | `requires:https-origin` | 🔴 blocker | the app requires a public HTTPS origin in front of endpoint 'web', and this probe emits an http-only load balancer | terminate TLS at the ALB (aws_acm_certificate + an HTTPS listener) before deploying this app |
 | `runtime` | 🔴 blocker | no runtime and no commands.start — nothing to build or run on EC2 | — |
 | `schedule` | 🟢 nice-to-have | cron schedule not mapped (no EventBridge Scheduler in this probe) | map to aws_scheduler_schedule |
@@ -368,7 +367,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### hedgedoc
 
-> Source: `catalog/apps/hedgedoc/Launchfile` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/hedgedoc/Launchfile` — 2 mapped, 2 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -377,6 +376,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 **Gaps**
 
+- 🟡 `requires:postgres.version`: declared version ">=9.6" is a range this probe does not resolve to an engine version; it emits no engine_version, so RDS uses its default postgres version — set engine_version on aws_db_instance.hedgedoc_postgres to an RDS postgres version that satisfies ">=9.6"
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
 
 ### homebox
@@ -692,22 +692,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 **Gaps**
 
-- 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
-
-### posthog
-
-> Source: `catalog/apps/posthog/Launchfile` — 3 mapped, 3 gap(s), 0 ignored
-
-| Launchfile field | → Terraform | Component |
-|---|---|---|
-| `requires:postgres` | `aws_db_instance` | — |
-| `requires:redis` | `aws_elasticache_cluster` | — |
-| `provides.exposed` | `aws_lb (ALB)` | — |
-
-**Gaps**
-
-- 🟡 `requires:clickhouse`: no managed AWS service mapping for resource type 'clickhouse' — model as a self-hosted component, or extend MANAGED_RESOURCES
-- 🟡 `requires:kafka`: no managed AWS service mapping for resource type 'kafka' — model as a self-hosted component, or extend MANAGED_RESOURCES
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
 
 ### privatebin
@@ -1059,7 +1043,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### hedgedoc
 
-> Source: `spec/examples/multi-component.yaml` — 13 mapped, 0 gap(s), 2 ignored
+> Source: `spec/examples/multi-component.yaml` — 13 mapped, 1 gap(s), 2 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1076,6 +1060,10 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 | `env` | `aws_ssm_parameter` | frontend |
 | `provides.exposed` | `aws_lb (ALB)` | — |
 | `provides.exposed:frontend` | `aws_lb_target_group + listener` | frontend |
+
+**Gaps**
+
+- 🟡 `requires:postgres.version`: declared version ">=15" is a range this probe does not resolve to an engine version; it emits no engine_version, so RDS uses its default postgres version — set engine_version on aws_db_instance.hedgedoc_postgres to an RDS postgres version that satisfies ">=15"
 
 **Ignored specializations** (contract sufficed — D-40 / RFC C)
 

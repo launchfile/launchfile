@@ -2,14 +2,25 @@ category: RSS
 tagline: "Self-hosted RSS feed aggregator"
 homepage: https://freshrss.org
 test_results:
-  last_tested: 2026-04-06
-  pull_time_seconds: 3
-  startup_time_seconds: 1
-  total_disk_mb: 277
+  last_tested: 2026-10-03
+  pull_time_seconds: 1
+  startup_time_seconds: 6
+  total_disk_mb: 788
   health_check_passed: true
-  notes: ""
+  notes: >-
+    2026-10-03: launched with postgres:16-alpine on the default port 5432 (harness run with the optional
+    postgres activated). DB_HOST=freshrss-postgres:5432 in the container. FreshRSS reads DB_HOST only through
+    the FRESHRSS_INSTALL template (--db-host $DB_HOST), which the Launchfile does not set, so the harness run
+    alone never connects. Re-run with FRESHRSS_INSTALL and FRESHRSS_USER per FreshRSS Docker/README.md:
+    do-install wrote host 'freshrss-postgres:5432' into data/config.php, create-user created 6 freshrss_admin_*
+    tables in Postgres, and Postgres showed a session from the freshrss container.
+    Non-default port not tested (needs #568).
 images:
   - name: freshrss/freshrss:latest
-    size_mb: 277
+    size_mb: 396
+    platform:
+      - linux/arm64
+  - name: postgres:16-alpine
+    size_mb: 392
     platform:
       - linux/arm64

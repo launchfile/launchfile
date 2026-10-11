@@ -92,6 +92,8 @@ Never include: `src/`, `**/__tests__/`, `*.map`, `tsconfig*.json`, `bun.lock`.
 
 The CI pipeline must match dependency order: SDK → Providers → CLI. Each step must build before test (tests may import from dist/).
 
+A provider whose test consumes another provider builds that provider first (macos-dev's cross-provider test imports `@launchfile/docker`, so its CI leg builds `providers/docker`).
+
 ```
 SDK (typecheck → build → test)
   ↓
@@ -103,6 +105,9 @@ Catalog (build SDK + providers/docker first, then typecheck → test → validat
   ↓
 Websites (need Node >= 22 for Astro 6, need wrangler.toml with pinned compat_date)
 ```
+
+The bun version CI uses is pinned in the root `.bun-version`. Every `oven-sh/setup-bun`
+step reads it through `bun-version-file`; change the version there only.
 
 `catalog/test` is not a workspace member, so it carries its own committed
 `bun.lock` (like `smoke-tests/`) and installs `--frozen-lockfile`. Its suite runs

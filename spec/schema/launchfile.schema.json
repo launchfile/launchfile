@@ -364,7 +364,7 @@
       "type": "object",
       "properties": {
         "path": { "type": "string", "description": "HTTP path to check" },
-        "command": { "type": "string", "description": "Command for non-HTTP checks. If both path and command are present, path takes precedence." },
+        "command": { "type": "string", "description": "Shell command run as the check; exit status 0 means healthy. May probe an HTTP endpoint when a path check cannot run for the app. If both path and command are present, path takes precedence." },
         "interval": { "type": "string", "description": "Check interval — a duration: an integer immediately followed by one unit ms|s|m|h, e.g. '30s'. No spaces, no compound values like '1m30s' (D-48)." },
         "timeout": { "type": "string", "description": "Timeout per check — a duration: an integer immediately followed by one unit ms|s|m|h, e.g. '5s'. No spaces, no compound values like '1m30s' (D-48)." },
         "retries": { "type": "integer", "minimum": 1, "description": "Failures before unhealthy" },

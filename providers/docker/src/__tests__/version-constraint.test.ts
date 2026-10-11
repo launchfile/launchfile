@@ -88,6 +88,31 @@ describe("requires[].version constraint reporting", () => {
 		}
 	});
 
+	it("reports a range on minio/s3 as uncheckable against a RELEASE tag", () => {
+		// MinIO images carry `RELEASE.<timestamp>` tags, which name no semver
+		// version. Any range, satisfiable or not, is a gap to surface — never a
+		// throw and never a false "not satisfied".
+		for (const type of ["minio", "s3"] as const) {
+			for (const range of [">=2024", "^1.0.0", ">=99"]) {
+				let warnings: string[] = [];
+				expect(() => {
+					warnings = versionWarnings(
+						`  - type: ${type}\n    version: "${range}"\n`,
+					);
+				}).not.toThrow();
+				expect(warnings).toHaveLength(1);
+				expect(warnings[0]).toContain(`requires[${type}]:`);
+				expect(warnings[0]).toContain("cannot be checked");
+				expect(warnings[0]).toContain(
+					"pgsty/minio:RELEASE.2026-08-04T00-00-00Z",
+				);
+				expect(warnings[0]).not.toContain("is not satisfied");
+				expect(warnings[0]).toContain("names no semver version");
+				expect(warnings[0]).not.toContain("not fixed");
+			}
+		}
+	});
+
 	it("stays silent for an entry that declares no version", () => {
 		expect(versionWarnings("  - type: postgres\n")).toEqual([]);
 	});

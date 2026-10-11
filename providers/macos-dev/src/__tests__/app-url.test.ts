@@ -12,10 +12,9 @@
  */
 
 import {
-	chmodSync,
 	existsSync,
-	mkdirSync,
 	mkdtempSync,
+	readdirSync,
 	readFileSync,
 	rmSync,
 	writeFileSync,
@@ -28,34 +27,22 @@ import { computeAppProperties } from "../env-writer.js";
 
 const shellCalls: string[] = [];
 const startRegistrations: { name: string; env: Record<string, string> }[] = [];
-const writtenEnvFiles: { path: string; content: string }[] = [];
 const consoleLogs: string[] = [];
 
-vi.mock("node:fs/promises", () => ({
-	readFile: async (path: string, encoding?: BufferEncoding) =>
-		readFileSync(path, encoding ?? "utf8"),
-	writeFile: async (
-		path: string,
-		content: string,
-		opts?: { mode?: number },
-	) => {
-		writtenEnvFiles.push({ path: String(path), content: String(content) });
-		writeFileSync(
-			path,
-			content,
-			opts?.mode !== undefined ? { mode: opts.mode } : undefined,
-		);
-	},
-	mkdir: async (
-		path: string,
-		opts?: { recursive?: boolean; mode?: number },
-	) => {
-		mkdirSync(path, opts);
-	},
-	chmod: async (path: string, mode: number) => {
-		chmodSync(path, mode);
-	},
-}));
+/** The env files `up` wrote, read back off disk: `.env.local` and `.launchfile/env/*.env`. */
+function writtenEnvFiles(projectDir: string): { path: string; content: string }[] {
+	const files: { path: string; content: string }[] = [];
+	const local = join(projectDir, ".env.local");
+	if (existsSync(local)) files.push({ path: local, content: readFileSync(local, "utf8") });
+	const envDir = join(projectDir, ".launchfile", "env");
+	if (existsSync(envDir)) {
+		for (const name of readdirSync(envDir)) {
+			const path = join(envDir, name);
+			files.push({ path, content: readFileSync(path, "utf8") });
+		}
+	}
+	return files;
+}
 
 vi.mock("../prereqs.js", () => ({
 	checkPrereqs: async () => ({ ok: true, missing: [] }),
@@ -168,7 +155,6 @@ describe("launchUp publication context (D-58)", () => {
 	beforeEach(() => {
 		shellCalls.length = 0;
 		startRegistrations.length = 0;
-		writtenEnvFiles.length = 0;
 		consoleLogs.length = 0;
 		projectDir = mkdtempSync(join(tmpdir(), "lf-macos-appurl-"));
 		writeFileSync(join(projectDir, "Launchfile"), LAUNCHFILE);
@@ -186,7 +172,7 @@ describe("launchUp publication context (D-58)", () => {
 	});
 
 	function envLocal(): string {
-		const file = writtenEnvFiles
+		const file = writtenEnvFiles(projectDir)
 			.filter((f) => f.path.endsWith(".env.local"))
 			.at(-1);
 		return file?.content ?? "";
@@ -255,7 +241,7 @@ describe("launchUp publication context (D-58)", () => {
 
 		expect(shellCalls).toEqual([]);
 		expect(startRegistrations).toEqual([]);
-		expect(writtenEnvFiles).toEqual([]);
+		expect(writtenEnvFiles(projectDir)).toEqual([]);
 		expect(existsSync(join(projectDir, ".launchfile"))).toBe(false);
 	});
 
@@ -442,7 +428,6 @@ describe("launchUp https-origin through the publication context (D-60 rule 5)", 
 	beforeEach(() => {
 		shellCalls.length = 0;
 		startRegistrations.length = 0;
-		writtenEnvFiles.length = 0;
 		consoleLogs.length = 0;
 		consoleErrors.length = 0;
 		consoleWarns.length = 0;
@@ -489,7 +474,7 @@ describe("launchUp https-origin through the publication context (D-60 rule 5)", 
 		expect(consoleErrors.join("\n")).toContain(
 			'Refused: web requires a public HTTPS origin this provider cannot supply (https-origin (endpoint "ui"): the supplied publication URL\'s scheme is "http", not https)',
 		);
-		expect(writtenEnvFiles.some((f) => f.path.endsWith("web.env"))).toBe(false);
+		expect(writtenEnvFiles(projectDir).some((f) => f.path.endsWith("web.env"))).toBe(false);
 	});
 
 	it("refuses the component when nothing is supplied or recorded, saying so", async () => {
@@ -590,6 +575,6 @@ describe("launchUp https-origin through the publication context (D-60 rule 5)", 
 		expect(consoleErrors.join("\n")).toContain(
 			"Refused: web requires a use of a resource this provider cannot cover (https-origin: anything: x)",
 		);
-		expect(writtenEnvFiles.some((f) => f.path.endsWith("web.env"))).toBe(false);
+		expect(writtenEnvFiles(projectDir).some((f) => f.path.endsWith("web.env"))).toBe(false);
 	});
 });
