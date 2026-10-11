@@ -73,9 +73,10 @@ vi.mock("../port-allocator.js", () => ({
 }));
 
 // Both factories list every export the code under test pulls, rather than
-// spreading the real module via vitest's `importOriginal`. CI runs `bun test`
-// (ci.yml, the providers matrix), whose `vi.mock` passes no `importOriginal`
-// argument -- a factory that calls it throws before any test runs.
+// spreading the real module via vitest's `importOriginal`. The suite runs under
+// `vitest run` (`bun run test`; ci.yml, the providers matrix). bunfig.toml's
+// test-guard blocks a bare `bun test`, whose `vi.mock` passes no
+// `importOriginal` argument.
 vi.mock("node:fs/promises", () => ({
 	writeFile: async () => {},
 	readdir: async () => [],
@@ -83,6 +84,7 @@ vi.mock("node:fs/promises", () => ({
 }));
 
 vi.mock("../state.js", () => ({
+	writePrivateFile: async () => {},
 	loadState: async () => null,
 	instanceSlug: (baseSlug: string, label?: string) =>
 		label ? `${baseSlug}-${label}` : baseSlug,

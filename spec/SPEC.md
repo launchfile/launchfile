@@ -786,13 +786,15 @@ A string shorthand (`health: /health`) expands to `{ path: "/health" }`.
 | Field | Type | Description |
 |---|---|---|
 | `path` | `string` | HTTP path to check |
-| `command` | `string` | Shell command for non-HTTP checks |
+| `command` | `string` | Shell command run as the check — exit status 0 means healthy. Use it when `path` cannot express the check, including an HTTP probe (see below) |
 | `interval` | `string` | Check interval — a [duration](#durations) (e.g. `30s`, `1m`) |
 | `timeout` | `string` | Timeout per check attempt — a [duration](#durations) |
 | `retries` | `integer` | Consecutive failures before unhealthy (min: 1) |
 | `start_period` | `string` | Grace period before failures count — a [duration](#durations) |
 
 Use `path` for HTTP checks or `command` for exec checks. If both are present, `path` takes precedence.
+
+A `command` may probe an HTTP endpoint. Use this when a provider's `path` check cannot run for the app. For example, a provider may run `path` checks with an HTTP client such as `wget` or `curl` from the app's image, and some images ship neither. The command can use only tools available where the provider runs it.
 
 ```yaml
 health:
@@ -1221,7 +1223,7 @@ The six are the standard `$app.*` set less `name`, each defined per endpoint exa
 
 1. A provider computes every endpoint's address through the same derivation it uses for `$app.*`. Where a provider publishes a per-endpoint address, the **primary** endpoint's `$app.endpoints.<name>.url` **is** `$app.url` — the same value, never a second computation.
 2. `scheme`, `tls` and `url` read the entry's **effective** listener ([Native TLS](#native-tls-with-a-certificate-binding)): an active certificate binding makes them read `https` and `true`.
-3. Unnamed endpoints are not addressable — add a `name:`. An endpoint name is app-wide: the same name on two components is a **validation error** naming both.
+3. Unnamed endpoints are not addressable — add a `name:`. An endpoint name is app-wide: the same name on two components, or on two entries of one component, is a **validation error** naming both.
 4. Anything else resolves `""` with a `validate` warning naming it: an unknown name, a named endpoint that is not `exposed: true`, `$app.endpoints` with no name, `$app.endpoints.<name>` with no property, a property outside the six, and an endpoint the provider publishes no address for (`@launchfile/macos-dev` and `@launchfile/aws` today, where this reaches the primary too and `$app.url` keeps its own value). A `tcp`/`udp` endpoint's `""` `url` and `scheme` are a defined answer and draw no warning.
 5. An orchestrator-supplied publication context asserts the **primary** endpoint's address only ([D-58](DESIGN.md#d-58-orchestrator-supplied-publication-context--app-under-an-owning-orchestrator) rule 4): while one is supplied, every other named endpoint resolves `""`.
 

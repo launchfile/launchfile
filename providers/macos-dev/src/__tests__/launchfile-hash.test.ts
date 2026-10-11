@@ -8,8 +8,6 @@
  */
 
 import {
-	chmodSync,
-	mkdirSync,
 	mkdtempSync,
 	readFileSync,
 	rmSync,
@@ -18,31 +16,6 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("node:fs/promises", () => ({
-	readFile: async (path: string, encoding?: BufferEncoding) =>
-		readFileSync(path, encoding ?? "utf8"),
-	writeFile: async (
-		path: string,
-		content: string,
-		opts?: { mode?: number },
-	) => {
-		writeFileSync(
-			path,
-			content,
-			opts?.mode !== undefined ? { mode: opts.mode } : undefined,
-		);
-	},
-	mkdir: async (
-		path: string,
-		opts?: { recursive?: boolean; mode?: number },
-	) => {
-		mkdirSync(path, opts);
-	},
-	chmod: async (path: string, mode: number) => {
-		chmodSync(path, mode);
-	},
-}));
 
 vi.mock("../prereqs.js", () => ({
 	checkPrereqs: async () => ({ ok: true, missing: [] }),

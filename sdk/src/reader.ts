@@ -31,6 +31,8 @@ import type {
 	Commands,
 	EnvVar,
 	Component,
+	Provides,
+	StorageVolume,
 } from "./types.js";
 
 // Security: cap input size and YAML alias expansion to prevent
@@ -124,14 +126,14 @@ function normalizeComponent(component: Component, defaults?: Launch): Normalized
 		image: component.image ?? defaults?.image,
 		build: normalizeBuild(component.build ?? defaults?.build),
 		source: component.source ?? defaults?.source,
-		provides: component.provides ?? defaults?.provides,
+		provides: normalizeProvides(component.provides ?? defaults?.provides),
 		requires: normalizeRequirements(component.requires ?? defaults?.requires),
 		supports: normalizeRequirements(component.supports ?? defaults?.supports),
 		env: normalizeEnv(component.env ?? defaults?.env),
 		commands: normalizeCommands(component.commands ?? defaults?.commands),
 		health: normalizeHealth(component.health ?? defaults?.health),
 		depends_on: normalizeDependsOn(component.depends_on ?? defaults?.depends_on),
-		storage: component.storage ?? defaults?.storage,
+		storage: normalizeStorage(component.storage ?? defaults?.storage),
 		restart: component.restart ?? defaults?.restart,
 		schedule: component.schedule ?? defaults?.schedule,
 		singleton: component.singleton ?? defaults?.singleton,
@@ -152,6 +154,24 @@ function normalizeBuild(build: string | Build | undefined): NormalizedBuild | un
 		args: build.args,
 		secrets: build.secrets,
 	};
+}
+
+/**
+ * Copies the provides array and each entry so components that inherit the
+ * top-level `provides` do not share entry objects. This is a shallow copy:
+ * nested values (`spec`, `at`, and the object form of `tls`) stay shared
+ * across inheriting components. Do not mutate them in place.
+ */
+function normalizeProvides(provides: Provides[] | undefined): Provides[] | undefined {
+	return provides?.map((p) => ({ ...p }));
+}
+
+/** Copies the storage map and each volume so inheriting components do not share objects. */
+function normalizeStorage(
+	storage: Record<string, StorageVolume> | undefined,
+): Record<string, StorageVolume> | undefined {
+	if (!storage) return undefined;
+	return Object.fromEntries(Object.entries(storage).map(([k, v]) => [k, { ...v }]));
 }
 
 function normalizeRequirements(

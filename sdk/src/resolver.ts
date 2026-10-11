@@ -64,10 +64,11 @@ export interface ResolverContext {
 	 * `$<resource>.<use>.<name>.<property>` strictly: the use key must be
 	 * declared and the property registered under the dotted key
 	 * `<use key>.<property>` in the resource's map, or resolution throws
-	 * {@link UnresolvedUseError}. The last-segment fallback the multi-segment
-	 * branch keeps for every other resource does not apply, so a mistyped use,
-	 * name or property never resolves to the instance value behind it. A
-	 * resource absent from this map keeps the general rules.
+	 * {@link UnresolvedUseError}, never `""` and never softened by a
+	 * `:-default`. A resource absent from this map keeps the general rule: the
+	 * path tail is one key in its map, and an unregistered tail resolves
+	 * undefined — `requires: postgres` registering `host` answers
+	 * `$postgres.host` with `pg-host` and `$postgres.deep.host` with `""`.
 	 */
 	uses?: Record<string, readonly string[]>;
 }
@@ -140,6 +141,17 @@ export interface AppEndpointProperties {
  */
 export const UNPUBLISHED_APP_ENDPOINT: Readonly<AppEndpointProperties> =
 	Object.freeze({ url: "", host: "", port: "", scheme: "", authority: "", tls: "" });
+
+/**
+ * The `$app.*` address of a primary whose component is refused (D-72):
+ * every field `""` — the answer D-63 rule 4 gives an endpoint the provider
+ * publishes no address for — with `tls` reading `false`, as D-63 rule 3 has
+ * a listener with no origin read it, so a literal on/off flag
+ * (`USE_SSL: $app.tls`) still receives a boolean. One object for every
+ * provider, so a refused file resolves the same `$app.*` under each (P-5).
+ */
+export const REFUSED_PRIMARY_ADDRESS: Readonly<AppEndpointProperties> =
+	Object.freeze({ ...UNPUBLISHED_APP_ENDPOINT, tls: "false" });
 
 /**
  * Derive the URL-shaped members of the standard `$app.*` set (D-35) from a
@@ -575,8 +587,8 @@ function resolvePath(
 	// Each covered use registers its properties under the dotted key
 	// `<use key>.<property>` — `db.url`, or `db.cache.url` for a named use —
 	// nothing else answers, and a miss throws rather than falling through to
-	// the last-segment probe below, which would hand back the instance value
-	// for a use the entry never declared. The named form is recognised by its
+	// the general lookup below, where a wrong use path resolves "" and a
+	// `:-default` would hide it (D-65 rule 2). The named form is recognised by its
 	// declared key (`db.cache`), so on an entry that names its `db` uses the
 	// bare `$redis.db.url` is a miss — there is no unnamed database to mean —
 	// and on an entry with a bare `db` the fourth segment is a property path.
@@ -605,18 +617,23 @@ function resolvePath(
 		}
 	}
 
-	// Multi-segment → named resource
+	// Multi-segment → named resource. The tail of the path is one key in the
+	// resource's map: `$postgres.host` reads `host`, `$redis.db.url` reads the
+	// registered dotted key `db.url`. There is no last-segment fallback (L-1):
+	// an unregistered tail such as `$postgres.deep.host` is not answered here
+	// with the `host` it happens to end in; unless the branch below matches it
+	// literally it resolves undefined — "" or a `:-default` at the caller (L-4).
 	if (path.length >= 2 && context.resources) {
 		const resource = own(context.resources, first);
 		if (resource) {
-			const propKey = path.slice(1).join(".");
-			const val =
-				own(resource, propKey) ?? own(resource, path[path.length - 1]!);
+			const val = own(resource, path.slice(1).join("."));
 			if (val !== undefined) return String(val);
 		}
 	}
 
-	// Fallback: enclosing resource with dotted key
+	// Enclosing resource with the whole path as one dotted key (L-1 step 8).
+	// A literal-key match only — it never substitutes a different property for
+	// a path the resource does not register.
 	if (context.resource) {
 		const fullKey = path.join(".");
 		const val = own(context.resource, fullKey);

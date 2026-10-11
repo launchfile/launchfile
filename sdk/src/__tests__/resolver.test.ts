@@ -825,18 +825,16 @@ describe("resolveExpression — inherited prototype keys (D-33, D-39, L-4)", () 
 		expect(resolveExpression("$toString.host", shadowed)).toBe("ts-host");
 	});
 
-	// The dotted-key-then-last-segment double fallback still probes both keys
-	// — for a resource whose entry declares no `uses`. A resource that does
-	// declare `uses` takes the strict branch pinned in the suite below, and a
-	// component has no last-segment fallback at all (D-66): the guarded
-	// component lookup resolves the dotted key only.
-	it("keeps the dotted-key → last-segment fallback on guarded resource lookups for entries without uses", () => {
+	// The guarded component and resource lookups read the path tail as one
+	// key, with no retry on its last segment (D-66 for components, L-1 for
+	// resources): `host` is registered, `deep.host` is not.
+	it("resolves an unregistered multi-segment tail empty on guarded lookups — no last-segment fallback", () => {
 		const nested = {
 			components: { web: { host: "web-host" } },
 			resources: { postgres: { host: "pg-host" } },
 		};
 		expect(resolveExpression("$components.web.deep.host", nested)).toBe("");
-		expect(resolveExpression("$postgres.deep.host", nested)).toBe("pg-host");
+		expect(resolveExpression("$postgres.deep.host", nested)).toBe("");
 	});
 
 	// The reference grammar requires a letter after `$`, so `$__proto__` never
@@ -903,8 +901,9 @@ describe("$<resource>.<use>.<property> on an entry that declares uses", () => {
 		expect(() => resolveExpression("redis://x/${redis.nope.index}", ctx)).toThrow(UnresolvedUseError);
 	});
 
-	it("leaves a resource that declares no uses on the general fallback", () => {
-		expect(resolveExpression("$postgres.deep.host", ctx)).toBe("pg-host");
+	it("leaves a resource that declares no uses on the general rule — a miss resolves empty", () => {
+		expect(resolveExpression("$postgres.host", ctx)).toBe("pg-host");
+		expect(resolveExpression("$postgres.deep.host", ctx)).toBe("");
 	});
 
 	it("carries the resource, use and property on the error", () => {
@@ -999,6 +998,80 @@ describe("$<resource>.<use>.<name>.<property> on an entry that names a repeatabl
 
 	it("is not softened by a :-default in the named form either", () => {
 		expect(() => resolveExpression("${redis.db.nosuch.url:-none}", ctx)).toThrow(UnresolvedUseError);
+	});
+});
+
+/*---
+req: REQ-423
+type: unit
+status: implemented
+area: launch-spec
+summary: A multi-segment named-resource reference resolves its whole tail as one key
+rationale: |
+  The resolver reads `$<resource>.<a>.<b>` as the key `a.b` in the resource's
+  map. A tail the map does not register resolves empty (L-4), so a
+  `:-default` applies, instead of answering with whatever property the path
+  happens to end in. A requirement that declares `uses` keeps its strict
+  branch and still throws (D-65 rule 2).
+acceptance:
+  - An unregistered multi-segment tail resolves empty on a resource and a component
+  - Two-segment resource and three-segment component references are unchanged
+  - A registered dotted key resolves
+  - A :-default applies to the unregistered tail
+  - A uses-declaring entry still throws UnresolvedUseError
+  - The enclosing-resource whole-path literal key still resolves
+tags: [launch-spec, resolver, L-1, L-4]
+source:
+  type: implementation
+  ref: issue-514
+changed:
+  - date: 2026-10-03
+    note: Added with the removal of the named-resource last-segment fallback (#514)
+---*/
+describe("multi-segment named-resource lookup", () => {
+	const context = {
+		components: { web: { url: "http://web:3000", host: "web-host" } },
+		resources: {
+			postgres: { url: "postgres://pg-host:5432/app", host: "pg-host" },
+			pg: { host: "pg-host" },
+			redis: { url: "redis://app-redis:6379", "db.url": "redis://app-redis:6379/0" },
+		},
+		uses: { redis: ["db"] },
+	};
+
+	it("resolves an unregistered tail empty instead of its last segment", () => {
+		expect(resolveExpression("$postgres.deep.host", context)).toBe("");
+		expect(resolveExpression("$postgres.typo.url", context)).toBe("");
+	});
+
+	it("resolves an unregistered component tail empty", () => {
+		expect(resolveExpression("$components.web.deep.host", context)).toBe("");
+	});
+
+	it("leaves registered two- and three-segment references unchanged", () => {
+		expect(resolveExpression("$pg.host", context)).toBe("pg-host");
+		expect(resolveExpression("$postgres.host", context)).toBe("pg-host");
+		expect(resolveExpression("$components.web.url", context)).toBe("http://web:3000");
+	});
+
+	it("resolves a registered dotted key", () => {
+		const dotted = { resources: { postgres: { host: "pg-host", "deep.host": "deep-host" } } };
+		expect(resolveExpression("$postgres.deep.host", dotted)).toBe("deep-host");
+	});
+
+	it("applies a :-default to the unregistered tail", () => {
+		expect(resolveExpression("${postgres.deep.host:-fallback}", context)).toBe("fallback");
+	});
+
+	it("still throws on a uses-declaring entry", () => {
+		expect(resolveExpression("$redis.db.url", context)).toBe("redis://app-redis:6379/0");
+		expect(() => resolveExpression("$redis.deep.url", context)).toThrow(UnresolvedUseError);
+	});
+
+	it("still matches the whole path as a literal key on the enclosing resource", () => {
+		const scoped = { resource: { host: "pg-host", "deep.host": "scoped-deep" } };
+		expect(resolveExpression("$deep.host", scoped)).toBe("scoped-deep");
+		expect(resolveExpression("$deep.port", scoped)).toBe("");
 	});
 });
 

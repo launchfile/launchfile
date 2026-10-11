@@ -211,6 +211,24 @@ build: .
 	});
 
 	// UC-29: Health shorthand
+	it("round-trips a declared empty health path beside a command", () => {
+		const result = readLaunch(`name: app
+runtime: node
+health:
+  path: ""
+  command: "true"
+`);
+		expect(result.components.default?.health).toMatchObject({ path: "", command: "true" });
+		const written = writeLaunch(result);
+		const reread = readLaunch(written);
+		expect(reread.components.default?.health).toMatchObject({ path: "", command: "true" });
+	});
+
+	it("collapses a path-only health to the string shorthand", () => {
+		const written = writeLaunch(readLaunch("name: app\nruntime: node\nhealth: /health\n"));
+		expect(written).toContain("health: /health");
+	});
+
 	it("expands health string to object", () => {
 		const result = readLaunch(`
 name: my-app
@@ -456,6 +474,29 @@ components:
 			// api declares env at all (even empty), so it takes its own value
 			// whole — {} is not nullish, so it must not fall back to defaults.
 			expect(result.components.api?.env).toEqual({});
+		});
+
+		it("gives each component its own copy of inherited provides and storage", () => {
+			const result = readLaunch(`
+name: my-app
+provides:
+  - protocol: http
+    port: 8080
+storage:
+  data:
+    path: /data
+components:
+  api: {}
+  worker: {}
+`);
+			const api = result.components.api;
+			const worker = result.components.worker;
+			expect(api?.provides).toEqual(worker?.provides);
+			expect(api?.provides).not.toBe(worker?.provides);
+			expect(api?.provides?.[0]).not.toBe(worker?.provides?.[0]);
+			expect(api?.storage).toEqual(worker?.storage);
+			expect(api?.storage).not.toBe(worker?.storage);
+			expect(api?.storage?.data).not.toBe(worker?.storage?.data);
 		});
 
 		// sdk/src/reader.ts:91 passes no defaults in single-component mode —

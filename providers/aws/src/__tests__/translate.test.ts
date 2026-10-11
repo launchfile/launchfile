@@ -1335,3 +1335,53 @@ commands:
 		expect(preservedSecrets).toEqual([]);
 	});
 });
+
+describe("translate — health", () => {
+	const exposed = (health: string) => `
+version: launch/v1
+name: my-app
+runtime: node
+commands:
+  start: "node server.js"
+provides:
+  - protocol: http
+    port: 3000
+    exposed: true
+${health}`;
+
+	it("maps health.path to the ALB health_check", () => {
+		const { hcl, conformance } = tf(exposed("health:\n  path: /healthz\n"));
+		expect(hcl).toMatch(/health_check[\s\S]*path\s*=\s*"\/healthz"/);
+		expect(conformance.mapped.some((m) => m.field === "health")).toBe(true);
+		expect(conformance.gaps.some((g) => g.field === "health")).toBe(false);
+	});
+
+	it("maps a start_period-only health block and keeps the / probe", () => {
+		const { hcl, conformance } = tf(exposed("health:\n  start_period: 30s\n"));
+		expect(hcl).toMatch(/health_check[\s\S]*path\s*=\s*"\/"/);
+		expect(hcl).toContain('matcher = "200-399"');
+		expect(conformance.mapped.some((m) => m.field === "health")).toBe(true);
+		expect(conformance.gaps.some((g) => g.field === "health")).toBe(false);
+	});
+
+	it("records a gap, not a mapping, for a command-only health block", () => {
+		const { hcl, conformance } = tf(
+			exposed('health:\n  command: "curl -f localhost:3000/ready"\n'),
+		);
+		expect(hcl).toContain('resource "aws_lb_target_group"');
+		expect(hcl).toMatch(/health_check[\s\S]*path\s*=\s*"\/"/);
+		expect(conformance.mapped.some((m) => m.field === "health")).toBe(false);
+		const gap = conformance.gaps.find((g) => g.field === "health");
+		expect(gap?.reason).toContain("health.command");
+		expect(gap?.reason).toContain("/");
+	});
+
+	it("keeps the path when both path and command are declared", () => {
+		const { hcl, conformance } = tf(
+			exposed('health:\n  path: /up\n  command: "true"\n'),
+		);
+		expect(hcl).toContain('"/up"');
+		expect(conformance.mapped.some((m) => m.field === "health")).toBe(true);
+		expect(conformance.gaps.some((g) => g.field === "health")).toBe(false);
+	});
+});

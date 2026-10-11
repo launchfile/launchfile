@@ -13,7 +13,11 @@
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { dockerErrorKey, type DockerUpResult } from "@launchfile/docker";
+import {
+	dockerErrorKey,
+	type DockerUpResult,
+	UnsuppliedRequiredEnvError,
+} from "@launchfile/docker";
 import {
 	buildLaunchErrorContext,
 	LaunchError,
@@ -189,6 +193,77 @@ describe("up, on the other failure phases", () => {
 			),
 		).rejects.toThrow();
 		expect(Object.keys((await index()).deployments)).toHaveLength(0);
+	});
+});
+
+describe("up, when the provider refuses an unsupplied required variable (D-52, #242)", () => {
+	const refusal = () =>
+		new UnsuppliedRequiredEnvError(
+			[{ component: "worker", key: "QUEUE_URL", sensitive: false }],
+			{ key: "gov23", slug: "gov23", app: "gov23" },
+		);
+
+	/** Run `up` against a refusing provider; returns the exit code it asked for. */
+	async function refuse(): Promise<number | undefined> {
+		const exit = process.exit;
+		let exited: number | undefined;
+		process.exit = (code?: number) => {
+			exited = code;
+			throw new Error("exited");
+		};
+		try {
+			await expect(
+				handleUp(projectDir, { docker: true }, deps(() => Promise.reject(refusal()))),
+			).rejects.toThrow("exited");
+		} finally {
+			process.exit = exit;
+		}
+		return exited;
+	}
+
+	it("writes a resolve-phase record naming the variable, then prints the same message and exits 1", async () => {
+		expect(await refuse()).toBe(1);
+
+		const record = await readLaunchErrorRecord("gov23", recordDir);
+		expect(record?.phase).toBe("resolve");
+		expect(record?.provider).toBe("docker");
+		expect(record?.unsupplied).toEqual([{ component: "worker", variable: "QUEUE_URL" }]);
+		expect(record?.message).toContain("Cannot launch: 1 required environment variable had no value.");
+
+		// The message the operator sees is the provider's own, and it follows the
+		// capture line rather than being replaced by it.
+		const printed = output.join("\n");
+		expect(printed).toContain("Cannot launch: 1 required environment variable had no value.");
+		expect(printed).toContain("  - worker: QUEUE_URL");
+		expect(printed.indexOf("Captured.")).toBeLessThan(printed.indexOf("Cannot launch:"));
+
+		// Nothing was provisioned, so nothing is indexed.
+		expect(Object.keys((await index()).deployments)).toHaveLength(0);
+	});
+
+	it("supersedes an older, unrelated record, so diagnose reports the refusal as current", async () => {
+		await expect(
+			withFailureRecord(() => Promise.reject(launchError("health", "web never became healthy")), recordDir),
+		).rejects.toThrow();
+		expect((await readLaunchErrorRecord("gov23", recordDir))?.phase).toBe("health");
+
+		await refuse();
+
+		const record = await readLaunchErrorRecord("gov23", recordDir);
+		expect(record?.phase).toBe("resolve");
+		expect(record?.message).not.toContain("web never became healthy");
+
+		let printed = "";
+		const code = await handleDiagnose(
+			undefined,
+			{},
+			{ out: (t) => (printed += t), err: (t) => (printed += t) },
+			recordDir,
+		);
+		expect(code).toBe(0);
+		expect(printed).toContain("Unsupplied required variables:");
+		expect(printed).toContain("worker: QUEUE_URL");
+		expect(printed).not.toContain("web never became healthy");
 	});
 });
 
