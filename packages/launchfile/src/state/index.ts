@@ -17,6 +17,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { canonicalSourceUrl } from "@launchfile/sdk";
 import { ensurePrivateDir, writeAtomic } from "./fs.js";
 import type { DeploymentIndex, DeploymentEntry } from "./types.js";
 
@@ -173,14 +174,24 @@ export function findBySource(
 	return null;
 }
 
-/** Every deployment launched from `sourcePath`, one per instance name (D-55). */
+/**
+ * Every deployment launched from `sourcePath`, one per instance name (D-55).
+ *
+ * Both sides compare credential-free (D-55 rule 3): a row recorded with a
+ * token matches the same URL without it. `entrySource` runs before
+ * `canonicalSourceUrl` so a legacy `catalog:<url>` row is a bare URL by the
+ * time its credentials are removed; the prefix would otherwise hide them.
+ * A path or a `catalog:<slug>` key passes through `canonicalSourceUrl`
+ * unchanged.
+ */
 export function findAllBySource(
 	index: DeploymentIndex,
 	sourcePath: string,
 ): { id: string; entry: DeploymentEntry }[] {
 	const results: { id: string; entry: DeploymentEntry }[] = [];
+	const wanted = canonicalSourceUrl(sourcePath);
 	for (const [id, entry] of Object.entries(index.deployments)) {
-		if (entrySource(entry) === sourcePath) {
+		if (canonicalSourceUrl(entrySource(entry)) === wanted) {
 			results.push({ id, entry });
 		}
 	}
