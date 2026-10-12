@@ -211,6 +211,24 @@ build: .
 	});
 
 	// UC-29: Health shorthand
+	it("round-trips a declared empty health path beside a command", () => {
+		const result = readLaunch(`name: app
+runtime: node
+health:
+  path: ""
+  command: "true"
+`);
+		expect(result.components.default?.health).toMatchObject({ path: "", command: "true" });
+		const written = writeLaunch(result);
+		const reread = readLaunch(written);
+		expect(reread.components.default?.health).toMatchObject({ path: "", command: "true" });
+	});
+
+	it("collapses a path-only health to the string shorthand", () => {
+		const written = writeLaunch(readLaunch("name: app\nruntime: node\nhealth: /health\n"));
+		expect(written).toContain("health: /health");
+	});
+
 	it("expands health string to object", () => {
 		const result = readLaunch(`
 name: my-app

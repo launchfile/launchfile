@@ -1,16 +1,19 @@
 /**
- * SqliteProvisioner teardown.
+ * SqliteProvisioner: the trust boundary around `.launchfile/data/sqlite`.
  *
- * `destroy()` is the one place this provider turns a value read out of
- * `.launchfile/state.json` into a filesystem delete. The state file lives
- * inside the cloned repo and is parsed without validation (`state.ts`), so
- * `dbName` is attacker-controlled and the delete has to be confined to the
- * directory `provision()` writes to.
+ * `provision()` hands the app the path it will write its database through,
+ * and `destroy()` turns a value read out of `.launchfile/state.json` into a
+ * filesystem delete. Both `.launchfile/` and the state file live inside the
+ * cloned repo — the state file is parsed without validation (`state.ts`) —
+ * so the data path is attacker-controlled on the way in and `dbName` on the
+ * way out. Both sides confine themselves to the directory under the real
+ * project root.
  */
 
 import {
 	mkdir,
 	mkdtemp,
+	readdir,
 	readFile,
 	rm,
 	symlink,
@@ -21,6 +24,7 @@ import { join } from "node:path";
 import type { NormalizedRequirement } from "@launchfile/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SqliteProvisioner } from "../resources/sqlite.js";
+import { ResourceRefusedError } from "../resources/types.js";
 import type { ResourceState } from "../state.js";
 
 const REQ = { type: "sqlite" } as NormalizedRequirement;
@@ -45,6 +49,95 @@ async function exists(path: string): Promise<boolean> {
 		() => false,
 	);
 }
+
+describe("SqliteProvisioner.provision", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	/** A repo-shaped project whose `.launchfile/<rel>` is a symlink to `target`. */
+	async function projectWithSymlink(
+		rel: string[],
+		target: string,
+	): Promise<string> {
+		const projectDir = await mkdtemp(join(tmpdir(), "lf-sqlite-provision-"));
+		const link = join(projectDir, ".launchfile", ...rel);
+		await mkdir(join(link, ".."), { recursive: true });
+		await symlink(target, link);
+		return projectDir;
+	}
+
+	it("hands out a path under the real project's .launchfile/data/sqlite", async () => {
+		const projectDir = await mkdtemp(join(tmpdir(), "lf-sqlite-provision-"));
+
+		const { properties, state } = await new SqliteProvisioner().provision(REQ, {
+			appName: "my-app",
+			projectDir,
+		});
+
+		// tmpdir() is itself a symlink on macOS; the anchor is its real path.
+		expect(properties.path).toMatch(
+			/\/\.launchfile\/data\/sqlite\/my_app\.db$/,
+		);
+		expect(properties.url).toBe(`sqlite://${properties.path}`);
+		expect(state.dbName).toBe(properties.path);
+		expect(
+			await readdir(join(projectDir, ".launchfile", "data", "sqlite")),
+		).toEqual([]);
+	});
+
+	it("refuses when .launchfile/data/sqlite is a symlink out of the project", async () => {
+		// mkdir({ recursive: true }) succeeds through a symlink to a directory
+		// and reports nothing; the app would then write its db into the target.
+		const victimDir = await mkdtemp(join(tmpdir(), "lf-victim-"));
+		const projectDir = await projectWithSymlink(["data", "sqlite"], victimDir);
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+		await expect(
+			new SqliteProvisioner().provision(
+				{ type: "sqlite", name: "db" } as NormalizedRequirement,
+				{ appName: "my-app", projectDir },
+			),
+		).rejects.toBeInstanceOf(ResourceRefusedError);
+
+		expect(await readdir(victimDir)).toEqual([]);
+		expect(warn).toHaveBeenCalledWith(
+			expect.stringContaining("refusing to provision db"),
+		);
+	});
+
+	it("refuses when .launchfile/data is a symlink out of the project", async () => {
+		// A check that resolves the data path and compares it to a resolved
+		// root passes this one through: both ends agree on the target. Only
+		// an unresolved root joined onto realpath(projectDir) catches it.
+		const victimDir = await mkdtemp(join(tmpdir(), "lf-victim-"));
+		const projectDir = await projectWithSymlink(["data"], victimDir);
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+		await expect(
+			new SqliteProvisioner().provision(REQ, { appName: "my-app", projectDir }),
+		).rejects.toBeInstanceOf(ResourceRefusedError);
+
+		expect(await readdir(victimDir)).toEqual([]);
+		expect(warn).toHaveBeenCalledWith(
+			expect.stringContaining("refusing to provision sqlite"),
+		);
+	});
+
+	it("refuses when a component is a regular file", async () => {
+		const projectDir = await mkdtemp(join(tmpdir(), "lf-sqlite-provision-"));
+		await mkdir(join(projectDir, ".launchfile"));
+		await writeFile(join(projectDir, ".launchfile", "data"), "not a directory");
+		vi.spyOn(console, "warn").mockImplementation(() => {});
+
+		await expect(
+			new SqliteProvisioner().provision(REQ, { appName: "my-app", projectDir }),
+		).rejects.toMatchObject({
+			resourceName: "sqlite",
+			reason: expect.stringContaining("not a directory"),
+		});
+	});
+});
 
 describe("SqliteProvisioner.destroy", () => {
 	afterEach(() => {
