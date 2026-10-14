@@ -5,15 +5,15 @@ test_results:
   last_tested: 2026-06-09
   pull_time_seconds: 3
   startup_time_seconds: 11
-  total_disk_mb: 2098
+  total_download_mb: 1716
   health_check_passed: true
   notes: "bootstrap command validated end-to-end on published image: fresh-install invite generation, re-run invite refresh, and invite registration page in browser"
 images:
   - name: ghcr.io/paperclipai/paperclip:latest
-    size_mb: 1839
+    size_mb: 1607
     platform:
       - linux/arm64
   - name: postgres:16-alpine
-    size_mb: 259
+    size_mb: 109
     platform:
       - linux/arm64

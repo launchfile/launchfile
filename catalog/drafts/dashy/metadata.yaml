@@ -5,11 +5,11 @@ test_results:
   last_tested: 2026-04-06
   pull_time_seconds: 3
   startup_time_seconds: 101
-  total_disk_mb: 837
+  total_download_mb: 113
   health_check_passed: false
   notes: Image builds from source on first startup (~50s), then serves via vue-cli-service. Health check timed out — may need longer start_period or a different health path.
 images:
   - name: lissy93/dashy:latest
-    size_mb: 837
+    size_mb: 113
     platform:
       - linux/arm64

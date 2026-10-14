@@ -199,6 +199,47 @@ components:
 		const refusal = result.warnings.find((w) => w.startsWith("refused: web"));
 		expect(refusal).toContain("anything: x");
 	});
+
+	it("requires: grades against the origin's own property map, the one its wiring reads", () => {
+		// The publication-context channel satisfies this type (D-60 rule 5),
+		// so a same-keyed `opts.resources` entry is not what the app gets:
+		// grading reads `{ url }` whether or not one is supplied, and gives
+		// the same reason the `supports:` mood does for the same token.
+		const twoParts = `
+name: repro
+components:
+  web:
+    image: nginx
+    provides:
+      - name: ui
+        protocol: http
+        port: 80
+        exposed: true
+    requires:
+      - type: https-origin
+        endpoint: ui
+        uses:
+          - anything: x
+  worker:
+    image: worker:1
+`;
+		const appUrl = "https://repro.example.com";
+		const reason = "anything: x (not a use this provider recognises)";
+		const plain = launchToCompose(readLaunch(twoParts), { appUrl });
+		expect(plain.warnings.find((w) => w.startsWith("refused: web"))).toContain(reason);
+		const stray = launchToCompose(readLaunch(twoParts), {
+			appUrl,
+			resources: { "https-origin": { properties: { "anything.x.url": "https://elsewhere" } } },
+		});
+		expect(stray.warnings.find((w) => w.startsWith("refused: web"))).toContain(reason);
+		expect(services(stray.yaml)["repro-web"]).toBeUndefined();
+		const optional = launchToCompose(readLaunch(twoParts.replace("requires:", "supports:")), {
+			appUrl,
+		});
+		expect(optional.warnings.find((w) => w.includes("optional public HTTPS origin"))).toContain(
+			reason,
+		);
+	});
 });
 
 describe("rule 3 — the named endpoint is the primary", () => {

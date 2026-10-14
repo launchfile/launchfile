@@ -1,4 +1,5 @@
 export {
+	httpsOriginSatisfied,
 	InvalidAppUrlError,
 	normalizeAppUrl,
 	suppliedAppAddress,
@@ -105,6 +106,7 @@ export {
 	isExpression,
 	parseDotPath,
 	parseExpression,
+	REFUSED_PRIMARY_ADDRESS,
 	type ResolverContext,
 	resolveExpression,
 	UNPUBLISHED_APP_ENDPOINT,
@@ -122,6 +124,11 @@ export {
 	selectComponents,
 	selectionClosure,
 } from "./select.js";
+export {
+	CREDENTIAL_QUERY_KEYS,
+	canonicalSourceUrl,
+	isCredentialQueryKey,
+} from "./source-url.js";
 export {
 	resolveSourcePrepareCommand,
 	resolveSourceRunCommand,
@@ -145,12 +152,20 @@ export type {
 export { extractToolchainVersions } from "./toolchain.js";
 export type * from "./types.js";
 export {
+	allocateDbIndexes,
+	type DbIndexes,
 	type DeclaredUse,
 	declaredUse,
 	formatUseKey,
+	namedDatabase,
 	parseUseKey,
 	useKey,
 	useKeyOf,
 	useKeys,
+	withDatabasePath,
 } from "./uses.js";
+export {
+	checkVersionRange,
+	type VersionRangeCheck,
+} from "./version-range.js";
 export { writeLaunch } from "./writer.js";

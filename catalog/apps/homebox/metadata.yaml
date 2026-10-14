@@ -5,11 +5,11 @@ test_results:
   last_tested: 2026-04-09
   pull_time_seconds: 6
   startup_time_seconds: 6
-  total_disk_mb: 124
+  total_download_mb: 46
   health_check_passed: true
   notes: ""
 images:
   - name: ghcr.io/sysadminsmedia/homebox:latest
-    size_mb: 124
+    size_mb: 46
     platform:
       - linux/arm64

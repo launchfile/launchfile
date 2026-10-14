@@ -5,10 +5,11 @@
  * isolated and state persists across runs.
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, mkdir, chmod, open } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
+import { canonicalSourceUrl } from "@launchfile/sdk";
 import { registerSecrets } from "./redact.js";
 import { getLogger } from "./logger.js";
 
@@ -91,10 +92,15 @@ export interface DockerState {
 	sourceType?: DockerSourceType;
 	/**
 	 * Absolute path to the Launchfile on disk for `local` sources. Undefined
-	 * for catalog/url sources (re-resolve from `slug`/`sourceUrl` instead).
+	 * for catalog/url sources (a catalog source re-resolves from `slug`).
 	 */
 	sourcePath?: string;
-	/** Original URL for `url` sources, so it can be re-fetched. */
+	/**
+	 * Canonical source URL for `url` sources (userinfo and credential query
+	 * values removed; see `canonicalSourceUrl`). Identifies the source for the
+	 * D-55 rule 3 guard. Never holds a credential, so it cannot be used to
+	 * re-fetch.
+	 */
 	sourceUrl?: string;
 	/**
 	 * Orchestrator-supplied publication context (#290): the normalized public
@@ -387,16 +393,46 @@ export function initState(
 	};
 }
 
-export async function saveState(slug: string, state: DockerState): Promise<void> {
-	state.updatedAt = new Date().toISOString();
-	// Security: restrict directory/file permissions — state.json contains
-	// database passwords and generated secrets in plaintext.
-	await mkdir(stateDir(slug), { recursive: true, mode: 0o700 });
-	await writeFile(statePath(slug), JSON.stringify(state, null, 2) + "\n", { mode: 0o600 });
+/** state.json contains database passwords and generated secrets in plaintext. */
+const FILE_MODE = 0o600;
+const DIR_MODE = 0o700;
+
+/** Create the state dir owner-only, and fix its mode if it already exists too open. */
+export async function ensureStateDir(slug: string): Promise<void> {
+	const dir = stateDir(slug);
+	await mkdir(dir, { recursive: true, mode: DIR_MODE });
+	// `mkdir` sets the mode only when it creates the directory. Setting it
+	// unconditionally means a directory created by an earlier version, or under a
+	// looser umask, does not stay world-readable (CWE-276).
+	await chmod(dir, DIR_MODE);
 }
 
-export async function ensureStateDir(slug: string): Promise<void> {
-	await mkdir(stateDir(slug), { recursive: true, mode: 0o700 });
+export async function saveState(slug: string, state: DockerState): Promise<void> {
+	state.updatedAt = new Date().toISOString();
+	// A credential in a source URL is never written to disk (D-55 rule 3).
+	if (state.sourceUrl !== undefined) state.sourceUrl = canonicalSourceUrl(state.sourceUrl);
+	await ensureStateDir(slug);
+	await writePrivateFile(statePath(slug), `${JSON.stringify(state, null, 2)}\n`);
+}
+
+/**
+ * Write a file that holds secrets so no other user can read it, even when the
+ * file already exists with a looser mode. `writeFile`'s `mode` option applies
+ * only when it creates the file, so this opens the file, tightens the open
+ * handle to 0o600, and only then writes: the secret bytes never sit in a
+ * loose-mode file (CWE-276). The file is written in place, not through a
+ * temp-file rename — a rename would leave `*.tmp-*` files behind in the
+ * project root and would replace a user's symlinked or hard-linked file with
+ * a plain one.
+ */
+export async function writePrivateFile(path: string, data: string): Promise<void> {
+	const handle = await open(path, "w", FILE_MODE);
+	try {
+		await handle.chmod(FILE_MODE);
+		await handle.writeFile(data);
+	} finally {
+		await handle.close();
+	}
 }
 
 /** Persisted source location for a deployed slug (#25). */
@@ -412,7 +448,8 @@ export interface DockerSourceInfo {
  * (bootstrap, inspect) can re-resolve the Launchfile without depending on the
  * caller's cwd. Returns null when no state exists. Fields may be undefined for
  * state files written before source persistence landed — callers must fall
- * back gracefully (#25).
+ * back gracefully (#25). `sourceUrl` is always the canonical form
+ * (`canonicalSourceUrl`), never a credential-bearing URL.
  */
 export async function loadDockerSource(slug: string): Promise<DockerSourceInfo | null> {
 	const state = await loadState(slug);
@@ -421,6 +458,7 @@ export async function loadDockerSource(slug: string): Promise<DockerSourceInfo |
 		slug: state.slug,
 		sourceType: state.sourceType,
 		sourcePath: state.sourcePath,
-		sourceUrl: state.sourceUrl,
+		// Older state files may hold the raw URL, credentials included.
+		sourceUrl: state.sourceUrl === undefined ? undefined : canonicalSourceUrl(state.sourceUrl),
 	};
 }

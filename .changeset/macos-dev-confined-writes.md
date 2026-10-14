@@ -1,0 +1,5 @@
+---
+"@launchfile/macos-dev": patch
+---
+
+Every write this provider makes under `.launchfile/`, and the `.env.local` it writes at the project root, is now confined to the real project directory (#655). `.launchfile/` ships with the cloned repository, so a committed symlink at `.launchfile`, `.launchfile/env`, `.launchfile/logs`, `.launchfile/state.json`, `.env.local` or a storage volume directory would have sent state (database passwords), env files (secrets) and component logs to wherever it pointed. Each path component is checked without following links before anything is created, files are opened with `O_NOFOLLOW`, and `up` refuses with the path and the reason (`.launchfile/env is a symlink to /x; refusing to write`) and exits 1 before writing through the link. A project directory that itself sits under a symlink, such as `/tmp`, is still allowed. The same helper sets every directory to `0o700` and every secret-bearing file to `0o600` on each write, not only on creation, which covers the macos-dev rows of #408 and #683 (CWE-276). The sqlite provisioner's refusal from #388 now goes through the shared helper.
