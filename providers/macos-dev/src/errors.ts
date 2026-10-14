@@ -36,6 +36,7 @@ import {
 	sourceErrorKey,
 } from "@launchfile/sdk";
 import { redactSecrets } from "./redact.js";
+import { ConfinementRefusal } from "./safe-path.js";
 
 export const MACOS_PROVIDER = "macos-dev";
 
@@ -138,7 +139,11 @@ export interface PhaseContext {
  * A deliberate refusal passes through unwrapped. The D-50 storage refusals carry
  * the SDK's `expectedRefusal` marker, the CLI matches them by `instanceof` to
  * print their own actionable message, and wrapping one would both break that
- * match and file an operator-fixable precondition as a launch failure.
+ * match and file an operator-fixable precondition as a launch failure. A
+ * `ConfinementRefusal` (an untrusted path where the provider writes) passes
+ * through for the same reason: `withConfinementRefusal` matches it by
+ * `instanceof` to print one `Refused:` line and exit 1 before anything is
+ * written, the record included.
  */
 export async function inPhase<T>(
 	phase: LaunchPhase,
@@ -150,6 +155,7 @@ export async function inPhase<T>(
 	} catch (err) {
 		if (isLaunchError(err)) throw err;
 		if (isExpectedRefusal(err)) throw err;
+		if (err instanceof ConfinementRefusal) throw err;
 		throw await launchErrorFrom(phase, context, err);
 	}
 }
