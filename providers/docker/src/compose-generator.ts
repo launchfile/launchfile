@@ -1414,12 +1414,26 @@ export function launchToCompose(
 		// `opts.hostCapabilities` (see host-capabilities.ts); otherwise a required
 		// capability REFUSES the component with a surfaced message — never a
 		// silent drop. Both spellings are honored equivalently: `host:`-marked
-		// requires entries and the legacy host block. Optional (supports)
-		// capabilities left ungranted are noted so the degradation is visible.
+		// requires entries and each key of the legacy host block. Optional
+		// (supports) capabilities left ungranted are noted so the degradation is
+		// visible. A grant is checked here, before anything is provisioned,
+		// against the storage paths the service mounts and against the
+		// properties its entry's set_env reads, so a grant that cannot apply
+		// refuses like any other.
 		const hostOutcome = resolveHostCapabilities(
 			componentName,
 			component,
 			opts.hostCapabilities,
+			Object.values(component.storage ?? {}).map((vol) => vol.path),
+			(entry, properties) =>
+				Object.values(entry.set_env ?? {}).flatMap((expr) =>
+					missingSuppliedRefs(
+						expr,
+						entry.name ?? entry.type,
+						properties,
+						false,
+					),
+				),
 		);
 		if (hostOutcome.refused.length > 0) {
 			warnings.push(
@@ -1771,12 +1785,35 @@ export function launchToCompose(
 			}
 		};
 
+		// A granted host capability's set_env, resolved against the properties
+		// its grant supplied. Every property it reads was checked present when
+		// the grant was accepted, so nothing here resolves to an empty value in
+		// place of a coordinate (D-52). An ungranted entry wires nothing.
+		const applyGrantedSetEnv = (entry: NormalizedRequirement): void => {
+			const properties = hostOutcome.properties.get(entry);
+			if (!properties || !entry.set_env) return;
+			registerSuppliedResourceProperties(
+				properties,
+				GRANT_STRUCTURAL_PROPERTIES,
+			);
+			const scopedContext: ResolverContext = {
+				...componentContext,
+				resource: properties,
+			};
+			for (const [envKey, expr] of Object.entries(entry.set_env)) {
+				env[envKey] = resolveExpression(expr, scopedContext);
+			}
+		};
+
 		if (component.requires?.length) {
 			for (const req of component.requires) {
 				// A host capability reaches here only granted (a refusal skipped
 				// the component above). A grant is applied to the service, not
-				// provisioned: nothing to add, nothing to wire.
-				if (req.host) continue;
+				// provisioned: its set_env reads the grant's properties.
+				if (req.host) {
+					applyGrantedSetEnv(req);
+					continue;
+				}
 				const resourceName = req.name ?? req.type;
 				if (req.type === HTTPS_ORIGIN) {
 					// Reached only when satisfied — the refusal above skipped the
@@ -1865,7 +1902,10 @@ export function launchToCompose(
 		// host-capability note above. Host-marked entries are capabilities
 		// (grant/refuse, D-53), already handled at the top of this loop.
 		for (const sup of component.supports ?? []) {
-			if (sup.host) continue;
+			if (sup.host) {
+				applyGrantedSetEnv(sup);
+				continue;
+			}
 			const resourceName = sup.name ?? sup.type;
 			if (sup.type === HTTPS_ORIGIN) {
 				// The optional mood (D-60 rule 6): satisfied, it wires like any
@@ -2038,8 +2078,18 @@ export function launchToCompose(
 		if (restart === "no" || restart === "on-failure") mayExit.push(serviceName);
 
 		// Granted host capabilities land last: they add security fields the
-		// generator never sets, and union any list it did.
-		applyHostCapabilityGrants(service, hostOutcome.grants);
+		// generator never sets, and union any list it did. Each grant was
+		// checked against this service's mounts when it was accepted, so none
+		// is rejected here.
+		const rejectedGrants = applyHostCapabilityGrants(
+			service,
+			hostOutcome.grants,
+		);
+		if (rejectedGrants.length > 0) {
+			throw new Error(
+				`${componentName}: accepted host capability grant does not apply (${rejectedGrants.join("; ")})`,
+			);
+		}
 
 		services[serviceName] = service;
 		componentServices[componentName] = serviceName;
@@ -2080,7 +2130,10 @@ export function launchToCompose(
 
 	// Add network
 	const networkName = opts.networkName ?? `launchfile-${launch.name}-net`;
+	// A service with `network_mode` (a host capability grant) is outside the
+	// project network; compose rejects `networks:` beside it.
 	for (const service of Object.values(services)) {
+		if (service.network_mode !== undefined) continue;
 		service.networks = [networkName];
 	}
 
@@ -2123,6 +2176,14 @@ export function launchToCompose(
 }
 
 // --- Helpers ---
+
+/**
+ * A granted capability's coordinates that are addresses, not credentials
+ * (`$socket`, `$api` for `container_runtime`; `url` is structural for every
+ * resource). Any other property a grant supplies is registered with the
+ * redactor, fail closed.
+ */
+const GRANT_STRUCTURAL_PROPERTIES = ["socket", "api"] as const;
 
 /** Multi-segment namespaces the resolver checks before user-named resources. */
 const RESERVED_NAMESPACES = new Set([
