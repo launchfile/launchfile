@@ -46,6 +46,7 @@ import {
 	type DbIndexes,
 	formatUseKey,
 	namedDatabase,
+	parseExpression,
 	parseUseKey,
 	withDatabasePath,
 } from "@launchfile/sdk";
@@ -263,4 +264,64 @@ export function namedDatabases(keys: readonly string[]): string[] {
 		if (use === "database" && name !== undefined) names.add(name);
 	}
 	return [...names].sort();
+}
+
+/** Multi-segment namespaces the resolver checks before user-named resources. */
+const RESERVED_NAMESPACES = new Set([
+	"app",
+	"secrets",
+	"components",
+	"storage",
+]);
+
+/**
+ * The properties a `set_env` expression reads from THIS supplied resource that
+ * its property map does not provide. Counted: scoped `$prop` references and
+ * `$<resourceName>.<prop>` references, where `<prop>` is the whole path tail
+ * as one key (`$postgres.deep.host` reads `deep.host`, which resolves `""`
+ * unless the map registers it). Not counted: reserved namespaces, other
+ * resources, a three-or-more-segment reference on a resource that declares
+ * `uses` — that path resolves strictly or throws (D-65 rule 2), never `""` —
+ * and any reference carrying a `:-fallback`, which fires instead of the empty
+ * resolution this warning exists to flag.
+ */
+export function missingSuppliedRefs(
+	expr: string,
+	resourceName: string,
+	properties: Record<string, string>,
+	declaresUses: boolean,
+): string[] {
+	const parsed = parseExpression(expr);
+	const refs: Array<{ path: string[]; fallback?: string }> = [];
+	if (parsed.kind === "reference") {
+		refs.push(parsed);
+	} else if (parsed.kind === "template") {
+		for (const part of parsed.parts) {
+			if (part.kind === "ref") refs.push(part);
+		}
+	}
+
+	const missing: string[] = [];
+	for (const ref of refs) {
+		if (ref.fallback !== undefined) continue;
+		let prop: string | undefined;
+		if (ref.path.length === 1) {
+			prop = ref.path[0];
+		} else if (
+			ref.path.length >= 2 &&
+			ref.path[0] === resourceName &&
+			!RESERVED_NAMESPACES.has(resourceName) &&
+			(ref.path.length === 2 || !declaresUses)
+		) {
+			prop = ref.path.slice(1).join(".");
+		}
+		if (
+			prop !== undefined &&
+			!(prop in properties) &&
+			!missing.includes(prop)
+		) {
+			missing.push(prop);
+		}
+	}
+	return missing;
 }

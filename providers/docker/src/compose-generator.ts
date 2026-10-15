@@ -8,9 +8,10 @@
 
 import { resolve as resolvePath } from "node:path";
 import {
-	allocateDbIndexes,
 	AT_APP_HOST,
 	type AtDeclaration,
+	allocateDbIndexes,
+	appEndpointReferences,
 	atDeclarations,
 	atEntryLabel,
 	checkVersionRange,
@@ -20,13 +21,11 @@ import {
 	httpsOriginSatisfied,
 	indexOperatorStoragePaths,
 	isExpression,
-	appEndpointReferences,
-	namedDatabase,
 	type NormalizedEnvVar,
 	type NormalizedHealth,
 	type NormalizedLaunch,
 	type NormalizedRequirement,
-	parseExpression,
+	namedDatabase,
 	RESOURCE_PROPERTY_VOCABULARY,
 	type ResolverContext,
 	resolveExpression,
@@ -36,13 +35,6 @@ import {
 	unsuppliedRequiredEnv,
 	useKeys,
 } from "@launchfile/sdk";
-import {
-	coverUse,
-	namedDatabases,
-	uncoveredSuppliedUses,
-	usePropertyKeys,
-	withCoveredUses,
-} from "./resource-uses.js";
 import { Scalar, stringify } from "yaml";
 import {
 	computeAppContext,
@@ -50,13 +42,27 @@ import {
 	publishedEndpointAddresses,
 } from "./app-url.js";
 import { planCertificates } from "./certificates.js";
-import { refusedComponents } from "./refusals.js";
 import {
 	registerSensitiveEnv,
 	registerSuppliedEnv,
 	registerSuppliedResourceProperties,
 } from "./env-secrets.js";
+import {
+	applyHostCapabilityGrants,
+	type HostCapabilityPolicy,
+	NO_HOST_CAPABILITIES,
+	planHostCapabilities,
+} from "./host-capabilities.js";
 import { registerSecret } from "./redact.js";
+import { refusedComponents } from "./refusals.js";
+import {
+	coverUse,
+	missingSuppliedRefs,
+	namedDatabases,
+	uncoveredSuppliedUses,
+	usePropertyKeys,
+	withCoveredUses,
+} from "./resource-uses.js";
 import {
 	declaredSecrets,
 	migrateResourcePasswords,
@@ -375,7 +381,10 @@ function atReport(
 			"to this endpoint with the requested `Host` intact"
 		);
 	}
-	const target = authority !== "" ? authority : "the port this provider publishes for the entry";
+	const target =
+		authority !== ""
+			? authority
+			: "the port this provider publishes for the entry";
 	return (
 		`${head} — this provider publishes the port and sets up no host names. Every request ` +
 		`that reaches ${target} reaches the listener with its \`Host\` intact, so map each name ` +
@@ -915,6 +924,12 @@ export interface ComposeOpts {
 	 * captured output.
 	 */
 	resources?: Record<string, { properties: Record<string, string> }>;
+	/**
+	 * The caller's answer to every host capability entry (D-44, PROVIDERS.md
+	 * §11). Absent, this provider refuses each required one and leaves each
+	 * optional one ungranted. See host-capabilities.ts for what a grant may set.
+	 */
+	hostCapabilities?: HostCapabilityPolicy;
 }
 
 // D-50 row 1 and row 2 shapes are the SDK's — every provider reports the same
@@ -1238,10 +1253,18 @@ export function launchToCompose(
 	// primary resolves the empty address whatever refused it (D-72), and the
 	// component loop applies it, so the services emitted and the address
 	// resolved can never disagree.
+	// Host capability entries are put to the caller's policy once, here; the
+	// refusal set grades a required entry the policy refused (D-44), and the
+	// component loop applies what it granted, from the same answers.
+	const hostCapabilityPlan = planHostCapabilities(
+		launch,
+		opts.hostCapabilities,
+	);
 	const refusals = refusedComponents(launch, {
 		appUrl: opts.appUrl,
 		resources: opts.resources,
 		certificates,
+		hostCapabilityPlan,
 	});
 
 	const {
@@ -1351,18 +1374,19 @@ export function launchToCompose(
 			continue;
 		}
 
-		// An optional (supports) host capability is left ungranted with a
-		// note so the degradation is visible (D-44, PROVIDERS.md §11); this
-		// provider grants none.
-		for (const sup of component.supports ?? []) {
-			if (!sup.host) continue;
-			for (const [capability, value] of Object.entries(sup.host)) {
-				warnings.push(
-					`${componentName}: optional host capability ${capability}=${String(value)} ` +
-						"not granted — its set_env vars are omitted and the app runs degraded",
-				);
-			}
-		}
+		// Host capabilities — grant or refuse (D-44, PROVIDERS.md §11). This
+		// provider grants none on its own: handing an app the host's runtime
+		// socket, host network, or privileged mode from inside a managed compose
+		// project defeats its isolation model (and Docker-in-Docker is
+		// unreliable). A caller that can grant safely supplies
+		// `opts.hostCapabilities` (see host-capabilities.ts). The plan was
+		// resolved once, before the refusal set, which reads it: a required
+		// entry the plan refused already skipped this component above. What
+		// reaches here is granted, or optional and noted as ungranted so the
+		// degradation is visible.
+		const hostOutcome =
+			hostCapabilityPlan.get(componentName) ?? NO_HOST_CAPABILITIES;
+		warnings.push(...hostOutcome.notes);
 
 		if (component.schedule) {
 			// The restart clause is only true when the provider chose the policy.
@@ -1450,7 +1474,11 @@ export function launchToCompose(
 				// D-27 boundary noted above. `protocol` and `url` read the
 				// effective listener (D-61 rule 2), so an entry whose certificate
 				// binding is active says `https` here as the primary `url` does.
-				...endpointProperties(component.provides, serviceName, certificates.active),
+				...endpointProperties(
+					component.provides,
+					serviceName,
+					certificates.active,
+				),
 			};
 
 			// Host publication: every endpoint marked `exposed: true` (D-27)
@@ -1581,8 +1609,35 @@ export function launchToCompose(
 			}
 		};
 
+		// A granted host capability's set_env, resolved against the properties
+		// its grant supplied. Every property it reads was checked present when
+		// the grant was accepted, so nothing here resolves to an empty value in
+		// place of a coordinate (D-52). An ungranted entry wires nothing.
+		const applyGrantedSetEnv = (entry: NormalizedRequirement): void => {
+			const properties = hostOutcome.properties.get(entry);
+			if (!properties || !entry.set_env) return;
+			registerSuppliedResourceProperties(
+				properties,
+				GRANT_STRUCTURAL_PROPERTIES,
+			);
+			const scopedContext: ResolverContext = {
+				...componentContext,
+				resource: properties,
+			};
+			for (const [envKey, expr] of Object.entries(entry.set_env)) {
+				env[envKey] = resolveExpression(expr, scopedContext);
+			}
+		};
+
 		if (component.requires?.length) {
 			for (const req of component.requires) {
+				// A host capability reaches here only granted (a refusal skipped
+				// the component above). A grant is applied to the service, not
+				// provisioned: its set_env reads the grant's properties.
+				if (req.host) {
+					applyGrantedSetEnv(req);
+					continue;
+				}
 				const resourceName = req.name ?? req.type;
 				if (req.type === HTTPS_ORIGIN) {
 					// Reached only when satisfied — the refusal above skipped the
@@ -1671,7 +1726,10 @@ export function launchToCompose(
 		// host-capability note above. Host-marked entries are capabilities
 		// (grant/refuse, D-53), already handled at the top of this loop.
 		for (const sup of component.supports ?? []) {
-			if (sup.host) continue;
+			if (sup.host) {
+				applyGrantedSetEnv(sup);
+				continue;
+			}
 			const resourceName = sup.name ?? sup.type;
 			if (sup.type === HTTPS_ORIGIN) {
 				// The optional mood (D-60 rule 6): satisfied, it wires like any
@@ -1681,7 +1739,11 @@ export function launchToCompose(
 				// unfulfilled the same way (D-65 rule 4).
 				const uncovered =
 					originSatisfied && sup.uses
-						? uncoveredSuppliedUses(sup.type, useKeys(sup.uses), httpsOriginProperties)
+						? uncoveredSuppliedUses(
+								sup.type,
+								useKeys(sup.uses),
+								httpsOriginProperties,
+							)
 						: [];
 				if (uncovered.length > 0) {
 					warnings.push(
@@ -1711,7 +1773,11 @@ export function launchToCompose(
 			// out loud. The same shortfall on `requires:` refused the component
 			// above.
 			const uncovered = sup.uses
-				? uncoveredSuppliedUses(sup.type, useKeys(sup.uses), suppliedResource.properties)
+				? uncoveredSuppliedUses(
+						sup.type,
+						useKeys(sup.uses),
+						suppliedResource.properties,
+					)
 				: [];
 			if (uncovered.length > 0) {
 				warnings.push(
@@ -1835,6 +1901,20 @@ export function launchToCompose(
 		service.restart = restart === "no" ? quotedScalar("no") : restart;
 		if (restart === "no" || restart === "on-failure") mayExit.push(serviceName);
 
+		// Granted host capabilities land last: they add security fields the
+		// generator never sets, and union any list it did. Each grant was
+		// checked against this service's mounts when it was accepted, so none
+		// is rejected here.
+		const rejectedGrants = applyHostCapabilityGrants(
+			service,
+			hostOutcome.grants,
+		);
+		if (rejectedGrants.length > 0) {
+			throw new Error(
+				`${componentName}: accepted host capability grant does not apply (${rejectedGrants.join("; ")})`,
+			);
+		}
+
 		services[serviceName] = service;
 		componentServices[componentName] = serviceName;
 	}
@@ -1874,7 +1954,10 @@ export function launchToCompose(
 
 	// Add network
 	const networkName = opts.networkName ?? `launchfile-${launch.name}-net`;
+	// A service with `network_mode` (a host capability grant) is outside the
+	// project network; compose rejects `networks:` beside it.
 	for (const service of Object.values(services)) {
+		if (service.network_mode !== undefined) continue;
 		service.networks = [networkName];
 	}
 
@@ -1918,65 +2001,13 @@ export function launchToCompose(
 
 // --- Helpers ---
 
-/** Multi-segment namespaces the resolver checks before user-named resources. */
-const RESERVED_NAMESPACES = new Set([
-	"app",
-	"secrets",
-	"components",
-	"storage",
-]);
-
 /**
- * The properties a `set_env` expression reads from THIS supplied resource that
- * its property map does not provide. Counted: scoped `$prop` references and
- * `$<resourceName>.<prop>` references, where `<prop>` is the whole path tail
- * as one key (`$postgres.deep.host` reads `deep.host`, which resolves `""`
- * unless the map registers it). Not counted: reserved namespaces, other
- * resources, a three-or-more-segment reference on a resource that declares
- * `uses` — that path resolves strictly or throws (D-65 rule 2), never `""` —
- * and any reference carrying a `:-fallback`, which fires instead of the empty
- * resolution this warning exists to flag.
+ * A granted capability's coordinates that are addresses, not credentials
+ * (`$socket`, `$api` for `container_runtime`; `url` is structural for every
+ * resource). Any other property a grant supplies is registered with the
+ * redactor, fail closed.
  */
-function missingSuppliedRefs(
-	expr: string,
-	resourceName: string,
-	properties: Record<string, string>,
-	declaresUses: boolean,
-): string[] {
-	const parsed = parseExpression(expr);
-	const refs: Array<{ path: string[]; fallback?: string }> = [];
-	if (parsed.kind === "reference") {
-		refs.push(parsed);
-	} else if (parsed.kind === "template") {
-		for (const part of parsed.parts) {
-			if (part.kind === "ref") refs.push(part);
-		}
-	}
-
-	const missing: string[] = [];
-	for (const ref of refs) {
-		if (ref.fallback !== undefined) continue;
-		let prop: string | undefined;
-		if (ref.path.length === 1) {
-			prop = ref.path[0];
-		} else if (
-			ref.path.length >= 2 &&
-			ref.path[0] === resourceName &&
-			!RESERVED_NAMESPACES.has(resourceName) &&
-			(ref.path.length === 2 || !declaresUses)
-		) {
-			prop = ref.path.slice(1).join(".");
-		}
-		if (
-			prop !== undefined &&
-			!(prop in properties) &&
-			!missing.includes(prop)
-		) {
-			missing.push(prop);
-		}
-	}
-	return missing;
-}
+const GRANT_STRUCTURAL_PROPERTIES = ["socket", "api"] as const;
 
 function resolveEnvVar(
 	envVar: NormalizedEnvVar,

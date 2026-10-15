@@ -29,6 +29,11 @@ import {
 	planCertificates,
 } from "./certificates.js";
 import {
+	type HostCapabilityPlan,
+	type HostCapabilityPolicy,
+	planHostCapabilities,
+} from "./host-capabilities.js";
+import {
 	uncoveredProvisionedUses,
 	uncoveredSuppliedUses,
 } from "./resource-uses.js";
@@ -74,6 +79,19 @@ export interface RefusalInputs {
 	 * holds it; otherwise it is planned here.
 	 */
 	certificates?: CertificatePlan;
+	/**
+	 * The caller's answer to every host capability entry (D-44, PROVIDERS.md
+	 * §11) — the policy `up` was given (`ComposeOpts.hostCapabilities`).
+	 * Absent, every required entry is refused, which is this provider's own
+	 * answer.
+	 */
+	hostCapabilities?: HostCapabilityPolicy;
+	/**
+	 * The host capability plan for the same policy, when the caller already
+	 * holds it; otherwise it is planned here. The compose generator passes the
+	 * plan it applies grants from, so the policy answers each entry once.
+	 */
+	hostCapabilityPlan?: HostCapabilityPlan;
 }
 
 /**
@@ -155,8 +173,11 @@ function invalidBucketNameRefusal(
  * component refused for two reasons is refused once, and the message names
  * the earliest cause.
  *
- * 1. Host capabilities (D-44, PROVIDERS.md §11): this provider grants none,
- *    so a required one — the `host:` entry form or the legacy block — refuses.
+ * 1. Host capabilities (D-44, PROVIDERS.md §11): a required one — the
+ *    `host:` entry form or a legacy block key — that the caller's policy did
+ *    not grant refuses. With no policy this provider grants none. A grant
+ *    that cannot apply (a named-volume source, a second mount on a mounted
+ *    path, a `set_env` property it does not supply) is not granted.
  * 2. A required `https-origin` the publication context does not satisfy
  *    (D-60 rule 5): no URL, or one whose scheme is not `https`.
  * 3. A selected certificate binding that is not satisfied (D-61 rule 5).
@@ -176,26 +197,10 @@ function componentRefusal(
 	component: NormalizedLaunch["components"][string],
 	inputs: RefusalInputs,
 	certificates: CertificatePlan,
+	hostCapabilities: HostCapabilityPlan,
 ): string | undefined {
-	const refusedCapabilities: string[] = [];
-	for (const req of component.requires ?? []) {
-		if (!req.host) continue;
-		for (const [capability, value] of Object.entries(req.host)) {
-			refusedCapabilities.push(`${capability}=${String(value)}`);
-		}
-	}
-	if (component.host?.docker === "required") {
-		refusedCapabilities.push(
-			"container_runtime=docker (host.docker: required)",
-		);
-	}
-	if (component.host?.network === "host") {
-		refusedCapabilities.push("network=host (host.network: host)");
-	}
-	if (component.host?.privileged) {
-		refusedCapabilities.push("privileged=true (host.privileged)");
-	}
-	if (refusedCapabilities.length > 0) {
+	const refusedCapabilities = hostCapabilities.get(componentName)?.refused;
+	if (refusedCapabilities && refusedCapabilities.length > 0) {
 		return (
 			`refused: ${componentName} requires host capabilities this provider cannot grant ` +
 			`(${refusedCapabilities.join("; ")}) — component skipped`
@@ -294,6 +299,9 @@ export function refusedComponents(
 ): Map<string, string> {
 	const certificates =
 		inputs.certificates ?? planCertificates(launch, inputs.resources);
+	const hostCapabilities =
+		inputs.hostCapabilityPlan ??
+		planHostCapabilities(launch, inputs.hostCapabilities);
 	const refused = new Map<string, string>();
 	for (const [componentName, component] of Object.entries(launch.components)) {
 		const message = componentRefusal(
@@ -302,6 +310,7 @@ export function refusedComponents(
 			component,
 			inputs,
 			certificates,
+			hostCapabilities,
 		);
 		if (message !== undefined) refused.set(componentName, message);
 	}
