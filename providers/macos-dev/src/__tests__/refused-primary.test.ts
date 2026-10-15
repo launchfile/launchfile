@@ -1,6 +1,6 @@
 /**
  * A refused declared primary resolves the empty `$app.*` address whatever
- * refused it (D-72, D-next): the refusal set is one function over the whole
+ * refused it (D-72, D-76): the refusal set is one function over the whole
  * file, `up` reads it before its refusals remove anything, and `env` and
  * `bootstrap` compute it again from the file and the inputs `up` recorded
  * (publication context, `--with-optional`), so the three verbs give one
