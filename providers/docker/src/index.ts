@@ -37,6 +37,9 @@ export type {
 	HostCapabilityPolicy,
 	HostCapabilityRequest,
 } from "./host-capabilities.js";
+// For a caller that post-processes the generated services (platform
+// hardening) and must land the grants again afterwards with the same rules.
+export { applyHostCapabilityGrants } from "./host-capabilities.js";
 export {
 	type DockerUpOpts,
 	type DockerUpResult,
