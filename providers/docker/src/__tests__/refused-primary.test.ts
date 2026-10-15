@@ -21,6 +21,10 @@ import {
 	launchToCompose,
 	provisionedTypes,
 } from "../compose-generator.js";
+import type {
+	HostCapabilityPolicy,
+	HostCapabilityRequest,
+} from "../host-capabilities.js";
 import { PROVISIONED_TYPES, refusedComponents } from "../refusals.js";
 import { planReleases } from "../release.js";
 
@@ -416,5 +420,105 @@ components:
 		expect(release.map((r) => [r.component, r.command])).toEqual([
 			["web", expected],
 		]);
+	});
+});
+
+describe("a host capability policy decides the D-44 cause (#774)", () => {
+	const launch = readLaunch(HOST_CAPABILITY);
+
+	/** Runs every verb under one policy and returns what each resolved. */
+	function verbs(hostCapabilities: HostCapabilityPolicy) {
+		const result = launchToCompose(launch, {
+			hostPorts,
+			appUrl: APP_URL,
+			hostCapabilities,
+		});
+		const bootstrap = planBootstraps(launch, {
+			hostPorts,
+			secrets: {},
+			appUrl: APP_URL,
+			hostCapabilities,
+		});
+		const release = planReleases(launch, {
+			services: result.services,
+			hostPorts,
+			secrets: {},
+			appUrl: APP_URL,
+			hostCapabilities,
+		});
+		return { result, bootstrap, release };
+	}
+
+	it("a required entry the policy refuses is in the set: the survivor reads the empty address on every verb", () => {
+		const policy: HostCapabilityPolicy = () => ({
+			refused: "not on this host",
+		});
+		const refusals = refusedComponents(launch, {
+			appUrl: APP_URL,
+			hostCapabilities: policy,
+		});
+		expect([...refusals.keys()]).toEqual(["web"]);
+		expect(refusals.get("web")).toContain(
+			"container_runtime=docker: not on this host",
+		);
+
+		const { result, bootstrap, release } = verbs(policy);
+		const svc = services(result.yaml);
+		expect(svc["split-web"]).toBeUndefined();
+		expect(svc["split-admin"]?.environment).toMatchObject(EMPTY);
+		expect(result.warnings.filter((w) => w.startsWith("refused:"))).toEqual([
+			refusals.get("web"),
+		]);
+		expect(bootstrap[0]?.command).toBe("echo  false");
+		expect(release[0]?.command).toBe("echo  false");
+	});
+
+	it("a granted entry is not a refusal: the primary deploys and the survivor reads the supplied URL", () => {
+		const seen: HostCapabilityRequest[] = [];
+		const policy: HostCapabilityPolicy = (request) => {
+			seen.push(request);
+			return {
+				granted: {
+					volumes: ["/var/run/docker.sock:/var/run/docker.sock"],
+					summary: "socket mounted",
+				},
+			};
+		};
+		expect(
+			refusedComponents(launch, { appUrl: APP_URL, hostCapabilities: policy })
+				.size,
+		).toBe(0);
+
+		seen.length = 0;
+		const { result, bootstrap, release } = verbs(policy);
+		const svc = services(result.yaml);
+		expect(svc["split-web"]).toBeDefined();
+		expect(svc["split-admin"]?.environment?.PUBLIC_URL).toBe(APP_URL);
+		expect(result.warnings).toContain(
+			"granted: web: host capability container_runtime=docker (socket mounted)",
+		);
+		expect(bootstrap[0]?.command).toBe(`echo ${APP_URL} true`);
+		expect(release[0]?.command).toBe(`echo ${APP_URL} true`);
+		// One question per entry per verb: `up` decides the set and the grant
+		// from the same answer.
+		expect(seen.filter((r) => r.component === "web")).toHaveLength(3);
+	});
+
+	it("a grant that cannot apply is refused in the set, not only in the generator", () => {
+		const policy: HostCapabilityPolicy = () => ({
+			granted: { volumes: ["dockersock:/var/run/docker.sock"] },
+		});
+		const refusals = refusedComponents(launch, {
+			appUrl: APP_URL,
+			hostCapabilities: policy,
+		});
+		expect(refusals.get("web")).toContain("named volume `dockersock`");
+
+		const { result, bootstrap } = verbs(policy);
+		expect(services(result.yaml)["split-web"]).toBeUndefined();
+		expect(services(result.yaml)["split-admin"]?.environment).toMatchObject(
+			EMPTY,
+		);
+		expect(bootstrap[0]?.command).toBe("echo  false");
 	});
 });

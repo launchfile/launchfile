@@ -30,6 +30,7 @@ import {
 import { computeAppContext } from "./app-url.js";
 import { extractCaptures } from "./bootstrap.js";
 import { planCertificates } from "./certificates.js";
+import type { HostCapabilityPolicy } from "./host-capabilities.js";
 import {
 	redactSecrets,
 	registerDeclaredSecret,
@@ -123,6 +124,13 @@ export function planReleases(
 		 * (D-72) is decided on them.
 		 */
 		resources?: SuppliedResources;
+		/**
+		 * The host capability policy `up` was given, when the caller holds it:
+		 * a required entry it did not grant refuses its component (D-44), so a
+		 * refused declared primary resolves the empty address here too. The
+		 * CLI's `up` passes none, and neither does this verb's CLI path.
+		 */
+		hostCapabilities?: HostCapabilityPolicy;
 		/** Restrict to these components (the D-41 start-set); undefined = all. */
 		only?: ReadonlySet<string>;
 	},
@@ -144,6 +152,7 @@ export function planReleases(
 		appUrl: opts.appUrl,
 		resources: opts.resources,
 		certificates,
+		hostCapabilities: opts.hostCapabilities,
 	});
 	const { app, appEndpoints } = computeAppContext(
 		launch,

@@ -28,6 +28,7 @@ import {
 } from "@launchfile/sdk";
 import { computeAppContext } from "./app-url.js";
 import { planCertificates } from "./certificates.js";
+import type { HostCapabilityPolicy } from "./host-capabilities.js";
 import { getLogger } from "./logger.js";
 import { redactSecrets, registerDeclaredSecret } from "./redact.js";
 import { refusedComponents, type SuppliedResources } from "./refusals.js";
@@ -177,6 +178,13 @@ export function planBootstraps(
 		 * CLI's bootstrap sees none — the same as the CLI's `up`.
 		 */
 		resources?: SuppliedResources;
+		/**
+		 * The host capability policy `up` was given, when the caller holds it:
+		 * a required entry it did not grant refuses its component (D-44), so a
+		 * refused declared primary resolves the empty address here too. The
+		 * CLI's `up` passes none, and neither does this verb's CLI path.
+		 */
+		hostCapabilities?: HostCapabilityPolicy;
 		/** Restrict to this single component; undefined = all. */
 		component?: string;
 	},
@@ -189,6 +197,7 @@ export function planBootstraps(
 		appUrl: opts.appUrl,
 		resources: opts.resources,
 		certificates,
+		hostCapabilities: opts.hostCapabilities,
 	});
 	const { app, appEndpoints } = computeAppContext(
 		launch,
