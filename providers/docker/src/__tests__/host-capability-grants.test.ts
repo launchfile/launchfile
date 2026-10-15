@@ -429,6 +429,37 @@ requires:
 	});
 });
 
+describe("volume targets are normalized in linear time (CodeQL js/polynomial-redos)", () => {
+	it("handles a target of 100,000 slashes and a letter in under a second", () => {
+		const target = `${"/".repeat(100_000)}x`;
+		const started = performance.now();
+		const result = launchToCompose(readLaunch(MOUNTS), {
+			hostPorts,
+			hostCapabilities: () => ({ granted: { volumes: [`/srv/a:${target}`] } }),
+		});
+		expect(performance.now() - started).toBeLessThan(1000);
+		expect(services(result.yaml).mountapp?.volumes).toContain(
+			`/srv/a:${target}`,
+		);
+	});
+
+	it("treats /data/ and /data// as the storage path /data", () => {
+		for (const target of ["/data/", "/data//"]) {
+			const result = launchToCompose(readLaunch(MOUNTS), {
+				hostPorts,
+				hostCapabilities: () => ({
+					granted: { volumes: [`/srv/a:${target}`] },
+				}),
+			});
+			expect(result.warnings).toContain(
+				"refused: default requires host capabilities this provider cannot grant " +
+					"(filesystem=read-write: the grant mounts a second volume on `/data`, which the service " +
+					"already mounts) — component skipped",
+			);
+		}
+	});
+});
+
 describe("a granted entry's set_env resolves against the grant's properties (PR #774 B2)", () => {
 	it("wires set_env from the properties the grant supplies", () => {
 		const policy: HostCapabilityPolicy = () => ({

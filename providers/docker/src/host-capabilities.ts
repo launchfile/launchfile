@@ -195,8 +195,16 @@ function parseVolume(entry: string): { source?: string; target: string } {
 	};
 }
 
+/**
+ * Drop trailing `/` from a container path longer than one character. A loop,
+ * not a regex: the path can come from a Launchfile's `storage`, and an
+ * unanchored `/\/+$/` is quadratic on a long run of slashes.
+ */
 function normalizeTarget(target: string): string {
-	return target.length > 1 ? target.replace(/\/+$/, "") : target;
+	if (target.length <= 1) return target;
+	let end = target.length;
+	while (end > 0 && target[end - 1] === "/") end--;
+	return target.slice(0, end);
 }
 
 /** A host-path source; anything else in the source slot names a volume. */
