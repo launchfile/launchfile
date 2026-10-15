@@ -20,7 +20,6 @@ import {
 	endpointProperties,
 	httpsOriginSatisfied,
 	indexOperatorStoragePaths,
-	isExpression,
 	type NormalizedEnvVar,
 	type NormalizedHealth,
 	type NormalizedLaunch,
@@ -43,6 +42,7 @@ import {
 	publishedEndpointAddresses,
 } from "./app-url.js";
 import { certificateRefusalMessage, planCertificates } from "./certificates.js";
+import { escapeForCompose, shellSlotForCompose } from "./compose-escape.js";
 import {
 	registerSensitiveEnv,
 	registerSuppliedEnv,
@@ -684,7 +684,9 @@ function createBackingServices(
 				healthcheck: {
 					test: [
 						"CMD-SHELL",
-						`curl -sf -u elastic:$ELASTIC_PASSWORD http://localhost:9200/_cluster/health || exit 1`,
+						// `$$` so compose leaves `$ELASTIC_PASSWORD` for the
+						// container's shell instead of filling it from the host.
+						"curl -sf -u elastic:$$ELASTIC_PASSWORD http://localhost:9200/_cluster/health || exit 1",
 					],
 					interval: "10s",
 					timeout: "5s",
@@ -2009,7 +2011,12 @@ export function launchToCompose(
 		registerSensitiveEnv(component.env, env);
 
 		if (Object.keys(env).length > 0) {
-			service.environment = env;
+			service.environment = Object.fromEntries(
+				Object.entries(env).map(([key, value]) => [
+					key,
+					escapeForCompose(value),
+				]),
+			);
 		}
 
 		if (Object.keys(dependsOn).length > 0) {
@@ -2017,7 +2024,7 @@ export function launchToCompose(
 		}
 
 		if (component.commands?.start) {
-			service.command = component.commands.start.command;
+			service.command = shellSlotForCompose(component.commands.start.command);
 		}
 
 		if (component.health) {
@@ -2274,11 +2281,8 @@ function resolveEnvVar(
 	}
 
 	if (envVar.default !== undefined) {
-		const val = String(envVar.default);
-		if (isExpression(val)) {
-			return resolveExpression(val, context);
-		}
-		return val;
+		// A value with no reference still reads `$$` as a literal `$` (D-12).
+		return resolveExpression(String(envVar.default), context);
 	}
 
 	// A `required:` var the file supplies no value for gets NO value here — the
@@ -2488,7 +2492,7 @@ function translateHealth(
 ): ComposeHealthcheck {
 	if (health.command && health.path === undefined) {
 		return {
-			test: ["CMD-SHELL", health.command],
+			test: ["CMD-SHELL", shellSlotForCompose(health.command)],
 			interval: health.interval ?? "10s",
 			timeout: health.timeout ?? "5s",
 			retries: health.retries ?? 3,
@@ -2497,7 +2501,7 @@ function translateHealth(
 	}
 
 	const port = provides?.[0]?.port ?? 80;
-	const path = health.path ?? "/";
+	const path = shellSlotForCompose(health.path ?? "/");
 
 	return {
 		test: [

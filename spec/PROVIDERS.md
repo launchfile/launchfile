@@ -158,7 +158,7 @@ The file declares *intent*; the provider supplies *values* (P-11). A provider MU
 | `release`            | resolves `$app.*` and `$secrets.*` only                                                | no resolution — raw string to the shell                               | no resolution — raw into cloud-init       |
 | `build` / `install`  | not implemented (source builds in the image build)                                     | no resolution — raw string to the shell                               | no resolution — raw into cloud-init       |
 | `dev`                | not implemented (source-mode run slot D-38 lets an artifact-executing provider ignore) | no resolution — raw to the process manager                            | not implemented (recorded as an explicit D-38 source-mode ignore) |
-| `start`              | no resolution — raw into the compose `command:`                                        | no resolution — raw to the process manager                            | no resolution — raw into the systemd unit |
+| `start`              | no resolution; `$$` → `$` (D-12); compose `command:` escaped so nothing is substituted | no resolution — raw to the process manager                            | no resolution — raw into the systemd unit |
 
 `$storage.*` is populated for **no** command string, on **any** slot, on **either** deploying reference provider. Where resolution does run it covers the whole string, so an unresolvable reference — including a shell variable the resolver does not recognize — becomes `""` — the same silent-empty L-4 defines for an unknown property, though L-4 does not sanction it for a namespace the provider never populated — rather than reaching the shell.
 
