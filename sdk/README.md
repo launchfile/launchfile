@@ -36,6 +36,10 @@ launchfile inspect path/to/Launchfile
 launchfile schema
 ```
 
+The CLI refuses any long flag it does not declare: it prints `Unknown flag: --<name>` to stderr and exits 1 before running anything, rather than ignoring the flag. `--schema-path` without a value exits 1 the same way.
+
+`npx launchfile` runs the separate `launchfile` package, not this CLI. This CLI is the `@launchfile/sdk/cli` export (`dist/cli.js`).
+
 ### Global flags
 
 - `--no-color` — Disable colored output (also respects `NO_COLOR` env var)
@@ -137,7 +141,18 @@ Every value export of `src/index.ts` is either a row below or an entry in
 mostly CLI-command implementations and the provider error-context vocabulary).
 `bun run check:exports` (wired as a `pretest` hook) fails `bun run test` — and
 CI's `sdk` job — if a value export is undocumented, or if a row/exclusion goes
-stale.
+stale. For a row that lists parameters, it also checks the list against the
+`export function` declaration: the same number of parameters, optional (`?` or
+a default) in the same positions. A signature it cannot map — overloads, rest,
+`this` or destructured parameters, a const or class — fails the check rather
+than being skipped, unless `ARITY_UNCHECKED` in the same script lists the row
+with a reason. `useKeyOf` is listed there: it destructures its one parameter.
+
+The check reads names and parameter counts only. It does not read the
+Description column, parameter names, or what a non-function export such as
+`CERTIFICATE` means. A row that names a real export, lists the right
+parameters, and still describes it wrongly is caught only by a person reading
+the source.
 
 ### Parse, validate, serialize
 
@@ -149,6 +164,9 @@ stale.
 | `writeLaunch(launch)` | Serialize `NormalizedLaunch` → compact YAML string |
 | `LaunchSchema` | Zod schema for direct validation |
 | `parseRepository(repository)` | Split a `repository` value at its `#` fragment → `{ url, ref }` |
+| `canonicalSourceUrl(url)` | A URL source's identity with credentials removed: userinfo and credential query parameters dropped; scheme, host, port, path, other query parameters and the `#<ref>` fragment kept. Providers compare and persist this form (D-55 rule 3) |
+| `CREDENTIAL_QUERY_KEYS` | The query parameter names `canonicalSourceUrl` treats as credentials (lowercase, matched case-insensitively) |
+| `isCredentialQueryKey(name)` | True when a query parameter name is on `CREDENTIAL_QUERY_KEYS` |
 
 ### Expressions
 
@@ -218,6 +236,9 @@ addresses.
 | `useKeys(uses)` | The use keys of a `uses` list, in declaration order |
 | `parseUseKey(key)` | Split a use key back into `{ use, name? }` |
 | `formatUseKey(key)` | The spelling diagnostics use: `db` for a bare key, `db: cache` for a named one |
+| `allocateDbIndexes(launch)` | One numbered redis database per `db` use key, app-wide, keyed by resource name — the allocation every provider applies (D-65): blocks in the order of each resource's first `db`-declaring entry, `requires` before `supports`, the bare `db` first and named ones in name order |
+| `namedDatabase(instance, name)` | The database a named `database` use gets on a SQL server: `<instance>_<name>`, hyphens as underscores |
+| `withDatabasePath(url, database)` | `url` with its path replaced by `/<database>`, query and fragment kept |
 | `isRepeatableUse(type, use)` | Whether the standard vocabulary lets `use` occur more than once on one `type` entry; `undefined` outside the registry, where the provider decides (L-4) |
 | `RESOURCE_USE_VOCABULARY` | Standard use vocabulary by resource type → use → the properties it registers. Advisory: lint warns, the schema never rejects |
 | `UnresolvedUseError` | Thrown when a `$<resource>.<use>.<property>` path names a use the entry does not declare, or a property the use does not register. Not softened by `:-default` — the path is wrong, not empty |
@@ -267,6 +288,7 @@ job.
 | `MissingOperatorStoragePathError` | Thrown when an operator-supplied storage path does not exist or is not readable on the host (D-50 row 3); the directory is never created |
 | `collectHostCapabilities(launch)` | Collect the app's requested host capabilities (D-44) as `"name=value (required\|optional)"` strings |
 | `collectOperatorStorage(launch)` | Collect the volumes marked `content: operator` (D-50) as `"component.volume"` strings |
+| `checkVersionRange(declared, provided)` | Classify a `requires[].version` range against the version or version family a provider runs → `satisfied`, `unsatisfied`, `undecidable`, `unknown` (`provided` is `undefined`), or `invalid` (not a node-semver range). Each provider phrases its own report (D-74) |
 | `RESOURCE_PROPERTY_VOCABULARY` | Standard resource property vocabulary by resource type (SPEC.md § Resource Property Vocabulary, D-46) |
 
 ### Source mode

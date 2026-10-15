@@ -14,4 +14,8 @@ storage:
   config:
     path: /kavita/config
     persistent: true
+  manga:
+    path: /manga
+    content: operator
+    persistent: true
 restart: always

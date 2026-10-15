@@ -62,6 +62,7 @@ export {
 	parseLaunchErrorContext,
 	type Redactor,
 	slotForCommand,
+	sourceErrorKey,
 	stripControl,
 	stripControlInline,
 	TAIL_LINES,
@@ -124,6 +125,11 @@ export {
 	selectionClosure,
 } from "./select.js";
 export {
+	CREDENTIAL_QUERY_KEYS,
+	canonicalSourceUrl,
+	isCredentialQueryKey,
+} from "./source-url.js";
+export {
 	resolveSourcePrepareCommand,
 	resolveSourceRunCommand,
 } from "./source-mode.js";
@@ -146,12 +152,20 @@ export type {
 export { extractToolchainVersions } from "./toolchain.js";
 export type * from "./types.js";
 export {
+	allocateDbIndexes,
+	type DbIndexes,
 	type DeclaredUse,
 	declaredUse,
 	formatUseKey,
+	namedDatabase,
 	parseUseKey,
 	useKey,
 	useKeyOf,
 	useKeys,
+	withDatabasePath,
 } from "./uses.js";
+export {
+	checkVersionRange,
+	type VersionRangeCheck,
+} from "./version-range.js";
 export { writeLaunch } from "./writer.js";

@@ -5,19 +5,19 @@ test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 50
   startup_time_seconds: 7
-  total_disk_mb: 989
+  total_download_mb: 335
   health_check_passed: true
   notes: ""
 images:
   - name: docmost/docmost:latest
-    size_mb: 690
+    size_mb: 210
     platform:
       - linux/arm64
   - name: postgres:16-alpine
-    size_mb: 259
+    size_mb: 109
     platform:
       - linux/arm64
   - name: redis:7-alpine
-    size_mb: 40
+    size_mb: 16
     platform:
       - linux/arm64

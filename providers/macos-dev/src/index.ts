@@ -13,3 +13,16 @@ export { launchBootstrap } from "./bootstrap.js";
 // `@launchfile/docker`. The SDK owns both.
 export { InvalidAppUrlError, normalizeAppUrl } from "@launchfile/sdk";
 export type { BootstrapResult } from "./bootstrap.js";
+export {
+	captureProcessLogs,
+	declaredEnvKeys,
+	inPhase,
+	isExpectedRefusal,
+	launchErrorFrom,
+	MACOS_PROVIDER,
+	macosErrorKey,
+	macosLaunchError,
+	type PhaseContext,
+} from "./errors.js";
+export { registerSensitiveEnv, registerSuppliedEnv } from "./env-secrets.js";
+export { registerDeclaredSecret, redactSecrets } from "./redact.js";

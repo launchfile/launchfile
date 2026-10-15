@@ -17,9 +17,12 @@ import {
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
+	readdirSync,
 	readFileSync,
+	realpathSync,
 	rmSync,
 	statSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -27,6 +30,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ProcessManager } from "../process-manager.js";
+import { ConfinementRefusal } from "../safe-path.js";
 
 const PROCESS_MANAGER = join(
 	dirname(fileURLToPath(import.meta.url)),
@@ -136,6 +140,47 @@ describe("component logs", () => {
 			await waitFor(() => readFileSync(log, "utf8").includes("now"), 3000),
 		).toBe(true);
 		expect(readFileSync(log, "utf8")).toBe("earlier run\nnow\n");
+	});
+
+	it("refuses to start anything when .launchfile/logs is a symlink out of the project", async () => {
+		// `.launchfile/` ships with the repository, so the log directory can
+		// arrive as a link; a component's raw output would land at its target.
+		const victimDir = mkdtempSync(join(tmpdir(), "launchfile-logs-victim-"));
+		try {
+			mkdirSync(join(projectDir, ".launchfile"));
+			symlinkSync(victimDir, join(projectDir, ".launchfile", "logs"));
+			pm.register("web", { command: "echo leaked; sleep 30", env: {}, cwd: projectDir });
+
+			await expect(pm.startAll()).rejects.toBeInstanceOf(ConfinementRefusal);
+			await expect(pm.startAll()).rejects.toThrow(
+				`${join(realpathSync(projectDir), ".launchfile", "logs")} is a symlink to ${victimDir}; refusing to write`,
+			);
+
+			expect(readdirSync(victimDir)).toEqual([]);
+			expect(pm.getRecordedProcesses()).toEqual({});
+		} finally {
+			rmSync(victimDir, { recursive: true, force: true });
+		}
+	});
+
+	it("refuses to append to a log that is a symlink out of the project", async () => {
+		const victimDir = mkdtempSync(join(tmpdir(), "launchfile-logs-victim-"));
+		try {
+			const victim = join(victimDir, "sink");
+			writeFileSync(victim, "untouched\n");
+			const logDir = join(projectDir, ".launchfile", "logs");
+			mkdirSync(logDir, { recursive: true });
+			symlinkSync(victim, join(logDir, "web.log"));
+			pm.register("web", { command: "echo leaked; sleep 30", env: {}, cwd: projectDir });
+
+			await expect(pm.startAll()).rejects.toBeInstanceOf(ConfinementRefusal);
+			await expect(pm.startAll()).rejects.toThrow("web.log is a symlink to");
+
+			expect(readFileSync(victim, "utf8")).toBe("untouched\n");
+			expect(pm.getRecordedProcesses()).toEqual({});
+		} finally {
+			rmSync(victimDir, { recursive: true, force: true });
+		}
 	});
 
 	it("keeps a component alive, and its log growing, after the session that started it has exited", async () => {

@@ -12,10 +12,8 @@ import {
 	AT_APP_HOST,
 	atDeclarations,
 	atEntryLabel,
-	buildLaunchErrorContext,
 	httpsOriginSatisfied,
 	indexOperatorStoragePaths,
-	LaunchError,
 	MissingOperatorStoragePathError,
 	normalizeAppUrl,
 	readLaunch,
@@ -50,6 +48,7 @@ import {
 import {
 	loadState,
 	initState,
+	hashLaunchfile,
 	saveState,
 	ensureDirs,
 	withRecordedDbIndexes,
@@ -71,7 +70,9 @@ import {
 	allocateDbIndexes,
 	getProvisioner,
 	namedDatabases,
+	ResourceRefusedError,
 	uncoveredUses,
+	type ProvisionOpts,
 	type ResourceProperties,
 } from "./resources/index.js";
 import { allocatePorts } from "./port-allocator.js";
@@ -80,10 +81,20 @@ import { detectPackageManager } from "./lockfile-detect.js";
 import { prepareFingerprint } from "./prepare-fingerprint.js";
 import { provisionStorage, storagePaths } from "./storage.js";
 import { HealthGateError, ProcessManager } from "./process-manager.js";
-import { redactSecrets } from "./redact.js";
+import { withConfinementRefusal } from "./safe-path.js";
 import { stopRecordedProcesses } from "./process-stopper.js";
 import { shellScript } from "./shell.js";
 import { parseDuration } from "./bootstrap.js";
+import {
+	captureProcessLogs,
+	declaredEnvKeys,
+	inPhase,
+	launchErrorFrom,
+	macosErrorKey,
+	macosLaunchError,
+	type PhaseContext,
+} from "./errors.js";
+import { registerSensitiveEnv, registerSuppliedEnv } from "./env-secrets.js";
 
 /**
  * This provider runs apps from source. A component is source-runnable when
@@ -113,6 +124,12 @@ function declaredTimeout(timeout: string | undefined, label: string): number | u
 export interface LaunchUpOpts {
 	withOptional?: boolean;
 	noBuild?: boolean;
+	/**
+	 * Return once every component has started instead of staying in the
+	 * foreground. The components keep running in the background with their
+	 * pids recorded in state, so `down` stops them from any shell. No Ctrl+C
+	 * handler is installed.
+	 */
 	detach?: boolean;
 	dryRun?: boolean;
 	projectDir?: string;
@@ -378,6 +395,13 @@ export interface SourcePrepareContext {
 	run?: (command: string, opts: { cwd: string; env?: Record<string, string>; timeout?: number }) => Promise<unknown>;
 	/** Persists state whenever a component's `state.prepared` record changes. */
 	save?: (projectDir: string, state: LaunchState) => Promise<void>;
+	/**
+	 * The failure context for one component's prepare. When present, a failing
+	 * command is re-thrown as a `LaunchError` tagged `prepare` — the slot, never
+	 * the command name, whether it resolved `install`, `build`, or the package
+	 * manager's install (D-38, D-48).
+	 */
+	capture?: (component: string) => PhaseContext;
 }
 
 /**
@@ -433,13 +457,15 @@ export async function runSourcePrepare(
 		}
 
 		console.log(`  \u2193 Preparing${label}...`);
-		await run(command, {
-			cwd,
-			env: ctx.envs[name],
-			// Installs/compiles routinely exceed the 2-minute shell default;
-			// honor a declared timeout, else allow 10 minutes.
-			timeout: declaredTimeout(prepare?.timeout, `prepare [${name}]`) ?? 600_000,
-		});
+		const exec = () =>
+			run(command, {
+				cwd,
+				env: ctx.envs[name],
+				// Installs/compiles routinely exceed the 2-minute shell default;
+				// honor a declared timeout, else allow 10 minutes.
+				timeout: declaredTimeout(prepare?.timeout, `prepare [${name}]`) ?? 600_000,
+			});
+		await (ctx.capture ? inPhase("prepare", ctx.capture(name), exec) : exec());
 		ranThisUp.add(sharedKey);
 		// Recorded as each command succeeds: a later component can fail the
 		// launch, and that must not discard the record of work already done.
@@ -449,7 +475,33 @@ export async function runSourcePrepare(
 }
 
 export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
+	// A write under `.launchfile/` or to `.env.local` that finds a symlink the
+	// repository shipped (safe-path.ts) stops the run with a `Refused:` line.
+	return withConfinementRefusal(() => runUp(opts));
+}
+
+async function runUp(opts: LaunchUpOpts): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
+	// Anything that escapes without a phase still gets a record, tagged
+	// `unknown` rather than guessed at — an untagged failure would leave
+	// `diagnose` with nothing to show for a run that visibly failed.
+	return inPhase("unknown", { key: macosErrorKey(projectDir) }, () =>
+		runLaunchUp(projectDir, opts),
+	);
+}
+
+async function runLaunchUp(projectDir: string, opts: LaunchUpOpts): Promise<void> {
+	// Every throw below is tagged with the phase it happened in, at the throw
+	// site where the phase is known, and carries an already-redacted context the
+	// CLI persists for `launchfile diagnose` (#44). Phases are the D-48 slot
+	// names plus the pre-slot failure points, never command names — so a source
+	// prepare that resolves `install ?? build` and an artifact build both record
+	// `prepare` (D-38).
+	//
+	// The key is the project directory: this provider runs one instance per
+	// directory, so two checkouts of one app are two deployments and must not
+	// share a record.
+	const key = macosErrorKey(projectDir);
 
 	// Publication context (D-58): validated and normalized before anything is
 	// checked, provisioned, or started — a malformed URL is an expected refusal
@@ -463,7 +515,11 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	if (!prereqs.ok) {
 		console.error("Missing prerequisites:");
 		for (const m of prereqs.missing) console.error(`  - ${m}`);
-		process.exit(1);
+		throw macosLaunchError({
+			phase: "prereq",
+			key,
+			message: `Missing prerequisites: ${prereqs.missing.join("; ")}`,
+		});
 	}
 
 	// 2. Read and parse Launchfile
@@ -473,10 +529,26 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		launchfileContent = await readFile(launchfilePath, "utf8");
 	} catch {
 		console.error(`No Launchfile found at ${launchfilePath}`);
-		process.exit(1);
+		throw macosLaunchError({
+			phase: "resolve",
+			key,
+			message: `No Launchfile found at ${launchfilePath}`,
+		});
 	}
 
-	const launch = readLaunch(launchfileContent);
+	const launch = await inPhase("parse", { key }, async () =>
+		readLaunch(launchfileContent),
+	);
+
+	// Identity + declared env names, shared by every phase context below.
+	// `declaredEnvKeys` reads names from the Launchfile — no resolved value is
+	// ever in scope here, so none can reach a record.
+	const failure = (extra: Partial<PhaseContext> = {}): PhaseContext => ({
+		key,
+		app: launch.name,
+		env: declaredEnvKeys(launch),
+		...extra,
+	});
 	const allComponentNames = Object.keys(launch.components);
 
 	// Resolve component selector (#77) into its D-41 start-set: selected
@@ -510,6 +582,22 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	let state = await loadState(projectDir);
 	if (!state) {
 		state = initState(launch.name, launchfileContent);
+	} else {
+		// The recorded hash detects an edit; it does not authenticate one. A
+		// mismatch is reported and the recorded state is kept: discarding it
+		// would re-mint every `generatedEnv` value on an ordinary edit, against
+		// D-49's generate-once-then-preserve rule, and buys nothing against a
+		// shipped file whose author can compute the matching hash.
+		const currentHash = hashLaunchfile(launchfileContent);
+		const recordedHash = state.launchfileHash;
+		if (recordedHash !== undefined && recordedHash !== currentHash) {
+			console.warn(
+				"  Warning: .launchfile/state.json was recorded for different " +
+					`Launchfile content (recorded ${recordedHash}, current ` +
+					`${currentHash}) — continuing with the recorded state.`,
+			);
+		}
+		state.launchfileHash = currentHash;
 	}
 	// Publication context (D-58), the same preservation rule the docker provider
 	// applies: a supplied value replaces the recorded one — the derived $app.*
@@ -528,11 +616,11 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	// would fall back to a surviving sibling. Declaration fixes the primary;
 	// a refused one keeps its place and resolves the empty address at step
 	// 8, whatever refused it (D-72).
-	const refused = refusedComponents(launch, {
+	const refusedSet = refusedComponents(launch, {
 		appUrl: state.appUrl,
 		withOptional: state.withOptional,
 	});
-	const primary = declaredPrimary(launch, refused);
+	const primary = declaredPrimary(launch, refusedSet);
 	// 2a. Host capabilities are granted or refused, never provisioned (D-44,
 	// PROVIDERS.md §11). This provider runs processes directly on the host and
 	// grants none of them, so a component with a required capability is
@@ -700,6 +788,11 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 			missingRequired.push({ component: name, key, sensitive });
 		}
 	}
+	// D-52 values arrive from outside the platform, so nothing else can have
+	// registered them. Registered here, the moment they are read, and before any
+	// command runs that could echo one into a captured tail (CWE-532).
+	for (const supplied of Object.values(operatorEnv)) registerSuppliedEnv(supplied);
+
 	if (missingRequired.length > 0) {
 		console.error(
 			`\nCannot launch: ${missingRequired.length} required environment variable${missingRequired.length === 1 ? "" : "s"} had no value.`,
@@ -799,13 +892,26 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const resourceMap: Record<string, ResourceProperties> = {};
 	const uses = declaredUses(launch);
 	const dbIndexes = allocateDbIndexes(launch);
-	const provisionOpts = (resourceName: string) => ({
+	// `persist` writes the record to state.json before the provisioner creates
+	// a role or user, so a throw later in this `up` cannot lose the password
+	// that role was created with.
+	const provisionOpts = (resourceName: string): ProvisionOpts => ({
 		appName: launch.name,
 		projectDir,
 		databases: namedDatabases(uses[resourceName] ?? []),
+		persist: async (record) => {
+			state.resources[resourceName] = withRecordedDbIndexes(record, dbIndexes[resourceName] ?? {});
+			await saveState(projectDir, state);
+		},
 	});
+	// A refusal is recorded by name, the way resourceMap records a success,
+	// so a resource several components share is tried once and named once.
+	// Only a `requires:` refusal stops the run; a `supports:` one is skipped
+	// (D-8), but is still remembered so a later component does not retry it.
+	const refused = new Map<string, ResourceRefusedError>();
+	const refusedRequired = new Set<string>();
 
-	for (const [_compName, component] of Object.entries(launch.components)) {
+	for (const [compName, component] of Object.entries(launch.components)) {
 		for (const req of component.requires ?? []) {
 			if (req.host) continue; // capability, not a backing service (D-44)
 			// Satisfied through the publication context, not provisioned; wired
@@ -813,13 +919,19 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 			if (req.type === HTTPS_ORIGIN) continue;
 			const resourceName = req.name ?? req.type;
 			if (resourceMap[resourceName]) continue; // Already provisioned
+			if (refused.has(resourceName)) {
+				// Already refused, possibly as another component's optional
+				// resource; required here, so it now counts against the run.
+				refusedRequired.add(resourceName);
+				continue;
+			}
 
 			const provisioner = getProvisioner(req.type);
 			if (!provisioner) {
 				// Step 2a-quater removed every component with such an entry, so
 				// reaching here is a bug in this file, not a launch outcome.
 				throw new Error(
-					`no provisioner for resource type "${req.type}" on ${_compName} — the component must be refused first`,
+					`no provisioner for resource type "${req.type}" on ${compName} — the component must be refused first`,
 				);
 			}
 
@@ -839,12 +951,33 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 
 			process.stdout.write(`  \u2193 Provisioning ${req.type}...`);
 			const existing = state.resources[resourceName];
-			const result = await provisioner.provision(req, provisionOpts(resourceName), existing);
+			// A refusal is printed by the provisioner. The resource is skipped so
+			// the remaining ones still provision, and the run exits non-zero
+			// below: a required resource that vanishes under a zero exit code is
+			// the silent success this guards against. The refusal is returned out
+			// of the phase wrapper rather than thrown through it, so it is never
+			// filed as a `provision` launch failure; any other error is.
+			const outcome = await inPhase("provision", failure({ component: compName }), async () => {
+				try {
+					return await provisioner.provision(req, provisionOpts(resourceName), existing);
+				} catch (err) {
+					if (err instanceof ResourceRefusedError) return err;
+					throw err;
+				}
+			});
+			if (outcome instanceof ResourceRefusedError) {
+				console.log(" refused");
+				refused.set(resourceName, outcome);
+				refusedRequired.add(resourceName);
+				continue;
+			}
+			const result = outcome;
 			resourceMap[resourceName] = registerResource(req.type, resourceName, uses, result.properties, indexes);
 			// The indexes ride along in state so `env` answers `db.*` with the
 			// databases the running app was given.
 			state.resources[resourceName] = withRecordedDbIndexes(result.state, indexes);
 			console.log(" done");
+			for (const warning of result.warnings) console.warn(`  Warning: ${warning}`);
 		}
 
 		// Optional supports resources
@@ -853,7 +986,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 				if (sup.host) continue; // capability, not a backing service (D-44)
 				if (sup.type === HTTPS_ORIGIN) continue; // publication context, step 8
 				const resourceName = sup.name ?? sup.type;
-				if (resourceMap[resourceName]) continue;
+				if (resourceMap[resourceName] || refused.has(resourceName)) continue;
 
 				const provisioner = getProvisioner(sup.type);
 				if (!provisioner) continue;
@@ -865,7 +998,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 				const uncovered = sup.uses ? uncoveredUses(sup.type, useKeys(sup.uses)) : [];
 				if (uncovered.length > 0) {
 					console.warn(
-						`  Warning: ${_compName}: optional resource ${resourceName} not satisfied — this provider ` +
+						`  Warning: ${compName}: optional resource ${resourceName} not satisfied — this provider ` +
 							`does not cover ${uncovered.length === 1 ? "a use" : "uses"} it declares ` +
 							`(${uncovered.join(", ")}); running degraded`,
 					);
@@ -892,15 +1025,30 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 					resourceMap[resourceName] = registerResource(sup.type, resourceName, uses, result.properties, indexes);
 					state.resources[resourceName] = withRecordedDbIndexes(result.state, indexes);
 					console.log(" done");
-				} catch {
+					for (const warning of result.warnings) console.warn(`  Warning: ${warning}`);
+				} catch (err) {
+					if (err instanceof ResourceRefusedError) refused.set(resourceName, err);
 					console.log(" skipped");
 				}
 			}
 		}
 	}
 
+	// A required resource the provisioner refused leaves its component with
+	// nothing to run against, so the run stops here, after every other
+	// resource has had its turn, and names each refusal.
+	if (refusedRequired.size > 0) {
+		console.error(
+			`Refused to provision ${refusedRequired.size === 1 ? "a required resource" : "required resources"}: ` +
+				[...refusedRequired].map((name) => `${name} (${refused.get(name)?.reason})`).join("; "),
+		);
+		process.exit(1);
+	}
+
 	// 7. Allocate ports
-	const componentPorts = await allocatePorts(launch.components, launch.name, state.ports);
+	const componentPorts = await inPhase("provision", failure(), () =>
+		allocatePorts(launch.components, launch.name, state.ports),
+	);
 	state.ports = componentPorts;
 	// The key the printouts place a supplied publication URL on (§7, D-58
 	// rules 2 and 4), recorded so `status` places it without the Launchfile.
@@ -951,13 +1099,15 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 			continue;
 		}
 
-		const version = await installer.detectVersion(projectDir);
-		if (version) {
-			console.log(`  \u2193 Installing ${component.runtime} ${version}... done`);
-			await installer.install(version);
-		} else {
-			console.log(`  \u2193 Using system ${component.runtime}`);
-		}
+		await inPhase("provision", failure({ component: name }), async () => {
+			const version = await installer.detectVersion(projectDir);
+			if (version) {
+				console.log(`  \u2193 Installing ${component.runtime} ${version}... done`);
+				await installer.install(version);
+			} else {
+				console.log(`  \u2193 Using system ${component.runtime}`);
+			}
+		});
 	}
 
 	// 10. Detect package manager
@@ -967,11 +1117,8 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	// so it can be injected as $storage.<name>.path (D-39). Scoped per component.
 	const componentStorage: Record<string, Record<string, Record<string, string>>> = {};
 	for (const [name, component] of Object.entries(launch.components)) {
-		const volumeMap = await provisionStorage(
-			component.storage,
-			name,
-			projectDir,
-			operatorStorage[name],
+		const volumeMap = await inPhase("provision", failure({ component: name }), () =>
+			provisionStorage(component.storage, name, projectDir, operatorStorage[name]),
 		);
 		const storageCtx: Record<string, Record<string, string>> = {};
 		for (const [volName, localPath] of Object.entries(volumeMap)) {
@@ -989,12 +1136,26 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	const generatedEnv = (state.generatedEnv ??= {});
 
 	for (const [name, component] of Object.entries(launch.components)) {
-		const { env } = resolveComponentEnv(component, context, resourceMap, componentStorage[name]);
-		await resolveGenerators(component, env, name, generatedEnv);
+		const env = await inPhase("provision", failure({ component: name }), async () => {
+			const { env: resolved } = resolveComponentEnv(
+				component,
+				context,
+				resourceMap,
+				componentStorage[name],
+			);
+			await resolveGenerators(component, resolved, name, generatedEnv);
+			return resolved;
+		});
 
 		// Operator-supplied `required:` values (step 2c) join the resolved set, so
 		// they reach `release` and `start` alike and show up in `launch env`.
 		Object.assign(env, operatorEnv[name] ?? {});
+
+		// D-18: a value the author declared `sensitive: true` is registered here,
+		// once it is resolved and before any command that could echo it runs. The
+		// registry is what a capture scrubs against, so a value that is not in it
+		// by now is one no later redaction can remove (CWE-532).
+		registerSensitiveEnv(component.env, env);
 
 		const port = componentPorts[name];
 		if (port && !env.PORT) {
@@ -1009,21 +1170,21 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		}
 
 		if (isSingleComponent) {
-			await writeEnvFile(join(projectDir, ".env.local"), env);
+			await writeEnvFile(projectDir, [".env.local"], env);
 			console.log(`  \u2193 Wiring environment variables... done (${Object.keys(env).length} vars)`);
 		} else {
-			const { mkdir } = await import("node:fs/promises");
-			await mkdir(join(projectDir, ".launchfile", "env"), { recursive: true, mode: 0o700 });
-			await writeEnvFile(join(projectDir, ".launchfile", "env", `${name}.env`), env);
+			await writeEnvFile(projectDir, [".launchfile", "env", `${name}.env`], env);
 			console.log(`  \u2193 Wiring ${name} environment... done (${Object.keys(env).length} vars)`);
 		}
 	}
 
-	// 13. Save state before build (in case build fails, we still have resource state)
+	// 13. Save state before build, so a failed build keeps the ports, env
+	// wiring and resource records gathered above. Credential-bearing resource
+	// records were already saved as each was provisioned (`persist`).
 	// The bound operator paths ride along so `env` can report the directory the
 	// app actually reads (D-50); a later `up` still has to supply them again.
 	state.operatorStorage = operatorStorage;
-	await saveState(projectDir, state);
+	await inPhase("provision", failure(), () => saveState(projectDir, state));
 
 	if (opts.dryRun) {
 		console.log("\n[dry-run] Would now run build, release, and start commands.");
@@ -1041,6 +1202,7 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 			envs: allEnvs,
 			fallbackCommand: pm?.installCommand,
 			labelComponents: componentNames.length > 1,
+			capture: (component) => failure({ component }),
 		});
 	}
 
@@ -1049,11 +1211,15 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		const release = component.commands?.release;
 		if (release?.command) {
 			console.log(`  \u2193 Running release${componentNames.length > 1 ? ` [${name}]` : ""}...`);
-			await shellScript(release.command, {
-				cwd: join(projectDir, component.source ?? component.build?.context ?? "."),
-				env: allEnvs[name],
-				timeout: declaredTimeout(release.timeout, `release [${name}]`),
-			});
+			// D-48: a release failure fails the DEPLOY — a different disposition
+			// from the prepare and run slots either side of it.
+			await inPhase("release", failure({ component: name }), () =>
+				shellScript(release.command, {
+					cwd: join(projectDir, component.source ?? component.build?.context ?? "."),
+					env: allEnvs[name],
+					timeout: declaredTimeout(release.timeout, `release [${name}]`),
+				}),
+			);
 		}
 	}
 
@@ -1078,40 +1244,46 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 		});
 	}
 
-	// Handle Ctrl+C gracefully
+	// A foreground session stops every component on Ctrl+C. A detached one
+	// installs no handler: `up` returns after launch and `down` stops the
+	// components through the pids recorded below.
 	const finalState = state;
-	process.on("SIGINT", async () => {
-		console.log("\n\nShutting down...");
-		await pm2.stopAll();
-		// Processes are now dead; clear the recorded pids so a later `launch down`
-		// doesn't try to signal stale (and possibly recycled) pids.
-		finalState.processes = {};
-		await saveState(projectDir, finalState);
-		process.exit(0);
-	});
+	if (!opts.detach) {
+		process.on("SIGINT", async () => {
+			console.log("\n\nShutting down...");
+			await pm2.stopAll();
+			// Processes are now dead; clear the recorded pids so a later `launch down`
+			// doesn't try to signal stale (and possibly recycled) pids.
+			finalState.processes = {};
+			await saveState(projectDir, finalState);
+			process.exit(0);
+		});
+	}
 
+	// The run slot resolves `dev ?? start` in source mode (D-38) and records
+	// `run` either way. Component log tails are attached only on failure — the
+	// processes write them to `.launchfile/logs/`, so a start that dies takes its
+	// own output into the record.
+	const runFailure = failure({
+		logs: () => captureProcessLogs(projectDir, Object.keys(launch.components)),
+	});
 	try {
-		await pm2.startAll();
-	} catch (err) {
-		// A failed health gate fails the invocation with the `health` phase
-		// (SPEC.md § Failure semantics), the same record the docker provider
-		// raises: the CLI registers the deployment as unhealthy so `down`
-		// reaches the processes left running, and `diagnose` finds the record.
-		if (err instanceof HealthGateError) {
-			throw new LaunchError(
-				buildLaunchErrorContext(
-					{
-						phase: "health",
-						provider: "macos-dev",
-						key: launch.name,
-						app: launch.name,
-						message: err.message,
-					},
-					redactSecrets,
-				),
-			);
-		}
-		throw err;
+		await inPhase("run", runFailure, async () => {
+			try {
+				await pm2.startAll();
+			} catch (err) {
+				// A failed health gate fails the invocation with the `health` phase
+				// and a component that exited before coming up (ComponentExitError)
+				// with the `run` phase this wrapper tags (SPEC.md § Failure
+				// semantics), the same records the docker provider raises: the CLI
+				// registers the deployment so `down` reaches the processes left
+				// running, and `diagnose` finds the record.
+				if (err instanceof HealthGateError) {
+					throw await launchErrorFrom("health", runFailure, err);
+				}
+				throw err;
+			}
+		});
 	} finally {
 		// Record spawned pids so `launch down` can stop them from another shell or
 		// after this foreground session ends (closes #49). Backward compatible: the
@@ -1126,9 +1298,21 @@ export async function launchUp(opts: LaunchUpOpts = {}): Promise<void> {
 	console.log(`  \u2713 All components started`);
 
 	// 17. Print summary
-	printSummary(launch.name, componentPorts, state);
+	printSummary(
+		launch.name,
+		componentPorts,
+		state,
+		undefined,
+		opts.detach ? DETACHED_FOOTER : FOREGROUND_FOOTER,
+	);
 	printAtReports(atReports(launch, componentPorts, suppliedAppUrl));
+
+	// The pids are saved above, so the session can let go of the children.
+	if (opts.detach) pm2.detach();
 }
+
+const FOREGROUND_FOOTER = "Press Ctrl+C to stop all processes.";
+const DETACHED_FOOTER = "Running in the background. `launchfile down` stops it.";
 
 /**
  * What a printout reads to place the orchestrator-supplied publication URL
@@ -1196,15 +1380,20 @@ function printSummary(
 	ports: Record<string, number>,
 	publication: PrintedPublication,
 	verb?: string,
+	footer = FOREGROUND_FOOTER,
 ): void {
 	console.log("");
 	for (const line of summaryLines(appName, ports, publication, verb)) {
 		console.log(line);
 	}
-	console.log("\n  Press Ctrl+C to stop all processes.");
+	console.log(`\n  ${footer}`);
 }
 
 export async function launchDown(opts: { destroy?: boolean; projectDir?: string } = {}): Promise<void> {
+	return withConfinementRefusal(() => runDown(opts));
+}
+
+async function runDown(opts: { destroy?: boolean; projectDir?: string }): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 	const state = await loadState(projectDir);
 	if (!state) {
@@ -1263,12 +1452,6 @@ export async function launchDown(opts: { destroy?: boolean; projectDir?: string 
 	}
 }
 
-// --detach is intentionally left as a follow-up: persisting pids (this PR) is
-// the prerequisite for it. With pids now recorded and a working cross-session
-// `down`, detach becomes "spawn detached + unref + don't install the SIGINT
-// foreground loop, then return" — a self-contained change best done separately
-// so the kill-path fix lands reviewable on its own.
-
 export async function launchStatus(opts: { projectDir?: string } = {}): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 	const state = await loadState(projectDir);
@@ -1299,6 +1482,10 @@ export async function launchStatus(opts: { projectDir?: string } = {}): Promise<
 }
 
 export async function launchEnv(opts: { component?: string; projectDir?: string } = {}): Promise<void> {
+	return withConfinementRefusal(() => runEnv(opts));
+}
+
+async function runEnv(opts: { component?: string; projectDir?: string }): Promise<void> {
 	const projectDir = opts.projectDir ?? process.cwd();
 
 	const launchfileContent = await readFile(join(projectDir, "Launchfile"), "utf8");

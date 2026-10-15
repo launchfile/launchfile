@@ -11,6 +11,7 @@ import {
 	type LaunchDisposition,
 	type LaunchErrorContext,
 	type LaunchPhase,
+	sourceErrorKey,
 } from "@launchfile/sdk";
 import { errorsDir, readLaunchErrorRecord } from "../state/errors.js";
 import { dockerSlugFor, findDeployment, loadIndex } from "../state/index.js";
@@ -114,9 +115,10 @@ function indent(text: string): string {
 
 /**
  * Resolve what the user typed to a record key. A record is filed under the
- * provider's key (a docker slug, or a hash of the source for a failure that
- * happened before a slug existed), so a deployment id or a user-assigned name
- * has to be translated first.
+ * provider's key, so a deployment id or a user-assigned name has to be
+ * translated first — and the two providers key differently: docker by slug (or
+ * by a hash of the source for a failure that happened before a slug existed),
+ * macos-dev by project directory, which is its unit of identity.
  */
 async function resolveKey(target: string, dir: string): Promise<string> {
 	const direct = await readLaunchErrorRecord(target, dir);
@@ -124,7 +126,10 @@ async function resolveKey(target: string, dir: string): Promise<string> {
 
 	const matches = findDeployment(await loadIndex(), target);
 	const entry = matches[0]?.entry;
-	return entry ? dockerSlugFor(entry) : target;
+	if (!entry) return target;
+	return entry.provider === "macos"
+		? sourceErrorKey(entry.source)
+		: dockerSlugFor(entry);
 }
 
 /**

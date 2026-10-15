@@ -56,6 +56,18 @@ describe("summaryLines", () => {
 		const lines = summaryLines("acme", { "caddy:443": 54001 });
 		expect(lines).toEqual(["  caddy (443) is running at http://localhost:54001"]);
 	});
+
+	it("reports what would be reachable in the dry-run tense (#403)", () => {
+		const lines = summaryLines(
+			"acme",
+			ports,
+			new Set(["backend"]),
+			undefined,
+			undefined,
+			"would be reachable at",
+		);
+		expect(lines).toEqual(["  backend would be reachable at http://localhost:54001"]);
+	});
 });
 
 describe("endpointAddress", () => {

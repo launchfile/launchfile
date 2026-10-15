@@ -5,15 +5,15 @@ test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 3
   startup_time_seconds: 7
-  total_disk_mb: 1113
+  total_download_mb: 333
   health_check_passed: true
   notes: ""
 images:
   - name: lscr.io/linuxserver/bookstack:latest
-    size_mb: 357
+    size_mb: 110
     platform:
       - linux/arm64
   - name: mysql:8
-    size_mb: 756
+    size_mb: 223
     platform:
       - linux/arm64

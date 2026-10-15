@@ -2,9 +2,10 @@
  * The refusal set — every component this provider refuses before launch, and
  * the surfaced message for each (PROVIDERS.md §10 items 5, 8 and 9).
  *
- * Five causes refuse a component, and the same set answers two questions:
- * which services the compose generator emits nothing for, and whether the
- * app's declared primary is refused, so `$app.*` resolves the empty address
+ * Five causes refuse a component (D-64 is graded twice: a type with no
+ * factory, and a bucket no S3 server accepts), and the same set answers two
+ * questions: which services the compose generator emits nothing for, and
+ * whether the app's declared primary is refused, so `$app.*` resolves the empty address
  * (D-72). The set is computed once from the file and the supplied inputs,
  * before `$app.*` is derived, and every verb that resolves `$app.*` — `up`,
  * `bootstrap`, `release` — reads the same function with the same inputs, so
@@ -112,6 +113,42 @@ function uncoveredUseRefusal(
 	);
 }
 
+/** Resource types whose `bucket` property is an S3 bucket this provider creates. */
+const OBJECT_STORE_TYPES: ReadonlySet<string> = new Set(["minio", "s3"]);
+
+/**
+ * Why an app name cannot be a bucket name on the MinIO server this provider
+ * runs, or null when it can. The app name grammar (`^[a-z][a-z0-9-]*$`, at
+ * most 63) already rules out every character S3 rejects. This checks the
+ * length floor and a trailing hyphen. AWS also reserves prefixes and suffixes
+ * such as `xn--` and `-s3alias`; the pinned MinIO accepts them, so they are
+ * not checked here.
+ */
+function invalidBucketName(name: string): string | null {
+	if (name.length < 3) return "shorter than 3 characters";
+	if (name.endsWith("-")) return "ends with a hyphen";
+	return null;
+}
+
+/**
+ * The surfaced refusal for a component whose `requires` entry names a bucket
+ * that cannot exist (D-64): launching with a `bucket` that no S3 server
+ * accepts is the unmet precondition D-64 forbids. Names the component, the
+ * entry, the bucket name, and the way out.
+ */
+function invalidBucketNameRefusal(
+	componentName: string,
+	entries: readonly string[],
+): string {
+	const noun = entries.length === 1 ? "a bucket" : "buckets";
+	return (
+		`refused: ${componentName} requires ${noun} this provider cannot create ` +
+		`(${entries.join("; ")}) — the bucket is named after the app, and S3 bucket names ` +
+		"are 3 to 63 characters and never end with a hyphen; rename the app, or supply the " +
+		"resource through the provider's supplied-resource channel (D-56) — component skipped"
+	);
+}
+
 /**
  * Why one component is refused, or `undefined` when it is not. The causes
  * are graded in a fixed order and the first one found is the message: a
@@ -127,8 +164,14 @@ function uncoveredUseRefusal(
  * 5. A required use this provider cannot cover (D-65 rule 3): a supplied
  *    resource whose map lacks the use's registered properties, a use no
  *    factory here hands over, or a token this provider does not recognise.
+ *    An `https-origin` entry is graded against the map the generator wires
+ *    it from — `url` alone — never a same-keyed supplied resource: the
+ *    publication context is this type's channel (D-60 rule 5).
+ * 6. A provisioned object store whose bucket, named after the app, no S3
+ *    server accepts (D-64): the unmet precondition D-64 forbids.
  */
 function componentRefusal(
+	launchName: string,
 	componentName: string,
 	component: NormalizedLaunch["components"][string],
 	inputs: RefusalInputs,
@@ -202,7 +245,10 @@ function componentRefusal(
 	for (const req of component.requires ?? []) {
 		if (req.host || !req.uses) continue;
 		const resourceName = req.name ?? req.type;
-		const supplied = inputs.resources?.[resourceName];
+		const supplied =
+			req.type === HTTPS_ORIGIN
+				? { properties: { url: inputs.appUrl ?? "" } }
+				: inputs.resources?.[resourceName];
 		const uncovered = supplied
 			? uncoveredSuppliedUses(req.type, useKeys(req.uses), supplied.properties)
 			: uncoveredProvisionedUses(req.type, useKeys(req.uses));
@@ -212,6 +258,20 @@ function componentRefusal(
 	}
 	if (uncoveredUses.length > 0) {
 		return uncoveredUseRefusal(componentName, uncoveredUses);
+	}
+
+	const uncreatableBuckets: string[] = [];
+	for (const req of component.requires ?? []) {
+		if (req.host || !OBJECT_STORE_TYPES.has(req.type)) continue;
+		if (inputs.resources?.[req.name ?? req.type]) continue;
+		const why = invalidBucketName(launchName);
+		if (why === null) continue;
+		uncreatableBuckets.push(
+			`${req.name ?? req.type}: bucket "${launchName}" ${why}`,
+		);
+	}
+	if (uncreatableBuckets.length > 0) {
+		return invalidBucketNameRefusal(componentName, uncreatableBuckets);
 	}
 
 	return undefined;
@@ -237,6 +297,7 @@ export function refusedComponents(
 	const refused = new Map<string, string>();
 	for (const [componentName, component] of Object.entries(launch.components)) {
 		const message = componentRefusal(
+			launch.name,
 			componentName,
 			component,
 			inputs,

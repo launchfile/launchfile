@@ -1335,3 +1335,191 @@ commands:
 		expect(preservedSecrets).toEqual([]);
 	});
 });
+
+describe("translate — fields of an untranslated component (PROVIDERS.md §10 rule 8, D-51)", () => {
+	const declaredFields = `
+commands:
+  start: "nginx -g 'daemon off;'"
+  build: "make"
+  release: "make migrate"
+env:
+  LOG_LEVEL:
+    default: info
+health: /healthz
+restart: always
+storage:
+  data:
+    path: /var/lib/app
+provides:
+  - protocol: http
+    port: 8080
+schedule: "0 * * * *"
+`;
+
+	it("records one workaround row per declared field of an image-only component", () => {
+		const { conformance } = tf(`
+version: launch/v1
+name: app
+image: nginx:latest
+${declaredFields}`);
+		expect(conformance.gaps.some((g) => g.field === "image")).toBe(true);
+		for (const field of [
+			"commands.start",
+			"commands.build",
+			"commands.release",
+			"env",
+			"health",
+			"restart",
+			"storage:data",
+			"provides:http:8080",
+			"schedule",
+		]) {
+			const rows = conformance.gaps.filter((g) => g.field === field);
+			expect(rows, field).toHaveLength(1);
+			expect(rows[0]?.severity, field).toBe("workaround");
+			expect(rows[0]?.component, field).toBe("default");
+		}
+		expect(conformance.mapped).toEqual([]);
+	});
+
+	it("records depends_on per component when the dependent is image-only", () => {
+		const { conformance } = tf(`
+version: launch/v1
+name: stack
+components:
+  db-migrate:
+    runtime: node
+    commands:
+      start: "node migrate.js"
+  web:
+    image: nginx:latest
+    depends_on:
+      - db-migrate
+`);
+		const row = conformance.gaps.find(
+			(g) => g.field === "depends_on:db-migrate",
+		);
+		expect(row?.severity).toBe("workaround");
+		expect(row?.component).toBe("web");
+	});
+
+	it("records no row for a field the file does not declare", () => {
+		const { conformance } = tf(`
+version: launch/v1
+name: app
+image: nginx:latest
+`);
+		expect(conformance.gaps.map((g) => g.field)).toEqual(["image"]);
+	});
+
+	it("records the rows on the no-runtime branch a build.dockerfile component takes", () => {
+		const { conformance } = tf(`
+version: launch/v1
+name: app
+build:
+  dockerfile: Dockerfile
+env:
+  LOG_LEVEL:
+    default: info
+restart: on-failure
+schedule: "*/5 * * * *"
+`);
+		expect(conformance.gaps.some((g) => g.field === "runtime")).toBe(true);
+		for (const field of ["env", "restart", "schedule"]) {
+			const row = conformance.gaps.find((g) => g.field === field);
+			expect(row?.severity, field).toBe("workaround");
+		}
+		expect(conformance.gaps.some((g) => g.field === "health")).toBe(false);
+	});
+
+	it("does not repeat a row already recorded above the early return", () => {
+		const { conformance } = tf(`
+version: launch/v1
+name: app
+image: nginx:latest
+host:
+  docker: required
+requires:
+  - host:
+      privileged: true
+env:
+  ADMIN_TOKEN:
+    required: true
+    sensitive: true
+`);
+		const fields = conformance.gaps.map((g) => g.field);
+		expect(fields.filter((f) => f === "host.docker")).toHaveLength(1);
+		expect(fields.filter((f) => f === "requires:host.privileged")).toHaveLength(
+			1,
+		);
+		expect(fields.filter((f) => f === "env.ADMIN_TOKEN")).toHaveLength(1);
+		expect(fields.filter((f) => f.startsWith("env"))).toEqual([
+			"env.ADMIN_TOKEN",
+			"env",
+		]);
+	});
+
+	it("keeps the translated path unchanged: schedule stays nice-to-have there", () => {
+		const { conformance } = tf(`
+version: launch/v1
+name: app
+runtime: node
+commands:
+  start: "node server.js"
+schedule: "0 * * * *"
+`);
+		const rows = conformance.gaps.filter((g) => g.field === "schedule");
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.severity).toBe("nice-to-have");
+	});
+});
+
+describe("translate — health", () => {
+	const exposed = (health: string) => `
+version: launch/v1
+name: my-app
+runtime: node
+commands:
+  start: "node server.js"
+provides:
+  - protocol: http
+    port: 3000
+    exposed: true
+${health}`;
+
+	it("maps health.path to the ALB health_check", () => {
+		const { hcl, conformance } = tf(exposed("health:\n  path: /healthz\n"));
+		expect(hcl).toMatch(/health_check[\s\S]*path\s*=\s*"\/healthz"/);
+		expect(conformance.mapped.some((m) => m.field === "health")).toBe(true);
+		expect(conformance.gaps.some((g) => g.field === "health")).toBe(false);
+	});
+
+	it("maps a start_period-only health block and keeps the / probe", () => {
+		const { hcl, conformance } = tf(exposed("health:\n  start_period: 30s\n"));
+		expect(hcl).toMatch(/health_check[\s\S]*path\s*=\s*"\/"/);
+		expect(hcl).toContain('matcher = "200-399"');
+		expect(conformance.mapped.some((m) => m.field === "health")).toBe(true);
+		expect(conformance.gaps.some((g) => g.field === "health")).toBe(false);
+	});
+
+	it("records a gap, not a mapping, for a command-only health block", () => {
+		const { hcl, conformance } = tf(
+			exposed('health:\n  command: "curl -f localhost:3000/ready"\n'),
+		);
+		expect(hcl).toContain('resource "aws_lb_target_group"');
+		expect(hcl).toMatch(/health_check[\s\S]*path\s*=\s*"\/"/);
+		expect(conformance.mapped.some((m) => m.field === "health")).toBe(false);
+		const gap = conformance.gaps.find((g) => g.field === "health");
+		expect(gap?.reason).toContain("health.command");
+		expect(gap?.reason).toContain("/");
+	});
+
+	it("keeps the path when both path and command are declared", () => {
+		const { hcl, conformance } = tf(
+			exposed('health:\n  path: /up\n  command: "true"\n'),
+		);
+		expect(hcl).toContain('"/up"');
+		expect(conformance.mapped.some((m) => m.field === "health")).toBe(true);
+		expect(conformance.gaps.some((g) => g.field === "health")).toBe(false);
+	});
+});
