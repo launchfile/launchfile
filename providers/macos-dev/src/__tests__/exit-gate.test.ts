@@ -23,7 +23,10 @@ import {
 	ProcessManager,
 } from "../process-manager.js";
 
-const WATCH_MS = 300;
+// The provider's own window. On a loaded runner `sh -c` can take hundreds of
+// milliseconds to exec, so a shorter window closes before the component has
+// even run and `startAll` resolves ahead of the exit it is meant to catch.
+const WATCH_MS = EXIT_WATCH_MS;
 const BUDGET_MS = 5_000;
 const NEVER = { command: "exit 1", interval: "100ms", timeout: "1s" };
 

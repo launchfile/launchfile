@@ -3,58 +3,72 @@
  */
 
 export {
-	dockerUp,
-	dockerDown,
-	dockerStatus,
-	dockerLogs,
-	dockerList,
-	HEALTH_TIMEOUT_MS,
-	UnsuppliedRequiredEnvError,
-	ForeignSourceError,
-	type ForeignSourceDetails,
-	UnboundOperatorStorageError,
-	MissingOperatorStoragePathError,
-	type DockerUpOpts,
-	type DockerUpResult,
-} from "./provider.js";
-export {
 	type AppContext,
 	// `$app.*` and `$app.endpoints.<name>.*` from one derivation (D-63).
 	computeAppContext,
 	computeAppProperties,
 	InvalidAppUrlError,
 	normalizeAppUrl,
+	type PublishedAddress,
 	// The provider's one derivation of a published endpoint's address (#473).
 	publishedAddress,
-	type PublishedAddress,
 } from "./app-url.js";
+export { type BootstrapResult, dockerBootstrap } from "./bootstrap.js";
 export {
-	declaredEnvKeys,
-	DOCKER_PROVIDER,
-	dockerErrorKey,
-	dockerLaunchError,
-} from "./errors.js";
-export { registerSensitiveEnv, registerSuppliedEnv } from "./env-secrets.js";
-// Redaction is exported so a caller running IN THIS PROCESS (the unified CLI's
-// bootstrap path) can scrub against the live registry. A separate process gets
-// an empty registry and can scrub nothing — capture there is already too late.
-export { redactSecrets, registerDeclaredSecret, registerSecret, registerSecrets } from "./redact.js";
-export {
-	launchToCompose,
-	type ComposeResult,
 	type ComposeOpts,
+	type ComposeResult,
 	type InitOnlyDatabases,
 	type InitOnlyExtensions,
+	launchToCompose,
 	type StorageBind,
 	type UnboundOperatorVolume,
 	type UnsuppliedRequiredVar,
 } from "./compose-generator.js";
-export { resolveSource, type ResolvedSource } from "./source-resolver.js";
-export { dockerBootstrap, type BootstrapResult } from "./bootstrap.js";
+export { registerSensitiveEnv, registerSuppliedEnv } from "./env-secrets.js";
 export {
-	instanceSlug,
-	InvalidInstanceLabelError,
-	loadDockerSource,
+	DOCKER_PROVIDER,
+	declaredEnvKeys,
+	dockerErrorKey,
+	dockerLaunchError,
+} from "./errors.js";
+export type {
+	HostCapabilityDecision,
+	HostCapabilityGrant,
+	HostCapabilityPolicy,
+	HostCapabilityRequest,
+} from "./host-capabilities.js";
+// For a caller that post-processes the generated services (platform
+// hardening) and must land the grants again afterwards with the same rules.
+export { applyHostCapabilityGrants } from "./host-capabilities.js";
+export {
+	type DockerUpOpts,
+	type DockerUpResult,
+	dockerDown,
+	dockerList,
+	dockerLogs,
+	dockerStatus,
+	dockerUp,
+	type ForeignSourceDetails,
+	ForeignSourceError,
+	HEALTH_TIMEOUT_MS,
+	MissingOperatorStoragePathError,
+	UnboundOperatorStorageError,
+	UnsuppliedRequiredEnvError,
+} from "./provider.js";
+// Redaction is exported so a caller running IN THIS PROCESS (the unified CLI's
+// bootstrap path) can scrub against the live registry. A separate process gets
+// an empty registry and can scrub nothing — capture there is already too late.
+export {
+	redactSecrets,
+	registerDeclaredSecret,
+	registerSecret,
+	registerSecrets,
+} from "./redact.js";
+export { type ResolvedSource, resolveSource } from "./source-resolver.js";
+export {
 	type DockerSourceInfo,
 	type DockerSourceType,
+	InvalidInstanceLabelError,
+	instanceSlug,
+	loadDockerSource,
 } from "./state.js";
