@@ -623,4 +623,41 @@ describe("grant lines are prefixed and policy text is made safe (PR #774 B5)", (
 			expect(controls).toEqual([]);
 		}
 	});
+
+	it("strips control characters from the volume strings a conflict quotes", () => {
+		const controlsIn = (text: string) =>
+			[...text].filter((ch) => {
+				const code = ch.charCodeAt(0);
+				return code < 0x20 || code === 0x7f;
+			});
+		const named = launchToCompose(readLaunch(MOUNTS), {
+			hostPorts,
+			hostCapabilities: () => ({
+				granted: { volumes: ["dock\u001b[2Jsock:/x"] },
+			}),
+		});
+		const duplicateEntries = launchToCompose(readLaunch(MOUNTS), {
+			hostPorts,
+			hostCapabilities: () => ({
+				granted: { volumes: ["/srv/a:/y\u001b[2J", "/srv/b:/y\u001b[2J"] },
+			}),
+		});
+		const lines = [named, duplicateEntries].map(
+			(result) => result.warnings.find((w) => w.startsWith("refused:")) ?? "",
+		);
+		expect(lines[0]).toContain("named volume `docksock`");
+		expect(lines[1]).toContain("second volume on `/y`");
+		for (const line of lines) {
+			expect(line).not.toBe("");
+			expect(controlsIn(line)).toEqual([]);
+		}
+		// The reasons applyHostCapabilityGrants returns are what launchToCompose
+		// throws with, so they are held to the same rule.
+		const reasons = applyHostCapabilityGrants(
+			{ volumes: ["/srv/a:/y\u001b[2J"] },
+			[{ volumes: ["evil\u001b[2J:/z"] }, { volumes: ["/srv/b:/y\u001b[2J"] }],
+		);
+		expect(reasons).toHaveLength(2);
+		for (const reason of reasons) expect(controlsIn(reason)).toEqual([]);
+	});
 });

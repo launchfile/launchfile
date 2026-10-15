@@ -40,7 +40,9 @@ export interface HostCapabilityRequest {
  * what the generator emitted. Scalar fields overwrite, and the last grant wins.
  * A grant that would make the service invalid (a named volume, or a second
  * mount on a container path already mounted) refuses the entry with that
- * reason. A `network_mode` grant replaces the project network for that service.
+ * reason. A `network_mode` grant replaces the project network for that service:
+ * the service and its siblings can no longer reach each other by compose
+ * service name.
  */
 export interface HostCapabilityGrant {
 	privileged?: boolean;
@@ -224,13 +226,13 @@ function grantConflict(
 	for (const entry of grant.volumes ?? []) {
 		const { source, target } = parseVolume(entry);
 		if (source !== undefined && !isHostPath(source)) {
-			return `the grant mounts named volume \`${source}\`, which the generated project does not declare — grant a host path`;
+			return `the grant mounts named volume \`${policyText(source)}\`, which the generated project does not declare — grant a host path`;
 		}
 		const existing = mounted.has(target)
 			? mounted.get(target)
 			: additions.get(target);
 		if ((mounted.has(target) || additions.has(target)) && existing !== entry) {
-			return `the grant mounts a second volume on \`${target}\`, which the service already mounts`;
+			return `the grant mounts a second volume on \`${policyText(target)}\`, which the service already mounts`;
 		}
 		additions.set(target, entry);
 	}
