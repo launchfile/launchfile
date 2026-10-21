@@ -13,11 +13,16 @@
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { dockerErrorKey, type DockerUpResult } from "@launchfile/docker";
+import {
+	dockerErrorKey,
+	type DockerUpResult,
+	UnsuppliedRequiredEnvError,
+} from "@launchfile/docker";
 import {
 	buildLaunchErrorContext,
 	LaunchError,
 	type LaunchPhase,
+	sourceErrorKey,
 } from "@launchfile/sdk";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -192,6 +197,77 @@ describe("up, on the other failure phases", () => {
 	});
 });
 
+describe("up, when the provider refuses an unsupplied required variable (D-52, #242)", () => {
+	const refusal = () =>
+		new UnsuppliedRequiredEnvError(
+			[{ component: "worker", key: "QUEUE_URL", sensitive: false }],
+			{ key: "gov23", slug: "gov23", app: "gov23" },
+		);
+
+	/** Run `up` against a refusing provider; returns the exit code it asked for. */
+	async function refuse(): Promise<number | undefined> {
+		const exit = process.exit;
+		let exited: number | undefined;
+		process.exit = (code?: number) => {
+			exited = code;
+			throw new Error("exited");
+		};
+		try {
+			await expect(
+				handleUp(projectDir, { docker: true }, deps(() => Promise.reject(refusal()))),
+			).rejects.toThrow("exited");
+		} finally {
+			process.exit = exit;
+		}
+		return exited;
+	}
+
+	it("writes a resolve-phase record naming the variable, then prints the same message and exits 1", async () => {
+		expect(await refuse()).toBe(1);
+
+		const record = await readLaunchErrorRecord("gov23", recordDir);
+		expect(record?.phase).toBe("resolve");
+		expect(record?.provider).toBe("docker");
+		expect(record?.unsupplied).toEqual([{ component: "worker", variable: "QUEUE_URL" }]);
+		expect(record?.message).toContain("Cannot launch: 1 required environment variable had no value.");
+
+		// The message the operator sees is the provider's own, and it follows the
+		// capture line rather than being replaced by it.
+		const printed = output.join("\n");
+		expect(printed).toContain("Cannot launch: 1 required environment variable had no value.");
+		expect(printed).toContain("  - worker: QUEUE_URL");
+		expect(printed.indexOf("Captured.")).toBeLessThan(printed.indexOf("Cannot launch:"));
+
+		// Nothing was provisioned, so nothing is indexed.
+		expect(Object.keys((await index()).deployments)).toHaveLength(0);
+	});
+
+	it("supersedes an older, unrelated record, so diagnose reports the refusal as current", async () => {
+		await expect(
+			withFailureRecord(() => Promise.reject(launchError("health", "web never became healthy")), recordDir),
+		).rejects.toThrow();
+		expect((await readLaunchErrorRecord("gov23", recordDir))?.phase).toBe("health");
+
+		await refuse();
+
+		const record = await readLaunchErrorRecord("gov23", recordDir);
+		expect(record?.phase).toBe("resolve");
+		expect(record?.message).not.toContain("web never became healthy");
+
+		let printed = "";
+		const code = await handleDiagnose(
+			undefined,
+			{},
+			{ out: (t) => (printed += t), err: (t) => (printed += t) },
+			recordDir,
+		);
+		expect(code).toBe(0);
+		expect(printed).toContain("Unsupplied required variables:");
+		expect(printed).toContain("worker: QUEUE_URL");
+		expect(printed).not.toContain("web never became healthy");
+	});
+});
+
 describe("up, after an earlier pre-slug failure", () => {
 	it("supersedes the source-keyed record too, so a bare diagnose reports nothing", async () => {
 		// A failure before a slug exists (`resolve`, `parse`) is keyed by the
@@ -325,6 +401,29 @@ describe("the macOS branch's try-split", () => {
 		expect(output.join("\n")).toContain("recorded as unhealthy");
 	});
 
+	it("records a component exit as unknown — the other processes are left running (#526)", async () => {
+		const fake = {
+			launchUp: () =>
+				Promise.reject(
+					launchError("run", "component(s) exited before coming up: web (exit code 1)"),
+				),
+		} as unknown as typeof import("@launchfile/macos-dev");
+
+		await expect(
+			handleUp(
+				projectDir,
+				{ native: true },
+				{ importMacos: async () => fake, indexDir, recordDir },
+			),
+		).rejects.toThrow("exited before coming up");
+
+		const entries = Object.values((await index()).deployments);
+		expect(entries).toHaveLength(1);
+		expect(entries[0]!.provider).toBe("macos");
+		expect(entries[0]!.status).toBe("unknown");
+		expect(output.join("\n")).toContain("recorded as unknown");
+	});
+
 	it("records nothing for a failure before any process exists", async () => {
 		const fake = {
 			launchUp: () => Promise.reject(launchError("release", "release [web] failed")),
@@ -339,5 +438,116 @@ describe("the macOS branch's try-split", () => {
 		).rejects.toThrow("release [web] failed");
 
 		expect(Object.values((await index()).deployments)).toHaveLength(0);
+	});
+});
+
+describe("the macOS branch's failure records", () => {
+	/** A macos-dev record: keyed by project directory, which is that provider's identity. */
+	function macosError(phase: LaunchPhase, message = "it broke"): LaunchError {
+		return new LaunchError(
+			buildLaunchErrorContext(
+				{
+					phase,
+					provider: "macos-dev",
+					key: sourceErrorKey(projectDir),
+					app: "gov23",
+					message,
+				},
+				IDENTITY,
+			),
+		);
+	}
+
+	function macosDeps(launchUp: () => Promise<void>) {
+		const fake = { launchUp } as unknown as typeof import("@launchfile/macos-dev");
+		return { importMacos: async () => fake, indexDir, recordDir };
+	}
+
+	it("captures a source-mode prepare failure under the project-directory key", async () => {
+		await expect(
+			handleUp(
+				projectDir,
+				{ native: true },
+				macosDeps(() => Promise.reject(macosError("prepare", "install failed"))),
+			),
+		).rejects.toThrow("install failed");
+
+		const record = await readLaunchErrorRecord(sourceErrorKey(projectDir), recordDir);
+		expect(record?.provider).toBe("macos-dev");
+		expect(record?.phase).toBe("prepare");
+		expect(record?.disposition).toBe("failed-invocation");
+
+		// A bare `diagnose` finds it through the pointer, as it does for docker.
+		expect((await readLaunchErrorRecord(undefined, recordDir))?.phase).toBe("prepare");
+	});
+
+	it("supersedes the record when a later launch of the same directory succeeds", async () => {
+		await expect(
+			handleUp(
+				projectDir,
+				{ native: true },
+				macosDeps(() => Promise.reject(macosError("run", "start failed"))),
+			),
+		).rejects.toThrow("start failed");
+		expect(await readLaunchErrorRecord(undefined, recordDir)).not.toBeNull();
+
+		await handleUp(projectDir, { native: true }, macosDeps(async () => undefined));
+
+		// Retention (#44 §H): the record described a launch that no longer exists.
+		expect(await readLaunchErrorRecord(sourceErrorKey(projectDir), recordDir)).toBeNull();
+		expect(await readLaunchErrorRecord(undefined, recordDir)).toBeNull();
+	});
+
+	it("prints the provider's own message, then the capture hint, and rethrows what the CLI prints", async () => {
+		// The provider throws a prereq failure rather than exiting, so the run
+		// crosses `withFailureRecord` and then the CLI's top-level handler, and
+		// each adds a line after the provider's own. The sequence is pinned so a
+		// change to it fails a test rather than surprising a script.
+		const thrown = await handleUp(
+			projectDir,
+			{ native: true },
+			macosDeps(() => {
+				console.error("Missing prerequisites:");
+				console.error("  - Homebrew is not installed");
+				return Promise.reject(
+					macosError("prereq", "Missing prerequisites: Homebrew is not installed"),
+				);
+			}),
+		).then(
+			() => undefined,
+			(e: unknown) => e as Error,
+		);
+
+		expect(output).toEqual([
+			"Missing prerequisites:",
+			"  - Homebrew is not installed",
+			"\n  Captured. Run `launchfile diagnose` for the full context.",
+		]);
+		// cli.ts's `main().catch` prints `\nError: ${err.message}` and exits 1, so
+		// this message is the third thing a user sees — the itemized list restated
+		// on one line.
+		expect(thrown?.message).toBe("Missing prerequisites: Homebrew is not installed");
+
+		const record = await readLaunchErrorRecord(sourceErrorKey(projectDir), recordDir);
+		expect(record?.phase).toBe("prereq");
+	});
+
+	it("keys two checkouts of one app separately", async () => {
+		const other = await mkdtemp(join(tmpdir(), "lf-project-"));
+		await writeFile(join(other, "Launchfile"), "name: gov23\n");
+
+		await expect(
+			handleUp(
+				projectDir,
+				{ native: true },
+				macosDeps(() => Promise.reject(macosError("run", "first checkout failed"))),
+			),
+		).rejects.toThrow();
+
+		// The second checkout succeeding must not clear the first's diagnosis.
+		await handleUp(other, { native: true }, macosDeps(async () => undefined));
+
+		const kept = await readLaunchErrorRecord(sourceErrorKey(projectDir), recordDir);
+		expect(kept?.message).toBe("first checkout failed");
 	});
 });

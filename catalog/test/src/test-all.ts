@@ -18,6 +18,7 @@
 
 import { resolve } from "node:path";
 import { buildTiers, loadEntries } from "./build-index.ts";
+import { parseTier } from "./cli-args.ts";
 import { skipsForHttpsOrigin } from "./https-origin-skip.ts";
 
 const ENTRIES = loadEntries(resolve(import.meta.dir, "..", ".."));
@@ -27,14 +28,13 @@ const NEEDS_HTTPS_ORIGIN = new Set(ENTRIES.filter((e) => e.requiresHttpsOrigin).
 // --- CLI args ---
 
 const args = process.argv.slice(2);
-const tierFlag = args.find((a) => a.startsWith("--tier=") || a.startsWith("--tier "));
-const tierIdx = args.indexOf("--tier");
-const tierArg = tierFlag
-  ? tierFlag.split("=")[1]
-  : tierIdx >= 0
-    ? args[tierIdx + 1]
-    : undefined;
-const selectedTier = tierArg !== undefined ? Number.parseInt(tierArg, 10) : undefined;
+let selectedTier: number | undefined;
+try {
+  selectedTier = parseTier(args);
+} catch (err) {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+}
 const dryRun = args.includes("--dry-run");
 const urlFlag = args.find((a) => a.startsWith("--url="));
 const appUrl = urlFlag

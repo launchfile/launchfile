@@ -2,15 +2,15 @@ test_results:
   last_tested: 2026-04-09
   pull_time_seconds: 97
   startup_time_seconds: 20
-  total_disk_mb: 3158
+  total_download_mb: 650
   health_check_passed: true
   notes: ""
 images:
   - name: ghcr.io/linkwarden/linkwarden:latest
-    size_mb: 2899
+    size_mb: 541
     platform:
       - linux/arm64
   - name: postgres:16-alpine
-    size_mb: 259
+    size_mb: 109
     platform:
       - linux/arm64

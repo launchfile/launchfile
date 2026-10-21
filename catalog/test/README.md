@@ -17,6 +17,10 @@ bun run src/test-app.ts memos
 # Keep containers running after test
 bun run src/test-app.ts memos --keep
 
+# Give `docker compose up --wait` a longer budget than the 120s default — an app
+# whose `health.start_period` exceeds the budget can only ever record a timeout
+bun run src/test-app.ts posthog --wait-timeout 360
+
 # Test all apps in a tier
 bun run src/test-all.ts --tier 0
 
@@ -32,9 +36,14 @@ bun run typecheck && bun run test
 
 ## Static validation
 
-`src/validate-catalog.ts` reads every `catalog/{apps,drafts}/*/Launchfile`, parses it
-with the SDK's `readLaunch` — the Zod schema in `sdk/src/schema.ts`, not the published
-JSON Schema, which nothing yet asserts agrees with it (issue #179) — and applies the
+`src/validate-catalog.ts` reads every `catalog/{apps,drafts}/*/Launchfile` and checks it
+against two schemas: the SDK's `readLaunch` (the Zod schema in `sdk/src/schema.ts`) and
+the published JSON Schema at `spec/schema/launchfile.schema.json`, via ajv (draft 2020-12,
+strict mode). A rejection names the file and the schema that rejected it. The run also
+fails when the catalog is empty or an entry directory holds no Launchfile, so the checked
+set cannot shrink silently. There is no allowlist. The published-schema check catches the
+published schema rejecting a file Zod accepts; it does not catch the converse, a file the
+published schema accepts and Zod rejects (issue #439). The script then applies the
 image-reference policy in
 [`catalog/CONTRIBUTING.md`](../CONTRIBUTING.md#image-references). A missing tag or an
 `@sha256` digest is an error anywhere in the catalog; the `:latest`-without-rationale
@@ -101,13 +110,46 @@ test_results:
   last_tested: 2026-04-06
   pull_time_seconds: 15
   startup_time_seconds: 1
-  total_disk_mb: 57
+  total_download_mb: 22
   health_check_passed: true
 images:
   - name: corentinth/it-tools:latest
-    size_mb: 57
+    size_mb: 22
     platform: [linux/arm64]
 ```
+
+`images[].size_mb` is the compressed download size for the recorded platform: the sum
+of `layers[].size` in the registry manifest, in MiB. The harness reads it with
+`docker manifest inspect`, not from the local image store, and stops the run if the
+lookup fails. `test_results.total_download_mb` is the sum of `images[].size_mb`.
+
+`bun run backfill-sizes [app ...]` rewrites both fields in every `apps/` and `drafts/`
+`metadata.yaml` from manifests, without running a container. It leaves images whose
+platform is `unknown` for a harness rerun. Docker Hub rate-limits manifest reads, so
+name the apps a rate-limited run left to rerun only those.
+
+### Top-level keys
+
+These are the top-level keys the catalog and this harness read. Any other key
+prints a warning when `bun run src/test-app.ts <app>` or the unit suite reads the
+file, and is otherwise ignored — a typo does not fail a run, but it is no longer
+silent. The set lives in `src/lint-metadata.ts`, and a test keeps it equal to
+this table.
+
+| Key            | Written by                                                 |
+|----------------|------------------------------------------------------------|
+| `tagline`      | hand                                                       |
+| `homepage`     | hand                                                       |
+| `category`     | hand                                                       |
+| `publisher`    | hand ([CONTRIBUTING](../CONTRIBUTING.md#image-references)) |
+| `known_issues` | hand (below)                                               |
+| `test_env`     | hand (below)                                               |
+| `test_storage` | hand (below)                                               |
+| `test_results` | the harness, rebuilt on every run                          |
+| `images`       | the harness, rebuilt on every run                          |
+
+The harness rewrites the file after a run. It replaces `test_results:` and
+`images:` and keeps every other top-level key, unknown ones included.
 
 ### `test_env:` — the harness's operator channel
 

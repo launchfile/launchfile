@@ -5,11 +5,11 @@ test_results:
   last_tested: 2026-04-09
   pull_time_seconds: 7
   startup_time_seconds: 2
-  total_disk_mb: 30
+  total_download_mb: 12
   health_check_passed: true
   notes: ""
 images:
   - name: henrygd/beszel:latest
-    size_mb: 30
+    size_mb: 12
     platform:
       - linux/arm64

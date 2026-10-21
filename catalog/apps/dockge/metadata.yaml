@@ -5,11 +5,11 @@ test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 28
   startup_time_seconds: 7
-  total_disk_mb: 734
+  total_download_mb: 246
   health_check_passed: true
   notes: ""
 images:
   - name: louislam/dockge:1
-    size_mb: 734
+    size_mb: 246
     platform:
       - linux/arm64

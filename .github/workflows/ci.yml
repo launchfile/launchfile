@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.2
+          bun-version-file: .bun-version
       - run: cd sdk && bun install --frozen-lockfile
       - run: cd sdk && bun run typecheck
       - run: cd sdk && bun run build
@@ -48,7 +48,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.2
+          bun-version-file: .bun-version
       - name: Build SDK (local dependency)
         run: cd sdk && bun install --frozen-lockfile && bun run build
       - name: Build docker provider (macos-dev's test imports it)
@@ -67,6 +67,28 @@ jobs:
         if: matrix.provider == 'aws'
         run: cd providers/aws && bun run conformance --check
 
+  # The docker provider's health gate against a real daemon (ubuntu-latest
+  # ships one). The `providers` job runs the same spec file, but skipped: it is
+  # opt-in through LAUNCHFILE_DOCKER_E2E, which this job sets, and with the flag
+  # set an unreachable daemon fails the run instead of skipping it. Runs on
+  # every pull request, which covers every change to providers/docker/**.
+  docker-e2e:
+    name: "Provider (docker) — health gate e2e"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+      - name: Build SDK (local dependency)
+        run: cd sdk && bun install --frozen-lockfile && bun run build
+      - run: cd providers/docker && bun install --frozen-lockfile
+      - name: Health gate e2e
+        env:
+          LAUNCHFILE_DOCKER_E2E: "1"
+        run: cd providers/docker && bun run test src/__tests__/e2e
+
   # The AWS provider is translation-only: prove the emitted HCL is valid Terraform
   # against the real AWS provider schema (no credentials — init only fetches the
   # schema). This is the conformance gate the unit tests can't give us: they
@@ -82,7 +104,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.2
+          bun-version-file: .bun-version
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_wrapper: false
@@ -110,7 +132,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.2
+          bun-version-file: .bun-version
       - name: Build SDK and providers (local dependencies)
         run: |
           cd sdk && bun install --frozen-lockfile && bun run build
@@ -145,7 +167,7 @@ jobs:
           fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.2
+          bun-version-file: .bun-version
       - name: Build SDK and Docker provider (local dependencies)
         run: |
           cd sdk && bun install --frozen-lockfile && bun run build
@@ -185,7 +207,7 @@ jobs:
           node-version: "22"
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.2
+          bun-version-file: .bun-version
       # www-shared carries the shared Sätteri markdown plugins; the site configs
       # import them, so its deps (satteri, hast/mdast types) must be installed
       # before the site build/typecheck can resolve them.
@@ -193,6 +215,14 @@ jobs:
       - run: cd ${{ matrix.site }} && bun install --frozen-lockfile
       - run: cd ${{ matrix.site }} && bun run typecheck
       - run: cd ${{ matrix.site }} && bun run build
+      # https://launchfile.dev/schema/v1 is the $schema URL every catalog
+      # Launchfile points at. www-dev `prebuild` copies it from the canonical
+      # schema; this asserts the built artifact is that file.
+      - name: Published schema matches the canonical schema
+        if: matrix.site == 'www-dev'
+        run: |
+          cmp spec/schema/launchfile.schema.json www-dev/dist/client/schema/v1 \
+            || { echo "www-dev/dist/client/schema/v1 differs from spec/schema/launchfile.schema.json"; exit 1; }
       # Chrome for Testing + the headless shell are ~9s of download per job, and
       # both matrix legs pay it. smoke-tests/bun.lock pins the Playwright
       # version, so it is the correct cache key: a version bump changes the
@@ -259,16 +289,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/lint-spec-citations.mjs spec --strict
-      # www-dev/public/schema/v1 is served at https://launchfile.dev/schema/v1 —
-      # the $schema URL every catalog Launchfile points at — and is a
-      # hand-maintained copy of the canonical schema. Nothing generates it, so
-      # the two are asserted byte-identical here (#431 tracks generating it
-      # instead). This job needs no bun and no install, which is why the check
-      # lives here rather than in a build job.
-      - name: Published schema copy matches the canonical schema
-        run: |
-          diff -u spec/schema/launchfile.schema.json www-dev/public/schema/v1 \
-            || { echo "www-dev/public/schema/v1 is out of sync — copy spec/schema/launchfile.schema.json over it"; exit 1; }
 
   # The root lockfile's own signal. Every other install here is `cd <subdir> &&
   # bun install --frozen-lockfile`, and a subdirectory install inside a root
@@ -283,8 +303,25 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.2
+          bun-version-file: .bun-version
+      - name: Check installed bun matches .bun-version
+        run: |
+          expected="$(tr -d '[:space:]' < .bun-version)"
+          actual="$(bun --version)"
+          if [ "$actual" != "$expected" ]; then
+            echo "::error file=.bun-version::bun $actual is installed but .bun-version pins $expected"
+            exit 1
+          fi
       - run: bun install --frozen-lockfile
+      # A frozen install only checks that bun.lock agrees with itself, so it
+      # accepts a lockfile whose internal @launchfile/* ranges lag the ranges
+      # package.json declares — which is what the first `bun install` after
+      # `changeset version` writes on bun 1.4.2 (#756). `--lockfile-only`
+      # rewrites those ranges, so a non-empty diff here means bun.lock is not
+      # what bun writes for the current package.json files: stale ranges, or a
+      # bun upgrade (#540) that changed the lockfile format.
+      - run: bun install --lockfile-only
+      - run: git diff --exit-code -- bun.lock
 
   # Catches invalid YAML in workflow files before it gets merged and breaks
   # the CI/release pipeline. actionlint alone is not sufficient here — it
@@ -375,7 +412,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.4.2
+          bun-version-file: .bun-version
       - name: Build SDK and provider packages (local dependencies)
         run: |
           cd sdk && bun install --frozen-lockfile && bun run build
@@ -427,6 +464,7 @@ jobs:
     needs:
       - sdk
       - providers
+      - docker-e2e
       - aws-terraform-validate
       - cli
       - catalog
