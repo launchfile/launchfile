@@ -15,7 +15,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isLaunchError } from "@launchfile/sdk";
+import { isLaunchError, sourceErrorKey } from "@launchfile/sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../prereqs.js", () => ({
@@ -106,6 +106,9 @@ describe("launchUp fails the invocation when a component never becomes healthy (
 			expect(err.context.phase).toBe("health");
 			expect(err.context.provider).toBe("macos-dev");
 			expect(err.context.app).toBe("app");
+			// Filed under the project directory, the key `diagnose` and `down`
+			// derive from the deployment's `source`.
+			expect(err.context.key).toBe(sourceErrorKey(projectDir));
 		}
 
 		expect(logged.join("\n")).not.toContain("All components started");

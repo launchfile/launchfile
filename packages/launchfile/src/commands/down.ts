@@ -3,6 +3,7 @@
  */
 
 import { dockerDown } from "@launchfile/docker";
+import { sourceErrorKey } from "@launchfile/sdk";
 import { resolveDeploymentTarget } from "../resolve-target.js";
 import { clearLaunchErrorRecord } from "../state/errors.js";
 import { updateDeployment, removeDeployment, deploymentDir, dockerSlugFor } from "../state/index.js";
@@ -39,6 +40,11 @@ export async function handleDown(target: string | undefined, flags: DownFlags): 
 			await launchDown({ destroy: flags.destroy, projectDir: deployment.entry.source });
 			if (flags.destroy) {
 				await removeDeployment(deployment.id);
+				// Same retention rule as the docker branch (#44 §H): the failure
+				// record holds redacted-but-still-sensitive log tails, so it goes
+				// with the rest of the app's state. macos-dev keys records by
+				// project directory, which is what the index stores as `source`.
+				await clearLaunchErrorRecord(sourceErrorKey(deployment.entry.source));
 			} else {
 				await updateDeployment(deployment.id, { status: "down" });
 			}

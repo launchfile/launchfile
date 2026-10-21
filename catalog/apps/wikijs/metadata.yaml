@@ -5,15 +5,15 @@ test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 25
   startup_time_seconds: 7
-  total_disk_mb: 839
+  total_download_mb: 273
   health_check_passed: true
   notes: ""
 images:
   - name: ghcr.io/requarks/wiki:2
-    size_mb: 580
+    size_mb: 164
     platform:
       - linux/arm64
   - name: postgres:16-alpine
-    size_mb: 259
+    size_mb: 109
     platform:
       - linux/arm64

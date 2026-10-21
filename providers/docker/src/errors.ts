@@ -13,7 +13,6 @@
  * unredactable from then on (D-18, CWE-532).
  */
 
-import { createHash } from "node:crypto";
 import {
 	buildLaunchErrorContext,
 	isLaunchError,
@@ -21,6 +20,7 @@ import {
 	type LaunchErrorInput,
 	type LaunchPhase,
 	type NormalizedLaunch,
+	sourceErrorKey,
 } from "@launchfile/sdk";
 import { isExpectedRefusal } from "./logger.js";
 import { redactSecrets } from "./redact.js";
@@ -41,8 +41,7 @@ const LOG_TAIL = 200;
  */
 export function dockerErrorKey(opts: { slug?: string; source?: string }): string {
 	if (opts.slug) return opts.slug;
-	const source = opts.source ?? "";
-	return `src-${createHash("sha256").update(source).digest("hex").slice(0, 16)}`;
+	return sourceErrorKey(opts.source ?? "");
 }
 
 /** Build a docker `LaunchError`, redacting every captured string on the way in. */
