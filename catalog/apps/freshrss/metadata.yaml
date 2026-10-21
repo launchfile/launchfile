@@ -5,7 +5,7 @@ test_results:
   last_tested: 2026-10-03
   pull_time_seconds: 1
   startup_time_seconds: 6
-  total_disk_mb: 788
+  total_download_mb: 196
   health_check_passed: true
   notes: >-
     2026-10-03: launched with postgres:16-alpine on the default port 5432 (harness run with the optional
@@ -17,10 +17,10 @@ test_results:
     Non-default port not tested (needs #568).
 images:
   - name: freshrss/freshrss:latest
-    size_mb: 396
+    size_mb: 87
     platform:
       - linux/arm64
   - name: postgres:16-alpine
-    size_mb: 392
+    size_mb: 109
     platform:
       - linux/arm64

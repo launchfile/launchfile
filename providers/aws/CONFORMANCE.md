@@ -12,9 +12,9 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ## Summary
 
-- **86** Launchfile(s) translated
-- **169** field mappings
-- **100** gaps logged (never silently dropped)
+- **85** Launchfile(s) translated
+- **166** field mappings
+- **401** gaps logged (never silently dropped)
 - **8** specializations safely ignored
 
 ### Distinct gaps
@@ -22,14 +22,64 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 | Field | Severity | Reason | Suggestion |
 |---|---|---|---|
 | `image` | 🟡 workaround | prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host | add runtime+commands for a portable build path, or target a container provider |
+| `env` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `restart` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:80` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `storage:data` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:5006` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:8000` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `health` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `storage:config` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `storage:metadata` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `storage:audiobooks` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `storage:podcasts` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:8090` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:1111` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:9000` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:8080` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `storage:stacks` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:5001` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:3000` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:9001` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `storage:uploads` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
 | `supports:postgres` | 🟢 nice-to-have | optional resources (supports) are not provisioned by this probe | provision behind a Terraform variable toggle |
+| `storage:content` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:2368` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
 | `supports:certificate` | 🟢 nice-to-have | the app can serve TLS on its own listener 'web' with the certificate 'server-cert', and this probe has no way to place one in the task | mount the certificate into the task and supply cert_file/key_file, or terminate TLS at the ALB instead — a different arrangement, not this entry |
+| `provides:tcp:22` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:53842` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
 | `supports:https-origin` | 🟢 nice-to-have | the app would use a public HTTPS origin in front of endpoint 'web', and this probe emits an http-only load balancer | terminate TLS at the ALB (aws_acm_certificate + an HTTPS listener) |
 | `requires:postgres.version` | 🟡 workaround | declared version ">=9.6" is a range this probe does not resolve to an engine version; it emits no engine_version, so RDS uses its default postgres version | set engine_version on aws_db_instance.hedgedoc_postgres to an RDS postgres version that satisfies ">=9.6" |
-| `requires:clickhouse` | 🟡 workaround | no managed AWS service mapping for resource type 'clickhouse' | model as a self-hosted component, or extend MANAGED_RESOURCES |
-| `requires:kafka` | 🟡 workaround | no managed AWS service mapping for resource type 'kafka' | model as a self-hosted component, or extend MANAGED_RESOURCES |
+| `provides:http:7745` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `storage:manga` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:5000` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:9090` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `commands.release` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:8025` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:tcp:1025` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `storage:html` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:5230` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `storage:music` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:4533` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:1880` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `commands.start` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:tcp:25` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:18789` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:18790` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:6157` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:tcp:2222` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:3100` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `storage:media` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `storage:consume` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
 | `requires:https-origin` | 🔴 blocker | the app requires a public HTTPS origin in front of endpoint 'web', and this probe emits an http-only load balancer | terminate TLS at the ALB (aws_acm_certificate + an HTTPS listener) before deploying this app |
+| `storage:files` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
 | `runtime` | 🔴 blocker | no runtime and no commands.start — nothing to build or run on EC2 | — |
+| `storage:cache` | 🟡 workaround | declared but not translated — the component stops at the `runtime` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `storage:transcripts` | 🟡 workaround | declared but not translated — the component stops at the `runtime` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:9999` | 🟡 workaround | declared but not translated — the component stops at the `runtime` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:1200` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:3001` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
+| `provides:http:42617` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
 | `schedule` | 🟢 nice-to-have | cron schedule not mapped (no EventBridge Scheduler in this probe) | map to aws_scheduler_schedule |
 | `requires:host.container_runtime` | 🔴 blocker | component requires host capability container_runtime=docker; a bare EC2 target cannot grant it | use an ECS/container provider |
 | `env.ANTHROPIC_API_KEY` | 🟡 workaround | required env var with no default, generator, or set_env binding — the operator must supply the value | supply it at apply time (SSM parameter or TF variable), or give the Launchfile a `default:` or `generator:` |
@@ -42,7 +92,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### activepieces
 
-> Source: `catalog/apps/activepieces/Launchfile` — 3 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/activepieces/Launchfile` — 3 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -53,10 +103,13 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:80` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### actual-budget
 
-> Source: `catalog/apps/actual-budget/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/actual-budget/Launchfile` — 1 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -65,10 +118,13 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:5006` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### answer
 
-> Source: `catalog/apps/answer/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/answer/Launchfile` — 1 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -77,10 +133,13 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:80` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### archivebox
 
-> Source: `catalog/apps/archivebox/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/archivebox/Launchfile` — 1 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -89,10 +148,13 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:8000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### audiobookshelf
 
-> Source: `catalog/apps/audiobookshelf/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/audiobookshelf/Launchfile` — 1 mapped, 8 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -101,10 +163,17 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:config` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:metadata` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:audiobooks` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:podcasts` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:80` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### beszel
 
-> Source: `catalog/apps/beszel/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/beszel/Launchfile` — 1 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -113,10 +182,13 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:8090` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### blinko
 
-> Source: `catalog/apps/blinko/Launchfile` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/blinko/Launchfile` — 2 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -126,10 +198,13 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:1111` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### bookstack
 
-> Source: `catalog/apps/bookstack/Launchfile` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/bookstack/Launchfile` — 2 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -139,10 +214,14 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:config` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:80` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### cobalt
 
-> Source: `catalog/apps/cobalt/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/cobalt/Launchfile` — 1 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -151,10 +230,13 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:9000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### cyberchef
 
-> Source: `catalog/apps/cyberchef/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/cyberchef/Launchfile` — 1 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -163,10 +245,13 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:8080` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### dockge
 
-> Source: `catalog/apps/dockge/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/dockge/Launchfile` — 1 mapped, 6 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -175,10 +260,15 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:stacks` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:5001` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### docmost
 
-> Source: `catalog/apps/docmost/Launchfile` — 3 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/docmost/Launchfile` — 3 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -189,10 +279,13 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### etherpad
 
-> Source: `catalog/apps/etherpad/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/etherpad/Launchfile` — 1 mapped, 3 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -201,10 +294,12 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:9001` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### excalidraw
 
-> Source: `catalog/apps/excalidraw/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/excalidraw/Launchfile` — 1 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -213,10 +308,13 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:80` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### file-browser
 
-> Source: `catalog/apps/file-browser/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/file-browser/Launchfile` — 1 mapped, 6 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -225,10 +323,15 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:config` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:80` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### firefly-iii
 
-> Source: `catalog/apps/firefly-iii/Launchfile` — 3 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/firefly-iii/Launchfile` — 3 mapped, 6 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -239,10 +342,15 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:uploads` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:8080` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### flowise
 
-> Source: `catalog/apps/flowise/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
+> Source: `catalog/apps/flowise/Launchfile` — 1 mapped, 7 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -252,10 +360,15 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 - 🟢 `supports:postgres`: optional resources (supports) are not provisioned by this probe — provision behind a Terraform variable toggle
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### freshrss
 
-> Source: `catalog/apps/freshrss/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
+> Source: `catalog/apps/freshrss/Launchfile` — 1 mapped, 6 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -265,10 +378,14 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 - 🟢 `supports:postgres`: optional resources (supports) are not provisioned by this probe — provision behind a Terraform variable toggle
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:80` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### gatus
 
-> Source: `catalog/apps/gatus/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/gatus/Launchfile` — 1 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -277,10 +394,13 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:config` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:8080` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### ghost
 
-> Source: `catalog/apps/ghost/Launchfile` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/ghost/Launchfile` — 2 mapped, 6 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -290,10 +410,15 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:content` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:2368` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### gitea
 
-> Source: `catalog/apps/gitea/Launchfile` — 2 mapped, 2 gap(s), 0 ignored
+> Source: `catalog/apps/gitea/Launchfile` — 2 mapped, 7 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -304,10 +429,15 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 - 🟢 `supports:certificate`: the app can serve TLS on its own listener 'web' with the certificate 'server-cert', and this probe has no way to place one in the task — mount the certificate into the task and supply cert_file/key_file, or terminate TLS at the ALB instead — a different arrangement, not this entry
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:tcp:22` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### glance
 
-> Source: `catalog/apps/glance/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/glance/Launchfile` — 1 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -316,10 +446,14 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:config` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:8080` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### gokapi
 
-> Source: `catalog/apps/gokapi/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/gokapi/Launchfile` — 1 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -328,10 +462,13 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:53842` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### gotify
 
-> Source: `catalog/apps/gotify/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/gotify/Launchfile` — 1 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -340,10 +477,13 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:80` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### grafana
 
-> Source: `catalog/apps/grafana/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
+> Source: `catalog/apps/grafana/Launchfile` — 1 mapped, 7 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -353,10 +493,15 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 - 🟢 `supports:certificate`: the app can serve TLS on its own listener 'web' with the certificate 'server-cert', and this probe has no way to place one in the task — mount the certificate into the task and supply cert_file/key_file, or terminate TLS at the ALB instead — a different arrangement, not this entry
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### grocy
 
-> Source: `catalog/apps/grocy/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
+> Source: `catalog/apps/grocy/Launchfile` — 1 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -366,10 +511,13 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 - 🟢 `supports:https-origin`: the app would use a public HTTPS origin in front of endpoint 'web', and this probe emits an http-only load balancer — terminate TLS at the ALB (aws_acm_certificate + an HTTPS listener)
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:config` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:80` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### hedgedoc
 
-> Source: `catalog/apps/hedgedoc/Launchfile` — 2 mapped, 2 gap(s), 0 ignored
+> Source: `catalog/apps/hedgedoc/Launchfile` — 2 mapped, 6 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -380,10 +528,14 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 - 🟡 `requires:postgres.version`: declared version ">=9.6" is a range this probe does not resolve to an engine version; it emits no engine_version, so RDS uses its default postgres version — set engine_version on aws_db_instance.hedgedoc_postgres to an RDS postgres version that satisfies ">=9.6"
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:uploads` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### homebox
 
-> Source: `catalog/apps/homebox/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/homebox/Launchfile` — 1 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -392,10 +544,13 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:7745` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### homepage-dashboard
 
-> Source: `catalog/apps/homepage-dashboard/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/homepage-dashboard/Launchfile` — 1 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -404,10 +559,14 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### it-tools
 
-> Source: `catalog/apps/it-tools/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/it-tools/Launchfile` — 1 mapped, 3 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -416,10 +575,12 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:80` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### karakeep
 
-> Source: `catalog/apps/karakeep/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/karakeep/Launchfile` — 1 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -428,10 +589,14 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### kavita
 
-> Source: `catalog/apps/kavita/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/kavita/Launchfile` — 1 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -440,10 +605,14 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:config` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:manga` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:5000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### linkding
 
-> Source: `catalog/apps/linkding/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
+> Source: `catalog/apps/linkding/Launchfile` — 1 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -453,10 +622,13 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 - 🟢 `supports:postgres`: optional resources (supports) are not provisioned by this probe — provision behind a Terraform variable toggle
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:9090` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### linkwarden
 
-> Source: `catalog/apps/linkwarden/Launchfile` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/linkwarden/Launchfile` — 2 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -466,10 +638,14 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### listmonk
 
-> Source: `catalog/apps/listmonk/Launchfile` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/listmonk/Launchfile` — 2 mapped, 6 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -479,10 +655,15 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `commands.release` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:9000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### mailpit
 
-> Source: `catalog/apps/mailpit/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/mailpit/Launchfile` — 1 mapped, 6 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -491,10 +672,15 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:8025` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:tcp:1025` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### matomo
 
-> Source: `catalog/apps/matomo/Launchfile` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/matomo/Launchfile` — 2 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -504,10 +690,13 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:html` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:80` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### mealie
 
-> Source: `catalog/apps/mealie/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
+> Source: `catalog/apps/mealie/Launchfile` — 1 mapped, 7 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -517,10 +706,15 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 - 🟢 `supports:postgres`: optional resources (supports) are not provisioned by this probe — provision behind a Terraform variable toggle
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:9000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### memos
 
-> Source: `catalog/apps/memos/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/memos/Launchfile` — 1 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -529,10 +723,13 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:5230` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### metabase
 
-> Source: `catalog/apps/metabase/Launchfile` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/metabase/Launchfile` — 2 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -542,10 +739,14 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### miniflux
 
-> Source: `catalog/apps/miniflux/Launchfile` — 2 mapped, 2 gap(s), 0 ignored
+> Source: `catalog/apps/miniflux/Launchfile` — 2 mapped, 6 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -556,10 +757,14 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 - 🟢 `supports:certificate`: the app can serve TLS on its own listener 'web' with the certificate 'server-cert', and this probe has no way to place one in the task — mount the certificate into the task and supply cert_file/key_file, or terminate TLS at the ALB instead — a different arrangement, not this entry
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:8080` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### monica
 
-> Source: `catalog/apps/monica/Launchfile` — 3 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/monica/Launchfile` — 3 mapped, 6 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -570,10 +775,15 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:80` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### navidrome
 
-> Source: `catalog/apps/navidrome/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/navidrome/Launchfile` — 1 mapped, 7 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -582,10 +792,16 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:music` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:4533` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### nocodb
 
-> Source: `catalog/apps/nocodb/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/nocodb/Launchfile` — 1 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -594,10 +810,14 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:8080` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### node-red
 
-> Source: `catalog/apps/node-red/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/node-red/Launchfile` — 1 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -606,10 +826,14 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:1880` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### ntfy
 
-> Source: `catalog/apps/ntfy/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/ntfy/Launchfile` — 1 mapped, 8 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -618,10 +842,17 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `commands.start` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:80` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:tcp:25` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### openclaw
 
-> Source: `catalog/apps/openclaw/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/openclaw/Launchfile` — 1 mapped, 7 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -630,10 +861,16 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:18789` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:18790` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### opengist
 
-> Source: `catalog/apps/opengist/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/opengist/Launchfile` — 1 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -642,10 +879,14 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:6157` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:tcp:2222` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### outline
 
-> Source: `catalog/apps/outline/Launchfile` — 3 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/outline/Launchfile` — 3 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -656,10 +897,14 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### paperclip
 
-> Source: `catalog/apps/paperclip/Launchfile` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/paperclip/Launchfile` — 2 mapped, 6 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -669,10 +914,15 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:3100` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### paperless
 
-> Source: `catalog/apps/paperless/Launchfile` — 3 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/paperless/Launchfile` — 3 mapped, 8 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -683,10 +933,17 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:media` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:consume` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:8000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### pocketbase
 
-> Source: `catalog/apps/pocketbase/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/pocketbase/Launchfile` — 1 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -695,26 +952,14 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
-
-### posthog
-
-> Source: `catalog/apps/posthog/Launchfile` — 3 mapped, 3 gap(s), 0 ignored
-
-| Launchfile field | → Terraform | Component |
-|---|---|---|
-| `requires:postgres` | `aws_db_instance` | — |
-| `requires:redis` | `aws_elasticache_cluster` | — |
-| `provides.exposed` | `aws_lb (ALB)` | — |
-
-**Gaps**
-
-- 🟡 `requires:clickhouse`: no managed AWS service mapping for resource type 'clickhouse' — model as a self-hosted component, or extend MANAGED_RESOURCES
-- 🟡 `requires:kafka`: no managed AWS service mapping for resource type 'kafka' — model as a self-hosted component, or extend MANAGED_RESOURCES
-- 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:8090` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### privatebin
 
-> Source: `catalog/apps/privatebin/Launchfile` — 1 mapped, 2 gap(s), 0 ignored
+> Source: `catalog/apps/privatebin/Launchfile` — 1 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -724,10 +969,13 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 - 🔴 `requires:https-origin`: the app requires a public HTTPS origin in front of endpoint 'web', and this probe emits an http-only load balancer — terminate TLS at the ALB (aws_acm_certificate + an HTTPS listener) before deploying this app
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:8080` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### rallly
 
-> Source: `catalog/apps/rallly/Launchfile` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/rallly/Launchfile` — 2 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -737,10 +985,14 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### redmine
 
-> Source: `catalog/apps/redmine/Launchfile` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/redmine/Launchfile` — 2 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -750,10 +1002,14 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:files` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### concentrator
 
-> Source: `catalog/apps/remote-claude-concentrator/Launchfile` — 1 mapped, 1 gap(s), 1 ignored
+> Source: `catalog/apps/remote-claude-concentrator/Launchfile` — 1 mapped, 7 gap(s), 1 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -762,6 +1018,12 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🔴 `runtime` _(default)_: no runtime and no commands.start — nothing to build or run on EC2
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `runtime` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `runtime` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `runtime` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:cache` _(default)_: declared but not translated — the component stops at the `runtime` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:transcripts` _(default)_: declared but not translated — the component stops at the `runtime` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:9999` _(default)_: declared but not translated — the component stops at the `runtime` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 **Ignored specializations** (contract sufficed — D-40 / RFC C)
 
@@ -769,7 +1031,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### rsshub
 
-> Source: `catalog/apps/rsshub/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/rsshub/Launchfile` — 1 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -778,10 +1040,13 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:1200` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### searxng
 
-> Source: `catalog/apps/searxng/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/searxng/Launchfile` — 1 mapped, 6 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -790,10 +1055,15 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:8080` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### snipe-it
 
-> Source: `catalog/apps/snipe-it/Launchfile` — 3 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/snipe-it/Launchfile` — 3 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -804,10 +1074,14 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:80` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### stirling-pdf
 
-> Source: `catalog/apps/stirling-pdf/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/stirling-pdf/Launchfile` — 1 mapped, 3 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -816,10 +1090,12 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:8080` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### sure
 
-> Source: `catalog/apps/sure/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/sure/Launchfile` — 1 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -828,10 +1104,13 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### trilium-notes
 
-> Source: `catalog/apps/trilium-notes/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/trilium-notes/Launchfile` — 1 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -840,10 +1119,14 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:8080` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### umami
 
-> Source: `catalog/apps/umami/Launchfile` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/umami/Launchfile` — 2 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -853,10 +1136,14 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### uptime-kuma
 
-> Source: `catalog/apps/uptime-kuma/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/uptime-kuma/Launchfile` — 1 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -865,10 +1152,14 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:3001` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### vaultwarden
 
-> Source: `catalog/apps/vaultwarden/Launchfile` — 1 mapped, 3 gap(s), 0 ignored
+> Source: `catalog/apps/vaultwarden/Launchfile` — 1 mapped, 7 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -879,10 +1170,14 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🔴 `requires:https-origin`: the app requires a public HTTPS origin in front of endpoint 'web', and this probe emits an http-only load balancer — terminate TLS at the ALB (aws_acm_certificate + an HTTPS listener) before deploying this app
 - 🟢 `supports:postgres`: optional resources (supports) are not provisioned by this probe — provision behind a Terraform variable toggle
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:80` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### wallabag
 
-> Source: `catalog/apps/wallabag/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/wallabag/Launchfile` — 1 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -891,10 +1186,14 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:80` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### wallos
 
-> Source: `catalog/apps/wallos/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/wallos/Launchfile` — 1 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -903,10 +1202,13 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:80` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### web-check
 
-> Source: `catalog/apps/web-check/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/web-check/Launchfile` — 1 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -915,10 +1217,13 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### wikijs
 
-> Source: `catalog/apps/wikijs/Launchfile` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/wikijs/Launchfile` — 2 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -928,10 +1233,13 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### wordpress
 
-> Source: `catalog/apps/wordpress/Launchfile` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/wordpress/Launchfile` — 2 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -941,10 +1249,13 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:html` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:80` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### zeroclaw
 
-> Source: `catalog/apps/zeroclaw/Launchfile` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `catalog/apps/zeroclaw/Launchfile` — 1 mapped, 6 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -953,6 +1264,11 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:42617` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### daily-sync
 
@@ -991,7 +1307,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### dockge
 
-> Source: `spec/examples/host-container-runtime.yaml` — 1 mapped, 2 gap(s), 0 ignored
+> Source: `spec/examples/host-container-runtime.yaml` — 1 mapped, 7 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1001,6 +1317,11 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 - 🔴 `requires:host.container_runtime` _(default)_: component requires host capability container_runtime=docker; a bare EC2 target cannot grant it — use an ECS/container provider
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:stacks` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:5001` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### launchpad
 
@@ -1090,7 +1411,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### media-server
 
-> Source: `spec/examples/operator-content.yaml` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `spec/examples/operator-content.yaml` — 1 mapped, 7 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1099,6 +1420,12 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:music` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:4533` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### my-app
 
@@ -1121,7 +1448,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### hedgedoc-backend
 
-> Source: `spec/examples/prebuilt-image.yaml` — 2 mapped, 1 gap(s), 0 ignored
+> Source: `spec/examples/prebuilt-image.yaml` — 2 mapped, 3 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1131,10 +1458,12 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### board
 
-> Source: `spec/examples/resource-uses.yaml` — 3 mapped, 1 gap(s), 0 ignored
+> Source: `spec/examples/resource-uses.yaml` — 3 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1145,6 +1474,9 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 
 ### simple-api
 
@@ -1170,7 +1502,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### notes-app
 
-> Source: `spec/examples/storage-paths.yaml` — 1 mapped, 1 gap(s), 0 ignored
+> Source: `spec/examples/storage-paths.yaml` — 1 mapped, 7 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1179,3 +1511,9 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `storage:cache` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
+- 🟡 `provides:http:8080` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider

@@ -2,7 +2,7 @@ test_results:
   last_tested: 2026-10-03
   pull_time_seconds: 1
   startup_time_seconds: 6
-  total_disk_mb: 1299
+  total_download_mb: 286
   health_check_passed: true
   notes: >-
     2026-10-03: launched with mariadb:11 on the default port 3306. MATOMO_DATABASE_HOST=matomo-mariadb:3306
@@ -12,10 +12,10 @@ test_results:
     cached locally. Non-default port not tested (needs #568).
 images:
   - name: matomo:latest
-    size_mb: 834
+    size_mb: 187
     platform:
       - linux/arm64
   - name: mariadb:11
-    size_mb: 465
+    size_mb: 99
     platform:
       - linux/arm64

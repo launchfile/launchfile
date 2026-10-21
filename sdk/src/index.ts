@@ -62,6 +62,7 @@ export {
 	parseLaunchErrorContext,
 	type Redactor,
 	slotForCommand,
+	sourceErrorKey,
 	stripControl,
 	stripControlInline,
 	TAIL_LINES,
@@ -123,6 +124,11 @@ export {
 	selectComponents,
 	selectionClosure,
 } from "./select.js";
+export {
+	CREDENTIAL_QUERY_KEYS,
+	canonicalSourceUrl,
+	isCredentialQueryKey,
+} from "./source-url.js";
 export {
 	resolveSourcePrepareCommand,
 	resolveSourceRunCommand,

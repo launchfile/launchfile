@@ -85,7 +85,6 @@ column lists the open [GAPS.md](GAPS.md) entries that name the app.
 | [paperclip](apps/paperclip/) | AI/Automation | Open-source orchestration for zero-human companies | postgres | |
 | [paperless](apps/paperless/) | Documents | Searchable archive for physical documents | postgres, redis | |
 | [pocketbase](apps/pocketbase/) | Backend | Real-time backend in a single Go binary with embedded SQLite | — | |
-| [posthog](apps/posthog/) | — | Open-source product analytics, session replay, and feature flags | clickhouse, kafka, postgres, redis | |
 | [privatebin](apps/privatebin/) | Pastebin | Minimalist zero-knowledge online pastebin | — | |
 | [rallly](apps/rallly/) | — | Schedule group meetings without the back and forth (Doodle alternative) | postgres | |
 | [redmine](apps/redmine/) | Projects | Flexible project management web application | postgres | |
@@ -148,6 +147,7 @@ Draft Launchfiles in [`drafts/`](drafts/) — not yet verified end-to-end. PRs w
 | [plausible](drafts/plausible/) | Analytics | Privacy-friendly web analytics | clickhouse, postgres | |
 | [plex](drafts/plex/) | Media | Media server for personal media streaming | — | G-10, G-14 |
 | [portainer](drafts/portainer/) | — | Container management platform with web UI | — | |
+| [posthog](drafts/posthog/) | — | Open-source product analytics, session replay, and feature flags | clickhouse, kafka, postgres, redis | |
 | [reactive-resume](drafts/reactive-resume/) | — | Open-source resume builder with real-time preview and export | postgres | |
 | [rocketchat](drafts/rocketchat/) | Communication | Open-source team communication platform | mongodb | G-5 |
 | [strapi](drafts/strapi/) | CMS | Open-source headless CMS | postgres | |

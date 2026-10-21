@@ -24,6 +24,17 @@ const LOG_DIR = [".launchfile", "logs"] as const;
 export const HEALTH_TIMEOUT_MS = 60_000;
 
 /**
+ * How long a component that declares no `health:` is watched after spawn
+ * before `up` counts it as up. A process that exits non-zero inside the window
+ * has not come up (SPEC.md § Failure semantics, run slot); one that outlives
+ * it is running as far as this provider can tell without a check. A component
+ * with `health:` is watched for its whole health budget instead. The length
+ * is a provider-side default (P-11), documented in CLAUDE.md as PROVIDERS.md
+ * §10 rule 10 requires.
+ */
+export const EXIT_WATCH_MS = 2_000;
+
+/**
  * A component's declared `health:` never passed, or could not be checked at all.
  * The invocation fails (SPEC.md § Failure semantics); `launchUp` tags it with
  * the `health` phase so the CLI records the deployment the processes belong to.
@@ -33,6 +44,46 @@ export class HealthGateError extends Error {
 		super(message);
 		this.name = "HealthGateError";
 	}
+}
+
+/**
+ * A component's process exited non-zero (or on a signal) before `startAll`
+ * resolved, so the run slot failed: the component did not come up (SPEC.md
+ * § Failure semantics). `launchUp` tags it with the `run` phase.
+ */
+export class ComponentExitError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "ComponentExitError";
+	}
+}
+
+/** One component that exited before it came up, and how. */
+export interface ExitedComponent {
+	name: string;
+	/** `exit code N`, or `signal SIG…` when the process died to one. */
+	exit: string;
+}
+
+/** What an exit failure says: every exited component, named with its exit. */
+export function exitFailureMessage(exited: ReadonlyArray<ExitedComponent>): string {
+	const named = exited.map((e) => `${e.name} (${e.exit})`).join(", ");
+	return `component(s) exited before coming up: ${named}`;
+}
+
+/** How a process ended: the code it returned, or the signal that took it. */
+interface ProcessExit {
+	code: number | null;
+	signal: NodeJS.Signals | null;
+}
+
+/** A non-zero exit or a signal death. Exit 0 is a process that chose to stop. */
+function exitIsFailure(exit: ProcessExit): boolean {
+	return exit.code !== 0;
+}
+
+function describeExit(exit: ProcessExit): string {
+	return exit.code === null ? `signal ${exit.signal}` : `exit code ${exit.code}`;
 }
 
 /** One component the health gate gave up on: the probe asked and the window it got. */
@@ -163,6 +214,12 @@ interface ManagedProcess {
 	process?: ChildProcess;
 	/** ISO timestamp captured right after a successful spawn (for pid identity). */
 	startedAt?: string;
+	/** Aborted the moment the process exits, so a health poll can stop early. */
+	exited?: AbortController;
+	/** Set by the exit handler; absent while the process is alive. */
+	exit?: ProcessExit;
+	/** Set once the declared check passed. The exit handler overwrites `status`, so this is what remembers the component came up. */
+	healthPassed?: boolean;
 	status: "pending" | "starting" | "running" | "healthy" | "failed" | "stopped";
 }
 
@@ -178,10 +235,12 @@ export class ProcessManager {
 	private processes = new Map<string, ManagedProcess>();
 	private readonly projectDir: string;
 	private healthTimeoutMs: number;
+	private exitWatchMs: number;
 
-	constructor(projectDir: string, opts: { healthTimeoutMs?: number } = {}) {
+	constructor(projectDir: string, opts: { healthTimeoutMs?: number; exitWatchMs?: number } = {}) {
 		this.projectDir = projectDir;
 		this.healthTimeoutMs = opts.healthTimeoutMs ?? HEALTH_TIMEOUT_MS;
+		this.exitWatchMs = opts.exitWatchMs ?? EXIT_WATCH_MS;
 	}
 
 	register(
@@ -209,12 +268,17 @@ export class ProcessManager {
 
 	/**
 	 * Start all registered processes respecting dependency order, then verify
-	 * every component that declares `health:` actually became healthy.
+	 * every component came up: one that declares `health:` must pass its check,
+	 * and none may exit non-zero before this resolves.
 	 *
-	 * SPEC.md § Failure semantics: a component that never becomes healthy
-	 * FAILS THE INVOCATION. The rejection names each stuck component and the
-	 * probe it was asked. Processes that did start are left running and stay
-	 * registered, so the caller can record their pids for `status`/`logs`/`down`.
+	 * SPEC.md § Failure semantics: a component that never becomes healthy, or
+	 * whose run slot fails, FAILS THE INVOCATION. The rejection names each
+	 * exited component with its exit code, or each stuck component with the
+	 * probe it was asked. A component without `health:` is watched until
+	 * `EXIT_WATCH_MS` after the last spawn; one with `health:` for its whole budget. An
+	 * exit found anywhere in that time wins over a stuck check, since it is
+	 * terminal. Processes that did start are left running and stay registered,
+	 * so the caller can record their pids for `status`/`logs`/`down`.
 	 */
 	async startAll(): Promise<void> {
 		// Security: logs may contain sensitive output, so the directory is
@@ -234,15 +298,66 @@ export class ProcessManager {
 		await Promise.all(
 			[...this.processes.values()].map(async (proc) => {
 				const health = proc.health;
-				if (!health || !proc.process || proc.status === "healthy") return;
-				if (!(await this.pollHealthy(proc, health))) {
+				if (!proc.process || proc.status === "healthy") return;
+				if (!health) {
+					await this.watchExit(proc);
+					return;
+				}
+				// A poll that stopped because the process exited is an exit failure,
+				// whatever the code; `exitedComponents` below names it.
+				if (!(await this.pollHealthy(proc, health)) && !proc.exit) {
 					stuck.push(this.stuck(proc, health));
 				}
 			}),
 		);
+		const exited = this.exitedComponents();
+		if (exited.length > 0) {
+			throw this.exitFailure(exitFailureMessage(exited));
+		}
 		if (stuck.length > 0) {
 			throw this.healthFailure(healthFailureMessage(stuck));
 		}
+	}
+
+	/** Resolves once the watch window closes or the process exits, whichever is first. */
+	private watchExit(proc: ManagedProcess): Promise<void> {
+		const exited = proc.exited;
+		if (!exited || exited.signal.aborted) return Promise.resolve();
+		return new Promise((resolve) => {
+			const done = (): void => {
+				clearTimeout(timer);
+				exited.signal.removeEventListener("abort", done);
+				resolve();
+			};
+			const timer = setTimeout(done, this.exitWatchMs);
+			exited.signal.addEventListener("abort", done);
+		});
+	}
+
+	/**
+	 * Every spawned component whose process exited before it came up, in
+	 * registration order. Without `health:`, exit 0 is a process that chose to
+	 * stop. With `health:`, the component came up only once its check passed,
+	 * so an exit before that is a failure whatever the code: the check it
+	 * declared can no longer be answered.
+	 */
+	private exitedComponents(): ExitedComponent[] {
+		const out: ExitedComponent[] = [];
+		for (const proc of this.processes.values()) {
+			if (!proc.exit) continue;
+			if (exitIsFailure(proc.exit) || (proc.health && !proc.healthPassed)) {
+				out.push(this.exited(proc));
+			}
+		}
+		return out;
+	}
+
+	/** The failure-message entry for a component whose process exited. */
+	private exited(proc: ManagedProcess): ExitedComponent {
+		return {
+			name: proc.name,
+			exit: proc.exit ? describeExit(proc.exit) : "exited",
+		};
 	}
 
 	/** The failure-message entry for a component whose check never passed. */
@@ -264,10 +379,31 @@ export class ProcessManager {
 	}
 
 	/**
-	 * Poll one component's declared check until it passes or the budget runs
-	 * out. Throws when the check cannot run at all: a `path` check with no
-	 * allocated port has nothing to poll, and treating that as healthy would be
-	 * a silent pass of a check the file declared.
+	 * Report an exit failure on stderr and build the error `up` rejects with.
+	 * Says what happened to the other components: the ones that did start are
+	 * left running (#243), and the operator needs to know their ports are held.
+	 */
+	private exitFailure(message: string): ComponentExitError {
+		console.error(`  ! ${message}`);
+		console.error("    .launchfile/logs/<component>.log has the output of each.");
+		const running = [...this.processes.values()]
+			.filter((p) => p.process && !p.exit)
+			.map((p) => p.name);
+		if (running.length > 0) {
+			console.error(
+				`    Still running: ${running.join(", ")} — \`launchfile status\` lists them, \`launchfile down\` stops them.`,
+			);
+		} else {
+			console.error("    No component is left running.");
+		}
+		return new ComponentExitError(message);
+	}
+
+	/**
+	 * Poll one component's declared check until it passes, the budget runs
+	 * out, or its process exits. Throws when the check cannot run at all: a
+	 * `path` check with no allocated port has nothing to poll, and treating
+	 * that as healthy would be a silent pass of a check the file declared.
 	 */
 	private async pollHealthy(proc: ManagedProcess, health: NormalizedHealth): Promise<boolean> {
 		if (healthCheckNeedsPort(health) && proc.port === undefined) {
@@ -277,8 +413,11 @@ export class ProcessManager {
 		}
 		// A command check never reads the port; 0 only fills the parameter.
 		const budget = healthBudgetMs(health, this.healthTimeoutMs);
-		const ok = await waitForHealthy(proc.name, health, proc.port ?? 0, budget);
-		if (ok) proc.status = "healthy";
+		const ok = await waitForHealthy(proc.name, health, proc.port ?? 0, budget, proc.exited?.signal);
+		if (ok) {
+			proc.status = "healthy";
+			proc.healthPassed = true;
+		}
 		return ok;
 	}
 
@@ -301,6 +440,12 @@ export class ProcessManager {
 					);
 				}
 				if (depProc.status !== "healthy" && !(await this.pollHealthy(depProc, depProc.health))) {
+					// A dependency that exited cannot become healthy; name the exit,
+					// not the check it can no longer answer.
+					if (depProc.exit) {
+						const message = exitFailureMessage([this.exited(depProc)]);
+						throw this.exitFailure(`${message}; ${name} was not started`);
+					}
 					const message = healthFailureMessage([this.stuck(depProc, depProc.health)]);
 					throw this.healthFailure(`${message}; ${name} was not started`);
 				}
@@ -352,12 +497,16 @@ export class ProcessManager {
 			proc.startedAt = new Date().toISOString();
 		}
 
-		proc.process.on("exit", (code) => {
+		const exited = new AbortController();
+		proc.exited = exited;
+		proc.process.on("exit", (code, signal) => {
+			proc.exit = { code, signal };
 			proc.status = code === 0 ? "stopped" : "failed";
 			tail.stop();
 			console.log(
-				`${color}[${paddedName}]${RESET} Process exited with code ${code}`,
+				`${color}[${paddedName}]${RESET} Process exited (${describeExit(proc.exit)})`,
 			);
+			exited.abort();
 		});
 
 		proc.status = "running";
@@ -396,7 +545,9 @@ export class ProcessManager {
 
 	private stopOne(proc: ManagedProcess): Promise<void> {
 		return new Promise((resolve) => {
-			if (!proc.process) {
+			// A process that already exited fires no second `exit`; waiting on
+			// one would hang shutdown.
+			if (!proc.process || proc.exit) {
 				resolve();
 				return;
 			}

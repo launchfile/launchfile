@@ -8,9 +8,10 @@
 
 import { resolve as resolvePath } from "node:path";
 import {
-	allocateDbIndexes,
 	AT_APP_HOST,
 	type AtDeclaration,
+	allocateDbIndexes,
+	appEndpointReferences,
 	atDeclarations,
 	atEntryLabel,
 	checkVersionRange,
@@ -19,13 +20,11 @@ import {
 	endpointProperties,
 	httpsOriginSatisfied,
 	indexOperatorStoragePaths,
-	isExpression,
-	appEndpointReferences,
-	namedDatabase,
 	type NormalizedEnvVar,
 	type NormalizedHealth,
 	type NormalizedLaunch,
 	type NormalizedRequirement,
+	namedDatabase,
 	parseExpression,
 	RESOURCE_PROPERTY_VOCABULARY,
 	type ResolverContext,
@@ -36,6 +35,25 @@ import {
 	unsuppliedRequiredEnv,
 	useKeys,
 } from "@launchfile/sdk";
+import { Scalar, stringify } from "yaml";
+import {
+	computeAppContext,
+	HTTPS_ORIGIN,
+	publishedEndpointAddresses,
+} from "./app-url.js";
+import { certificateRefusalMessage, planCertificates } from "./certificates.js";
+import { escapeForCompose, shellSlotForCompose } from "./compose-escape.js";
+import {
+	registerSensitiveEnv,
+	registerSuppliedEnv,
+	registerSuppliedResourceProperties,
+} from "./env-secrets.js";
+import {
+	applyHostCapabilityGrants,
+	type HostCapabilityPolicy,
+	resolveHostCapabilities,
+} from "./host-capabilities.js";
+import { registerSecret } from "./redact.js";
 import {
 	coverUse,
 	namedDatabases,
@@ -44,22 +62,6 @@ import {
 	usePropertyKeys,
 	withCoveredUses,
 } from "./resource-uses.js";
-import { Scalar, stringify } from "yaml";
-import {
-	computeAppContext,
-	HTTPS_ORIGIN,
-	publishedEndpointAddresses,
-} from "./app-url.js";
-import {
-	certificateRefusalMessage,
-	planCertificates,
-} from "./certificates.js";
-import {
-	registerSensitiveEnv,
-	registerSuppliedEnv,
-	registerSuppliedResourceProperties,
-} from "./env-secrets.js";
-import { registerSecret } from "./redact.js";
 import {
 	declaredSecrets,
 	migrateResourcePasswords,
@@ -451,7 +453,10 @@ function atReport(
 			"to this endpoint with the requested `Host` intact"
 		);
 	}
-	const target = authority !== "" ? authority : "the port this provider publishes for the entry";
+	const target =
+		authority !== ""
+			? authority
+			: "the port this provider publishes for the entry";
 	return (
 		`${head} — this provider publishes the port and sets up no host names. Every request ` +
 		`that reaches ${target} reaches the listener with its \`Host\` intact, so map each name ` +
@@ -679,7 +684,9 @@ function createBackingServices(
 				healthcheck: {
 					test: [
 						"CMD-SHELL",
-						`curl -sf -u elastic:$ELASTIC_PASSWORD http://localhost:9200/_cluster/health || exit 1`,
+						// `$$` so compose leaves `$ELASTIC_PASSWORD` for the
+						// container's shell instead of filling it from the host.
+						"curl -sf -u elastic:$$ELASTIC_PASSWORD http://localhost:9200/_cluster/health || exit 1",
 					],
 					interval: "10s",
 					timeout: "5s",
@@ -982,6 +989,12 @@ export interface ComposeOpts {
 	 * captured output.
 	 */
 	resources?: Record<string, { properties: Record<string, string> }>;
+	/**
+	 * The caller's answer to every host capability entry (D-44, PROVIDERS.md
+	 * §11). Absent, this provider refuses each required one and leaves each
+	 * optional one ungranted. See host-capabilities.ts for what a grant may set.
+	 */
+	hostCapabilities?: HostCapabilityPolicy;
 }
 
 // D-50 row 1 and row 2 shapes are the SDK's — every provider reports the same
@@ -1306,7 +1319,12 @@ export function launchToCompose(
 		appEndpoints,
 		fenced,
 		primaryEndpoint,
-	} = computeAppContext(launch, opts.hostPorts, opts.appUrl, certificates.active);
+	} = computeAppContext(
+		launch,
+		opts.hostPorts,
+		opts.appUrl,
+		certificates.active,
+	);
 
 	// `$app.endpoints.<name>.*` (D-63). Under a supplied publication URL the
 	// D-58 rule 4 fence holds: every non-primary named endpoint resolves ""
@@ -1391,48 +1409,42 @@ export function launchToCompose(
 		}
 
 		// Host capabilities — grant or refuse (D-44, PROVIDERS.md §11). This
-		// provider grants none: handing an app the host's runtime socket, host
-		// network, or privileged mode from inside a managed compose project
-		// defeats its isolation model (and Docker-in-Docker is unreliable). A
-		// required capability therefore REFUSES the component with a surfaced
-		// message — never a silent drop. Both spellings are honored
-		// equivalently: `host:`-marked requires entries and the legacy host
-		// block. Optional (supports) capabilities are left ungranted with a
-		// note so the degradation is visible.
-		const refusedCapabilities: string[] = [];
-		for (const req of component.requires ?? []) {
-			if (!req.host) continue;
-			for (const [capability, value] of Object.entries(req.host)) {
-				refusedCapabilities.push(`${capability}=${String(value)}`);
-			}
-		}
-		if (component.host?.docker === "required") {
-			refusedCapabilities.push(
-				"container_runtime=docker (host.docker: required)",
-			);
-		}
-		if (component.host?.network === "host") {
-			refusedCapabilities.push("network=host (host.network: host)");
-		}
-		if (component.host?.privileged) {
-			refusedCapabilities.push("privileged=true (host.privileged)");
-		}
-		if (refusedCapabilities.length > 0) {
+		// provider grants none on its own: handing an app the host's runtime
+		// socket, host network, or privileged mode from inside a managed compose
+		// project defeats its isolation model (and Docker-in-Docker is
+		// unreliable). A caller that can grant safely supplies
+		// `opts.hostCapabilities` (see host-capabilities.ts); otherwise a required
+		// capability REFUSES the component with a surfaced message — never a
+		// silent drop. Both spellings are honored equivalently: `host:`-marked
+		// requires entries and each key of the legacy host block. Optional
+		// (supports) capabilities left ungranted are noted so the degradation is
+		// visible. A grant is checked here, before anything is provisioned,
+		// against the storage paths the service mounts and against the
+		// properties its entry's set_env reads, so a grant that cannot apply
+		// refuses like any other.
+		const hostOutcome = resolveHostCapabilities(
+			componentName,
+			component,
+			opts.hostCapabilities,
+			Object.values(component.storage ?? {}).map((vol) => vol.path),
+			(entry, properties) =>
+				Object.values(entry.set_env ?? {}).flatMap((expr) =>
+					missingSuppliedRefs(
+						expr,
+						entry.name ?? entry.type,
+						properties,
+						false,
+					),
+				),
+		);
+		if (hostOutcome.refused.length > 0) {
 			warnings.push(
 				`refused: ${componentName} requires host capabilities this provider cannot grant ` +
-					`(${refusedCapabilities.join("; ")}) — component skipped`,
+					`(${hostOutcome.refused.join("; ")}) — component skipped`,
 			);
 			continue;
 		}
-		for (const sup of component.supports ?? []) {
-			if (!sup.host) continue;
-			for (const [capability, value] of Object.entries(sup.host)) {
-				warnings.push(
-					`${componentName}: optional host capability ${capability}=${String(value)} ` +
-						"not granted — its set_env vars are omitted and the app runs degraded",
-				);
-			}
-		}
+		warnings.push(...hostOutcome.notes);
 
 		// A required `https-origin` this provider cannot satisfy REFUSES the
 		// component, exactly as an unprovisionable postgres would (PROVIDERS.md
@@ -1489,9 +1501,7 @@ export function launchToCompose(
 			if (opts.resources?.[req.name ?? req.type]) continue;
 			if (Object.hasOwn(backingServices, req.type)) continue;
 			unprovisionable.push(
-				req.name === undefined
-					? req.type
-					: `${req.name} (type "${req.type}")`,
+				req.name === undefined ? req.type : `${req.name} (type "${req.type}")`,
 			);
 		}
 		if (unprovisionable.length > 0) {
@@ -1520,7 +1530,11 @@ export function launchToCompose(
 					? { properties: httpsOriginProperties }
 					: opts.resources?.[resourceName];
 			const uncovered = supplied
-				? uncoveredSuppliedUses(req.type, useKeys(req.uses), supplied.properties)
+				? uncoveredSuppliedUses(
+						req.type,
+						useKeys(req.uses),
+						supplied.properties,
+					)
 				: uncoveredProvisionedUses(req.type, useKeys(req.uses));
 			for (const detail of uncovered) {
 				uncoveredUses.push(`${resourceName}: ${detail}`);
@@ -1638,7 +1652,11 @@ export function launchToCompose(
 				// D-27 boundary noted above. `protocol` and `url` read the
 				// effective listener (D-61 rule 2), so an entry whose certificate
 				// binding is active says `https` here as the primary `url` does.
-				...endpointProperties(component.provides, serviceName, certificates.active),
+				...endpointProperties(
+					component.provides,
+					serviceName,
+					certificates.active,
+				),
 			};
 
 			// Host publication: every endpoint marked `exposed: true` (D-27)
@@ -1769,8 +1787,35 @@ export function launchToCompose(
 			}
 		};
 
+		// A granted host capability's set_env, resolved against the properties
+		// its grant supplied. Every property it reads was checked present when
+		// the grant was accepted, so nothing here resolves to an empty value in
+		// place of a coordinate (D-52). An ungranted entry wires nothing.
+		const applyGrantedSetEnv = (entry: NormalizedRequirement): void => {
+			const properties = hostOutcome.properties.get(entry);
+			if (!properties || !entry.set_env) return;
+			registerSuppliedResourceProperties(
+				properties,
+				GRANT_STRUCTURAL_PROPERTIES,
+			);
+			const scopedContext: ResolverContext = {
+				...componentContext,
+				resource: properties,
+			};
+			for (const [envKey, expr] of Object.entries(entry.set_env)) {
+				env[envKey] = resolveExpression(expr, scopedContext);
+			}
+		};
+
 		if (component.requires?.length) {
 			for (const req of component.requires) {
+				// A host capability reaches here only granted (a refusal skipped
+				// the component above). A grant is applied to the service, not
+				// provisioned: its set_env reads the grant's properties.
+				if (req.host) {
+					applyGrantedSetEnv(req);
+					continue;
+				}
 				const resourceName = req.name ?? req.type;
 				if (req.type === HTTPS_ORIGIN) {
 					// Reached only when satisfied — the refusal above skipped the
@@ -1859,7 +1904,10 @@ export function launchToCompose(
 		// host-capability note above. Host-marked entries are capabilities
 		// (grant/refuse, D-53), already handled at the top of this loop.
 		for (const sup of component.supports ?? []) {
-			if (sup.host) continue;
+			if (sup.host) {
+				applyGrantedSetEnv(sup);
+				continue;
+			}
 			const resourceName = sup.name ?? sup.type;
 			if (sup.type === HTTPS_ORIGIN) {
 				// The optional mood (D-60 rule 6): satisfied, it wires like any
@@ -1869,7 +1917,11 @@ export function launchToCompose(
 				// unfulfilled the same way (D-65 rule 4).
 				const uncovered =
 					originSatisfied && sup.uses
-						? uncoveredSuppliedUses(sup.type, useKeys(sup.uses), httpsOriginProperties)
+						? uncoveredSuppliedUses(
+								sup.type,
+								useKeys(sup.uses),
+								httpsOriginProperties,
+							)
 						: [];
 				if (uncovered.length > 0) {
 					warnings.push(
@@ -1899,7 +1951,11 @@ export function launchToCompose(
 			// out loud. The same shortfall on `requires:` refused the component
 			// above.
 			const uncovered = sup.uses
-				? uncoveredSuppliedUses(sup.type, useKeys(sup.uses), suppliedResource.properties)
+				? uncoveredSuppliedUses(
+						sup.type,
+						useKeys(sup.uses),
+						suppliedResource.properties,
+					)
 				: [];
 			if (uncovered.length > 0) {
 				warnings.push(
@@ -1955,7 +2011,12 @@ export function launchToCompose(
 		registerSensitiveEnv(component.env, env);
 
 		if (Object.keys(env).length > 0) {
-			service.environment = env;
+			service.environment = Object.fromEntries(
+				Object.entries(env).map(([key, value]) => [
+					key,
+					escapeForCompose(value),
+				]),
+			);
 		}
 
 		if (Object.keys(dependsOn).length > 0) {
@@ -1963,7 +2024,7 @@ export function launchToCompose(
 		}
 
 		if (component.commands?.start) {
-			service.command = component.commands.start.command;
+			service.command = shellSlotForCompose(component.commands.start.command);
 		}
 
 		if (component.health) {
@@ -2023,6 +2084,20 @@ export function launchToCompose(
 		service.restart = restart === "no" ? quotedScalar("no") : restart;
 		if (restart === "no" || restart === "on-failure") mayExit.push(serviceName);
 
+		// Granted host capabilities land last: they add security fields the
+		// generator never sets, and union any list it did. Each grant was
+		// checked against this service's mounts when it was accepted, so none
+		// is rejected here.
+		const rejectedGrants = applyHostCapabilityGrants(
+			service,
+			hostOutcome.grants,
+		);
+		if (rejectedGrants.length > 0) {
+			throw new Error(
+				`${componentName}: accepted host capability grant does not apply (${rejectedGrants.join("; ")})`,
+			);
+		}
+
 		services[serviceName] = service;
 		componentServices[componentName] = serviceName;
 	}
@@ -2062,7 +2137,10 @@ export function launchToCompose(
 
 	// Add network
 	const networkName = opts.networkName ?? `launchfile-${launch.name}-net`;
+	// A service with `network_mode` (a host capability grant) is outside the
+	// project network; compose rejects `networks:` beside it.
 	for (const service of Object.values(services)) {
+		if (service.network_mode !== undefined) continue;
 		service.networks = [networkName];
 	}
 
@@ -2105,6 +2183,14 @@ export function launchToCompose(
 }
 
 // --- Helpers ---
+
+/**
+ * A granted capability's coordinates that are addresses, not credentials
+ * (`$socket`, `$api` for `container_runtime`; `url` is structural for every
+ * resource). Any other property a grant supplies is registered with the
+ * redactor, fail closed.
+ */
+const GRANT_STRUCTURAL_PROPERTIES = ["socket", "api"] as const;
 
 /** Multi-segment namespaces the resolver checks before user-named resources. */
 const RESERVED_NAMESPACES = new Set([
@@ -2195,11 +2281,8 @@ function resolveEnvVar(
 	}
 
 	if (envVar.default !== undefined) {
-		const val = String(envVar.default);
-		if (isExpression(val)) {
-			return resolveExpression(val, context);
-		}
-		return val;
+		// A value with no reference still reads `$$` as a literal `$` (D-12).
+		return resolveExpression(String(envVar.default), context);
 	}
 
 	// A `required:` var the file supplies no value for gets NO value here — the
@@ -2409,7 +2492,7 @@ function translateHealth(
 ): ComposeHealthcheck {
 	if (health.command && health.path === undefined) {
 		return {
-			test: ["CMD-SHELL", health.command],
+			test: ["CMD-SHELL", shellSlotForCompose(health.command)],
 			interval: health.interval ?? "10s",
 			timeout: health.timeout ?? "5s",
 			retries: health.retries ?? 3,
@@ -2418,7 +2501,7 @@ function translateHealth(
 	}
 
 	const port = provides?.[0]?.port ?? 80;
-	const path = health.path ?? "/";
+	const path = shellSlotForCompose(health.path ?? "/");
 
 	return {
 		test: [
