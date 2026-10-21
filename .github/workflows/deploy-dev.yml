@@ -9,6 +9,7 @@ on:
       - "www-shared/**"
       - "brand/**"
       - "sdk/**"
+      - "spec/schema/**"
 
 jobs:
   deploy:

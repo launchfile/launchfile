@@ -1,6 +1,6 @@
 {
   "name": "@launchfile/aws",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "private": true,
   "description": "AWS provider for Launchfile — translate a Launchfile into Terraform (EC2 + RDS + ALB). Translation-only conformance probe; never applies.",
   "type": "module",
@@ -48,7 +48,7 @@
     "directory": "providers/aws"
   },
   "dependencies": {
-    "@launchfile/sdk": "^0.14.0",
+    "@launchfile/sdk": "^0.15.0",
     "pino": "^10.3.1"
   },
   "devDependencies": {
