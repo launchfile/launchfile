@@ -10,7 +10,7 @@
     "@changesets/cli": "^3.0.3"
   },
   "scripts": {
-    "ci:version": "changeset version && bun install",
+    "ci:version": "changeset version && bun install && bun install",
     "lint:spec-citations": "node scripts/lint-spec-citations.mjs spec"
   }
 }

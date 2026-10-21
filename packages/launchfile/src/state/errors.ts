@@ -28,14 +28,11 @@
  * knob is CWE-22, and no caller in the CLI passes anything but the default.
  */
 
-import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { type LaunchErrorContext, parseLaunchErrorContext } from "@launchfile/sdk";
-
-/** Records hold command output and log tails — same treatment as a state file. */
-const FILE_MODE = 0o600;
-const DIR_MODE = 0o700;
+import { ensurePrivateDir, writeAtomic } from "./fs.js";
 
 /** Pointer to the most recent failure, for a bare `launchfile diagnose`. */
 export interface LastErrorPointer {
@@ -71,22 +68,6 @@ export function lastPointerPath(dir: string = errorsDir()): string {
 	return join(dir, "last.json");
 }
 
-/** Write `data` at `path` with a restrictive mode, atomically. */
-async function writeAtomic(path: string, data: string): Promise<void> {
-	const temp = `${path}.tmp-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
-	await writeFile(temp, data, { mode: FILE_MODE });
-	await rename(temp, path);
-}
-
-/** Create the errors directory, and fix its mode if it already exists too open. */
-async function ensureErrorsDir(dir: string): Promise<void> {
-	await mkdir(dir, { recursive: true, mode: DIR_MODE });
-	// `mkdir` sets the mode only when it creates the directory. Setting it
-	// unconditionally means a directory created by an earlier version, or under a
-	// looser umask, does not stay world-readable (CWE-276).
-	await chmod(dir, DIR_MODE);
-}
-
 /**
  * Persist one failure record and repoint `last.json` at it. Returns the record's
  * path. The pointer is written after the record, never before.
@@ -95,7 +76,8 @@ export async function writeLaunchErrorRecord(
 	context: LaunchErrorContext,
 	dir: string = errorsDir(),
 ): Promise<string> {
-	await ensureErrorsDir(dir);
+	// Records hold command output and log tails — same treatment as a state file.
+	await ensurePrivateDir(dir);
 	const path = errorRecordPath(context.key, dir);
 	await writeAtomic(path, `${JSON.stringify(context, null, 2)}\n`);
 

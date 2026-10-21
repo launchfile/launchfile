@@ -12,10 +12,12 @@ import {
 } from "@launchfile/docker";
 // The two D-50 refusals come from the SDK, so one catch covers both providers.
 import {
+	canonicalSourceUrl,
 	InvalidAppUrlError,
 	isLaunchError,
 	type LaunchPhase,
 	MissingOperatorStoragePathError,
+	sourceErrorKey,
 	UnboundOperatorStorageError,
 } from "@launchfile/sdk";
 import { detectProvider } from "../detect-provider.js";
@@ -120,6 +122,27 @@ export function failedDeploymentStatus(
 	}
 }
 
+/**
+ * The index row a failed native launch earns, if any. `health` leaves every
+ * process running and unverified: `unhealthy`. `run` means one component
+ * exited and the rest were left running, so the row exists for `down` to
+ * reach them; the provider reports which is which on stderr, so the index
+ * says only that the deployment is in an unknown state. Every earlier phase
+ * of this provider stops before a process exists and earns no row.
+ */
+export function macosFailedDeploymentStatus(
+	phase: LaunchPhase,
+): DeploymentEntry["status"] | null {
+	switch (phase) {
+		case "health":
+			return "unhealthy";
+		case "run":
+			return "unknown";
+		default:
+			return null;
+	}
+}
+
 export async function handleUp(
 	target: string | undefined,
 	flags: UpFlags,
@@ -137,13 +160,36 @@ export async function handleUp(
 
 	const upTarget = resolveUpTarget(target);
 	const provider = await detectProvider({ docker: flags.docker, native: flags.native });
+
+	// The native provider launches a directory, and only a local target has
+	// one. Falling back to the working directory would launch whatever
+	// Launchfile sits there and record it under the target the operator typed —
+	// state adopted from a different source, which D-55 rule 3 forbids.
+	// Refusing is D-55's floor. The key is the missing directory, not the
+	// target kind, so URL targets and any kind added later fail closed too.
+	// It runs before the index is read, so a refused command writes no row.
+	if (provider === "macos" && upTarget.dir === undefined) {
+		const kind = upTarget.type === "url" ? "a URL" : "a catalog slug";
+		console.error(
+			`The native provider launches a directory; "${upTarget.value}" is ${kind}.`,
+		);
+		console.error(
+			`Use the Docker provider (launchfile up ${upTarget.value} --docker), or run --native from the app's own directory.`,
+		);
+		process.exit(1);
+	}
+
 	const indexDir = deps.indexDir;
 	const recordDir = deps.recordDir ?? errorsDir();
 
-	// Determine source key for index lookup
+	// Index key by target kind: directory, `catalog:<slug>`, or the URL
+	// itself. A URL is keyed by its canonical form, so index.json never holds
+	// a credential (D-55 rule 3).
 	const sourceKey = upTarget.type === "local"
 		? upTarget.dir ?? resolve(upTarget.value, "..")
-		: `catalog:${upTarget.value}`;
+		: upTarget.type === "catalog"
+			? `catalog:${upTarget.value}`
+			: canonicalSourceUrl(upTarget.value);
 
 	// Check for existing deployment. Identity is the (source, name) pair
 	// (D-55): an unnamed `up` and each `--name <label>` from one directory are
@@ -183,7 +229,6 @@ export async function handleUp(
 			result = await withFailureRecord(
 				() =>
 					launch(dockerSource, {
-						detach: flags.detach,
 						dryRun: flags.dryRun,
 						name: flags.name,
 						components: flags.components,
@@ -198,7 +243,10 @@ export async function handleUp(
 			// (D-58) is an operator's problem to fix, not a bug — it gets the
 			// provider's own message, not a stack trace. The URL refusal masks
 			// any userinfo in its own message (D-18), so the raw value the
-			// operator typed is never echoed here.
+			// operator typed is never echoed here. The D-52 refusal is also a
+			// `LaunchError`, so `withFailureRecord` has already written its
+			// record (phase `resolve`, `unsupplied[]` names only) for `diagnose`
+			// by the time this prints.
 			if (
 				err instanceof UnsuppliedRequiredEnvError ||
 				err instanceof UnboundOperatorStorageError ||
@@ -304,28 +352,39 @@ export async function handleUp(
 				console.error(`\n${err.message}`);
 				process.exit(1);
 			}
-			// A failed health gate leaves the app processes running (SPEC.md
-			// § Failure semantics fails the invocation, not the processes), so
-			// the deployment is registered before re-throwing — the same row
-			// the docker branch writes — and `status`/`logs`/`down` reach it.
-			// Every earlier phase of this provider stops before a process
-			// exists, so only `health` earns a row.
-			if (!flags.dryRun && isLaunchError(err) && err.context.phase === "health") {
-				await record({
-					appName: inferAppName(upTarget.value),
-					provider: "macos",
-					source: sourceKey,
-					sourceType: upTarget.type,
-					status: "unhealthy",
-				});
-				console.error(
-					`  Deployment ${deployId} is recorded as unhealthy — \`launchfile down\` stops it.`,
-				);
+			// A failed health gate, or a component that exited before coming
+			// up, leaves the other app processes running (SPEC.md § Failure
+			// semantics fails the invocation, not the processes), so the
+			// deployment is registered before re-throwing — the same row the
+			// docker branch writes — and `status`/`logs`/`down` reach it. Every
+			// earlier phase of this provider stops before a process exists, so
+			// only `health` and `run` earn a row.
+			if (!flags.dryRun && isLaunchError(err)) {
+				const status = macosFailedDeploymentStatus(err.context.phase);
+				if (status !== null) {
+					await record({
+						appName: inferAppName(upTarget.value),
+						provider: "macos",
+						source: sourceKey,
+						sourceType: upTarget.type,
+						status,
+					});
+					console.error(
+						`  Deployment ${deployId} is recorded as ${status} — \`launchfile down\` stops it.`,
+					);
+				}
 			}
 			throw err;
 		}
 
+		// Retention (#44 §H), same rule as the docker branch: the previous record
+		// for this project directory describes a launch that no longer exists.
+		// `@launchfile/macos-dev` keys its records by project directory — one
+		// instance per directory is the provider's identity model — and derives
+		// that key from the same SDK helper, so the two cannot drift.
 		if (!flags.dryRun) {
+			await clearLaunchErrorRecord(sourceErrorKey(projectDir), recordDir);
+
 			await record({
 				appName: inferAppName(upTarget.value),
 				provider: "macos",
