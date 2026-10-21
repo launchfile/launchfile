@@ -2,11 +2,17 @@ category: Backend
 tagline: "Open-source Firebase alternative"
 homepage: https://supabase.com
 known_issues:
-  - "No deploy has verified this draft. `studio.STUDIO_PG_META_URL` is declared
-    `required:` with no value source, so the harness refuses the app before it
-    starts. It is an HTTP URL for a pg-meta service this Launchfile does not
-    declare, and there is no `postgres-meta` component to reference."
-gaps:
+  - "No deploy has verified this draft. It moves to `catalog/apps/` only after a
+    deploy transcript shows GoTrue and PostgREST connecting to Postgres."
+  - "`studio.STUDIO_PG_META_URL` is declared `required:` with no value source, so
+    the harness refuses the app before it starts. It is an HTTP URL for a pg-meta
+    service this Launchfile does not declare, and there is no `postgres-meta`
+    component to reference."
+  - "GoTrue connects as `supabase_auth_admin` and PostgREST as `authenticator`.
+    Upstream sets both role passwords from `POSTGRES_PASSWORD` with
+    `docker/volumes/db/roles.sql`, mounted as a Postgres init script. This draft
+    mounts no such script, so both connections are expected to fail
+    authentication until one is added."
   - "`auth.GOTRUE_JWT_SECRET` and `rest.PGRST_JWT_SECRET` are separate generated
     secrets. GoTrue signs tokens that PostgREST must verify, so they must be the
     same value. Sharing one top-level secret would fix it."
