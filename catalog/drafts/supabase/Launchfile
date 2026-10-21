@@ -37,7 +37,9 @@ components:
         port: 9999
     env:
       GOTRUE_DB_DATABASE_URL:
+        default: "postgres://supabase_auth_admin:$secrets.postgres-password@$components.postgres.host:$components.postgres.port/postgres"
         required: true
+        sensitive: true
         description: "Postgres connection string"
       GOTRUE_JWT_SECRET:
         generator: secret
@@ -59,7 +61,9 @@ components:
         port: 3000
     env:
       PGRST_DB_URI:
+        default: "postgres://authenticator:$secrets.postgres-password@$components.postgres.host:$components.postgres.port/postgres"
         required: true
+        sensitive: true
         description: "Postgres connection string"
       PGRST_JWT_SECRET:
         generator: secret
