@@ -200,6 +200,51 @@ requires:
 			expect(warnings).toHaveLength(0);
 		});
 
+		it('warns and resolves "" for a multi-segment reference the supplied map does not register', () => {
+			const { doc, warnings } = compose(
+				`
+name: app
+image: acme/app:1
+requires:
+  - type: postgres
+    set_env:
+      DB_HOST: $postgres.deep.host
+      DB_PORT: \${postgres.deep.port:-5432}
+`,
+				{ resources: { postgres: { properties: { host: "db.internal" } } } },
+			);
+
+			const env = doc.services.app!.environment!;
+			expect(env.DB_HOST).toBe("");
+			expect(env.DB_PORT).toBe("5432");
+			expect(warnings).toEqual([
+				'default: set_env references postgres.deep.host, which the supplied resource does not provide — resolved to ""',
+			]);
+		});
+
+		it("resolves a multi-segment reference the supplied map registers as a dotted key, without a warning", () => {
+			const { doc, warnings } = compose(
+				`
+name: app
+image: acme/app:1
+requires:
+  - type: postgres
+    set_env:
+      DB_HOST: $postgres.deep.host
+`,
+				{
+					resources: {
+						postgres: {
+							properties: { host: "db.internal", "deep.host": "deep.internal" },
+						},
+					},
+				},
+			);
+
+			expect(doc.services.app!.environment!.DB_HOST).toBe("deep.internal");
+			expect(warnings).toHaveLength(0);
+		});
+
 		it("warns on requires.config the provider cannot apply to a resource it does not own", () => {
 			const { doc, warnings } = compose(
 				`

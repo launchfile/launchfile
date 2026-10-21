@@ -5,11 +5,11 @@ test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 43
   startup_time_seconds: 6
-  total_disk_mb: 1127
+  total_download_mb: 482
   health_check_passed: true
   notes: ""
 images:
   - name: ghcr.io/karakeep-app/karakeep:latest
-    size_mb: 1127
+    size_mb: 482
     platform:
       - linux/arm64

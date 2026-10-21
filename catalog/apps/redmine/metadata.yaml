@@ -5,15 +5,15 @@ test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 28
   startup_time_seconds: 7
-  total_disk_mb: 873
+  total_download_mb: 388
   health_check_passed: true
   notes: ""
 images:
   - name: redmine:latest
-    size_mb: 614
+    size_mb: 279
     platform:
       - linux/arm64
   - name: postgres:16-alpine
-    size_mb: 259
+    size_mb: 109
     platform:
       - linux/arm64

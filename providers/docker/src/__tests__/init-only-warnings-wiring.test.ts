@@ -84,6 +84,7 @@ vi.mock("node:fs/promises", () => ({
 }));
 
 vi.mock("../state.js", () => ({
+	writePrivateFile: async () => {},
 	loadState: async () => null,
 	instanceSlug: (baseSlug: string, label?: string) =>
 		label ? `${baseSlug}-${label}` : baseSlug,

@@ -12,6 +12,7 @@ import {
 	planBootstraps,
 } from "../bootstrap.js";
 import { buildResolverContext, computeAppProperties } from "../env-writer.js";
+import { macosLaunchError } from "../errors.js";
 import { clearRegisteredSecrets, REDACTED } from "../redact.js";
 import { type CaptureEntry, readLaunch, type ResolverContext } from "@launchfile/sdk";
 
@@ -358,5 +359,106 @@ components:
 		}
 		// One executed, one reported as unrunnable — both push sites covered.
 		expect(results.map((r) => r.ok)).toEqual([true, false]);
+	});
+});
+
+describe("launchBootstrap — a failing command cannot leak declared or supplied env (D-18, D-52)", () => {
+	// Short on purpose: `registerSecret`'s length floor would drop this PIN.
+	const PIN = "424242";
+	const OPERATOR_TOKEN = "op-supplied-7c1e0b9a";
+	const LAUNCHFILE = `name: acme
+version: "1.0"
+components:
+  api:
+    env:
+      DEVICE_PIN:
+        default: "${PIN}"
+        sensitive: true
+      OPERATOR_TOKEN:
+        required: true
+    commands:
+      start: "node server.js"
+      bootstrap: "printenv DEVICE_PIN OPERATOR_TOKEN; exit 3"
+`;
+
+	let projectDir: string;
+	let savedToken: string | undefined;
+
+	beforeEach(() => {
+		projectDir = mkdtempSync(join(tmpdir(), "lf-bootstrap-env-secrets-"));
+		writeFileSync(join(projectDir, "Launchfile"), LAUNCHFILE);
+		mkdirSync(join(projectDir, ".launchfile"), { recursive: true });
+		const now = new Date().toISOString();
+		writeFileSync(
+			join(projectDir, ".launchfile", "state.json"),
+			JSON.stringify({
+				version: 1,
+				appName: "acme",
+				launchfileHash: "0".repeat(16),
+				createdAt: now,
+				updatedAt: now,
+				resources: {},
+				secrets: {},
+				ports: { api: 3000 },
+			}),
+		);
+		savedToken = process.env.OPERATOR_TOKEN;
+		process.env.OPERATOR_TOKEN = OPERATOR_TOKEN;
+		// A fresh `bootstrap` process: nothing `up` registered survives into it.
+		clearRegisteredSecrets();
+	});
+
+	afterEach(() => {
+		if (savedToken === undefined) delete process.env.OPERATOR_TOKEN;
+		else process.env.OPERATOR_TOKEN = savedToken;
+		rmSync(projectDir, { recursive: true, force: true });
+		clearRegisteredSecrets();
+		vi.restoreAllMocks();
+	});
+
+	it("registers both values before the command runs, so the failure record and printed stderr are scrubbed", async () => {
+		vi.spyOn(console, "log").mockImplementation(() => {});
+		const printed: string[] = [];
+		vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+			printed.push(args.map(String).join(" "));
+		});
+
+		const echoed = `${PIN}\n${OPERATOR_TOKEN}\n`;
+		const seenEnv: Record<string, string>[] = [];
+		const results = await launchBootstrap({
+			projectDir,
+			exec: async (_cmd, _args, opts) => {
+				seenEnv.push({ ...opts.env });
+				return { exitCode: 3, stdout: echoed, stderr: echoed };
+			},
+		});
+
+		// The command itself still receives the live values.
+		expect(seenEnv[0]?.DEVICE_PIN).toBe(PIN);
+		expect(seenEnv[0]?.OPERATOR_TOKEN).toBe(OPERATOR_TOKEN);
+
+		const failed = results[0];
+		expect(failed?.ok).toBe(false);
+		if (!failed) return;
+
+		const record = macosLaunchError({
+			phase: "bootstrap",
+			key: "k",
+			app: "acme",
+			component: failed.component,
+			message: "bootstrap failed",
+			command: failed.command,
+			exitCode: failed.exitCode,
+			stdout: failed.stdout,
+			stderr: failed.stderr,
+		}).context;
+		const serialized = JSON.stringify(record);
+		expect(serialized).not.toContain(PIN);
+		expect(serialized).not.toContain(OPERATOR_TOKEN);
+		expect(serialized).toContain(REDACTED);
+
+		const stderrOut = printed.join("\n");
+		expect(stderrOut).not.toContain(PIN);
+		expect(stderrOut).not.toContain(OPERATOR_TOKEN);
 	});
 });
