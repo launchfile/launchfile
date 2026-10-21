@@ -1608,8 +1608,11 @@ function hasAlbTargetGroup(
 /**
  * Records each component's `health` as the check the Terraform actually runs.
  * Only an ALB target group carries a check, and it probes HTTP only: the
- * declared path, otherwise "/" (SPEC "Health"). Anything else is a gap, never
+ * declared path, otherwise "/" (this provider's default; SPEC "Health" sets
+ * none). Anything else is a gap, never
  * a silent mapping (P-5). Runs after compute so `targetGroupFor` is complete.
+ * A component that stopped before compute (no `targetGroupFor` entry) already
+ * has its `health` row from `reportUntranslatedFields`, so it is skipped here.
  */
 function recordHealth(
 	c: Conformance,
@@ -1619,7 +1622,7 @@ function recordHealth(
 ): void {
 	for (const [name, comp] of Object.entries(launch.components)) {
 		const health = comp.health;
-		if (!health) continue;
+		if (!health || !targetGroupFor[name]) continue;
 		if (!hasAlbTargetGroup(name, launch, exposedComponents, targetGroupFor)) {
 			c.gap(
 				"health",

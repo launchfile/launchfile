@@ -1581,7 +1581,7 @@ health: /healthz
 		);
 	});
 
-	it("records a gap for health on an exposed component that gets no target group", () => {
+	it("records one health row for an exposed component that stops before compute", () => {
 		const { hcl, conformance } = tf(`
 version: launch/v1
 name: my-app
@@ -1594,8 +1594,9 @@ health: /healthz
 `);
 		expect(hcl).not.toContain('resource "aws_lb_target_group"');
 		expect(conformance.mapped.some((m) => m.field === "health")).toBe(false);
-		const gap = conformance.gaps.find((g) => g.field === "health");
-		expect(gap?.severity).toBe("nice-to-have");
-		expect(gap?.reason).toContain("no ALB target group");
+		const rows = conformance.gaps.filter((g) => g.field === "health");
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.severity).toBe("workaround");
+		expect(rows[0]?.reason).toContain("stops at the `image` gap");
 	});
 });

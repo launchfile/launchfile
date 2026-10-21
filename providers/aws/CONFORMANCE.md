@@ -14,7 +14,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 - **85** Launchfile(s) translated
 - **165** field mappings
-- **443** gaps logged (never silently dropped)
+- **402** gaps logged (never silently dropped)
 - **8** specializations safely ignored
 
 ### Distinct gaps
@@ -154,7 +154,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### audiobookshelf
 
-> Source: `catalog/apps/audiobookshelf/Launchfile` — 1 mapped, 9 gap(s), 0 ignored
+> Source: `catalog/apps/audiobookshelf/Launchfile` — 1 mapped, 8 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -170,7 +170,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `storage:audiobooks` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:podcasts` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:80` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### beszel
 
@@ -222,7 +221,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### cobalt
 
-> Source: `catalog/apps/cobalt/Launchfile` — 1 mapped, 5 gap(s), 0 ignored
+> Source: `catalog/apps/cobalt/Launchfile` — 1 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -234,11 +233,10 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:9000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### cyberchef
 
-> Source: `catalog/apps/cyberchef/Launchfile` — 1 mapped, 5 gap(s), 0 ignored
+> Source: `catalog/apps/cyberchef/Launchfile` — 1 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -250,11 +248,10 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:8080` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### dockge
 
-> Source: `catalog/apps/dockge/Launchfile` — 1 mapped, 7 gap(s), 0 ignored
+> Source: `catalog/apps/dockge/Launchfile` — 1 mapped, 6 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -268,7 +265,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `storage:stacks` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:5001` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### docmost
 
@@ -303,7 +299,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### excalidraw
 
-> Source: `catalog/apps/excalidraw/Launchfile` — 1 mapped, 5 gap(s), 0 ignored
+> Source: `catalog/apps/excalidraw/Launchfile` — 1 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -315,11 +311,10 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:80` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### file-browser
 
-> Source: `catalog/apps/file-browser/Launchfile` — 1 mapped, 7 gap(s), 0 ignored
+> Source: `catalog/apps/file-browser/Launchfile` — 1 mapped, 6 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -333,11 +328,10 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:config` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:80` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### firefly-iii
 
-> Source: `catalog/apps/firefly-iii/Launchfile` — 3 mapped, 7 gap(s), 0 ignored
+> Source: `catalog/apps/firefly-iii/Launchfile` — 3 mapped, 6 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -353,11 +347,10 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:uploads` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:8080` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### flowise
 
-> Source: `catalog/apps/flowise/Launchfile` — 1 mapped, 8 gap(s), 0 ignored
+> Source: `catalog/apps/flowise/Launchfile` — 1 mapped, 7 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -372,7 +365,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### freshrss
 
@@ -408,7 +400,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### ghost
 
-> Source: `catalog/apps/ghost/Launchfile` — 2 mapped, 7 gap(s), 0 ignored
+> Source: `catalog/apps/ghost/Launchfile` — 2 mapped, 6 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -423,7 +415,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:content` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:2368` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### gitea
 
@@ -446,7 +437,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### glance
 
-> Source: `catalog/apps/glance/Launchfile` — 1 mapped, 6 gap(s), 0 ignored
+> Source: `catalog/apps/glance/Launchfile` — 1 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -459,7 +450,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:config` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:8080` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### gokapi
 
@@ -493,7 +483,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### grafana
 
-> Source: `catalog/apps/grafana/Launchfile` — 1 mapped, 8 gap(s), 0 ignored
+> Source: `catalog/apps/grafana/Launchfile` — 1 mapped, 7 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -508,7 +498,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### grocy
 
@@ -528,7 +517,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### hedgedoc
 
-> Source: `catalog/apps/hedgedoc/Launchfile` — 2 mapped, 7 gap(s), 0 ignored
+> Source: `catalog/apps/hedgedoc/Launchfile` — 2 mapped, 6 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -543,7 +532,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:uploads` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### homebox
 
@@ -562,7 +550,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### homepage-dashboard
 
-> Source: `catalog/apps/homepage-dashboard/Launchfile` — 1 mapped, 6 gap(s), 0 ignored
+> Source: `catalog/apps/homepage-dashboard/Launchfile` — 1 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -575,7 +563,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### it-tools
 
@@ -658,7 +645,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### listmonk
 
-> Source: `catalog/apps/listmonk/Launchfile` — 2 mapped, 7 gap(s), 0 ignored
+> Source: `catalog/apps/listmonk/Launchfile` — 2 mapped, 6 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -673,7 +660,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:9000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### mailpit
 
@@ -710,7 +696,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### mealie
 
-> Source: `catalog/apps/mealie/Launchfile` — 1 mapped, 8 gap(s), 0 ignored
+> Source: `catalog/apps/mealie/Launchfile` — 1 mapped, 7 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -725,7 +711,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:9000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### memos
 
@@ -744,7 +729,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### metabase
 
-> Source: `catalog/apps/metabase/Launchfile` — 2 mapped, 6 gap(s), 0 ignored
+> Source: `catalog/apps/metabase/Launchfile` — 2 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -758,11 +743,10 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### miniflux
 
-> Source: `catalog/apps/miniflux/Launchfile` — 2 mapped, 7 gap(s), 0 ignored
+> Source: `catalog/apps/miniflux/Launchfile` — 2 mapped, 6 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -777,11 +761,10 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:8080` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### monica
 
-> Source: `catalog/apps/monica/Launchfile` — 3 mapped, 7 gap(s), 0 ignored
+> Source: `catalog/apps/monica/Launchfile` — 3 mapped, 6 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -797,11 +780,10 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:80` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### navidrome
 
-> Source: `catalog/apps/navidrome/Launchfile` — 1 mapped, 8 gap(s), 0 ignored
+> Source: `catalog/apps/navidrome/Launchfile` — 1 mapped, 7 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -816,7 +798,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:music` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:4533` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### nocodb
 
@@ -836,7 +817,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### node-red
 
-> Source: `catalog/apps/node-red/Launchfile` — 1 mapped, 6 gap(s), 0 ignored
+> Source: `catalog/apps/node-red/Launchfile` — 1 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -849,11 +830,10 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:1880` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### ntfy
 
-> Source: `catalog/apps/ntfy/Launchfile` — 1 mapped, 9 gap(s), 0 ignored
+> Source: `catalog/apps/ntfy/Launchfile` — 1 mapped, 8 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -869,11 +849,10 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:80` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:tcp:25` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### openclaw
 
-> Source: `catalog/apps/openclaw/Launchfile` — 1 mapped, 8 gap(s), 0 ignored
+> Source: `catalog/apps/openclaw/Launchfile` — 1 mapped, 7 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -888,7 +867,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:18789` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:18790` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### opengist
 
@@ -908,7 +886,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### outline
 
-> Source: `catalog/apps/outline/Launchfile` — 3 mapped, 6 gap(s), 0 ignored
+> Source: `catalog/apps/outline/Launchfile` — 3 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -923,11 +901,10 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### paperclip
 
-> Source: `catalog/apps/paperclip/Launchfile` — 2 mapped, 7 gap(s), 0 ignored
+> Source: `catalog/apps/paperclip/Launchfile` — 2 mapped, 6 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -942,11 +919,10 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:3100` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### paperless
 
-> Source: `catalog/apps/paperless/Launchfile` — 3 mapped, 9 gap(s), 0 ignored
+> Source: `catalog/apps/paperless/Launchfile` — 3 mapped, 8 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -964,11 +940,10 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `storage:media` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:consume` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:8000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### pocketbase
 
-> Source: `catalog/apps/pocketbase/Launchfile` — 1 mapped, 6 gap(s), 0 ignored
+> Source: `catalog/apps/pocketbase/Launchfile` — 1 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -981,7 +956,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:8090` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### privatebin
 
@@ -1001,7 +975,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### rallly
 
-> Source: `catalog/apps/rallly/Launchfile` — 2 mapped, 6 gap(s), 0 ignored
+> Source: `catalog/apps/rallly/Launchfile` — 2 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1015,7 +989,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### redmine
 
@@ -1036,7 +1009,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### concentrator
 
-> Source: `catalog/apps/remote-claude-concentrator/Launchfile` — 1 mapped, 8 gap(s), 1 ignored
+> Source: `catalog/apps/remote-claude-concentrator/Launchfile` — 1 mapped, 7 gap(s), 1 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1051,7 +1024,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `storage:cache` _(default)_: declared but not translated — the component stops at the `runtime` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:transcripts` _(default)_: declared but not translated — the component stops at the `runtime` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:9999` _(default)_: declared but not translated — the component stops at the `runtime` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 **Ignored specializations** (contract sufficed — D-40 / RFC C)
 
@@ -1059,7 +1031,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### rsshub
 
-> Source: `catalog/apps/rsshub/Launchfile` — 1 mapped, 5 gap(s), 0 ignored
+> Source: `catalog/apps/rsshub/Launchfile` — 1 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1071,11 +1043,10 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:1200` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### searxng
 
-> Source: `catalog/apps/searxng/Launchfile` — 1 mapped, 7 gap(s), 0 ignored
+> Source: `catalog/apps/searxng/Launchfile` — 1 mapped, 6 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1089,7 +1060,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:8080` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### snipe-it
 
@@ -1140,7 +1110,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### trilium-notes
 
-> Source: `catalog/apps/trilium-notes/Launchfile` — 1 mapped, 6 gap(s), 0 ignored
+> Source: `catalog/apps/trilium-notes/Launchfile` — 1 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1153,11 +1123,10 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:8080` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### umami
 
-> Source: `catalog/apps/umami/Launchfile` — 2 mapped, 6 gap(s), 0 ignored
+> Source: `catalog/apps/umami/Launchfile` — 2 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1171,11 +1140,10 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### uptime-kuma
 
-> Source: `catalog/apps/uptime-kuma/Launchfile` — 1 mapped, 6 gap(s), 0 ignored
+> Source: `catalog/apps/uptime-kuma/Launchfile` — 1 mapped, 5 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1188,7 +1156,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:3001` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### vaultwarden
 
@@ -1241,7 +1208,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### web-check
 
-> Source: `catalog/apps/web-check/Launchfile` — 1 mapped, 5 gap(s), 0 ignored
+> Source: `catalog/apps/web-check/Launchfile` — 1 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1253,11 +1220,10 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### wikijs
 
-> Source: `catalog/apps/wikijs/Launchfile` — 2 mapped, 5 gap(s), 0 ignored
+> Source: `catalog/apps/wikijs/Launchfile` — 2 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1270,7 +1236,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### wordpress
 
@@ -1290,7 +1255,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### zeroclaw
 
-> Source: `catalog/apps/zeroclaw/Launchfile` — 1 mapped, 7 gap(s), 0 ignored
+> Source: `catalog/apps/zeroclaw/Launchfile` — 1 mapped, 6 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1304,7 +1269,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:42617` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### daily-sync
 
@@ -1343,7 +1307,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### dockge
 
-> Source: `spec/examples/host-container-runtime.yaml` — 1 mapped, 8 gap(s), 0 ignored
+> Source: `spec/examples/host-container-runtime.yaml` — 1 mapped, 7 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1358,7 +1322,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `storage:stacks` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:5001` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### launchpad
 
@@ -1448,7 +1411,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### media-server
 
-> Source: `spec/examples/operator-content.yaml` — 1 mapped, 8 gap(s), 0 ignored
+> Source: `spec/examples/operator-content.yaml` — 1 mapped, 7 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1463,7 +1426,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:music` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:4533` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### my-app
 
@@ -1486,7 +1448,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### hedgedoc-backend
 
-> Source: `spec/examples/prebuilt-image.yaml` — 2 mapped, 4 gap(s), 0 ignored
+> Source: `spec/examples/prebuilt-image.yaml` — 2 mapped, 3 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1498,11 +1460,10 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `image` _(default)_: prebuilt OCI image with no portable runtime+commands contract; this probe builds on EC2 from the contract, not a container host — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### board
 
-> Source: `spec/examples/resource-uses.yaml` — 3 mapped, 5 gap(s), 0 ignored
+> Source: `spec/examples/resource-uses.yaml` — 3 mapped, 4 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1516,7 +1477,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `env` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `health` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 ### simple-api
 
@@ -1542,7 +1502,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### notes-app
 
-> Source: `spec/examples/storage-paths.yaml` — 1 mapped, 8 gap(s), 0 ignored
+> Source: `spec/examples/storage-paths.yaml` — 1 mapped, 7 gap(s), 0 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1557,4 +1517,3 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `storage:data` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:cache` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:8080` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟢 `health` _(default)_: default has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
