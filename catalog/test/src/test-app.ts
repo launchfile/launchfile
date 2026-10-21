@@ -4,7 +4,7 @@
  * checking health, collecting metrics, and tearing it down.
  *
  * Usage: bun run src/test-app.ts <app-name> [--keep] [--dry-run] [--url <public-url>]
- *        [--wait-timeout <seconds>]
+ *        [--wait-timeout <seconds>] [--resource-port <type>=<port>]...
  *
  * `--url` is the harness's publication-context channel (D-58), the same input
  * the Docker provider takes as `ComposeOpts.appUrl`: it answers `$app.*`, and
@@ -15,12 +15,22 @@
  * only ever record a timeout, so a run against such an app passes a budget at
  * least as long as the declared start period. The transcript prints the budget
  * used, so a recorded pass names the clock it was measured against.
+ *
+ * `--resource-port` runs a provisioned `postgres`, `mysql` or `mariadb` on a
+ * container port other than the engine default, the same input the Docker
+ * provider takes as `ComposeOpts.resourcePorts` (#568). The engine listens
+ * there and `$port`/`$url` publish it, so an app that hard-codes the default
+ * fails to connect. It does not touch the host ports the app is published on.
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { parse } from "yaml";
 import { readLaunch } from "../../../sdk/src/reader.ts";
+import {
+  InvalidResourcePortError,
+  RESOURCE_PORT_TYPES,
+} from "../../../providers/docker/src/resource-ports.ts";
 import { collectFailureLogs } from "./failure-logs.ts";
 import { launchToCompose } from "./launch-to-compose.ts";
 import { dockerManifestFetcher, downloadSizeMb, formatPlatform } from "./image-size.ts";
@@ -30,11 +40,18 @@ import { lintUnknownMetadataKeys, rewriteMetadata } from "./lint-metadata.ts";
 
 const args = process.argv.slice(2);
 
-// `--url` and `--wait-timeout` take a value, in either spelling: `--flag=<v>`
-// or `--flag <v>`. They are pulled out before the flag/positional split so a
-// value is never mistaken for the app name.
+const USAGE =
+  "Usage: bun run src/test-app.ts <app-name> [--keep] [--dry-run] [--url <public-url>] " +
+  "[--wait-timeout <seconds>] [--resource-port <type>=<port>]...";
+
+// `--url`, `--wait-timeout` and `--resource-port` take a value, in either
+// spelling: `--flag=<v>` or `--flag <v>`. They are pulled out before the
+// flag/positional split so a value is never mistaken for the app name.
 let appUrl: string | undefined;
 let waitTimeoutArg: string | undefined;
+// Raw `<type>=<port>` pairs; the translator validates type and range and
+// throws `InvalidResourcePortError` for anything it refuses.
+const resourcePorts: Record<string, number> = {};
 const rest: string[] = [];
 for (let i = 0; i < args.length; i++) {
   const arg = args[i]!;
@@ -54,6 +71,21 @@ for (let i = 0; i < args.length; i++) {
     waitTimeoutArg = args[++i];
     continue;
   }
+  if (arg.startsWith("--resource-port=") || arg === "--resource-port") {
+    const pair = arg === "--resource-port" ? args[++i] : arg.slice("--resource-port=".length);
+    const eq = pair?.indexOf("=") ?? -1;
+    if (pair === undefined || eq < 1) {
+      console.error(
+        `--resource-port needs <type>=<port>, e.g. --resource-port postgres=5433 ` +
+          `(types: ${RESOURCE_PORT_TYPES.join(", ")})`,
+      );
+      process.exit(1);
+    }
+    const portText = pair.slice(eq + 1);
+    // A non-numeric or empty port becomes NaN, which the translator refuses.
+    resourcePorts[pair.slice(0, eq)] = /^\d+$/.test(portText) ? Number(portText) : Number.NaN;
+    continue;
+  }
   rest.push(arg);
 }
 
@@ -65,9 +97,7 @@ const keepRunning = flags.has("--keep");
 const dryRun = flags.has("--dry-run");
 
 if (!appName) {
-  console.error(
-    "Usage: bun run src/test-app.ts <app-name> [--keep] [--dry-run] [--url <public-url>] [--wait-timeout <seconds>]",
-  );
+  console.error(USAGE);
   process.exit(1);
 }
 if (appUrl !== undefined && appUrl.length === 0) {
@@ -147,7 +177,24 @@ const testStorage: Record<string, string> = Object.fromEntries(
   ]),
 );
 
-const result = launchToCompose(launch, { testEnv, appUrl, storagePaths: testStorage });
+let result: ReturnType<typeof launchToCompose>;
+try {
+  result = launchToCompose(launch, { testEnv, appUrl, storagePaths: testStorage, resourcePorts });
+} catch (err) {
+  // A refused `--resource-port` is a usage error, not a translation outcome.
+  if (err instanceof InvalidResourcePortError) {
+    console.error(`--resource-port: ${err.message}`);
+    process.exit(1);
+  }
+  throw err;
+}
+if (Object.keys(resourcePorts).length > 0) {
+  console.log(
+    `Backing-service container ports: ${Object.entries(resourcePorts)
+      .map(([type, port]) => `${type}=${port}`)
+      .join(", ")}`,
+  );
+}
 
 // A required variable with no fixture entry is a hard failure naming the app and
 // the variable — never a silent pass. Passing here would let this app's
