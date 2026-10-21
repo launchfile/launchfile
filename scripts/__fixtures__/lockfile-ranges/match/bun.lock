@@ -1,0 +1,27 @@
+{
+  "lockfileVersion": 1,
+  "workspaces": {
+    "": {
+      "devDependencies": {
+        "@changesets/cli": "^3.0.3",
+      },
+    },
+    "providers/aws": {
+      "name": "@launchfile/aws",
+      "version": "0.6.0",
+      "bin": {
+        "launchfile-aws": "dist/cli.js",
+      },
+      "dependencies": {
+        "@launchfile/sdk": "^0.13.0",
+        "pino": "^10.3.1",
+      },
+    },
+    "sdk": {
+      "name": "@launchfile/sdk",
+      "version": "0.13.0",
+    },
+  },
+  "packages": {
+  },
+}
