@@ -4,11 +4,17 @@
  * checking health, collecting metrics, and tearing it down.
  *
  * Usage: bun run src/test-app.ts <app-name> [--keep] [--dry-run] [--url <public-url>]
- *        [--resource-port <type>=<port>]...
+ *        [--wait-timeout <seconds>] [--resource-port <type>=<port>]...
  *
  * `--url` is the harness's publication-context channel (D-58), the same input
  * the Docker provider takes as `ComposeOpts.appUrl`: it answers `$app.*`, and
  * an `https://` value is what satisfies an app's `https-origin` entry (D-60).
+ *
+ * `--wait-timeout` is the budget handed to `docker compose up --wait`, in
+ * seconds (default 120). An app whose `health.start_period` exceeds it can
+ * only ever record a timeout, so a run against such an app passes a budget at
+ * least as long as the declared start period. The transcript prints the budget
+ * used, so a recorded pass names the clock it was measured against.
  *
  * `--resource-port` runs a provisioned `postgres`, `mysql` or `mariadb` on a
  * container port other than the engine default, the same input the Docker
@@ -19,13 +25,16 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { resolve, dirname } from "node:path";
-import { parse, stringify } from "yaml";
+import { parse } from "yaml";
 import { readLaunch } from "../../../sdk/src/reader.ts";
 import {
   InvalidResourcePortError,
   RESOURCE_PORT_TYPES,
 } from "../../../providers/docker/src/resource-ports.ts";
+import { collectFailureLogs } from "./failure-logs.ts";
 import { launchToCompose } from "./launch-to-compose.ts";
+import { dockerManifestFetcher, downloadSizeMb, formatPlatform } from "./image-size.ts";
+import { lintUnknownMetadataKeys, rewriteMetadata } from "./lint-metadata.ts";
 
 // --- CLI args ---
 
@@ -33,12 +42,13 @@ const args = process.argv.slice(2);
 
 const USAGE =
   "Usage: bun run src/test-app.ts <app-name> [--keep] [--dry-run] [--url <public-url>] " +
-  "[--resource-port <type>=<port>]...";
+  "[--wait-timeout <seconds>] [--resource-port <type>=<port>]...";
 
-// `--url` and `--resource-port` take a value, in either spelling: `--flag=<v>`
-// or `--flag <v>`. They are pulled out before the flag/positional split so a
-// value is never mistaken for the app name.
+// `--url`, `--wait-timeout` and `--resource-port` take a value, in either
+// spelling: `--flag=<v>` or `--flag <v>`. They are pulled out before the
+// flag/positional split so a value is never mistaken for the app name.
 let appUrl: string | undefined;
+let waitTimeoutArg: string | undefined;
 // Raw `<type>=<port>` pairs; the translator validates type and range and
 // throws `InvalidResourcePortError` for anything it refuses.
 const resourcePorts: Record<string, number> = {};
@@ -51,6 +61,14 @@ for (let i = 0; i < args.length; i++) {
   }
   if (arg === "--url") {
     appUrl = args[++i];
+    continue;
+  }
+  if (arg.startsWith("--wait-timeout=")) {
+    waitTimeoutArg = arg.slice("--wait-timeout=".length);
+    continue;
+  }
+  if (arg === "--wait-timeout") {
+    waitTimeoutArg = args[++i];
     continue;
   }
   if (arg.startsWith("--resource-port=") || arg === "--resource-port") {
@@ -87,6 +105,16 @@ if (appUrl !== undefined && appUrl.length === 0) {
   process.exit(1);
 }
 
+const DEFAULT_WAIT_TIMEOUT_SECONDS = 120;
+const waitTimeoutSeconds =
+  waitTimeoutArg === undefined ? DEFAULT_WAIT_TIMEOUT_SECONDS : Number(waitTimeoutArg);
+if (!Number.isInteger(waitTimeoutSeconds) || waitTimeoutSeconds <= 0) {
+  console.error(
+    `--wait-timeout needs a positive whole number of seconds, got ${JSON.stringify(waitTimeoutArg ?? "")}`,
+  );
+  process.exit(1);
+}
+
 // --- Locate the Launchfile ---
 
 const catalogRoot = resolve(dirname(import.meta.dir), "..");
@@ -105,6 +133,7 @@ if (!appDir) {
 const launchfilePath = resolve(appDir, "Launchfile");
 console.log(`\n=== Testing: ${appName} ===`);
 console.log(`Launchfile: ${launchfilePath}`);
+console.log(`Wait budget: ${waitTimeoutSeconds}s (docker compose up --wait --wait-timeout)`);
 
 // --- Parse and translate ---
 
@@ -126,6 +155,9 @@ const metadataPath = resolve(appDir, "metadata.yaml");
 let metadata: Record<string, unknown> = {};
 if (existsSync(metadataPath)) {
   metadata = parse(readFileSync(metadataPath, "utf-8")) ?? {};
+}
+for (const warning of lintUnknownMetadataKeys(metadata, metadataPath)) {
+  console.warn(`Warning: ${warning}`);
 }
 const testEnv: Record<string, string> = Object.fromEntries(
   Object.entries((metadata.test_env as Record<string, unknown>) ?? {}).map(([k, v]) => [
@@ -309,29 +341,50 @@ interface ImageInfo {
 }
 
 const imageInfos: ImageInfo[] = [];
+const fetchManifest = dockerManifestFetcher((cmd) => run(cmd, { timeout: 60_000 }));
 for (const img of result.images) {
-  const inspect = await run(["docker", "image", "inspect", img, "--format", "{{.Size}} {{.Architecture}}"]);
+  // The local image store supplies only the platform that was pulled. The size
+  // comes from the registry manifest for that platform, so it does not depend
+  // on the machine's Docker setup.
+  const inspect = await run(["docker", "image", "inspect", img, "--format", "{{.Architecture}} {{.Variant}}"]);
   if (inspect.exitCode === 0) {
-    const [sizeStr, arch] = inspect.stdout.trim().split(" ");
-    const sizeMb = Math.round(Number.parseInt(sizeStr, 10) / 1024 / 1024);
+    const [arch, variant] = inspect.stdout.trim().split(" ");
+    const platform = arch
+      ? formatPlatform({ os: "linux", architecture: arch, ...(variant ? { variant } : {}) })
+      : "unknown";
+    let sizeMb: number;
+    try {
+      sizeMb = await downloadSizeMb(img, platform, fetchManifest);
+    } catch (err) {
+      console.error(`\n=== ${appName}: FAIL — manifest size lookup failed ===`);
+      console.error(`  - ${img} (${platform}): ${err instanceof Error ? err.message : String(err)}`);
+      console.error("\nsize_mb is the registry manifest's download size; there is no local fallback.");
+      process.exit(1);
+    }
     imageInfos.push({
       name: img,
       size_mb: sizeMb,
-      platform: [arch ? `linux/${arch}` : "unknown"],
+      platform: [platform],
     });
+  } else {
+    console.error(`\n=== ${appName}: FAIL — docker image inspect failed for ${img} ===`);
+    process.exit(1);
   }
 }
 
-const totalDiskMb = imageInfos.reduce((sum, i) => sum + i.size_mb, 0);
-console.log(`Total image disk: ${totalDiskMb} MB`);
+const totalDownloadMb = imageInfos.reduce((sum, i) => sum + i.size_mb, 0);
+console.log(`Total image download: ${totalDownloadMb} MB`);
 
 // --- Launch ---
 
-console.log("\nStarting containers...");
+console.log(`\nStarting containers (wait budget ${waitTimeoutSeconds}s)...`);
 const upStart = performance.now();
-const upResult = await run(["docker", "compose", "up", "-d", "--wait", "--wait-timeout", "120"], {
-  timeout: 180_000,
-});
+// The process timeout sits a minute past the compose budget: compose owns the
+// health wait, and the kill here only catches a hung `docker` binary.
+const upResult = await run(
+  ["docker", "compose", "up", "-d", "--wait", "--wait-timeout", String(waitTimeoutSeconds)],
+  { timeout: (waitTimeoutSeconds + 60) * 1000 },
+);
 const startupTimeSeconds = Math.round((performance.now() - upStart) / 1000);
 
 let healthPassed = false;
@@ -359,37 +412,37 @@ if (upResult.exitCode === 0) {
 // --- Collect logs on failure ---
 
 if (!healthPassed) {
-  console.log("\n--- Container logs (last 30 lines per service) ---");
-  const logs = await run(["docker", "compose", "logs", "--tail", "30"]);
-  console.log(logs.stdout.slice(-2000));
+  console.log(await collectFailureLogs(run));
 }
 
 // --- Report ---
 
 const passed = healthPassed ? "PASS" : "FAIL";
 console.log(`\n=== ${appName}: ${passed} ===`);
-console.log(`  Pull time:    ${pullTimeSeconds}s`);
-console.log(`  Startup time: ${startupTimeSeconds}s`);
-console.log(`  Disk usage:   ${totalDiskMb} MB`);
+console.log(`  Pull time:     ${pullTimeSeconds}s`);
+console.log(`  Startup time:  ${startupTimeSeconds}s`);
+console.log(`  Download size: ${totalDownloadMb} MB`);
 
 // --- Write/update metadata.yaml ---
 
-metadata.test_results = {
-  last_tested: new Date().toISOString().split("T")[0],
-  pull_time_seconds: pullTimeSeconds,
-  startup_time_seconds: startupTimeSeconds,
-  total_disk_mb: totalDiskMb,
-  health_check_passed: healthPassed,
-  notes: statusNote,
-};
-
-metadata.images = imageInfos.map((i) => ({
-  name: i.name,
-  size_mb: i.size_mb,
-  platform: i.platform,
-}));
-
-writeFileSync(metadataPath, stringify(metadata, { lineWidth: 120 }));
+writeFileSync(
+  metadataPath,
+  rewriteMetadata(metadata, {
+    test_results: {
+      last_tested: new Date().toISOString().split("T")[0],
+      pull_time_seconds: pullTimeSeconds,
+      startup_time_seconds: startupTimeSeconds,
+      total_download_mb: totalDownloadMb,
+      health_check_passed: healthPassed,
+      notes: statusNote,
+    },
+    images: imageInfos.map((i) => ({
+      name: i.name,
+      size_mb: i.size_mb,
+      platform: i.platform,
+    })),
+  }),
+);
 console.log(`\nMetadata written: ${metadataPath}`);
 
 // --- Teardown ---

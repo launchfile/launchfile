@@ -5,19 +5,19 @@ test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 42
   startup_time_seconds: 68
-  total_disk_mb: 1264
+  total_download_mb: 409
   health_check_passed: true
   notes: ""
 images:
   - name: outlinewiki/outline:latest
-    size_mb: 965
+    size_mb: 284
     platform:
       - linux/arm64
   - name: postgres:16-alpine
-    size_mb: 259
+    size_mb: 109
     platform:
       - linux/arm64
   - name: redis:7-alpine
-    size_mb: 40
+    size_mb: 16
     platform:
       - linux/arm64

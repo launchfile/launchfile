@@ -5,11 +5,11 @@ test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 12
   startup_time_seconds: 1
-  total_disk_mb: 203
+  total_download_mb: 116
   health_check_passed: true
   notes: ""
 images:
   - name: ghcr.io/gchq/cyberchef:latest
-    size_mb: 203
+    size_mb: 116
     platform:
       - linux/arm64

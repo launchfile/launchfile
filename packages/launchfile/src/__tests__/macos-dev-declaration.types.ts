@@ -24,6 +24,10 @@ import type {
 	launchBootstrap as realLaunchBootstrap,
 } from "../../../../providers/macos-dev/src/bootstrap.js";
 import type {
+	declaredEnvKeys as realDeclaredEnvKeys,
+	macosLaunchError as realMacosLaunchError,
+} from "../../../../providers/macos-dev/src/errors.js";
+import type {
 	launchDown as realLaunchDown,
 	launchEnv as realLaunchEnv,
 	launchStatus as realLaunchStatus,
@@ -67,6 +71,10 @@ export type MacosDevDeclarationChecks = [
 	Assert<Matches<typeof Declared.launchStatus, typeof realLaunchStatus>>,
 	Assert<Matches<typeof Declared.launchEnv, typeof realLaunchEnv>>,
 	Assert<Matches<typeof Declared.launchBootstrap, typeof realLaunchBootstrap>>,
+	Assert<
+		Matches<typeof Declared.macosLaunchError, typeof realMacosLaunchError>
+	>,
+	Assert<Matches<typeof Declared.declaredEnvKeys, typeof realDeclaredEnvKeys>>,
 	Assert<
 		[RealBootstrapResult] extends [Declared.BootstrapResult] ? true : false
 	>,

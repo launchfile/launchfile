@@ -160,15 +160,17 @@ describe("dockerUp --dry-run appUrl (#290)", () => {
 		});
 		const text = output.join("\n");
 		expect(text).toContain("PUBLIC_URL: https://notes.example.com");
-		expect(text).toContain("  web is running at https://notes.example.com");
-		expect(text).not.toMatch(/web is running at http:\/\/localhost/);
+		expect(text).toContain(
+			"  web would be reachable at https://notes.example.com",
+		);
+		expect(text).not.toMatch(/web would be reachable at http:\/\/localhost/);
 	});
 
 	it("prints the recorded URL on a later run that omits the option (#386)", async () => {
 		await seedState("https://notes.example.com");
 		await dockerUp(projectDir, { dryRun: true });
 		expect(output.join("\n")).toContain(
-			"  web is running at https://notes.example.com",
+			"  web would be reachable at https://notes.example.com",
 		);
 	});
 
@@ -181,9 +183,11 @@ describe("dockerUp --dry-run appUrl (#290)", () => {
 		const text = output.join("\n");
 		expect(text).toContain("APP_URL: https://live.example.com");
 		expect(text).toContain(
-			"  web (live) is running at https://live.example.com",
+			"  web (live) would be reachable at https://live.example.com",
 		);
-		expect(text).toMatch(/ {2}web is running at http:\/\/localhost:\d+/);
+		expect(text).toMatch(
+			/ {2}web would be reachable at http:\/\/localhost:\d+/,
+		);
 	});
 
 	it("keeps ws://localhost on a ws primary no https-origin names (#386)", async () => {
@@ -200,14 +204,16 @@ describe("dockerUp --dry-run appUrl (#290)", () => {
 		});
 		const text = output.join("\n");
 		expect(text).toContain("APP_URL: https://live.example.com");
-		expect(text).toMatch(/ {2}web is running at ws:\/\/localhost:\d+/);
-		expect(text).not.toContain("is running at https://live.example.com");
+		expect(text).toMatch(/ {2}web would be reachable at ws:\/\/localhost:\d+/);
+		expect(text).not.toContain(
+			"would be reachable at https://live.example.com",
+		);
 	});
 
 	it("prints localhost in the up summary when no URL is recorded or supplied", async () => {
 		await dockerUp(projectDir, { dryRun: true });
 		expect(output.join("\n")).toMatch(
-			/ {2}web is running at http:\/\/localhost:\d+/,
+			/ {2}web would be reachable at http:\/\/localhost:\d+/,
 		);
 	});
 

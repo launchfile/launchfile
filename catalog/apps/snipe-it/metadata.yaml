@@ -2,15 +2,15 @@ test_results:
   last_tested: 2026-04-11
   pull_time_seconds: 40
   startup_time_seconds: 13
-  total_disk_mb: 1235
+  total_download_mb: 391
   health_check_passed: true
   notes: ""
 images:
   - name: snipe/snipe-it:latest
-    size_mb: 891
+    size_mb: 294
     platform:
       - linux/arm64
   - name: mariadb:11
-    size_mb: 344
+    size_mb: 97
     platform:
       - linux/arm64

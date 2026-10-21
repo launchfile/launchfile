@@ -3,7 +3,7 @@
  * CLI entry point for the Launchfile Docker provider.
  *
  * Usage:
- *   launchfile up <slug|path|url> [--detach] [--dry-run]
+ *   launchfile up <slug|path|url> [--dry-run]   (compose always runs detached)
  *   launchfile down [--destroy]
  *   launchfile status [slug]
  *   launchfile logs [--follow]
@@ -46,7 +46,6 @@ async function main(): Promise<void> {
 				process.exit(1);
 			}
 			await dockerUp(source, {
-				detach: hasFlag("detach"),
 				dryRun: hasFlag("dry-run"),
 				yes: hasFlag("yes"),
 			});

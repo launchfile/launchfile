@@ -227,3 +227,61 @@ describe("resolveSource URL credentials (#373)", () => {
 		expect(result.url).toBe(URL_WITH_TOKEN);
 	});
 });
+
+describe("resolveSource URL credentials without a password, and in the query (#575)", () => {
+	const TOKEN = "ghp_abc123";
+	const TOKEN_ONLY = `https://${TOKEN}@raw.githubusercontent.com/acme/shop/main/Launchfile`;
+	const TOKEN_QUERY = `https://raw.githubusercontent.com/acme/shop/main/Launchfile?token=${TOKEN}`;
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	async function rejectionOf(input: string): Promise<string> {
+		try {
+			await resolveSource(input);
+		} catch (err) {
+			return (err as Error).message;
+		}
+		return expect.unreachable("resolveSource should have thrown");
+	}
+
+	for (const [shape, url] of [
+		["token-only userinfo", TOKEN_ONLY],
+		["query token", TOKEN_QUERY],
+	] as const) {
+		it(`masks a ${shape} when the server answers non-OK`, async () => {
+			vi.stubGlobal(
+				"fetch",
+				vi.fn(async () => new Response("nope", { status: 404, statusText: "Not Found" })),
+			);
+
+			const message = await rejectionOf(url);
+
+			expect(message).not.toContain(TOKEN);
+			expect(message).toContain("raw.githubusercontent.com/acme/shop/main/Launchfile");
+			expect(message).toContain("404 Not Found");
+		});
+
+		it(`masks a ${shape} when fetch itself rejects with the URL in its message`, async () => {
+			vi.stubGlobal(
+				"fetch",
+				vi.fn(async (input: string) => {
+					throw new TypeError(`Request cannot be constructed from a URL that includes credentials: ${input}`);
+				}),
+			);
+
+			const message = await rejectionOf(url);
+
+			expect(message).not.toContain(TOKEN);
+			expect(message).toContain("raw.githubusercontent.com/acme/shop/main/Launchfile");
+		});
+	}
+
+	it("masks a token-only userinfo from the runtime's own fetch rejection", async () => {
+		const message = await rejectionOf(`http://${TOKEN}@127.0.0.1:9/Launchfile`);
+
+		expect(message).not.toContain(TOKEN);
+		expect(message).toContain("127.0.0.1:9/Launchfile");
+	});
+});

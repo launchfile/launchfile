@@ -14,9 +14,11 @@
  * As in `state/errors.ts`, there is deliberately no environment variable for it.
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { canonicalSourceUrl } from "@launchfile/sdk";
+import { ensurePrivateDir, writeAtomic } from "./fs.js";
 import type { DeploymentIndex, DeploymentEntry } from "./types.js";
 
 export type { DeploymentEntry, DeploymentIndex } from "./types.js";
@@ -57,8 +59,12 @@ export async function saveIndex(
 	index: DeploymentIndex,
 	dir: string = deploymentsDir(),
 ): Promise<void> {
-	await mkdir(dir, { recursive: true });
-	await writeFile(indexPath(dir), JSON.stringify(index, null, 2) + "\n");
+	// The index names every source directory and instance on the machine, so
+	// it gets the same owner-only treatment as a provider's state file. The
+	// atomic write also keeps two concurrent `launchfile` commands, each doing
+	// a read-modify-write of this file, from tearing it.
+	await ensurePrivateDir(dir);
+	await writeAtomic(indexPath(dir), `${JSON.stringify(index, null, 2)}\n`);
 }
 
 export async function addDeployment(
@@ -69,7 +75,7 @@ export async function addDeployment(
 	const index = await loadIndex(dir);
 	index.deployments[id] = entry;
 	await saveIndex(index, dir);
-	await mkdir(deploymentDir(id, dir), { recursive: true });
+	await ensurePrivateDir(deploymentDir(id, dir));
 }
 
 export async function updateDeployment(
@@ -105,6 +111,20 @@ export function dockerSlugFor(entry: DeploymentEntry): string {
 	return entry.sourceType === "catalog"
 		? entry.source.replace("catalog:", "")
 		: entry.appName;
+}
+
+/**
+ * The source an index row identifies (D-55): the directory for a local
+ * target, `catalog:<slug>` for a catalog target, the URL itself for a URL
+ * target. A URL row may still carry a `catalog:` prefix that older CLIs
+ * wrote; it is stripped here so the row matches a fresh `up` of the same URL
+ * and displays as the URL. `up` rewrites the row's source on its next run.
+ */
+export function entrySource(entry: DeploymentEntry): string {
+	if (entry.sourceType === "url" && entry.source.startsWith("catalog:")) {
+		return entry.source.slice("catalog:".length);
+	}
+	return entry.source;
 }
 
 /** Find a deployment by ID, name, app slug, or source directory */
@@ -154,14 +174,24 @@ export function findBySource(
 	return null;
 }
 
-/** Every deployment launched from `sourcePath`, one per instance name (D-55). */
+/**
+ * Every deployment launched from `sourcePath`, one per instance name (D-55).
+ *
+ * Both sides compare credential-free (D-55 rule 3): a row recorded with a
+ * token matches the same URL without it. `entrySource` runs before
+ * `canonicalSourceUrl` so a legacy `catalog:<url>` row is a bare URL by the
+ * time its credentials are removed; the prefix would otherwise hide them.
+ * A path or a `catalog:<slug>` key passes through `canonicalSourceUrl`
+ * unchanged.
+ */
 export function findAllBySource(
 	index: DeploymentIndex,
 	sourcePath: string,
 ): { id: string; entry: DeploymentEntry }[] {
 	const results: { id: string; entry: DeploymentEntry }[] = [];
+	const wanted = canonicalSourceUrl(sourcePath);
 	for (const [id, entry] of Object.entries(index.deployments)) {
-		if (entry.source === sourcePath) {
+		if (canonicalSourceUrl(entrySource(entry)) === wanted) {
 			results.push({ id, entry });
 		}
 	}

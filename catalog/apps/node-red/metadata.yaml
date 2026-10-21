@@ -5,11 +5,11 @@ test_results:
   last_tested: 2026-04-08
   pull_time_seconds: 21
   startup_time_seconds: 31
-  total_disk_mb: 587
+  total_download_mb: 212
   health_check_passed: true
   notes: ""
 images:
   - name: nodered/node-red:latest
-    size_mb: 587
+    size_mb: 212
     platform:
       - linux/arm64
