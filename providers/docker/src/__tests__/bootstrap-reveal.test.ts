@@ -279,10 +279,10 @@ describe.each([
 	},
 );
 
-// Both declare exactly one sensitive capture: the only way to create the
-// first user (D-34's motivating case).
+// Paperclip declares exactly one sensitive capture: the only way to create
+// the first user (D-34's motivating case).
 describe("the catalog apps this exists for", () => {
-	it.each(["paperclip", "remote-claude-concentrator"])(
+	it.each(["paperclip"])(
 		"%s: masked with a hint by default, printed under reveal",
 		async (app) => {
 			const launch = readLaunch(

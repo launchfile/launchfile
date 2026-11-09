@@ -12,10 +12,10 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ## Summary
 
-- **85** Launchfile(s) translated
-- **166** field mappings
-- **401** gaps logged (never silently dropped)
-- **8** specializations safely ignored
+- **84** Launchfile(s) translated
+- **165** field mappings
+- **394** gaps logged (never silently dropped)
+- **7** specializations safely ignored
 
 ### Distinct gaps
 
@@ -73,10 +73,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 | `storage:consume` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
 | `requires:https-origin` | 🔴 blocker | the app requires a public HTTPS origin in front of endpoint 'web', and this probe emits an http-only load balancer | terminate TLS at the ALB (aws_acm_certificate + an HTTPS listener) before deploying this app |
 | `storage:files` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
-| `runtime` | 🔴 blocker | no runtime and no commands.start — nothing to build or run on EC2 | — |
-| `storage:cache` | 🟡 workaround | declared but not translated — the component stops at the `runtime` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
-| `storage:transcripts` | 🟡 workaround | declared but not translated — the component stops at the `runtime` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
-| `provides:http:9999` | 🟡 workaround | declared but not translated — the component stops at the `runtime` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
 | `provides:http:1200` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
 | `provides:http:3001` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
 | `provides:http:42617` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
@@ -87,6 +83,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 | `requires:host.filesystem` | 🔴 blocker | component requires host capability filesystem=read-write; a bare EC2 target cannot grant it | use an ECS/container provider |
 | `supports:redis` | 🟢 nice-to-have | optional resources (supports) are not provisioned by this probe | provision behind a Terraform variable toggle |
 | `env.API_KEY` | 🟡 workaround | required env var with no default, generator, or set_env binding — the operator must supply the value | supply it at apply time (SSM parameter or TF variable), or give the Launchfile a `default:` or `generator:` |
+| `storage:cache` | 🟡 workaround | declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it | add runtime+commands for a portable build path, or target a container provider |
 
 ## Per-Launchfile detail
 
@@ -1006,28 +1003,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 - 🟡 `restart` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `storage:files` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
 - 🟡 `provides:http:3000` _(default)_: declared but not translated — the component stops at the `image` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-
-### concentrator
-
-> Source: `catalog/apps/remote-claude-concentrator/Launchfile` — 1 mapped, 7 gap(s), 1 ignored
-
-| Launchfile field | → Terraform | Component |
-|---|---|---|
-| `provides.exposed` | `aws_lb (ALB)` | — |
-
-**Gaps**
-
-- 🔴 `runtime` _(default)_: no runtime and no commands.start — nothing to build or run on EC2
-- 🟡 `env` _(default)_: declared but not translated — the component stops at the `runtime` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟡 `health` _(default)_: declared but not translated — the component stops at the `runtime` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟡 `restart` _(default)_: declared but not translated — the component stops at the `runtime` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟡 `storage:cache` _(default)_: declared but not translated — the component stops at the `runtime` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟡 `storage:transcripts` _(default)_: declared but not translated — the component stops at the `runtime` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-- 🟡 `provides:http:9999` _(default)_: declared but not translated — the component stops at the `runtime` gap, so nothing on EC2 carries it — add runtime+commands for a portable build path, or target a container provider
-
-**Ignored specializations** (contract sufficed — D-40 / RFC C)
-
-- `build.dockerfile/target/args` _(default)_: OCI specialization ignored — EC2 builds from the portable runtime+commands contract (D-40 / RFC C)
 
 ### rsshub
 

@@ -88,7 +88,6 @@ column lists the open [GAPS.md](GAPS.md) entries that name the app.
 | [privatebin](apps/privatebin/) | Pastebin | Minimalist zero-knowledge online pastebin | — | |
 | [rallly](apps/rallly/) | — | Schedule group meetings without the back and forth (Doodle alternative) | postgres | |
 | [redmine](apps/redmine/) | Projects | Flexible project management web application | postgres | |
-| [remote-claude-concentrator](apps/remote-claude-concentrator/) | Utilities | Remote Claude session concentrator and dashboard | — | |
 | [rsshub](apps/rsshub/) | RSS | Generate RSS feeds from almost any website | — | |
 | [searxng](apps/searxng/) | Search | Privacy-respecting metasearch engine aggregating results from 70+ sources | — | |
 | [snipe-it](apps/snipe-it/) | — | IT asset management for tracking hardware, software licenses, and accessories | mariadb | |
