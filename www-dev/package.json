@@ -19,9 +19,9 @@
     "@astrojs/cloudflare": "14.3.3",
     "@astrojs/markdown-satteri": "^0.4.2",
     "@tailwindcss/typography": "^0.5.20",
-    "@tailwindcss/vite": "^4.3.3",
+    "@tailwindcss/vite": "^4.3.4",
     "astro": "7.3.5",
-    "tailwindcss": "^4.3.3"
+    "tailwindcss": "^4.3.4"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
