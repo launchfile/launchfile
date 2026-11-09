@@ -43,7 +43,7 @@
   },
   "dependencies": {
     "@launchfile/sdk": "^0.15.0",
-    "semver": "^7.7.4"
+    "semver": "^7.8.6"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
