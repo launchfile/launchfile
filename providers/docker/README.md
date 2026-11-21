@@ -10,17 +10,25 @@ npx launchfile up ./Launchfile # any local Launchfile
 npx launchfile down --destroy  # remove containers, volumes and networks
 ```
 
+## Install
+
+```bash
+npm install @launchfile/docker   # or: bun add @launchfile/docker
+```
+
+You only need this to use the provider as a library. The `launchfile` CLI already depends on it.
+
 ## What it does
 
 - Translates a Launchfile into a `docker-compose.yml` (`launchToCompose`) and runs it with `docker compose`.
 - Uses `image:` when a component declares one, and builds components that declare `build:` with `docker compose build`. Building inside Docker keeps an untrusted source off the host.
 - Runs the artifact-context commands: `commands.release` once before `up` (a failure fails the deploy), `commands.start`, and `bootstrap`. Source-mode commands (`install`, `dev`) are ignored (D-38).
-- Provisions `requires:` resources (postgres, mysql, mariadb, redis and more) as backing-service containers, and writes the values each `set_env` reads.
+- Provisions `requires:` resources (postgres, mysql, mariadb, redis and more) as backing-service containers, and injects each entry's `set_env` bindings into the component's environment.
 - Waits for each component's `health:` check before `up` returns. If the budget runs out, `up` fails and the containers are left running so `launchfile status` and `launchfile logs` can show what never came up.
 
 ## Timeout defaults
 
-Used when a command declares no `timeout:` ([PROVIDERS.md §10](https://github.com/launchfile/launchfile/blob/main/spec/PROVIDERS.md)):
+Used when a command declares no `timeout:`, plus the health-gate budget on `up`, which no Launchfile field sets ([PROVIDERS.md §10](https://github.com/launchfile/launchfile/blob/main/spec/PROVIDERS.md)):
 
 | Stage               | Default |
 |---------------------|---------|

@@ -10,6 +10,14 @@ npx launchfile dev             # run from source (install, then dev)
 npx launchfile down            # stop what up started
 ```
 
+## Install
+
+```bash
+npm install @launchfile/macos-dev   # or: bun add @launchfile/macos-dev
+```
+
+You only need this to use the provider as a library. The `launchfile` CLI installs it as an optional dependency.
+
 ## What it does
 
 - Runs apps from source. It ignores `image:` and uses `runtime:` with native toolchains: node via fnm, python via pyenv, ruby via rbenv, bun via Homebrew.
