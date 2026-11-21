@@ -64,6 +64,14 @@ export {
 	registerSecret,
 	registerSecrets,
 } from "./redact.js";
+export {
+	DEFAULT_RESOURCE_PORTS,
+	InvalidResourcePortError,
+	RESOURCE_PORT_TYPES,
+	type ResourcePorts,
+	type ResourcePortType,
+	validateResourcePorts,
+} from "./resource-ports.js";
 export { type ResolvedSource, resolveSource } from "./source-resolver.js";
 export {
 	type DockerSourceInfo,
