@@ -15,9 +15,11 @@
 
 import {
 	type NormalizedComponent,
+	type NormalizedLaunch,
 	type NormalizedRequirement,
 	stripControlInline,
 } from "@launchfile/sdk";
+import { missingSuppliedRefs } from "./resource-uses.js";
 
 /** One capability entry on one component, as the Launchfile declared it. */
 export interface HostCapabilityRequest {
@@ -106,7 +108,7 @@ export interface HostCapabilityOutcome {
 
 /**
  * Names the properties an entry's `set_env` reads that `properties` lacks.
- * The generator supplies it, because expression semantics are its own.
+ * {@link planHostCapabilities} supplies the provider's check.
  */
 export type UnsuppliedProperties = (
 	entry: NormalizedRequirement,
@@ -342,6 +344,57 @@ export function resolveHostCapabilities(
 		}
 	}
 	return outcome;
+}
+
+/** The outcome of a component with no capability entries. */
+export const NO_HOST_CAPABILITIES: HostCapabilityOutcome = {
+	refused: [],
+	grants: [],
+	properties: new Map(),
+	notes: [],
+};
+
+/** Each component's capability outcome, keyed by component name. */
+export type HostCapabilityPlan = ReadonlyMap<string, HostCapabilityOutcome>;
+
+/**
+ * Put every component's capability entries to `policy` once, in declaration
+ * order. The refusal set reads `refused` (D-44: a required entry the policy
+ * did not grant refuses the component), and the compose generator applies
+ * `grants`, `properties` and `notes` from the same answers, so the policy is
+ * asked one question per entry and both readers see one decision.
+ *
+ * Each grant is checked against the storage paths the service mounts and
+ * against the properties its entry's `set_env` reads — the same checks
+ * {@link applyHostCapabilityGrants} relies on — so a grant that cannot apply
+ * is refused here, before the refusal set is decided.
+ */
+export function planHostCapabilities(
+	launch: NormalizedLaunch,
+	policy: HostCapabilityPolicy | undefined,
+): HostCapabilityPlan {
+	const plan = new Map<string, HostCapabilityOutcome>();
+	for (const [componentName, component] of Object.entries(launch.components)) {
+		plan.set(
+			componentName,
+			resolveHostCapabilities(
+				componentName,
+				component,
+				policy,
+				Object.values(component.storage ?? {}).map((vol) => vol.path),
+				(entry, properties) =>
+					Object.values(entry.set_env ?? {}).flatMap((expr) =>
+						missingSuppliedRefs(
+							expr,
+							entry.name ?? entry.type,
+							properties,
+							false,
+						),
+					),
+			),
+		);
+	}
+	return plan;
 }
 
 const LIST_FIELDS = [
