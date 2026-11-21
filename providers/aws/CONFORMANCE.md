@@ -13,8 +13,8 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 ## Summary
 
 - **85** Launchfile(s) translated
-- **166** field mappings
-- **401** gaps logged (never silently dropped)
+- **165** field mappings
+- **402** gaps logged (never silently dropped)
 - **8** specializations safely ignored
 
 ### Distinct gaps
@@ -1382,7 +1382,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 
 ### hedgedoc
 
-> Source: `spec/examples/multi-component.yaml` — 13 mapped, 1 gap(s), 2 ignored
+> Source: `spec/examples/multi-component.yaml` — 12 mapped, 2 gap(s), 2 ignored
 
 | Launchfile field | → Terraform | Component |
 |---|---|---|
@@ -1392,7 +1392,6 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 | `commands.start` | `systemd unit (run slot)` | backend |
 | `commands.release` | `cloud-init (release slot)` | backend |
 | `env` | `aws_ssm_parameter` | backend |
-| `health` | `aws_lb_target_group health_check` | backend |
 | `depends_on:backend` | `terraform depends_on` | frontend |
 | `provides:http:3001` | `aws_security_group ingress` | frontend |
 | `runtime:node` | `aws_instance (cloud-init)` | frontend |
@@ -1403,6 +1402,7 @@ A gap of any severity never stops `translate()`: every gap is recorded and the r
 **Gaps**
 
 - 🟡 `requires:postgres.version`: declared version ">=15" is a range this probe does not resolve to an engine version; it emits no engine_version, so RDS uses its default postgres version — set engine_version on aws_db_instance.hedgedoc_postgres to an RDS postgres version that satisfies ">=15"
+- 🟢 `health` _(backend)_: backend has no ALB target group, so no health check runs for it. — Expose the component, or add a container or instance health check by hand.
 
 **Ignored specializations** (contract sufficed — D-40 / RFC C)
 
