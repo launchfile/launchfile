@@ -1,6 +1,6 @@
 /**
  * A refused declared primary resolves the empty `$app.*` address whatever
- * refused it (D-72, D-next): the refusal set is one function, decided once
+ * refused it (D-72, D-76): the refusal set is one function, decided once
  * from the inputs `up` decides on, and `$app.*`, the compose environment,
  * `bootstrap` and `release` all read it.
  *
