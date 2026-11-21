@@ -1,5 +1,12 @@
 # launchfile
 
+## 0.16.0
+
+### Patch Changes
+
+- Updated dependencies [[`b2eb718`](https://github.com/launchfile/launchfile/commit/b2eb718ad54de5077701576a705462b74f22fae1)]:
+  - @launchfile/docker@0.16.0
+
 ## 0.15.0
 
 ### Minor Changes
