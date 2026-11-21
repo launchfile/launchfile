@@ -1,4 +1,8 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["src/**/__tests__/**"]
+  "exclude": [
+    "src/**/__tests__/**",
+    "src/check-declared-volumes.ts",
+    "src/declared-volume-gate.ts"
+  ]
 }
