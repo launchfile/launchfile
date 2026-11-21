@@ -7,6 +7,7 @@ import {
 	wireHttpsOrigins,
 } from "../https-origin.js";
 import { applyHttpsOriginRefusals, refusedHttpsOrigins } from "../provider.js";
+import { refusedComponents } from "../refusals.js";
 import type { ResourceProperties } from "../resources/types.js";
 
 /**
@@ -180,24 +181,39 @@ describe("wireHttpsOrigins — one registered property, `url` (D-60 rule 4)", ()
 });
 
 describe("declaredPrimary (D-60 rule 3, D-72)", () => {
+	const refusedUnder = (launch: Parameters<typeof declaredPrimary>[0], appUrl?: string) =>
+		declaredPrimary(launch, refusedComponents(launch, { appUrl }));
+
 	it("names the component the entry sits on, fulfilled or not", () => {
-		expect(declaredPrimary(REQUIRED, "https://vw.example.com")).toEqual({
+		expect(refusedUnder(REQUIRED, "https://vw.example.com")).toEqual({
 			component: "default",
 			refused: false,
 		});
 		expect(
-			declaredPrimary(
+			refusedUnder(
 				mk(`${WEB}supports:\n  - type: https-origin\n    endpoint: web\n`),
 			),
 		).toEqual({ component: "default", refused: false });
 	});
 
 	it("still names it when the required entry is refused, and says so", () => {
-		expect(declaredPrimary(REQUIRED)).toEqual({ component: "default", refused: true });
-		expect(declaredPrimary(REQUIRED, "http://vw.example.com")).toEqual({
+		expect(refusedUnder(REQUIRED)).toEqual({ component: "default", refused: true });
+		expect(refusedUnder(REQUIRED, "http://vw.example.com")).toEqual({
 			component: "default",
 			refused: true,
 		});
+	});
+
+	it("reads the refusal set, not the scheme: any cause refuses the primary, under supports: too", () => {
+		const kafka = mk(
+			`${WEB}supports:\n  - type: https-origin\n    endpoint: web\nrequires:\n  - kafka\n`,
+		);
+		expect(refusedUnder(kafka, "https://vw.example.com")).toEqual({
+			component: "default",
+			refused: true,
+		});
+		// Omitted, the set is empty: selection only, never an address.
+		expect(declaredPrimary(kafka)).toEqual({ component: "default", refused: false });
 	});
 
 	it("is undefined when no entry is declared", () => {
