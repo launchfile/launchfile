@@ -483,33 +483,38 @@ export class ProcessManager {
 			// a negative pid, killing the app AND any children it spawned — matching
 			// the foreground SIGINT behavior across sessions. We still keep the handle
 			// so the foreground session can kill it directly on Ctrl+C.
-			proc.process = spawn("sh", ["-c", proc.command], {
+			const child = spawn("sh", ["-c", proc.command], {
 				env: { ...process.env, ...proc.env },
 				cwd: proc.cwd,
 				stdio: ["ignore", log.fd, log.fd],
 				detached: true,
 			});
+			proc.process = child;
+			if (child.pid !== undefined) {
+				proc.startedAt = new Date().toISOString();
+			}
+			proc.status = "running";
+
+			// `exit` fires once and is not replayed for a late listener, so it is
+			// attached before anything awaits. A child that exits during the
+			// `log.close()` below (a fast `exit 1` on a loaded host) would otherwise
+			// go unseen: `startAll` would count it as up once the watch window
+			// closed, and `stopAll` would wait for an exit that already happened.
+			const exited = new AbortController();
+			proc.exited = exited;
+			child.on("exit", (code, signal) => {
+				proc.exit = { code, signal };
+				proc.status = code === 0 ? "stopped" : "failed";
+				tail.stop();
+				console.log(
+					`${color}[${paddedName}]${RESET} Process exited (${describeExit(proc.exit)})`,
+				);
+				exited.abort();
+			});
 		} finally {
 			// The child holds its own copy of the descriptor.
 			await log.close();
 		}
-		if (proc.process.pid !== undefined) {
-			proc.startedAt = new Date().toISOString();
-		}
-
-		const exited = new AbortController();
-		proc.exited = exited;
-		proc.process.on("exit", (code, signal) => {
-			proc.exit = { code, signal };
-			proc.status = code === 0 ? "stopped" : "failed";
-			tail.stop();
-			console.log(
-				`${color}[${paddedName}]${RESET} Process exited (${describeExit(proc.exit)})`,
-			);
-			exited.abort();
-		});
-
-		proc.status = "running";
 	}
 
 	/**
