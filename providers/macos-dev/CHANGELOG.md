@@ -1,5 +1,15 @@
 # @launchfile/macos-dev
 
+## 0.16.0
+
+### Minor Changes
+
+- [#674](https://github.com/launchfile/launchfile/pull/674) [`b2eb718`](https://github.com/launchfile/launchfile/commit/b2eb718ad54de5077701576a705462b74f22fae1) Thanks [@launchfile-steward](https://github.com/apps/launchfile-steward)! - A declared primary whose component is refused resolves the empty `$app.*` address whatever refused it (D-72, D-76, [#588](https://github.com/launchfile/launchfile/issues/588)). One refusal set (`refusedComponents`, the union of the five per-cause helpers) is read before `up`'s refusals remove anything; `up` records `--with-optional` in state beside the publication context, and `env` and `bootstrap` compute the set from the file and those recorded inputs, so a certificate refusal (D-61 rule 5) empties `$app.*` on all three verbs. Before, only the `https-origin` scheme check emptied the address, and a `supports:` primary was never refused. `declaredPrimary` now takes the refusal set in place of `appUrl`.
+
+### Patch Changes
+
+- [#674](https://github.com/launchfile/launchfile/pull/674) [`3fd7f95`](https://github.com/launchfile/launchfile/commit/3fd7f951fc703de625696049e22c5b6334865761) Thanks [@launchfile-steward](https://github.com/apps/launchfile-steward)! - `up` no longer misses a component that exits within moments of starting. The process manager attached its `exit` listener only after closing the log descriptor it hands the child; a component that exited during that close (a fast `exit 1` on a loaded host) was never seen, so `up` counted it as up once the watch window closed, and shutdown waited on an exit that had already happened. The listener is now attached before anything awaits ([#526](https://github.com/launchfile/launchfile/issues/526)'s exit gate).
+
 ## 0.15.0
 
 ### Minor Changes
