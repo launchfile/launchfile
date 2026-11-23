@@ -14,11 +14,11 @@
     "publish": "bun run build && bunx wrangler pages deploy dist/client --project-name launchfile-org"
   },
   "dependencies": {
-    "@astrojs/cloudflare": "14.4.8",
+    "@astrojs/cloudflare": "14.4.9",
     "@astrojs/markdown-satteri": "^0.4.10",
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.3.4",
-    "astro": "7.4.12",
+    "astro": "7.4.13",
     "marked": "^18.2.1",
     "satteri": "^0.11.7",
     "shiki": "^4.6.0",
