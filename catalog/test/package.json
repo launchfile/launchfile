@@ -14,15 +14,15 @@
     "validate-catalog": "bun run src/validate-catalog.ts"
   },
   "dependencies": {
-    "playwright": "^1.64.1",
+    "playwright": "^1.65.1",
     "yaml": "^2.9.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/bun": "^1.4.4",
+    "@types/bun": "^1.4.5",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.1"
   }
 }
